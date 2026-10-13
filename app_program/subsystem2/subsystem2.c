@@ -6,6 +6,7 @@
  */
 
 #include "subsystem2.h"
+#include "motor_control.h"
 
 EXPORT ID	sem_slots;	/* IF-02, see subsystem2.h */
 EXPORT ID	mpf_samples;
@@ -33,13 +34,39 @@ EXPORT ER subsystem2_init(void)
 	cmpf.mpfcnt = S2_POOL_COUNT;		/* number of blocks */
 	cmpf.blfsz  = sizeof(SAMPLE_MSG);	/* size of one block */
 	mpf_samples = tk_cre_mpf(&cmpf);
-	return (mpf_samples < E_OK) ? mpf_samples : E_OK;
+
+	if (mpf_samples < E_OK) {
+		return mpf_samples;
+	}
+
+	motor_init();
+
+	return E_OK;
 }
 
 EXPORT ER subsystem2_start(void)
 {
-	/* Pinned to core 1 (TP_PRC2): samples cross to subsystem 3 on core 0 */
-	ID tid = app_start_task(producer_task, S2_PRI_PRODUCER, TP_PRC2,
-				"producer_task");
-	return (tid < E_OK) ? tid : E_OK;
+    ID tid;
+
+    /* Original producer task */
+    tid = app_start_task(
+        producer_task,
+        S2_PRI_PRODUCER,
+        TP_PRC2,
+        "producer_task"
+    );
+
+    if (tid < E_OK) {
+        return tid;
+    }
+
+    /* Temporary Buddy 2 motor test task */
+    tid = app_start_task(
+        (FP)motor_test_task,
+        S2_PRI_PRODUCER,
+        TP_PRC2,
+        "motor_test_task"
+    );
+
+    return (tid < E_OK) ? tid : E_OK;
 }
