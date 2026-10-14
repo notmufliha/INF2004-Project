@@ -13,7 +13,8 @@ typedef enum
     IMU_MOTION_CLIMBING_HUMP,
     IMU_MOTION_HUMP_PEAK,
     IMU_MOTION_DESCENDING_HUMP,
-    IMU_MOTION_SUDDEN_IMPACT
+    IMU_MOTION_SUDDEN_IMPACT,
+    IMU_MOTION_UNKNOWN
 } imu_motion_state_t;
 
 /* Processed IMU measurements */
@@ -46,6 +47,10 @@ typedef struct
     float turn_rate_dps;
 
     bool hump_detected;
+    bool hump_completed; /* One-reading pulse after a complete traversal. */
+    bool tilt_detected;
+    bool valid;
+    bool height_valid; /* False until a height estimator is implemented. */
 
     /* Estimated hump height in centimetres */
     float hump_peak_cm;
