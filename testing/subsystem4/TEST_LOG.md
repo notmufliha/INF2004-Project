@@ -19,6 +19,9 @@ Define a test here before running it. Test IDs never change.
 | S4-U07 | Invalid input and configuration | B4 fault handling | host auto | same host analysis test | Invalid/NaN/null inputs rejected; interrupted hump discarded |
 | S4-U08 | Sampling gaps and timestamps | NFR-B4-1, host timing validation | host auto | same host analysis test | Wrap accepted; duplicate/backward/gapped readings rejected; hump times out |
 | S4-U09 | Tilted gravity and hysteresis | FR-B4-2, NFR-B4-4 | host auto | same host analysis test | Tilted rest does not imply acceleration; intermediate slope retains state |
+| S4-U10 | RTOS reading buffer size | B4 internal sampling interface | target auto | `make TEST=1`, `subsystem4_test.c` | Complete `imu_data_t` messages supported |
+| S4-U11 | Sampling to analysis task data flow | B4 internal sampling interface | target auto | same target test, wait for a fresh demo completion | Valid hump completion within 9 seconds; height unavailable |
+| S4-U12 | Repeating demo sequence | FR-B4-2/5/6, simulated only | host auto | `host/imu_demo_test.c` | Two hump completions across 16 simulated seconds |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
 **manual** = a person observes the result (LED, scope, meter, phone app…).
@@ -31,3 +34,11 @@ Add a new row for every run. Never edit or delete old rows.
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S4-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
 | 2026-10-14 | S4-U03 through S4-U09 | `c9dca65` + working changes | Codex | PASS | [host log](logs/2026-10-14_host_imu.txt) | GCC C11 with strict warnings; desktop tests only; hardware and height not validated |
+| 2026-10-14 | S4-U03 through S4-U09, S4-U12 | Working changes, RTOS demo | Codex | PASS | [demo host log](logs/2026-10-14_host_imu_demo.txt) | Strict desktop compilation; real RTOS execution not tested |
+| 2026-10-14 | S4-U10, S4-U11 | Working changes, RTOS demo | Codex | NOT RUN | [test firmware build](logs/2026-10-14_uart_test_build.txt) | ARM UART/no-WiFi test image compiles and links; requires Pico execution |
+
+Firmware validation: normal and test ARM ELF builds both link successfully with
+`CONSOLE=uart WIFI=none E2U=`. [Normal build log](logs/2026-10-14_uart_build.txt).
+USB/WiFi profile and UF2 conversion were not verified in this environment.
+These UART artifacts are compile checks, not the recommended USB demo image.
+Do not use the UART console profile with the proposed encoders wired to GP0/GP1.

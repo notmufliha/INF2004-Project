@@ -121,6 +121,8 @@ EXE_FILE := mtk3pico_smp$(SMP)_$(CONSOLE)$(WIFI_SUFFIX)$(NET_SUFFIX)$(MQTT_SUFFI
 GCC := arm-none-eabi-gcc
 AS := arm-none-eabi-gcc
 LINK := arm-none-eabi-gcc
+# IMU analysis uses standard float math. Libraries must follow object files.
+LDLIBS += -lm
 SIZE := arm-none-eabi-size
 E2U := tools/elf2uf2
 
