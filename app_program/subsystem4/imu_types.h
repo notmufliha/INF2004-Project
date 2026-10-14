@@ -51,6 +51,8 @@ typedef struct
     bool tilt_detected;
     bool valid;
     bool height_valid; /* False until a height estimator is implemented. */
+    bool sensor_fault; /* Invalid fault notifications carry valid=false. */
+    bool sensor_recovered; /* One-notification recovery pulse. */
 
     /* Estimated hump height in centimetres */
     float hump_peak_cm;

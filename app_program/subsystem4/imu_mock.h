@@ -12,7 +12,10 @@ typedef enum
     IMU_MOCK_CLIMBING_HUMP,
     IMU_MOCK_HUMP_PEAK,
     IMU_MOCK_DESCENDING_HUMP,
-    IMU_MOCK_SUDDEN_IMPACT
+    IMU_MOCK_SUDDEN_IMPACT,
+    IMU_MOCK_NOISY_LEVEL,
+    IMU_MOCK_READ_FAILURE,
+    IMU_MOCK_NONFINITE
 } imu_mock_scenario_t;
 
 /* Initialise the mock IMU */

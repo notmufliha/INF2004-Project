@@ -1,6 +1,7 @@
 #include "subsystem4.h"
 #include "imu_analysis.h"
 #include "imu_demo.h"
+#include "imu_processing.h"
 
 /* Only this task owns the mock. Replace acquisition with a real driver later. */
 EXPORT void imu_sampling_task(INT stacd, void *exinf)
@@ -32,7 +33,9 @@ EXPORT void imu_sampling_task(INT stacd, void *exinf)
             return;
         }
         imu_mock_set_scenario(imu_demo_scenario(now.lo - origin));
-        if (imu_mock_read(&data)) {
+        {
+            data = (imu_data_t){0};
+            data.valid = imu_mock_read(&data);
             /* Use actual RTOS time, not the mock's synthetic sample count. */
             data.timestamp_ms = now.lo;
             er = tk_snd_mbf(mbf_imu_data, &data, sizeof(data), TMO_POL);
@@ -87,6 +90,11 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
     imu_analysis_t analysis;
     imu_analysis_config_t config;
     imu_data_t data;
+    imu_data_t processed;
+    imu_processing_t processing;
+    imu_processing_config_t processing_config;
+    imu_health_t health;
+    SYSTIM now;
     imu_event_t event;
     imu_motion_state_t previous = IMU_MOTION_UNKNOWN;
     bool have_previous = false;
@@ -96,22 +104,49 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
     (void)exinf;
 
     imu_analysis_default_config(&config);
+    imu_processing_default_config(&processing_config);
+    if (!imu_processing_init(&processing, &processing_config)) {
+        tm_printf((UB*)"IMU: processing configuration failed\n");
+        tk_ext_tsk();
+        return;
+    }
     if (!imu_analysis_init(&analysis, &config)) {
         tm_printf((UB*)"IMU: analysis configuration failed\n");
         tk_ext_tsk();
         return;
     }
     while (1) {
-        length = tk_rcv_mbf(mbf_imu_data, &data, TMO_FEVR);
-        if (length < E_OK) {
+        length = tk_rcv_mbf(mbf_imu_data, &data, processing_config.max_gap_ms);
+        if (length < E_OK && length != E_TMOUT) {
             CHECK(length, "IMU receive");
             tk_ext_tsk();
             return;
         }
         if (length != (INT)sizeof(data)) {
-            data.valid = false;
+            ER er = tk_get_tim(&now);
+            if (er < E_OK) {
+                CHECK(er, "IMU receive clock");
+                tk_ext_tsk();
+                return;
+            }
+            data = (imu_data_t){0};
+            data.timestamp_ms = now.lo;
         }
-        if (!imu_analysis_process(&analysis, &data, &event)) {
+        bool usable = imu_processing_process(&processing, &data, data.timestamp_ms,
+                                              &processed, &health);
+        if (health.fault_started) {
+            tm_printf((UB*)"IMU MOCK: sensor fault; unreliable readings suppressed\n");
+#if APP_TEST
+            imu_event_t fault = {0};
+            fault.motion_state = IMU_MOTION_UNKNOWN;
+            fault.timestamp_ms = data.timestamp_ms;
+            fault.sensor_fault = true;
+            ER er = tk_snd_mbf(mbf_imu_test_events, &fault, sizeof(fault), TMO_POL);
+            if (er < E_OK && er != E_TMOUT) { CHECK(er, "IMU fault event"); }
+#endif
+        }
+        /* An invalid processed reading resets any incomplete terrain sequence. */
+        if (!imu_analysis_process(&analysis, &processed, &event) || !usable) {
             if (!warned) {
                 tm_printf((UB*)"IMU: invalid reading/timing; terrain sequence reset\n");
             }
@@ -120,7 +155,12 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
             continue;
         }
         warned = false;
-        if (!have_previous || event.motion_state != previous || event.hump_completed) {
+        event.sensor_recovered = health.recovered;
+        if (health.recovered) {
+            tm_printf((UB*)"IMU MOCK: sensor recovered after consecutive good readings\n");
+        }
+        if (!have_previous || event.motion_state != previous || event.hump_completed ||
+            health.recovered) {
             /* Integer output: T-Monitor does not require float formatting. */
             tm_printf((UB*)"IMU MOCK: t=%u state=%s pitch=%d roll=%d turn=%d tilt=%d\n",
                       (UW)event.timestamp_ms, motion_name(event.motion_state),

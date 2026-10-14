@@ -1,6 +1,7 @@
 #include "imu_mock.h"
 
 #include <stddef.h>
+#include <math.h>
 
 /* Acceleration due to gravity (m/s^2) */
 #define IMU_GRAVITY_MS2 (9.81f)
@@ -78,6 +79,17 @@ bool imu_mock_read(imu_data_t *data)
             data->accel_x = 15.0f;
             break;
 
+        case IMU_MOCK_NOISY_LEVEL:
+            data->pitch_deg = ((mock_timestamp_ms / IMU_MOCK_PERIOD_MS) % 2U)
+                              ? 2.0f : -2.0f;
+            data->roll_deg = -data->pitch_deg;
+            break;
+        case IMU_MOCK_READ_FAILURE:
+            data->valid = false;
+            break;
+        case IMU_MOCK_NONFINITE:
+            data->pitch_deg = NAN;
+            break;
         default:
             data->valid = false;
             break;

@@ -22,6 +22,8 @@ Define a test here before running it. Test IDs never change.
 | S4-U10 | RTOS reading buffer size | B4 internal sampling interface | target auto | `make TEST=1`, `subsystem4_test.c` | Complete `imu_data_t` messages supported |
 | S4-U11 | Sampling to analysis task data flow | B4 internal sampling interface | target auto | same target test, wait for a fresh demo completion | Valid hump completion within 9 seconds; height unavailable |
 | S4-U12 | Repeating demo sequence | FR-B4-2/5/6, simulated only | host auto | `host/imu_demo_test.c` | Two hump completions across 16 simulated seconds |
+| S4-U13 | Filtering, spike preservation and fault recovery | NFR-B4-3/4, B4 fault handling | host auto | `host/imu_processing_test.c` and filtered demo test | Smoothed angles/rate, unchanged impact acceleration, invalid suppression, fault/recovery pulses, timestamp checks |
+| S4-U14 | RTOS fault/recovery notifications | B4 fault handling, mock only | target auto | `make TEST=1`, `subsystem4_test.c` | Outage fault then valid recovery within nine seconds |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
 **manual** = a person observes the result (LED, scope, meter, phone app…).
@@ -42,3 +44,12 @@ Firmware validation: normal and test ARM ELF builds both link successfully with
 USB/WiFi profile and UF2 conversion were not verified in this environment.
 These UART artifacts are compile checks, not the recommended USB demo image.
 Do not use the UART console profile with the proposed encoders wired to GP0/GP1.
+
+Processing milestone (2026-10-14, working changes): S4-U03 through S4-U09,
+S4-U12 and S4-U13 PASS in strict GCC host tests; see
+[processing test log](logs/2026-10-14_host_imu_processing.txt).
+Normal and test ARM ELF builds compile and link:
+[normal build](logs/2026-10-14_processing_uart_build.txt),
+[test build](logs/2026-10-14_processing_uart_test_build.txt).
+S4-U10, S4-U11 and S4-U14 remain NOT RUN on hardware. USB/WiFi builds, sensor
+performance and actual scheduler timing remain unverified.

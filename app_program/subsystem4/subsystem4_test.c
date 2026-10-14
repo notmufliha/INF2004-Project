@@ -17,6 +17,7 @@ EXPORT void subsystem4_test(void)
     imu_event_t event;
     SYSTIM start, now;
     BOOL completed = FALSE;
+    BOOL fault_seen = FALSE, recovery_seen = FALSE;
     INT len;
 
 	TEST_INIT();
@@ -54,6 +55,20 @@ EXPORT void subsystem4_test(void)
     } while (now.lo - start.lo < 9000U);
     TEST_CHECK("S4-U11", completed,
                "mock readings flow through RTOS tasks to a fresh hump report");
+    tk_get_tim(&start);
+    do {
+        len = tk_rcv_mbf(mbf_imu_test_events, &event, 100);
+        if (len == sizeof(event)) {
+            if (event.sensor_fault && !event.valid) { fault_seen = TRUE; }
+            if (fault_seen && event.sensor_recovered && event.valid) {
+                recovery_seen = TRUE;
+                break;
+            }
+        }
+        tk_get_tim(&now);
+    } while (now.lo - start.lo < 9000U);
+    TEST_CHECK("S4-U14", recovery_seen,
+               "demo outage reports sensor fault followed by valid recovery");
 	TEST_SUMMARY("subsystem4");
 }
 

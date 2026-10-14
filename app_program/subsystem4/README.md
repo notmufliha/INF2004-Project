@@ -8,6 +8,7 @@ between them. Sampling uses actual RTOS timestamps and drops the newest reading
 if the queue is full, without blocking. Gaps over the analysis limit reset the
 terrain sequence. Delays below that limit still affect confirmation latency.
 The legacy monitor is retained at priority 19 for Subsystem 3's example interface.
+`imu_processing.c` validates and filters each received reading before analysis.
 No real IMU, Vehicle Controller or motor interface is connected yet.
 
 ## Run on the Pico
@@ -26,6 +27,8 @@ then open the USB serial port at 115200 baud. Watch for `IMU MOCK:` lines:
 unknown/quiet, accelerating, turning, climbing, peak, descending, hump completed,
 and suspected-impact. The cycle repeats every eight seconds. Height is explicitly
 reported as unavailable. A long impact interval is intentional for this demo.
+At 6.5 seconds the mock fails for 200 ms, then provides noisy-level readings.
+Look for `sensor fault` followed by `sensor recovered` before the impact phase.
 Motion lines print on transitions, not every 10 ms. The existing template LED,
 producer, consumer and monitor continue to run; no motor commands are added.
 
@@ -35,6 +38,31 @@ buffer drops new observations without blocking analysis. This is not a public
 Vehicle Controller event queue. On-board checks must be run on the Pico; desktop
 tests exercise the sequence and analysis, not the real scheduler or USB transport.
 The firmware link now includes the standard math library required by analysis.
+S4-U14 checks the fault/recovery report sequence, with up to nine additional
+seconds of waiting in the test build.
+
+## Filtering and fault policy
+
+Defaults in `imu_processing_default_config()` are provisional: smoothing alpha
+0.25, fault after three consecutive invalid attempts, recovery after five
+consecutive valid readings, and maximum valid-reading gap of 100 ms.
+Pitch/roll use angle-aware exponential smoothing and turn rate uses exponential
+smoothing. Alpha 1 disables smoothing. Acceleration passes through unchanged so
+an impact spike can reach the analysis immediately; acceleration noise rejection
+and physical threshold tuning still require hardware experiments.
+
+Invalid/nonfinite readings and angles outside +/-180 degrees produce invalid
+output without stale measurements. The first invalid reading resets the filter
+and hump sequence, even before the fault threshold. A gap above 100 ms or a
+duplicate/backward timestamp starts a fault immediately. A failed recovery
+attempt restarts the recovery count. Recovery seeds the filter from a fresh
+reading. The analysis task uses a finite receive timeout so absent messages also
+enter the fault path. These mechanisms cannot monitor a stalled analysis task.
+
+Fault/recovery reports are USB/console messages and test-tap notifications at
+present, not Vehicle Controller commands. A future driver must report acquisition
+failure as an invalid reading; sensor reinitialisation and calibration are not
+implemented by this hardware-independent processing module.
 
 ## Try it
 
@@ -87,7 +115,7 @@ if (imu_mock_read(&data) &&
   supplied in degrees and degrees/second. X is forward, Y sideways, Z upward;
   positive pitch means nose-up. Driver calibration must preserve gravity.
 - Magnitude-based acceleration/impact checks are provisional. Sampling must
-  provide calibrated, validated readings. Filtering, gravity compensation and
+  provide calibrated readings. Gravity compensation and
   real vibration/impact trials remain necessary; these tests do not establish
   collision-detection reliability.
 - Height and highest-height fields are zero with `height_valid=false`. No height
