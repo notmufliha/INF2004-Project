@@ -91,4 +91,11 @@
 
 #define LWIP_DEBUG                  0
 
+/* MQTT (apps/mqtt/mqtt.c).  The defaults (256-byte output buffer, 4
+ * requests in flight) only fit about one telemetry JSON message; with
+ * these, a telemetry frame, an event and a command ack can be in the
+ * buffer together.  1 KB of RAM.  See app_program/subsystem1/. */
+#define MQTT_OUTPUT_RINGBUF_SIZE    1024
+#define MQTT_REQ_MAX_IN_FLIGHT      8
+
 #endif /* LWIP_LWIPOPTS_H */

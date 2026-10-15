@@ -1,48 +1,69 @@
 /*
  *	task_led.c
- *	Subsystem 1 -- the LED task and its cyclic handler.
+ *	Subsystem 1 -- link-status LED on GP19.
+ *
+ *	You can see the WiFi/MQTT state at a glance, without a laptop:
+ *
+ *	    CONNECTING_WIFI          fast blink   (2 Hz)
+ *	    CONNECTING_MQTT          slow blink   (1 Hz)
+ *	    RECONNECTING             slow blink   (1 Hz)
+ *	    CONNECTED                solid on
+ *	    OFFLINE / DISABLED       short blip every 2 s
+ *	    INITIALISING             off
+ *
+ *	The task sleeps until a cyclic handler wakes it every S1_TICK_MS, so
+ *	the pattern timing stays exact (same technique as the template).
  *
  *	APIs shown: tk_slp_tsk, tk_wup_tsk, tk_can_wup, cyclic handler,
  *	            gpio_set_pin / gpio_set_val
- *
- *	Instead of tk_dly_tsk(), this task sleeps until a cyclic handler
- *	wakes it.  The handler is called by the kernel's timer at a fixed
- *	rate, so the blink rate stays exact however long the task's own work
- *	takes.
  */
 
-#include "subsystem1.h"
+#include "s1_private.h"
+
+#define BLIP_PERIOD_TICKS	8	/* 8 x 250 ms = 2 s */
 
 /*
- * Cyclic handler.  Runs in interrupt context, NOT as a task, so it must
- * be short and must never wait (no tk_slp_tsk, tk_wai_sem, tm_printf...).
- * Signalling a task is the normal thing to do here.
+ * Cyclic handler: runs in interrupt context, NOT as a task, so it must
+ * be short and must never wait.  It only wakes the LED task.
  */
 EXPORT void led_cyclic_handler(void *exinf)
 {
 	(void)exinf;
-	tk_wup_tsk(tid_led);	/* wake the LED task (the request queues
-				   up if the task is not asleep yet) */
+	tk_wup_tsk(tid_led);
+}
+
+LOCAL UINT led_level(COMM_STATE st, UW tick)
+{
+	switch (st) {
+	case COMM_CONNECTED:
+		return 1U;
+	case COMM_CONNECTING_WIFI:
+		return tick & 1U;			/* toggle every tick */
+	case COMM_CONNECTING_MQTT:
+	case COMM_RECONNECTING:
+		return (tick >> 1) & 1U;		/* toggle every 2 ticks */
+	case COMM_OFFLINE:
+	case COMM_DISABLED:
+		return ((tick % BLIP_PERIOD_TICKS) == 0U) ? 1U : 0U;
+	default:
+		return 0U;
+	}
 }
 
 EXPORT void led_task(INT stacd, void *exinf)
 {
-	UINT	level = 0;
+	UW tick = 0U;
 
 	(void)stacd; (void)exinf;
 
-	gpio_set_pin(S1_LED_PIN, GPIO_MODE_OUT);	/* make the pin an output */
+	gpio_set_pin(S1_LED_PIN, GPIO_MODE_OUT);
 
 	while (1) {
-		/* Sleep until led_cyclic_handler calls tk_wup_tsk() */
-		tk_slp_tsk(TMO_FEVR);
+		tk_slp_tsk(TMO_FEVR);		/* until led_cyclic_handler */
+		tk_can_wup(TSK_SELF);		/* drop wake-ups that piled up */
 
-		/* tk_can_wup: discard wake-ups that queued up while we were
-		   not sleeping (e.g. while subsystem 4 had us suspended), so
-		   the LED does not "catch up" with a burst of fast blinks. */
-		tk_can_wup(TSK_SELF);
-
-		level = !level;
-		gpio_set_val(S1_LED_PIN, level);
+		gpio_set_val(S1_LED_PIN,
+			     led_level((COMM_STATE)s1_comm_state, tick));
+		tick++;
 	}
 }
