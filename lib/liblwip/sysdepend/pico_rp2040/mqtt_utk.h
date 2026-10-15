@@ -7,11 +7,15 @@
 #define MQTT_UTK_H
 
 /*
- * Call once, from cyw43_utk_task() the first time the link reaches
- * CYW43_LINK_UP (see cyw43_utk.c). Starts the MQTT connection to
- * MQTT_BROKER_IP:MQTT_BROKER_PORT (config/wifi_secrets.h) and, once
- * connected, a periodic heartbeat publish on MQTT_TOPIC. Safe to call more
- * than once -- a second call while already connecting/connected is a no-op.
+ * Called from cyw43_utk_task() on every poll while the link is
+ * CYW43_LINK_UP (see cyw43_utk.c).  Only does something when the client
+ * is idle: it then connects to MQTT_BROKER_IP:MQTT_BROKER_PORT
+ * (config/wifi_secrets.h).  While connecting, connected, or waiting out a
+ * retry backoff it returns immediately, so calling it every 2 ms is fine.
+ *
+ * Once connected, messages queued by subsystem 1 are published and
+ * commands on <MQTT_TOPIC_PREFIX>/cmd are passed to it -- see
+ * app_program/subsystem1/comm_bridge.h for the contract.
  */
 void mqtt_utk_start(void);
 
