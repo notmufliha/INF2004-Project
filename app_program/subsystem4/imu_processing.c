@@ -104,9 +104,11 @@ bool imu_processing_process(imu_processing_t *state, const imu_data_t *input,
         output->roll_deg = smooth_angle(state->previous.roll_deg, input->roll_deg,
                                         state->config.smoothing_alpha);
         /* Convex combination avoids overflow in (next - old). */
-        output->turn_rate_dps = (1.0f - state->config.smoothing_alpha) *
-                               state->previous.turn_rate_dps +
-                               state->config.smoothing_alpha * input->turn_rate_dps;
+        if (input->turn_rate_valid && state->previous.turn_rate_valid) {
+            output->turn_rate_dps = (1.0f - state->config.smoothing_alpha) *
+                                   state->previous.turn_rate_dps +
+                                   state->config.smoothing_alpha * input->turn_rate_dps;
+        }
     }
     state->previous = *output;
     state->seeded = true;

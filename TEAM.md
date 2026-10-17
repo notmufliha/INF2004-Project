@@ -52,8 +52,8 @@ fixed.
 | GP1 | | (taken whenever the team builds with `CRASH_REPORT=1`) |
 | GP2 | | |
 | GP3 | | |
-| GP4 | | |
-| GP5 | | |
+| GP4 | B4 | GY-511 I2C0 SDA |
+| GP5 | B4 | GY-511 I2C0 SCL |
 | GP6 | | |
 | GP7 | | |
 | GP8 | | |
@@ -106,7 +106,7 @@ the drivers have no locking to stop it.
 | Peripheral | Owner subsystem | Owning task | Pins |
 |---|---|---|---|
 | UART1 | | | |
-| I2C0 | | | |
+| I2C0 | B4 | imu_sampling_task | GP4 SDA, GP5 SCL; kernel I2C driver enabled, 5 ms transaction-phase timeout |
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |

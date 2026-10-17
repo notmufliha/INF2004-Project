@@ -17,7 +17,9 @@ EXPORT void subsystem4_test(void)
     imu_event_t event;
     SYSTIM start, now;
     BOOL completed = FALSE;
+#if S4_IMU_USE_MOCK
     BOOL fault_seen = FALSE, recovery_seen = FALSE;
+#endif
     INT len;
 
 	TEST_INIT();
@@ -39,6 +41,7 @@ EXPORT void subsystem4_test(void)
                tk_ref_mbf(mbf_imu_data, &rmbf) == E_OK &&
                rmbf.maxmsz == sizeof(imu_data_t),
                "IMU message buffer carries a complete reading");
+#if S4_IMU_USE_MOCK
     /* Drain old observations, then require a fresh completion within a cycle.
      * Test only reads the event tap, never steals sampling-task readings. */
     while (tk_rcv_mbf(mbf_imu_test_events, &event, TMO_POL) > 0) {
@@ -69,6 +72,20 @@ EXPORT void subsystem4_test(void)
     } while (now.lo - start.lo < 9000U);
     TEST_CHECK("S4-U14", recovery_seen,
                "demo outage reports sensor fault followed by valid recovery");
+#else
+    while (tk_rcv_mbf(mbf_imu_test_events, &event, TMO_POL) > 0) { }
+    tk_get_tim(&start);
+    do {
+        len = tk_rcv_mbf(mbf_imu_test_events, &event, 100);
+        if (len == sizeof(event) && event.valid && !event.sensor_fault) {
+            completed = TRUE;
+            break;
+        }
+        tk_get_tim(&now);
+    } while (now.lo - start.lo < 10000U);
+    TEST_CHECK("S4-U16", completed,
+               "real GY-511 readings arrive after level calibration (keep still)");
+#endif
 	TEST_SUMMARY("subsystem4");
 }
 

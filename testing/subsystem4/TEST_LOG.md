@@ -24,6 +24,8 @@ Define a test here before running it. Test IDs never change.
 | S4-U12 | Repeating demo sequence | FR-B4-2/5/6, simulated only | host auto | `host/imu_demo_test.c` | Two hump completions across 16 simulated seconds |
 | S4-U13 | Filtering, spike preservation and fault recovery | NFR-B4-3/4, B4 fault handling | host auto | `host/imu_processing_test.c` and filtered demo test | Smoothed angles/rate, unchanged impact acceleration, invalid suppression, fault/recovery pulses, timestamp checks |
 | S4-U14 | RTOS fault/recovery notifications | B4 fault handling, mock only | target auto | `make TEST=1`, `subsystem4_test.c` | Outage fault then valid recovery within nine seconds |
+| S4-U15 | GY-511 driver register protocol and conversions | FR-B4-1/2/7 | host auto | `host/gy511_test.c` | H43/config verified; signed acceleration and X/Z/Y magnetics decoded; tilt and calibration checked; turn rate gated |
+| S4-U16 | Real calibrated data arrival | FR-B4-1, NFR-B4-2 | target auto | Default hardware mode, `make TEST=1`, keep level/still | Valid readings reach analysis after calibration within 10s of test start |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
 **manual** = a person observes the result (LED, scope, meter, phone app…).
@@ -53,3 +55,15 @@ Normal and test ARM ELF builds compile and link:
 [test build](logs/2026-10-14_processing_uart_test_build.txt).
 S4-U10, S4-U11 and S4-U14 remain NOT RUN on hardware. USB/WiFi builds, sensor
 performance and actual scheduler timing remain unverified.
+
+GY-511 milestone (2026-10-17): S4-U03 through S4-U09, S4-U12, S4-U13 and
+S4-U15 PASS on the desktop with strict GCC warnings; see
+[GY-511 host log](logs/2026-10-17_gy511_host.txt).
+Normal/test UART/no-WiFi ARM ELF build evidence:
+[normal](logs/2026-10-17_gy511_uart_build.txt),
+[test](logs/2026-10-17_gy511_uart_test_build.txt).
+S4-U16 is NOT RUN on a physical Pico. Hardware communication, burst-read STOP
+behaviour, startup calibration, mounting directions and sensor accuracy remain
+to be tested using [the hardware guide](../../app_program/subsystem4/HARDWARE.md).
+Mock-only S4-U11/S4-U14 do not run in default hardware mode. Neither real USB/WiFi
+execution nor magnetic calibration, turn-rate accuracy or hump height is claimed.

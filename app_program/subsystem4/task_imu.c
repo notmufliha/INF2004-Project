@@ -2,29 +2,111 @@
 #include "imu_analysis.h"
 #include "imu_demo.h"
 #include "imu_processing.h"
+#include "gy511_i2c.h"
 
-/* Only this task owns the mock. Replace acquisition with a real driver later. */
+#if !S4_IMU_USE_MOCK
+static bool hardware_read(uint32_t now_ms, imu_data_t *data)
+{
+    static gy511_t sensor;
+    static bool initialised, calibrated, attempted;
+    static uint32_t retry_ms, last_data_ms;
+    static unsigned int count, failures;
+    static float mean[3], m2[3];
+    *data = (imu_data_t){0};
+    data->timestamp_ms = now_ms;
+    if (!initialised) {
+        if (attempted && now_ms - retry_ms < 1000U) { return true; }
+        attempted = true;
+        retry_ms = now_ms;
+        gy511_bus_t bus;
+        gy511_config_t config;
+        gy511_default_config(&config);
+        /* Configure signed axis mapping and magnetic calibration here after
+         * checking the installed orientation. Defaults: sensor XYZ=robot XYZ. */
+        if (!gy511_i2c_open(&bus) || !gy511_init(&sensor, &bus, &config)) {
+            tm_printf((UB*)"IMU REAL: GY-511 check failed (0x19 / 0x1e H43); retry in 1s\n");
+            return true;
+        }
+        initialised = true;
+        calibrated = false;
+        count = failures = 0U;
+        for (int i = 0; i < 3; ++i) { mean[i] = m2[i] = 0.0f; }
+        last_data_ms = now_ms;
+        tm_printf((UB*)"IMU REAL: sensor configured; keep level and still for 200 fresh samples\n");
+        return true;
+    }
+    gy511_result_t result = gy511_read(&sensor, now_ms, data);
+    if (result == GY511_NO_DATA) {
+        if (now_ms - last_data_ms <= 100U) { return false; }
+        result = GY511_ERROR;
+    }
+    if (result == GY511_ERROR) {
+        data->valid = false;
+        count = 0U;
+        for (int i = 0; i < 3; ++i) { mean[i] = m2[i] = 0.0f; }
+        if (++failures >= 10U) { initialised = false; }
+        return true;
+    }
+    last_data_ms = now_ms;
+    failures = 0U;
+    if (!calibrated) {
+        float a[3] = {data->accel_x, data->accel_y, data->accel_z};
+        ++count;
+        for (int i = 0; i < 3; ++i) {
+            float delta = a[i] - mean[i];
+            mean[i] += delta / (float)count;
+            m2[i] += delta * (a[i] - mean[i]);
+        }
+        if (count == 200U) {
+            bool stable = true;
+            for (int i = 0; i < 3; ++i) {
+                if (m2[i] / 199.0f > 0.04f) { stable = false; }
+            }
+            if (stable && gy511_set_level_calibration(&sensor, mean)) {
+                calibrated = true;
+                tm_printf((UB*)"IMU REAL: level calibration complete; magnetic heading uncalibrated, turn rate unavailable\n");
+            } else {
+                tm_printf((UB*)"IMU REAL: calibration rejected; check orientation, keep level/still\n");
+            }
+            count = 0U;
+            for (int i = 0; i < 3; ++i) { mean[i] = m2[i] = 0.0f; }
+        }
+        data->valid = false;
+    }
+    return true;
+}
+#endif
+
+/* Only this task owns sensor acquisition and I2C0. */
 EXPORT void imu_sampling_task(INT stacd, void *exinf)
 {
     imu_data_t data;
     SYSTIM now;
+#if S4_IMU_USE_MOCK
     UW origin;
+#endif
     UW deadline;
     UW dropped = 0U;
     ER er;
     (void)stacd;
     (void)exinf;
 
+#if S4_IMU_USE_MOCK
     imu_mock_init();
+#endif
     er = tk_get_tim(&now);
     if (er < E_OK) {
         CHECK(er, "IMU clock");
         tk_ext_tsk();
         return;
     }
+#if S4_IMU_USE_MOCK
     origin = now.lo;
-    deadline = origin;
     tm_printf((UB*)"IMU: MOCK INPUT, 10 ms target, no motor commands\n");
+#else
+    tm_printf((UB*)"IMU: REAL GY-511 on I2C0 GP4/GP5; no motor commands\n");
+#endif
+    deadline = now.lo;
     while (1) {
         er = tk_get_tim(&now);
         if (er < E_OK) {
@@ -32,13 +114,18 @@ EXPORT void imu_sampling_task(INT stacd, void *exinf)
             tk_ext_tsk();
             return;
         }
-        imu_mock_set_scenario(imu_demo_scenario(now.lo - origin));
         {
             data = (imu_data_t){0};
+#if S4_IMU_USE_MOCK
+            imu_mock_set_scenario(imu_demo_scenario(now.lo - origin));
             data.valid = imu_mock_read(&data);
+            bool publish = true;
+#else
+            bool publish = hardware_read(now.lo, &data);
+#endif
             /* Use actual RTOS time, not the mock's synthetic sample count. */
             data.timestamp_ms = now.lo;
-            er = tk_snd_mbf(mbf_imu_data, &data, sizeof(data), TMO_POL);
+            er = publish ? tk_snd_mbf(mbf_imu_data, &data, sizeof(data), TMO_POL) : E_OK;
             if (er == E_TMOUT) {
                 /* Never block acquisition on a full queue; drop newest. */
                 if (++dropped == 1U || dropped % 100U == 0U) {
@@ -99,6 +186,7 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
     imu_motion_state_t previous = IMU_MOTION_UNKNOWN;
     bool have_previous = false;
     bool warned = false;
+    UW last_report = 0U;
     INT length;
     (void)stacd;
     (void)exinf;
@@ -135,7 +223,7 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
         bool usable = imu_processing_process(&processing, &data, data.timestamp_ms,
                                               &processed, &health);
         if (health.fault_started) {
-            tm_printf((UB*)"IMU MOCK: sensor fault; unreliable readings suppressed\n");
+            tm_printf((UB*)"IMU: sensor unavailable/fault; unreliable readings suppressed\n");
 #if APP_TEST
             imu_event_t fault = {0};
             fault.motion_state = IMU_MOTION_UNKNOWN;
@@ -157,17 +245,24 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
         warned = false;
         event.sensor_recovered = health.recovered;
         if (health.recovered) {
-            tm_printf((UB*)"IMU MOCK: sensor recovered after consecutive good readings\n");
+            tm_printf((UB*)"IMU: sensor recovered after consecutive good readings\n");
         }
         if (!have_previous || event.motion_state != previous || event.hump_completed ||
-            health.recovered) {
+            health.recovered || event.timestamp_ms - last_report >= 1000U) {
             /* Integer output: T-Monitor does not require float formatting. */
-            tm_printf((UB*)"IMU MOCK: t=%u state=%s pitch=%d roll=%d turn=%d tilt=%d\n",
+            tm_printf((UB*)"IMU: t=%u state=%s pitch=%d roll=%d turn=%d rate_valid=%d tilt=%d\n",
                       (UW)event.timestamp_ms, motion_name(event.motion_state),
                       (INT)event.pitch_deg, (INT)event.roll_deg,
-                      (INT)event.turn_rate_dps, (INT)event.tilt_detected);
+                      (INT)event.turn_rate_dps, (INT)event.turn_rate_valid, (INT)event.tilt_detected);
+            tm_printf((UB*)"IMU: accel mg=(%d,%d,%d) mag uT=(%d,%d,%d) mag_valid=%d heading=%d heading_valid=%d calibrated=%d\n",
+                      (INT)(data.accel_x * 1000.0f / 9.81f),
+                      (INT)(data.accel_y * 1000.0f / 9.81f),
+                      (INT)(data.accel_z * 1000.0f / 9.81f),
+                      (INT)data.magnetic_x_ut, (INT)data.magnetic_y_ut,
+                      (INT)data.magnetic_z_ut, (INT)data.magnetic_valid,
+                      (INT)data.heading_deg, (INT)data.heading_valid, (INT)data.heading_calibrated);
             if (event.hump_completed) {
-                tm_printf((UB*)"IMU MOCK: hump completed; height unavailable\n");
+                tm_printf((UB*)"IMU: hump completed; height unavailable\n");
             }
 #if APP_TEST
             /* Test observer can lag without blocking analysis. */
@@ -178,6 +273,7 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
 #endif
             previous = event.motion_state;
             have_previous = true;
+            last_report = event.timestamp_ms;
         }
     }
 }
