@@ -109,6 +109,10 @@ bool imu_analysis_process(imu_analysis_t *analysis, const imu_data_t *data,
     event->pitch_deg = data->pitch_deg;
     event->roll_deg = data->roll_deg;
     event->turn_rate_dps = data->turn_rate_dps;
+    event->turn_rate_valid = data->turn_rate_valid;
+    event->heading_deg = data->heading_deg;
+    event->heading_valid = data->heading_valid;
+    event->heading_calibrated = data->heading_calibrated;
     event->valid = true;
     event->tilt_detected = (fabsf(data->pitch_deg) >= analysis->config.tilt_deg) ||
                           (fabsf(data->roll_deg) >= analysis->config.tilt_deg);
@@ -177,7 +181,8 @@ bool imu_analysis_process(imu_analysis_t *analysis, const imu_data_t *data,
             event->motion_state = IMU_MOTION_DESCENDING_HUMP;
             break;
         default:
-            if (fabsf(data->turn_rate_dps) >= analysis->config.turn_rate_dps)
+            if (data->turn_rate_valid &&
+                fabsf(data->turn_rate_dps) >= analysis->config.turn_rate_dps)
             {
                 event->motion_state = IMU_MOTION_TURNING;
             }

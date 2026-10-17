@@ -35,6 +35,14 @@ typedef struct
     float turn_rate_dps;
 
     bool valid;
+    bool turn_rate_valid;
+    float magnetic_x_ut;
+    float magnetic_y_ut;
+    float magnetic_z_ut;
+    bool magnetic_valid;
+    float heading_deg;
+    bool heading_valid;
+    bool heading_calibrated;
 } imu_data_t;
 
 /* Motion and terrain analysis results */
@@ -53,6 +61,10 @@ typedef struct
     bool height_valid; /* False until a height estimator is implemented. */
     bool sensor_fault; /* Invalid fault notifications carry valid=false. */
     bool sensor_recovered; /* One-notification recovery pulse. */
+    bool turn_rate_valid;
+    float heading_deg;
+    bool heading_valid;
+    bool heading_calibrated;
 
     /* Estimated hump height in centimetres */
     float hump_peak_cm;

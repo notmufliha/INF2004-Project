@@ -1,4 +1,16 @@
-# Buddy 4: mock analysis and RTOS demo
+# Buddy 4: GY-511 hardware input and mock tests
+
+**Firmware now defaults to the real GY-511 input.** See [HARDWARE.md](HARDWARE.md)
+for wiring, startup calibration, serial output and the first hardware test.
+There is no automatic fallback to simulated data. The driver targets LSM303DLHC
+and checks the magnetic H43 ID plus configuration readback before use.
+
+The mock demo described below is available only by setting
+`S4_IMU_USE_MOCK` to `1` in `subsystem4.h`. With the default `0`, TEST=1 runs
+S4-U16 (real calibrated readings) instead of mock-only S4-U11/S4-U14.
+Height remains unavailable. Heading is an uncalibrated magnetic estimate by
+default; turn rate remains unavailable until magnetic calibration is configured.
+The sections below describe the retained mock demo and processing policy.
 
 `imu_mock.c` supplies processed simulated readings. `imu_analysis.c` consumes
 the same `imu_data_t` format without depending on Pico or RTOS headers.
@@ -9,7 +21,8 @@ if the queue is full, without blocking. Gaps over the analysis limit reset the
 terrain sequence. Delays below that limit still affect confirmation latency.
 The legacy monitor is retained at priority 19 for Subsystem 3's example interface.
 `imu_processing.c` validates and filters each received reading before analysis.
-No real IMU, Vehicle Controller or motor interface is connected yet.
+Real IMU acquisition is enabled by default; Vehicle Controller and motor
+interfaces are not connected yet.
 
 ## Run on the Pico
 
@@ -124,8 +137,8 @@ if (imu_mock_read(&data) &&
 
 ## Next integration steps
 
-Confirm the sensor chip and actual pins. Add the hardware driver and calibration,
-then replace mock acquisition in the existing sampling task with real readings.
+Verify communication with the installed sensor, actual pins, mounting map and
+startup calibration using HARDWARE.md. Collect real-car trials to tune thresholds.
 Agree event ownership, overflow handling, fault reporting, and run-reset behaviour
 with the Vehicle Controller owner. Reconcile proposed priorities with the kernel's
 reserved priorities before starting the tasks. Validate the height method against

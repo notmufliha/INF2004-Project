@@ -15,6 +15,7 @@ static void reset(void)
     assert(imu_processing_init(&state, &config));
     raw = (imu_data_t){0};
     raw.valid = true;
+    raw.turn_rate_valid = true;
     raw.accel_z = 9.81f;
 }
 

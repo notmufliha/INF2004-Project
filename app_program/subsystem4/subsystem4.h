@@ -12,6 +12,11 @@
 #include "../app.h"
 #include "imu_types.h"
 
+/* Default: real GY-511. Set to 1 explicitly for the scripted mock demo. */
+#ifndef S4_IMU_USE_MOCK
+#define S4_IMU_USE_MOCK 0
+#endif
+
 #define S4_PRI_IMU_SAMPLE 18
 #define S4_PRI_IMU_ANALYSIS 19
 #define S4_IMU_PERIOD_MS 10U

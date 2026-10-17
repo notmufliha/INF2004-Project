@@ -135,6 +135,10 @@ LOCAL void i2c_inthdr( UINT intno )
 			*(p_cb->rbuf)++ = in_w(I2C_DATA_CMD(unit)) & I2C_DATA_CMD_DAT;
 			if(--(p_cb->rdat_num)) {
 				cmd = I2C_DATA_CMD_CMD_READ;
+				/* The last queued byte must NACK and STOP, including burst reads. */
+				if (p_cb->rdat_num == 1) {
+					cmd |= I2C_DATA_CMD_STOP;
+				}
 				out_w(I2C_DATA_CMD(unit), cmd);
 			} else {	// Last data
 				clr_w(I2C_INTR_MASK(unit), I2C_INT_RX_FULL);
