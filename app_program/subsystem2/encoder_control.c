@@ -228,3 +228,76 @@ void encoder_test_task(INT stacd, void *exinf)
         tk_dly_tsk(500);
     }
 }
+
+
+/*
+ * Buddy 2 - Wheel Speed Measurement Task
+ *
+ * Nominal sampling interval: 10 ms (100 Hz)
+ * Serial output interval: 500 ms
+ *
+ * Speed unit: encoder counts per second
+ */
+void encoder_speed_task(INT stacd, void *exinf)
+{
+    INT left_now;
+    INT right_now;
+
+    INT left_previous_count;
+    INT right_previous_count;
+
+    INT left_delta;
+    INT right_delta;
+
+    INT left_speed;
+    INT right_speed;
+
+    INT print_counter = 0;
+
+    (void)stacd;
+    (void)exinf;
+
+    /* Read initial encoder counts. */
+    encoder_get_counts(
+        &left_previous_count,
+        &right_previous_count
+    );
+
+    tm_printf((UB*)"[B2] Wheel speed task started\n");
+
+    while (1) {
+
+        /* Nominal 10 ms sampling delay. */
+        tk_dly_tsk(10);
+
+        /* Read current encoder counts. */
+        encoder_get_counts(&left_now, &right_now);
+
+        /* Calculate encoder movement. */
+        left_delta = left_now - left_previous_count;
+        right_delta = right_now - right_previous_count;
+
+        /* Convert counts/10 ms to counts/second. */
+        left_speed = left_delta * 100;
+        right_speed = right_delta * 100;
+
+        /* Save counts for the next interval. */
+        left_previous_count = left_now;
+        right_previous_count = right_now;
+
+        /* Print approximately every 500 ms. */
+        print_counter++;
+
+        if (print_counter >= 50) {
+
+            tm_printf(
+                (UB*)"[B2] Speed L=%d R=%d counts/s\n",
+                left_speed,
+                right_speed
+            );
+
+            print_counter = 0;
+        }
+    }
+}
+
