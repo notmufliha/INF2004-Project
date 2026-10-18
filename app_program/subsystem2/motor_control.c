@@ -181,17 +181,15 @@ void motor_right_set(int speed_percent)
     }
 }
 
-
 /*
- * Temporary forward and reverse motor test.
+ * Temporary dual-motor movement test.
  */
-
-
 void motor_test_task(int stacd, void *exinf)
 {
     (void)stacd;
     (void)exinf;
 
+    /* Allow time to connect serial monitor. */
     tk_dly_tsk(5000);
 
     if (!motor_ready) {
@@ -200,22 +198,63 @@ void motor_test_task(int stacd, void *exinf)
         return;
     }
 
-    /* Right motor forward. */
-    tm_printf((UB*)"[B2] Right motor forward\n");
+    /* Test 1: Both motors forward. */
+    tm_printf((UB*)"[B2] Both motors forward\n");
+
+    motor_left_set(50);
     motor_right_set(50);
+
     tk_dly_tsk(2000);
     motor_stop();
 
-    /* Pause before reversing. */
+    /* Pause before changing direction. */
     tk_dly_tsk(1000);
 
-    /* Right motor reverse. */
-    tm_printf((UB*)"[B2] Right motor reverse\n");
+    /* Test 2: Both motors reverse. */
+    tm_printf((UB*)"[B2] Both motors reverse\n");
+
+    motor_left_set(-50);
     motor_right_set(-50);
+
     tk_dly_tsk(2000);
     motor_stop();
 
-    tm_printf((UB*)"[B2] Right motor direction test completed\n");
+    tm_printf((UB*)"[B2] Dual-motor test completed\n");
 
     tk_ext_tsk();
+}
+
+
+/*
+ * Buddy 2 - Motor Speed Baseline Test
+ *
+ * Runs both motors forward at 30% PWM
+ * for 5 seconds, then stops automatically.
+ */
+void motor_baseline_task(INT stacd, void *exinf)
+{
+    (void)stacd;
+    (void)exinf;
+
+    tm_printf((UB*)"[B2] Motor baseline test starting\n");
+
+    /* Allow time to prepare. */
+    tk_dly_tsk(3000);
+
+    tm_printf((UB*)"[B2] Running both motors at 30%% PWM\n");
+
+    motor_left_set(30);
+    motor_right_set(30);
+
+    /* Run motors for 5 seconds. */
+    tk_dly_tsk(5000);
+
+    motor_stop();
+
+    tm_printf((UB*)"[B2] Motors stopped - baseline complete\n");
+
+    /* Keep the temporary test task alive after stopping. */
+    while (1) {
+        tk_dly_tsk(1000);
+    }
 }
