@@ -39,4 +39,6 @@ IMPORT ID	mpf_samples;
 IMPORT void	producer_task(INT stacd, void *exinf);
 IMPORT INT	s2_make_value(UW seq);
 
+IMPORT ER subsystem2_stop_pid_cyclic(void);
+
 #endif /* SUBSYSTEM2_H */
