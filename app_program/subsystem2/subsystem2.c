@@ -70,12 +70,12 @@ EXPORT ER subsystem2_start(void)
         return tid;
     }
 
-    /* Temporary Buddy 2 encoder test task */
+    /* Buddy 2 wheel speed measurement task */
 	tid = app_start_task(
-		(FP)encoder_test_task,
+		(FP)encoder_speed_task,
 		S2_PRI_PRODUCER,
 		TP_PRC2,
-		"encoder_test_task"
+		"encoder_speed_task"
 	);
 
     return (tid < E_OK) ? tid : E_OK;
