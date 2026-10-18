@@ -8,6 +8,7 @@
 #include "subsystem2.h"
 #include "motor_control.h"
 #include "encoder_control.h"
+#include "pid_control.h"
 
 EXPORT ID	sem_slots;	/* IF-02, see subsystem2.h */
 EXPORT ID	mpf_samples;
@@ -51,6 +52,8 @@ EXPORT ER subsystem2_init(void)
 		}
 	}
 
+	pid_init();
+
 	return E_OK;
 }
 
@@ -77,6 +80,29 @@ EXPORT ER subsystem2_start(void)
 		TP_PRC2,
 		"encoder_speed_task"
 	);
+
+	if (tid < E_OK) {
+		return tid;
+	}
+
+	/* Temporary motor-speed baseline test task 
+	tid = app_start_task(
+		(FP)motor_baseline_task,
+		S2_PRI_PRODUCER,
+		TP_PRC2,
+		"motor_baseline_task"
+	);
+	*/
+
+	/* Temporary Buddy 2 closed-loop test */
+	tid = app_start_task(
+		(FP)pid_test_task,
+		S2_PRI_PRODUCER,
+		TP_PRC2,
+		"pid_test_task"
+	);
+
+	return (tid < E_OK) ? tid : E_OK;
 
     return (tid < E_OK) ? tid : E_OK;
 }
