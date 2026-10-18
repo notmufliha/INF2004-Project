@@ -7,6 +7,7 @@
 
 #include "subsystem2.h"
 #include "motor_control.h"
+#include "encoder_control.h"
 
 EXPORT ID	sem_slots;	/* IF-02, see subsystem2.h */
 EXPORT ID	mpf_samples;
@@ -41,6 +42,15 @@ EXPORT ER subsystem2_init(void)
 
 	motor_init();
 
+	/* Initialise wheel encoders. */
+	{
+		ER err = encoder_init();
+
+		if (err != E_OK) {
+			return err;
+		}
+	}
+
 	return E_OK;
 }
 
@@ -60,13 +70,13 @@ EXPORT ER subsystem2_start(void)
         return tid;
     }
 
-    /* Temporary Buddy 2 motor test task */
-    tid = app_start_task(
-        (FP)motor_test_task,
-        S2_PRI_PRODUCER,
-        TP_PRC2,
-        "motor_test_task"
-    );
+    /* Temporary Buddy 2 encoder test task */
+	tid = app_start_task(
+		(FP)encoder_test_task,
+		S2_PRI_PRODUCER,
+		TP_PRC2,
+		"encoder_test_task"
+	);
 
     return (tid < E_OK) ? tid : E_OK;
 }
