@@ -12,7 +12,13 @@
 #define PID_BASE_PWM     20
 #define PID_MAX_PWM      35
 #define PID_MIN_PWM      0
+
+/* Initial PI gains — not yet tuned */
 #define PID_KP           0.002f
+#define PID_KI           0.005f
+
+/* Limit accumulated integral contribution */
+#define PID_I_LIMIT      10.0f
 
 static INT clamp_pwm(INT pwm)
 {
@@ -27,34 +33,52 @@ void pid_init(void)
 }
 
 /*
- * Temporary P-only test.
+ * Buddy 2 - PI Speed Control Test
  *
- * Reads encoder counts over approximately 100 ms,
- * updates motor PWM, and stops after 5 seconds.
+ * Target: 3000 encoder counts/s per wheel
+ * Control interval: approximately 100 ms
+ * Test duration: approximately 5 seconds
+ *
+ * This is an initial tuning experiment.
  */
+
 void pid_test_task(INT stacd, void *exinf)
 {
     INT left_prev, right_prev;
     INT left_now, right_now;
+
     INT left_speed, right_speed;
     INT left_pwm, right_pwm;
-    INT left_error, right_error;
+
+    float left_error, right_error;
+    float left_integral = 0.0f;
+    float right_integral = 0.0f;
+
+    float left_output, right_output;
+    float dt;
 
     SYSTIM previous_time, current_time;
     long long elapsed_ms;
 
     INT iteration;
+    ER err;
 
     (void)stacd;
     (void)exinf;
 
-    /* Allow time to prepare. */
+    /* Preparation delay */
     tk_dly_tsk(3000);
 
     encoder_get_counts(&left_prev, &right_prev);
-    tk_get_tim(&previous_time);
 
-    tm_printf((UB*)"[B2] P-only test starting\n");
+    err = tk_get_tim(&previous_time);
+    if (err != E_OK) {
+        motor_stop();
+        tm_printf((UB*)"[B2] PI initial timing failed\n");
+        goto test_end;
+    }
+
+    tm_printf((UB*)"[B2] PI test starting\n");
 
     motor_left_set(PID_BASE_PWM);
     motor_right_set(PID_BASE_PWM);
@@ -64,7 +88,12 @@ void pid_test_task(INT stacd, void *exinf)
         tk_dly_tsk(100);
 
         encoder_get_counts(&left_now, &right_now);
-        tk_get_tim(&current_time);
+
+        err = tk_get_tim(&current_time);
+        if (err != E_OK) {
+            tm_printf((UB*)"[B2] PI timing read failed\n");
+            break;
+        }
 
         elapsed_ms =
             (((long long)current_time.hi << 32) |
@@ -74,11 +103,13 @@ void pid_test_task(INT stacd, void *exinf)
              (unsigned long long)previous_time.lo);
 
         if (elapsed_ms <= 0) {
-            motor_stop();
-            tm_printf((UB*)"[B2] Invalid PID timing\n");
+            tm_printf((UB*)"[B2] Invalid PI timing\n");
             break;
         }
 
+        dt = (float)elapsed_ms / 1000.0f;
+
+        /* Measured wheel speeds */
         left_speed =
             (INT)(((long long)(left_now - left_prev) * 1000)
                   / elapsed_ms);
@@ -87,24 +118,54 @@ void pid_test_task(INT stacd, void *exinf)
             (INT)(((long long)(right_now - right_prev) * 1000)
                   / elapsed_ms);
 
+        /* Speed errors */
         left_error = PID_TARGET_CPS - left_speed;
         right_error = PID_TARGET_CPS - right_speed;
 
+        /* Integrate error using actual elapsed time */
+        left_integral += PID_KI * left_error * dt;
+        right_integral += PID_KI * right_error * dt;
+
+        /* Basic integral clamping */
+        if (left_integral > PID_I_LIMIT)
+            left_integral = PID_I_LIMIT;
+        if (left_integral < -PID_I_LIMIT)
+            left_integral = -PID_I_LIMIT;
+
+        if (right_integral > PID_I_LIMIT)
+            right_integral = PID_I_LIMIT;
+        if (right_integral < -PID_I_LIMIT)
+            right_integral = -PID_I_LIMIT;
+
+        /* PI control outputs */
+        left_output =
+            PID_BASE_PWM +
+            PID_KP * left_error +
+            left_integral;
+
+        right_output =
+            PID_BASE_PWM +
+            PID_KP * right_error +
+            right_integral;
+
+        /* Round to nearest integer PWM percentage */
         left_pwm = clamp_pwm(
-            PID_BASE_PWM + (INT)(PID_KP * left_error)
+            (INT)(left_output + 0.5f)
         );
 
         right_pwm = clamp_pwm(
-            PID_BASE_PWM + (INT)(PID_KP * right_error)
+            (INT)(right_output + 0.5f)
         );
 
         motor_left_set(left_pwm);
         motor_right_set(right_pwm);
 
+        /* Print approximately every 500 ms */
         if ((iteration % 5) == 0) {
             tm_printf(
-                (UB*)"[B2] PID L=%d R=%d PWM_L=%d PWM_R=%d\n",
-                left_speed, right_speed, left_pwm, right_pwm
+                (UB*)"[B2] PI L=%d R=%d PWM_L=%d PWM_R=%d\n",
+                left_speed, right_speed,
+                left_pwm, right_pwm
             );
         }
 
@@ -113,11 +174,12 @@ void pid_test_task(INT stacd, void *exinf)
         previous_time = current_time;
     }
 
+test_end:
     motor_stop();
 
-    tm_printf((UB*)"[B2] P-only test completed - motors stopped\n");
+    tm_printf((UB*)"[B2] PI test completed - motors stopped\n");
 
-    /* Temporary workaround for task-return hard fault. */
+    /* Temporary workaround for task-return hard fault */
     while (1) {
         tk_dly_tsk(1000);
     }

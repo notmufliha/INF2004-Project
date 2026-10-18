@@ -229,9 +229,6 @@ void encoder_test_task(INT stacd, void *exinf)
     }
 }
 
-
-
-
 /*
  * Buddy 2 - Wheel Speed Measurement Task
  *
