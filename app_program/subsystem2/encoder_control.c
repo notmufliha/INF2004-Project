@@ -230,68 +230,104 @@ void encoder_test_task(INT stacd, void *exinf)
 }
 
 
+
+
 /*
  * Buddy 2 - Wheel Speed Measurement Task
  *
- * Nominal sampling interval: 10 ms (100 Hz)
- * Serial output interval: 500 ms
+ * Nominal sampling interval: 10 ms
+ * Speed averaging window: 100 ms
+ * Serial reporting interval: approximately 500 ms
  *
  * Speed unit: encoder counts per second
  */
 void encoder_speed_task(INT stacd, void *exinf)
 {
-    INT left_now;
-    INT right_now;
+    INT left_now, right_now;
+    INT left_previous_count, right_previous_count;
+    INT left_speed = 0;
+    INT right_speed = 0;
 
-    INT left_previous_count;
-    INT right_previous_count;
+    INT sample_counter = 0;
 
-    INT left_delta;
-    INT right_delta;
+    SYSTIM previous_time;
+    SYSTIM current_time;
 
-    INT left_speed;
-    INT right_speed;
-
-    INT print_counter = 0;
+    long long elapsed_ms;
+    long long left_delta;
+    long long right_delta;
 
     (void)stacd;
     (void)exinf;
 
-    /* Read initial encoder counts. */
     encoder_get_counts(
         &left_previous_count,
         &right_previous_count
     );
 
-    tm_printf((UB*)"[B2] Wheel speed task started\n");
+    if (tk_get_tim(&previous_time) != E_OK) {
+        tm_printf((UB*)"[B2] Failed to read system time\n");
+        return;
+    }
+
+    tm_printf((UB*)"[B2] Improved speed task started\n");
 
     while (1) {
 
-        /* Nominal 10 ms sampling delay. */
+        /* Request a 10 ms sampling interval. */
         tk_dly_tsk(10);
 
-        /* Read current encoder counts. */
-        encoder_get_counts(&left_now, &right_now);
+        sample_counter++;
 
-        /* Calculate encoder movement. */
-        left_delta = left_now - left_previous_count;
-        right_delta = right_now - right_previous_count;
+        /*
+         * Calculate speed over approximately 100 ms
+         * instead of using individual 10 ms samples.
+         */
+        if (sample_counter >= 10) {
 
-        /* Convert counts/10 ms to counts/second. */
-        left_speed = left_delta * 100;
-        right_speed = right_delta * 100;
+            encoder_get_counts(&left_now, &right_now);
 
-        /* Save counts for the next interval. */
-        left_previous_count = left_now;
-        right_previous_count = right_now;
+            if (tk_get_tim(&current_time) != E_OK) {
+                continue;
+            }
 
-        /* Print approximately every 500 ms. */
+            elapsed_ms =
+                (((long long)current_time.hi << 32) |
+                (unsigned long long)current_time.lo)
+                -
+                (((long long)previous_time.hi << 32) |
+                (unsigned long long)previous_time.lo);
+
+            if (elapsed_ms > 0) {
+
+                left_delta =
+                    (long long)left_now - left_previous_count;
+
+                right_delta =
+                    (long long)right_now - right_previous_count;
+
+                left_speed =
+                    (INT)((left_delta * 1000) / elapsed_ms);
+
+                right_speed =
+                    (INT)((right_delta * 1000) / elapsed_ms);
+            }
+
+            left_previous_count = left_now;
+            right_previous_count = right_now;
+            previous_time = current_time;
+
+            sample_counter = 0;
+        }
+
+        /* Print roughly every 500 ms. */
+        static INT print_counter = 0;
         print_counter++;
 
         if (print_counter >= 50) {
 
             tm_printf(
-                (UB*)"[B2] Speed L=%d R=%d counts/s\n",
+                (UB*)"[B2] Avg Speed L=%d R=%d counts/s\n",
                 left_speed,
                 right_speed
             );
@@ -300,4 +336,3 @@ void encoder_speed_task(INT stacd, void *exinf)
         }
     }
 }
-
