@@ -54,6 +54,25 @@ int main(void)
         printf("[HOST TEST] adaptive-angles   %s\n", ok ? "PASS" : "FAIL");
         if (ok) passed++; else failed++;
     }
+    {
+        S5Scan fine = {0};
+        static const unsigned angles[5] = {70,80,90,100,110};
+        static const float distances[5] = {48,20,15,22,50};
+        S5Profile p;
+        for (i = 0; i < 5; ++i) {
+            fine.points[i].angle_deg = (uint16_t)angles[i];
+            fine.points[i].distance_cm = distances[i];
+            fine.points[i].valid = true;
+        }
+        fine.nearest_index = 2;
+        p = s5_estimate_profile(&fine, S5_SIDE_NONE);
+        {
+            int ok = p.valid && p.estimated_width_cm > 10.0f &&
+                     p.estimated_width_cm < 12.0f && p.bypass_side == S5_SIDE_NONE;
+            printf("[HOST TEST] width-no-route    %s\n", ok ? "PASS" : "FAIL");
+            if (ok) passed++; else failed++;
+        }
+    }
     printf("[HOST TEST] TOTAL %u passed, %u failed\n", passed, failed);
     return failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }

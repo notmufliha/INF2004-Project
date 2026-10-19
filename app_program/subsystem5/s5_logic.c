@@ -101,7 +101,7 @@ S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side)
     float left_x, right_x;
     uint16_t left_angle, right_angle;
     p.bypass_side = side;
-    if (!fine || side == S5_SIDE_NONE) return p;
+    if (!fine) return p; /* Width can be profiled even if no bypass is safe. */
     for (i = 0; i < S5_SCAN_COUNT; i++) {
         const S5ScanPoint *v = &fine->points[i];
         if (!valid_range(v) || v->angle_deg > 180u ||

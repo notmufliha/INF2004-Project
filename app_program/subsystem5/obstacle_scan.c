@@ -29,7 +29,7 @@ static void scan_angles(S5Scan *scan, const uint16_t angles[S5_SCAN_COUNT])
         scan->points[i].valid = false;
 #if S5_SERVO_ENABLED && S5_HARDWARE_ENABLED && !S5_SIMULATION
         s5_servo_angle(angles[i]);
-        tk_dly_tsk(300);
+        tk_dly_tsk(180);
         scan->points[i].valid = s5_ultrasonic_read_cm(&scan->points[i].distance_cm);
         tk_dly_tsk(65);
 #endif
