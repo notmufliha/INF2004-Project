@@ -4,6 +4,7 @@
 #include "drv_ultrasonic.h"
 #include "s5_measure.h"
 #include "drv_servo.h"
+#include "../robot_config.h"
 
 /* Calibrate against the actual servo and sensor mounting. Servo must settle
  * before measuring; avoid ultrasonic cross-talk by spacing trigger pulses. */
@@ -43,6 +44,8 @@ static void scan_angles(S5Scan *scan, const uint16_t angles[S5_SCAN_COUNT])
         s5_servo_angle(angles[i]);
         tk_dly_tsk(S5_SERVO_SETTLE_MS);
         scan->points[i].valid = s5_measure_stable_cm(&scan->points[i].distance_cm);
+        /* A failed 5-ping measurement is unknown. Do not repeatedly
+         * trigger the transducer or invent a distance during a scan. */
         tm_printf((UB*)"[S5-SCAN] angle=%d echo=%s distance_cm_x100=%d\n",
                   (int)angles[i], scan->points[i].valid ? "OK" : "TIMEOUT/INVALID",
                   (int)(scan->points[i].distance_cm * 100.0f));

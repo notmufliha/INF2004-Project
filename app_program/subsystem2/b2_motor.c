@@ -87,7 +87,7 @@ static bool pwm_init(void)
 }
 void b2_motor_task(INT stacd, void *exinf)
 {
-    uint32_t last_word = 0u, last_forward = 0u, last_status = 0u;
+    uint32_t last_word = 0u, last_forward = 0u;
     bool was_running = false;
     (void)stacd; (void)exinf;
     initialized = pwm_init();
@@ -116,7 +116,7 @@ void b2_motor_task(INT stacd, void *exinf)
     for (;;) { stop_pwm(); tk_dly_tsk(1000); }
 #else
     tk_dly_tsk(ROBOT_BOOT_DELAY_MS);
-    tm_printf((UB*)"[B2] Safety gate active: waiting for Buddy 5 valid clear readings\n");
+    tm_printf((UB*)"[B2] WAITING_FOR_CLEAR: motors OFF until Buddy 5 sends FORWARD\n");
     for (;;) {
         uint32_t now = millis();
         uint32_t word = request_word;
@@ -129,7 +129,8 @@ void b2_motor_task(INT stacd, void *exinf)
             (uint32_t)(now - last_forward) > ROBOT_MOTOR_WATCHDOG_MS) {
             if (was_running) {
                 stop_pwm(); was_running = false;
-                tm_printf((UB*)"[B2] STOP (obstacle, invalid echo or watchdog)\n");
+                tm_printf((UB*)"[B2] STOP: %s\n",
+                          cmd != B2_CMD_FORWARD ? "Buddy 5 stop request" : "forward heartbeat expired");
             }
         } else if (!was_running) {
 #if ROBOT_ENABLE_DRIVE
@@ -139,11 +140,9 @@ void b2_motor_task(INT stacd, void *exinf)
                       (int)ROBOT_FORWARD_PWM, (int)ROBOT_FORWARD_PWM);
 #endif
         }
-        if ((uint32_t)(now - last_status) >= 5000u) {
-            last_status = now;
-            tm_printf((UB*)"[B2] status=%s last_cmd=%d\n",
-                      was_running ? "MOVING" : "STOPPED", (int)cmd);
-        }
+        /* Do not repeatedly print STOPPED every five seconds. The motor
+         * remains stopped until a real, fresh Buddy 5 FORWARD request.
+         * Transitions are already logged in the branches above. */
         tk_dly_tsk(ROBOT_MOTOR_PERIOD_MS);
     }
 #endif
