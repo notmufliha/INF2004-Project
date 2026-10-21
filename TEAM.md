@@ -20,7 +20,7 @@ subsystem, ask its owner or open a pull request for them to review.
 | 1 | WiFi Communication, Command & Telemetry (MQTT) | 2502999 | notmufliha | `app_program/subsystem1/` | `testing/subsystem1/` |
 | 2 | *example:* Producer: makes a sample every 300 ms | | | `app_program/subsystem2/` | `testing/subsystem2/` |
 | 3 | *example:* Consumer: collects samples into statistics | | | `app_program/subsystem3/` | `testing/subsystem3/` |
-| 4 | *example:* Monitor: prints reports, pauses the LED | | | `app_program/subsystem4/` | `testing/subsystem4/` |
+| 4 | IMU motion/terrain monitoring (mock RTOS demo); legacy example monitor retained | 2503027 | | `app_program/subsystem4/` | `testing/subsystem4/` |
 | 5 | | | | `app_program/subsystem5/` | `testing/subsystem5/` |
 
 Shared files (`app_program/app_main.c`, `app_program/app.h`, this file)
@@ -52,8 +52,8 @@ fixed.
 | GP1 | | (taken whenever the team builds with `CRASH_REPORT=1`) |
 | GP2 | | |
 | GP3 | | |
-| GP4 | | |
-| GP5 | | |
+| GP4 | B4 | GY-511 I2C0 SDA |
+| GP5 | B4 | GY-511 I2C0 SCL |
 | GP6 | | |
 | GP7 | | |
 | GP8 | | |
@@ -106,7 +106,7 @@ the drivers have no locking to stop it.
 | Peripheral | Owner subsystem | Owning task | Pins |
 |---|---|---|---|
 | UART1 | | | |
-| I2C0 | | | |
+| I2C0 | B4 | imu_sampling_task | GP4 SDA, GP5 SCL; kernel I2C driver enabled, 5 ms transaction-phase timeout |
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |
@@ -149,7 +149,7 @@ change it only by team agreement. Write down every task you create.
 | 1 | 12–13 | led_task – 12 – any; comm_task – 13 – any; demo_task – 12 – any (only while `S1_STANDALONE_DEMO`=1) |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
 | 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
-| 4 | 18–19 | *example:* monitor_task – 18 – any |
+| 4 | 18–19 | imu_sampling_task – 18 – any; imu_analysis_task – 19 – any; legacy monitor_task – 19 – any |
 | 5 | 20–21 | |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
@@ -183,12 +183,12 @@ limit there. The numbers below are the example's usage.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 2 (+1 demo) | 1 | 1 | 1 | |
+| Task | 32 | 2 (+1 demo) | 1 | 1 | 3 | |
 | Semaphore | 16 | | 1 | | | |
 | Event flag | 16 | 1 | | | 1 | |
 | Mailbox | 12 | | | 1 | | |
 | Mutex | 12 | 1 | | 1 | | |
-| Message buffer | 12 | 4 | | | 1 | |
+| Message buffer | 12 | 4 | | | 2 (3 with TEST=1) | |
 | Fixed memory pool | 12 | | 1 | | | |
 | Variable memory pool | 12 | | | | | |
 | Cyclic handler | 12 | 1 | | | | |
