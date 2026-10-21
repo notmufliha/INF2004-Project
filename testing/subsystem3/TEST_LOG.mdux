@@ -1,0 +1,26 @@
+Subsystem 3 Test Log (Markdown-compatible project record)
+
+Code under test: app_program/subsystem3/ (sample consumer example)
+Task: consumer_task, priority 16, core 0 on SMP builds
+Objects: mbx_samples and mtx_stats are owned by Subsystem 3.
+Shared interfaces: IF-01 (S2 sample mailbox), IF-02 (S2 pool/slot returned by S3),
+IF-03 (S4 report message buffer and event flag), IF-04 (statistics read under mutex).
+
+Tests
+S3-U01: known sequence produces correct received/min/max/sum; automated in subsystem3_test.c.
+S3-U02: live statistics range and mutex usability; automated in subsystem3_test.c.
+INT-01: samples flow from S2 to S3; automated integration check in subsystem3_test.c.
+
+Build and run
+From build_make: make clean && make TEST=1 -j8
+Flash the resulting Pico W UF2 and capture USB serial console output.
+This repository does not generate sysmain.exe; ./sysmain.exe does not apply.
+
+Results
+No execution results are asserted by this file. Record actual runs in TEST_LOG.md
+with date, commit, tester, result, log/evidence, and notes.
+
+Design review note
+The supplied Week 6 design review assigns Buddy 3 to IR line following and
+barcode decoding. This checkout still contains the integrated sample-consumer
+example; robot-specific requirements and tests remain pending interface agreement.

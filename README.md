@@ -140,6 +140,12 @@ subfolders, is compiled automatically.
   Replace the examples with your own subsystems.
 - `subsystemN.h` is that subsystem's public interface: the object IDs and
   data formats the other subsystems may use.
+- Subsystem 3 currently implements the sample consumer example (priority 16,
+  core 0 on SMP) and owns the sample mailbox and statistics mutex. The supplied
+  Week 6 design review instead assigns Buddy 3 to IR line following and barcode
+  decoding; that robot-specific implementation awaits agreed queue interfaces
+  with the Vehicle Controller and sensor hardware integration. See
+  `app_program/subsystem3/README.md`.
 - `app.h` holds the definitions shared by the whole team.
 - **Drivers go in your subsystem folder too**, as a `drv_<name>.c` /
   `drv_<name>.h` pair, e.g. `subsystem2/drv_ultrasonic.c`. They are compiled
