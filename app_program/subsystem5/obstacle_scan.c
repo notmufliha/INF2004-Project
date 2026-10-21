@@ -14,7 +14,7 @@
 #define S5_ECHO_GAP_MS 65
 #endif
 
-static const uint16_t coarse_angles[S5_SCAN_COUNT] = {30u, 60u, 90u, 120u, 150u};
+static const uint16_t coarse_angles[S5_SCAN_COUNT] = {70u, 80u, 90u, 100u, 110u};
 
 int s5_find_nearest(const S5ScanPoint *points, int count)
 {
@@ -59,6 +59,13 @@ void s5_coarse_scan(S5Scan *scan) { scan_angles(scan, coarse_angles); }
 void s5_fine_scan(S5Scan *scan, uint16_t center_deg)
 {
     uint16_t angles[S5_SCAN_COUNT];
-    s5_make_fine_angles(center_deg, angles);
+    /* Five 5-degree rays, all within the mechanically safe travel.
+     * Preserve monotonic rays for the existing width estimator. */
+    int center = (int)center_deg;
+    int i;
+    if (center < (int)S5_SAFE_MIN_DEG + 10) center = (int)S5_SAFE_MIN_DEG + 10;
+    if (center > (int)S5_SAFE_MAX_DEG - 10) center = (int)S5_SAFE_MAX_DEG - 10;
+    for (i = 0; i < S5_SCAN_COUNT; ++i)
+        angles[i] = (uint16_t)(center + (i - 2) * 5);
     scan_angles(scan, angles);
 }
