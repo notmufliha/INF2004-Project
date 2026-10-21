@@ -1,4 +1,6 @@
 #include "subsystem5.h"
+#include "../robot_config.h"
+#include "../subsystem2/b2_motor.h"
 #include "s5_logic.h"
 #include "s5_sim.h"
 #include "s5_bridge.h"
@@ -12,6 +14,7 @@
 #endif
 
 #if !S5_SIMULATION && S5_HARDWARE_ENABLED
+#if ROBOT_VERBOSE_SENSOR_LOG || S5_MOTION_BRIDGE_ENABLED
 static void print_scan(const char *label, const S5Scan *s)
 {
     int i;
@@ -22,6 +25,7 @@ static void print_scan(const char *label, const S5Scan *s)
                   (int)(p->distance_cm * 100.0f));
     }
 }
+#endif
 static void print_profile(const S5Profile *p)
 {
     tm_printf((UB*)"[S5-PROFILE] valid=%d width_cm_x100=%d nearest_cm_x100=%d bearing_deg=%d center_x_cm_x100=%d center_y_cm_x100=%d left_cm_x100=%d right_cm_x100=%d required_cm_x100=%d side=%d\n",
@@ -52,66 +56,173 @@ static void emergency_halt(const char *reason)
  * Logs use cm_x100 to avoid floating-point printf in the RTOS console. */
 static void stationary_profile_mode(void)
 {
-    unsigned samples = 0u, hits = 0u, invalid = 0u;
-    unsigned cooldown_ms = S5_SCAN_COOLDOWN_MS;
+    unsigned samples = 0u, close_hits = 0u, clear_hits = 0u;
+    bool sensor_unavailable = false;
+    bool obstacle_latched = false;
+    bool scanned_this_obstacle = false;
+    bool driving = false;
     bool startup_scan_pending = (S5_FORCE_STARTUP_SCAN != 0);
-    tm_printf((UB*)"[S5] DESIGN REVIEW: detect -> coarse -> fine -> profile -> decide\n");
-    tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=DISABLED LINE=UNAVAILABLE\n");
+    tm_printf((UB*)"[S5] REAL ROBOT: clear -> forward; close -> STOP -> coarse/fine/profile\n");
+    tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=%s LINE=UNAVAILABLE\n",
+              ROBOT_ENABLE_DRIVE ? "GUARDED FORWARD/STOP" : "DISABLED");
+    tm_printf((UB*)"[S5] STOP below %d cm; RESUME after %d clear samples >= %d cm\n",
+              (int)ROBOT_STOP_CM, (int)ROBOT_CLEAR_CONFIRM,
+              (int)ROBOT_RELEASE_CM);
+    b2_request_stop();
     tm_printf((UB*)"[S5] GPIO TRIG=16 ECHO=17 SERVO=12; confirm 3.3V-safe ECHO\n");
 #if S5_STARTUP_SERVO_TEST
-    tm_printf((UB*)"[S5-SERVO] SELF TEST 90 -> 60 -> 120 -> 90\n");
+    tm_printf((UB*)"[S5-SERVO] SELF TEST 90 -> 80 -> 100 -> 90\n");
     s5_servo_angle(90u); tk_dly_tsk(500);
-    s5_servo_angle(60u); tk_dly_tsk(650);
-    s5_servo_angle(120u); tk_dly_tsk(650);
+    s5_servo_angle(80u); tk_dly_tsk(650);
+    s5_servo_angle(100u); tk_dly_tsk(650);
     s5_servo_angle(90u); tk_dly_tsk(650);
-    tm_printf((UB*)"[S5-SERVO] SELF TEST END (confirm movement visually)\n");
+    tm_printf((UB*)"[S5-SERVO] SELF TEST END\n");
 #endif
+    /* On USB cold boots the servo and sensor may not yet be stable.
+     * Keep both motors stopped while the supply settles, then throw
+     * away a few first echoes. None of these readings authorizes drive. */
+    /* Wait for power/servo stabilization without raw sensor diagnostics. */
+    b2_request_stop();
+    tk_dly_tsk(ROBOT_SENSOR_STARTUP_SETTLE_MS);
+    {
+        unsigned warmup;
+        for (warmup = 0u; warmup < ROBOT_SENSOR_WARMUP_PINGS; ++warmup) {
+            float discard = 0.0f;
+            (void)s5_ultrasonic_read_cm(&discard);
+            tk_dly_tsk(S5_ECHO_GAP_MS);
+        }
+    }
+    tm_printf((UB*)"[S5] ready; waiting for confirmed clear path\n");
     for (;;) {
         float cm = 0.0f;
-        bool valid = s5_measure_stable_cm(&cm);
-        bool confirmed;
+        bool valid;
+        bool scan_needed = false;
+        /* A five-ping consensus is too slow to be the only guard while
+         * moving. Stop immediately on a single unknown/near/close echo,
+         * then use consensus to decide whether the path can be released.
+         * False-positive stops are safer than delayed collision stops. */
+        if (driving) {
+            S5EchoReading guard = s5_ultrasonic_read_detailed();
+            if (guard.status != S5_ECHO_OK ||
+                s5_echo_suppressed_cm(guard.cm) ||
+                guard.cm < ROBOT_STOP_CM) {
+                b2_request_stop();
+                driving = false;
+                tm_printf((UB*)"[S5-GUARD] immediate STOP status=%s cm_x100=%d; verifying next echoes\n",
+                          s5_echo_status_name(guard.status),
+                          (int)(guard.cm * 100.0f));
+            }
+            tk_dly_tsk(S5_ECHO_GAP_MS);
+        }
+        valid = s5_measure_stable_cm(&cm);
         ++samples;
         if (!valid) {
-            ++invalid;
-            hits = 0u;
-            tm_printf((UB*)"[S5-DETECT] sample=%d ECHO_INVALID consecutive=%d\n",
-                      (int)samples, (int)invalid);
-            if (invalid >= S5_FRONT_INVALID_LIMIT)
-                tm_printf((UB*)"[S5-FAULT] SENSOR UNKNOWN; NEVER assume clear\n");
+            close_hits = 0u;
+            clear_hits = 0u;
+            b2_request_stop();
+            if (driving) tm_printf((UB*)"[S5-STOP] invalid ultrasonic echo: motors disabled\n");
+            driving = false;
+            if (!sensor_unavailable) {
+                tm_printf((UB*)"[S5-STOP] no reliable distance; motors stopped until clear path confirmed\n");
+                sensor_unavailable = true;
+            }
         } else {
-            invalid = 0u;
-            if (cm < S5_STOP_CM) {
-                if (hits < S5_CONFIRM_HITS) ++hits;
-            } else hits = 0u;
-            tm_printf((UB*)"[S5-DETECT] sample=%d cm_x100=%d threshold_cm=25 hits=%d/%d\n",
-                      (int)samples, (int)(cm * 100.0f),
-                      (int)hits, (int)S5_CONFIRM_HITS);
+            sensor_unavailable = false;
+            if (cm < ROBOT_STOP_CM) {
+                /* One close sample must stop the wheels. Three are needed to scan. */
+                b2_request_stop();
+                if (driving) {
+                    tm_printf((UB*)"[S5-STOP] object at %d cm (< %d cm); PWM=0 requested\n",
+                              (int)cm, (int)ROBOT_STOP_CM);
+                }
+                driving = false;
+                clear_hits = 0u;
+                if (close_hits < S5_CONFIRM_HITS) ++close_hits;
+                if (close_hits >= S5_CONFIRM_HITS) {
+                    obstacle_latched = true;
+                    if (!scanned_this_obstacle) scan_needed = true;
+                }
+#if ROBOT_VERBOSE_SENSOR_LOG
+                tm_printf((UB*)"[S5-DETECT] sample=%d cm_x100=%d CLOSE=%d/%d state=STOP\n",
+                          (int)samples, (int)(cm * 100.0f),
+                          (int)close_hits, (int)S5_CONFIRM_HITS);
+#endif
+            } else if (cm >= ROBOT_RELEASE_CM) {
+                close_hits = 0u;
+                if (clear_hits < ROBOT_CLEAR_CONFIRM) ++clear_hits;
+                if (clear_hits >= ROBOT_CLEAR_CONFIRM) {
+                    if (obstacle_latched)
+                        tm_printf((UB*)"[S5-RECOVER] path clear again; obstacle latch released\n");
+                    obstacle_latched = false;
+                    scanned_this_obstacle = false;
+                    b2_request_forward(); /* Heartbeat every valid clear sample. */
+                    if (!driving) {
+                        tm_printf((UB*)"[S5-DRIVE] valid clear=%d cm; FORWARD requested (verify B2 FORWARD and wheel movement)\n",
+                                  (int)cm);
+                        driving = true;
+                    }
+                } else {
+                    b2_request_stop();
+                    driving = false;
+                }
+#if ROBOT_VERBOSE_SENSOR_LOG
+                if (clear_hits <= ROBOT_CLEAR_CONFIRM || samples % 10u == 0u)
+                    tm_printf((UB*)"[S5-CLEAR] sample=%d cm_x100=%d clear=%d/%d state=%s\n",
+                              (int)samples, (int)(cm * 100.0f),
+                              (int)clear_hits, (int)ROBOT_CLEAR_CONFIRM,
+                              driving ? "FORWARD_REQUESTED" : "WAITING");
+#endif
+            } else {
+                /* 35..45cm hysteresis band is not confirmed safe. */
+                close_hits = 0u;
+                clear_hits = 0u;
+                b2_request_stop();
+                if (driving) tm_printf((UB*)"[S5-STOP] distance in uncertain band; PWM=0 requested\n");
+                driving = false;
+#if ROBOT_VERBOSE_SENSOR_LOG
+                tm_printf((UB*)"[S5-DETECT] sample=%d cm_x100=%d AMBIGUOUS state=STOP\n",
+                          (int)samples, (int)(cm * 100.0f));
+#endif
+            }
         }
-        confirmed = hits >= S5_CONFIRM_HITS;
-        if (cooldown_ms >= S5_SCAN_COOLDOWN_MS &&
-            (confirmed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST)) {
+        if (obstacle_latched) {
+            b2_request_stop();
+            driving = false;
+        }
+        if (scan_needed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST) {
             S5Scan coarse = {0}, fine = {0};
             S5Profile profile;
             S5Side side;
             SYSTIM started, ended;
             unsigned elapsed;
             startup_scan_pending = false;
-            cooldown_ms = 0u;
-            hits = 0u;
+            scanned_this_obstacle = true;
+            close_hits = 0u;
+            b2_request_stop();
+            driving = false;
+            tk_dly_tsk(ROBOT_STOP_SETTLE_MS);
+            if (!b2_motor_is_stopped()) {
+                tm_printf((UB*)"[S5-FAULT] motor PWM stop not acknowledged; scan aborted\n");
+                tk_dly_tsk(S5_FRONT_POLL_MS);
+                continue;
+            }
             tk_get_tim(&started);
-            tm_printf((UB*)"[S5-STOP] obstacle=%d. STOP REQUEST NEEDED FOR ROBOT; bench motors off\n",
-                      (int)confirmed);
-            tm_printf((UB*)"[S5-COARSE] sweep=30,60,90,120,150 (real servo)\n");
+            tm_printf((UB*)"[S5-STOP] confirmed close obstacle; motor PWM=0 acknowledged\n");
+            tm_printf((UB*)"[S5-COARSE] sweep=70,80,90,100,110 (real servo)\n");
             s5_coarse_scan(&coarse);
+#if ROBOT_VERBOSE_SENSOR_LOG
             print_scan("COARSE", &coarse);
+#endif
             side = s5_choose_side(&coarse);
             if (coarse.nearest_index < 0) {
                 tm_printf((UB*)"[S5-FAULT] no valid coarse readings; cannot plan bypass\n");
             } else {
                 uint16_t center = coarse.points[coarse.nearest_index].angle_deg;
-                tm_printf((UB*)"[S5-FINE] center_deg=%d sweep=+/-20 deg in 10 deg steps\n", (int)center);
+                tm_printf((UB*)"[S5-FINE] center_deg=%d sweep=+/-10 deg in 5 deg steps (safe mount)\n", (int)center);
                 s5_fine_scan(&fine, center);
+#if ROBOT_VERBOSE_SENSOR_LOG
                 print_scan("FINE", &fine);
+#endif
                 profile = s5_estimate_profile(&fine, side);
                 if (profile.valid) {
                     int k;
@@ -144,15 +255,13 @@ static void stationary_profile_mode(void)
                           side == S5_SIDE_LEFT ? "LEFT" : side == S5_SIDE_RIGHT ? "RIGHT" : "NONE",
                           (int)profile.valid,
                           side == S5_SIDE_NONE ? "STOP/REASSESS" : "BYPASS_REQUEST_ONLY");
-                tm_printf((UB*)"[S5-RECOVER] pending B2 motion ACK + B3 line reacquisition; no motors moved\n");
+                tm_printf((UB*)"[S5-RECOVER] physical bypass NOT enabled: no calibrated encoder/IR bridge\n");
             }
             tk_get_tim(&ended);
             elapsed = (unsigned)(ended.lo - started.lo);
             tm_printf((UB*)"[S5-METRIC] scan_profile_ms=%d (physical bypass not timed)\n", (int)elapsed);
-            tm_printf((UB*)"[S5] scan cycle complete; servo back to 90 deg\n");
+            tm_printf((UB*)"[S5] scan complete; no repeat until 3 clear readings; motors remain stopped\n");
         }
-        if (cooldown_ms < S5_SCAN_COOLDOWN_MS)
-            cooldown_ms += S5_FRONT_POLL_MS;
         tk_dly_tsk(S5_FRONT_POLL_MS);
     }
 }
@@ -247,9 +356,17 @@ static void live_controller_mode(void)
 EXPORT void s5_task(INT stacd, void *exinf)
 {
     (void)stacd; (void)exinf;
+#if ROBOT_WHEELS_UP_MOTOR_TEST
+    /* Bench-only boot motor proof: do not start ultrasonic/servo routines
+     * or flood USB logs while B2 drives raised wheels for a short test.
+     * The B2 test always stops and does not run autonomously. */
+    tm_printf((UB*)"[S5] Bench motor boot test: sensor/servo tasks parked; wheels MUST be raised\n");
+    for (;;) tk_dly_tsk(1000);
+#else
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
+    tm_printf((UB*)"[FW-ID] 2026-10-21 PWM-ECHO-CAPTURE-V1: hardware pulse timing, obstacle safety ON\n");
     tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
     s5_ultrasonic_init();
     tm_printf((UB*)"[S5-BOOT] ultrasonic pins initialized\n");
@@ -265,4 +382,5 @@ EXPORT void s5_task(INT stacd, void *exinf)
     tm_printf((UB*)"[S5] hardware/servo disabled\n");
     for (;;) tk_dly_tsk(1000);
 #endif
+#endif /* ROBOT_WHEELS_UP_MOTOR_TEST */
 }
