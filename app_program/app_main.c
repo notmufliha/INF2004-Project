@@ -54,6 +54,7 @@
  */
 
 #include "app.h"
+#include "robot_config.h"
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -107,33 +108,30 @@ EXPORT INT usermain(void)
 	tm_printf((UB*)"single-core build\n");
 #endif
 
-	/* Phase 1: every subsystem creates its kernel objects */
+#if ROBOT_MODE
+    tm_printf((UB*)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
+              (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS);
+    CHECK(subsystem2_init(), "subsystem2_init");
+    CHECK(subsystem5_init(), "subsystem5_init");
+    CHECK(subsystem2_start(), "subsystem2_start");
+    CHECK(subsystem5_start(), "subsystem5_start");
+    tm_printf((UB*)"[ROBOT] B2 motor task + B5 obstacle task started\n");
+#else
+	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
 	CHECK(subsystem1_init(), "subsystem1_init");
 	CHECK(subsystem2_init(), "subsystem2_init");
 	CHECK(subsystem3_init(), "subsystem3_init");
 	CHECK(subsystem4_init(), "subsystem4_init");
 	CHECK(subsystem5_init(), "subsystem5_init");
-
-	/* Phase 2: every subsystem starts its tasks */
 	CHECK(subsystem1_start(), "subsystem1_start");
 	CHECK(subsystem2_start(), "subsystem2_start");
 	CHECK(subsystem3_start(), "subsystem3_start");
 	CHECK(subsystem4_start(), "subsystem4_start");
 	CHECK(subsystem5_start(), "subsystem5_start");
-
-	tm_printf((UB*)"all subsystems started\n\n");
-
 #if APP_TEST
-	/* Test build (make TEST=1): run every subsystem's tests in turn,
-	   here in the initial task, while the system is running.  Tests may
-	   call tk_dly_tsk() to let the other tasks work for a while. */
-	tm_printf((UB*)"[TEST] === test run start ===\n");
-	subsystem1_test();
-	subsystem2_test();
-	subsystem3_test();
-	subsystem4_test();
-	subsystem5_test();
-	tm_printf((UB*)"[TEST] === test run end ===\n");
+	subsystem1_test(); subsystem2_test(); subsystem3_test();
+	subsystem4_test(); subsystem5_test();
+#endif
 #endif
 
 	/* Sleep forever.  Returning from usermain() would shut down. */

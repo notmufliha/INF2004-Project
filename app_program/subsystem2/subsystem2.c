@@ -6,12 +6,18 @@
  */
 
 #include "subsystem2.h"
+#include "../robot_config.h"
+#include "b2_motor.h"
 
 EXPORT ID	sem_slots;	/* IF-02, see subsystem2.h */
 EXPORT ID	mpf_samples;
 
 EXPORT ER subsystem2_init(void)
 {
+#if ROBOT_MODE
+    /* Robot mode uses only the B2 motor task; no demo sample pool. */
+    return E_OK;
+#else
 	T_CSEM	csem = {0};
 	T_CMPF	cmpf = {0};
 
@@ -34,12 +40,17 @@ EXPORT ER subsystem2_init(void)
 	cmpf.blfsz  = sizeof(SAMPLE_MSG);	/* size of one block */
 	mpf_samples = tk_cre_mpf(&cmpf);
 	return (mpf_samples < E_OK) ? mpf_samples : E_OK;
+#endif
 }
 
 EXPORT ER subsystem2_start(void)
 {
 	/* Pinned to core 1 (TP_PRC2): samples cross to subsystem 3 on core 0 */
-	ID tid = app_start_task(producer_task, S2_PRI_PRODUCER, TP_PRC2,
-				"producer_task");
+	#if ROBOT_MODE
+    ID tid = app_start_task((FP)b2_motor_task, 8, 0, "b2_motor_task");
+#else
+    ID tid = app_start_task(producer_task, S2_PRI_PRODUCER, TP_PRC2,
+                           "producer_task");
+#endif
 	return (tid < E_OK) ? tid : E_OK;
 }

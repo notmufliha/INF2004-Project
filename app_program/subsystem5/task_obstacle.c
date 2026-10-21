@@ -1,4 +1,6 @@
 #include "subsystem5.h"
+#include "../robot_config.h"
+#include "../subsystem2/b2_motor.h"
 #include "s5_logic.h"
 #include "s5_sim.h"
 #include "s5_bridge.h"
@@ -52,17 +54,20 @@ static void emergency_halt(const char *reason)
  * Logs use cm_x100 to avoid floating-point printf in the RTOS console. */
 static void stationary_profile_mode(void)
 {
-    unsigned samples = 0u, hits = 0u, invalid = 0u;
+    unsigned samples = 0u, hits = 0u, invalid = 0u, clear_hits = 0u;
+    bool obstacle_latched = false;
     unsigned cooldown_ms = S5_SCAN_COOLDOWN_MS;
     bool startup_scan_pending = (S5_FORCE_STARTUP_SCAN != 0);
-    tm_printf((UB*)"[S5] DESIGN REVIEW: detect -> coarse -> fine -> profile -> decide\n");
-    tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=DISABLED LINE=UNAVAILABLE\n");
+    tm_printf((UB*)"[S5] REAL ROBOT: forward -> stop -> coarse -> fine -> profile -> decide\n");
+    tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=%s LINE=UNAVAILABLE\n",
+              ROBOT_ENABLE_DRIVE ? "GUARDED FORWARD/STOP" : "DISABLED");
+    b2_request_stop();
     tm_printf((UB*)"[S5] GPIO TRIG=16 ECHO=17 SERVO=12; confirm 3.3V-safe ECHO\n");
 #if S5_STARTUP_SERVO_TEST
-    tm_printf((UB*)"[S5-SERVO] SELF TEST 90 -> 60 -> 120 -> 90\n");
+    tm_printf((UB*)"[S5-SERVO] SELF TEST 90 -> 80 -> 100 -> 90\n");
     s5_servo_angle(90u); tk_dly_tsk(500);
-    s5_servo_angle(60u); tk_dly_tsk(650);
-    s5_servo_angle(120u); tk_dly_tsk(650);
+    s5_servo_angle(80u); tk_dly_tsk(650);
+    s5_servo_angle(100u); tk_dly_tsk(650);
     s5_servo_angle(90u); tk_dly_tsk(650);
     tm_printf((UB*)"[S5-SERVO] SELF TEST END (confirm movement visually)\n");
 #endif
@@ -73,21 +78,38 @@ static void stationary_profile_mode(void)
         ++samples;
         if (!valid) {
             ++invalid;
-            hits = 0u;
+            hits = 0u; clear_hits = 0u;
+            b2_request_stop();
             tm_printf((UB*)"[S5-DETECT] sample=%d ECHO_INVALID consecutive=%d\n",
                       (int)samples, (int)invalid);
             if (invalid >= S5_FRONT_INVALID_LIMIT)
                 tm_printf((UB*)"[S5-FAULT] SENSOR UNKNOWN; NEVER assume clear\n");
         } else {
             invalid = 0u;
-            if (cm < S5_STOP_CM) {
+            if (cm < ROBOT_STOP_CM) {
+                /* Stop on FIRST close reading; confirmation controls scanning. */
+                b2_request_stop();
+                clear_hits = 0u;
                 if (hits < S5_CONFIRM_HITS) ++hits;
-            } else hits = 0u;
-            tm_printf((UB*)"[S5-DETECT] sample=%d cm_x100=%d threshold_cm=25 hits=%d/%d\n",
+                if (hits >= S5_CONFIRM_HITS) obstacle_latched = true;
+            } else if (cm >= ROBOT_RELEASE_CM) {
+                hits = 0u;
+                if (clear_hits < ROBOT_CLEAR_CONFIRM) ++clear_hits;
+                if (clear_hits >= ROBOT_CLEAR_CONFIRM) {
+                    obstacle_latched = false;
+                    b2_request_forward(); /* refreshed each valid clear sample */
+                } else b2_request_stop();
+            } else {
+                /* Hysteresis band: don't drive on ambiguous clearance. */
+                hits = 0u; clear_hits = 0u;
+                b2_request_stop();
+            }
+            tm_printf((UB*)"[S5-DETECT] sample=%d cm_x100=%d threshold_cm=%d hits=%d/%d\n",
                       (int)samples, (int)(cm * 100.0f),
-                      (int)hits, (int)S5_CONFIRM_HITS);
+                      (int)ROBOT_STOP_CM, (int)hits, (int)S5_CONFIRM_HITS);
         }
         confirmed = hits >= S5_CONFIRM_HITS;
+        if (obstacle_latched) b2_request_stop();
         if (cooldown_ms >= S5_SCAN_COOLDOWN_MS &&
             (confirmed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST)) {
             S5Scan coarse = {0}, fine = {0};
@@ -98,10 +120,16 @@ static void stationary_profile_mode(void)
             startup_scan_pending = false;
             cooldown_ms = 0u;
             hits = 0u;
+            b2_request_stop();
+            tk_dly_tsk(ROBOT_STOP_SETTLE_MS);
+            if (!b2_motor_is_stopped()) {
+                tm_printf((UB*)"[S5-FAULT] motor stop not acknowledged; scan aborted\n");
+                continue;
+            }
             tk_get_tim(&started);
-            tm_printf((UB*)"[S5-STOP] obstacle=%d. STOP REQUEST NEEDED FOR ROBOT; bench motors off\n",
+            tm_printf((UB*)"[S5-STOP] obstacle=%d; motor PWM=0 acknowledged\n",
                       (int)confirmed);
-            tm_printf((UB*)"[S5-COARSE] sweep=30,60,90,120,150 (real servo)\n");
+            tm_printf((UB*)"[S5-COARSE] sweep=70,80,90,100,110 (real servo)\n");
             s5_coarse_scan(&coarse);
             print_scan("COARSE", &coarse);
             side = s5_choose_side(&coarse);
@@ -109,7 +137,7 @@ static void stationary_profile_mode(void)
                 tm_printf((UB*)"[S5-FAULT] no valid coarse readings; cannot plan bypass\n");
             } else {
                 uint16_t center = coarse.points[coarse.nearest_index].angle_deg;
-                tm_printf((UB*)"[S5-FINE] center_deg=%d sweep=+/-20 deg in 10 deg steps\n", (int)center);
+                tm_printf((UB*)"[S5-FINE] center_deg=%d sweep=+/-10 deg in 5 deg steps (clamped to safe mount)\n", (int)center);
                 s5_fine_scan(&fine, center);
                 print_scan("FINE", &fine);
                 profile = s5_estimate_profile(&fine, side);
@@ -144,12 +172,12 @@ static void stationary_profile_mode(void)
                           side == S5_SIDE_LEFT ? "LEFT" : side == S5_SIDE_RIGHT ? "RIGHT" : "NONE",
                           (int)profile.valid,
                           side == S5_SIDE_NONE ? "STOP/REASSESS" : "BYPASS_REQUEST_ONLY");
-                tm_printf((UB*)"[S5-RECOVER] pending B2 motion ACK + B3 line reacquisition; no motors moved\n");
+                tm_printf((UB*)"[S5-RECOVER] physical bypass NOT enabled: no calibrated encoder/IR bridge\n");
             }
             tk_get_tim(&ended);
             elapsed = (unsigned)(ended.lo - started.lo);
             tm_printf((UB*)"[S5-METRIC] scan_profile_ms=%d (physical bypass not timed)\n", (int)elapsed);
-            tm_printf((UB*)"[S5] scan cycle complete; servo back to 90 deg\n");
+            tm_printf((UB*)"[S5] scan cycle complete; servo back to 90 deg; motors stopped until path clear\n");
         }
         if (cooldown_ms < S5_SCAN_COOLDOWN_MS)
             cooldown_ms += S5_FRONT_POLL_MS;
