@@ -222,13 +222,13 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
     case S5_REVERSE:
         if (in->motion_complete)
             return change(c, S5_COARSE, S5_CMD_SCAN_COARSE);
-        if (c->ticks_in_state >= S5_WAIT_LIMIT)
+        if (c->ticks_in_state >= S5_MOTION_LIMIT)
             return fail(c, S5_ERR_REVERSE_TIMEOUT);
         return S5_CMD_NONE;
     case S5_AVOID:
         if (in->motion_complete)
             return change(c, S5_RECOVER, S5_CMD_FIND_LINE);
-        if (c->ticks_in_state >= S5_WAIT_LIMIT)
+        if (c->ticks_in_state >= S5_MOTION_LIMIT)
             return fail(c, S5_ERR_MOTION_TIMEOUT);
         return S5_CMD_NONE;
     case S5_RECOVER:
