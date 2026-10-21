@@ -20,7 +20,7 @@
  *	------------------------------------------------------------
  *	  subsystem1/  LED       blinks GP19, paced by a cyclic handler
  *	  subsystem2/  Producer  makes a "sample" every 300 ms     (core 1)
- *	  subsystem3/  Consumer  collects samples into statistics  (core 0)
+ *	  subsystem3/  Consumer  collects samples into statistics  (priority 16, core 0)
  *	  subsystem4/  Monitor   prints reports, pauses/resumes the LED
  *	  subsystem5/  (empty template for the fifth student)
  *
@@ -107,7 +107,8 @@ EXPORT INT usermain(void)
 	tm_printf((UB*)"single-core build\n");
 #endif
 
-	/* Phase 1: every subsystem creates its kernel objects */
+	/* Phase 1: every subsystem creates its kernel objects. Subsystem 3
+	   owns IF-01's sample mailbox and IF-04's statistics mutex. */
 	CHECK(subsystem1_init(), "subsystem1_init");
 	CHECK(subsystem2_init(), "subsystem2_init");
 	CHECK(subsystem3_init(), "subsystem3_init");
