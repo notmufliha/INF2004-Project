@@ -1,25 +1,34 @@
-# Subsystem 5 — test log
+# Buddy 5 test evidence (software-only)
 
-**Subsystem:** <name>  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem5/`
+## Host tests
 
-See `testing/README.md` for how to run tests and record results.
+Run `bash testing/subsystem5/run_host_tests.sh` from the repository root.
 
-## Test cases
+- H01: left route, coarse + fine scan, line recovery -> DONE
+- H02: right route -> DONE
+- H03: both sides blocked -> NO_CLEAR_ROUTE safe halt
+- H04: left coarse reading invalid -> chooses verified right side
+- H05: stop acknowledgement missing -> STOP_TIMEOUT safe halt
+- H06: motor completion missing -> MOTION_TIMEOUT safe halt
+- H07: line never found -> LINE_TIMEOUT safe halt
+- H08: no obstacle -> FOLLOW
+- H09: invalid front readings -> FRONT_SENSOR safe halt
+- H10: invalid fine scan -> FINE_SCAN safe halt
 
-Define a test here before running it. Test IDs never change.
+## Pico firmware unit checks (TEST=1)
 
-| ID | What is tested | Requirement / interface | Method | Steps / how | Expected result |
-|---|---|---|---|---|---|
-| S5-U01 | example: runs in a task context | | auto | `subsystem5_test.c` | `[TEST] S5-U01 PASS` |
-| S5-U02 | | | manual | 1. … 2. … | |
+- S5-U01 echo pulse to centimetres conversion
+- S5-U02 servo centre pulse calculation
+- S5-U03 successful left route
+- S5-U04 successful right route
+- S5-U05 blocked route
+- S5-U06 invalid left ray rejected
+- S5-U07 stop timeout
+- S5-U08 movement timeout
+- S5-U09 line recovery timeout
+- S5-U10 clear path
+- S5-U11 front sensor fault
+- S5-U12 invalid fine scan
+- S5-U13 width estimate exists
 
-*Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
-**manual** = a person observes the result (LED, scope, meter, phone app…).
-
-## Results
-
-Add a new row for every run. Never edit or delete old rows.
-
-| Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
-|---|---|---|---|---|---|---|
-| YYYY-MM-DD | S5-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+The tests use **synthetic** sensor/actuator events; no physical robot was tested.

@@ -1,9 +1,11 @@
 /*
- *	subsystem3.h
- *	Subsystem 3 -- Consumer (statistics).  Student ID: <student ID>.
+ * subsystem3.h
+ * Subsystem 3: consumer and shared sample statistics.
  *
- *	Public interface of subsystem 3.  Other subsystems include it as
- *	"../subsystem3/subsystem3.h".
+ * This checkout retains the integrated producer/consumer example described
+ * in TEAM.md. The attached Week 6 review assigns the real robot's B3 role to
+ * IR line following and barcode decoding; those queues and hardware drivers
+ * are not present in this codebase yet.
  */
 
 #ifndef SUBSYSTEM3_H
@@ -11,26 +13,28 @@
 
 #include "../app.h"
 
-#define S3_PRI_CONSUMER		16	/* priority band 16-17 (TEAM.md) */
-#define S3_BATCH_SIZE		5	/* report to subsystem 4 every N samples */
+#define S3_PRI_CONSUMER        16
+#define S3_BATCH_SIZE          5
 
-/* IF-01: send SAMPLE_MSG (subsystem2.h) here with tk_snd_mbx */
-IMPORT ID	mbx_samples;
-
-/* IF-04: statistics.  Read them ONLY while holding mtx_stats:
- *	tk_loc_mtx(mtx_stats, TMO_FEVR);  copy = app_stats;  tk_unl_mtx(mtx_stats);
- */
 typedef struct {
-	UW	received;	/* samples received so far */
-	INT	min;
-	INT	max;
-	W	sum;
+	UW received;
+	INT min;
+	INT max;
+	W sum;
 } APP_STATS;
 
-IMPORT ID		mtx_stats;
-IMPORT APP_STATS	app_stats;
+/* IF-01: S2 sends SAMPLE_MSG pointers to the S3-owned mailbox. */
+IMPORT ID mbx_samples;
 
-/* Private to subsystem 3 */
-IMPORT void	consumer_task(INT stacd, void *exinf);
+/* IF-04: consumers must hold mtx_stats while reading or updating app_stats. */
+IMPORT ID mtx_stats;
+IMPORT APP_STATS app_stats;
+
+IMPORT ER subsystem3_init(void);
+IMPORT ER subsystem3_start(void);
+IMPORT void consumer_task(INT stacd, void *exinf);
+
+/* Pure helper used by the consumer and unit tests. */
+IMPORT void s3_update_stats(APP_STATS *stats, INT value);
 
 #endif /* SUBSYSTEM3_H */
