@@ -43,7 +43,7 @@ S5SimResult s5_sim_run(S5Scenario scenario, S5Trace trace, void *user)
     S5SimResult r = {0};
     unsigned i;
     s5_controller_init(&r.controller);
-    for (i = 0; i < 80; i++) {
+    for (i = 0; i < 260; i++) {
         S5Input in = {0};
         S5State previous = r.controller.state;
         bool reverse_clear = scenario == S5_SCENARIO_REVERSE_CLEARS &&

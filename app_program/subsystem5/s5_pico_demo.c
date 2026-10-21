@@ -87,6 +87,6 @@ void s5_pico_demo_run_forever(void)
         tm_printf((UB*)"[S5-PICO] SUMMARY cycle=%d passed=%d failed=%d\n",
                   (int)cycle, (int)passed, (int)failed);
         tm_printf((UB*)"[S5-PICO] Waiting 15 seconds before next cycle...\n");
-        tk_dly_tsk(S5_PICO_DEMO_PAUSE_MS);
+        tk_dly_tsk(15000);
     }
 }

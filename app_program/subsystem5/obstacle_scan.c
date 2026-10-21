@@ -2,7 +2,17 @@
 #include "obstacle_scan.h"
 #include "s5_logic.h"
 #include "drv_ultrasonic.h"
+#include "s5_measure.h"
 #include "drv_servo.h"
+
+/* Calibrate against the actual servo and sensor mounting. Servo must settle
+ * before measuring; avoid ultrasonic cross-talk by spacing trigger pulses. */
+#ifndef S5_SERVO_SETTLE_MS
+#define S5_SERVO_SETTLE_MS 180
+#endif
+#ifndef S5_ECHO_GAP_MS
+#define S5_ECHO_GAP_MS 65
+#endif
 
 static const uint16_t coarse_angles[S5_SCAN_COUNT] = {30u, 60u, 90u, 120u, 150u};
 
@@ -28,14 +38,20 @@ static void scan_angles(S5Scan *scan, const uint16_t angles[S5_SCAN_COUNT])
         scan->points[i].distance_cm = 0.0f;
         scan->points[i].valid = false;
 #if S5_SERVO_ENABLED && S5_HARDWARE_ENABLED && !S5_SIMULATION
+        tm_printf((UB*)"[S5-SCAN] move servo to %d deg; settling %d ms\n",
+                  (int)angles[i], (int)S5_SERVO_SETTLE_MS);
         s5_servo_angle(angles[i]);
-        tk_dly_tsk(180);
-        scan->points[i].valid = s5_ultrasonic_read_cm(&scan->points[i].distance_cm);
-        tk_dly_tsk(65);
+        tk_dly_tsk(S5_SERVO_SETTLE_MS);
+        scan->points[i].valid = s5_measure_stable_cm(&scan->points[i].distance_cm);
+        tm_printf((UB*)"[S5-SCAN] angle=%d echo=%s distance_cm_x100=%d\n",
+                  (int)angles[i], scan->points[i].valid ? "OK" : "TIMEOUT/INVALID",
+                  (int)(scan->points[i].distance_cm * 100.0f));
+        tk_dly_tsk(S5_ECHO_GAP_MS);
 #endif
     }
 #if S5_SERVO_ENABLED && S5_HARDWARE_ENABLED && !S5_SIMULATION
     s5_servo_angle(90u);
+    tk_dly_tsk(S5_SERVO_SETTLE_MS);
 #endif
     scan->nearest_index = s5_find_nearest(scan->points, S5_SCAN_COUNT);
 }

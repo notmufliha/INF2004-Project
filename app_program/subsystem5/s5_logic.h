@@ -9,8 +9,9 @@
 #define S5_CLEAR_CM 40.0f
 #define S5_MAX_RANGE_CM 450.0f
 #define S5_FRONT_INVALID_LIMIT 3u
-#define S5_WAIT_LIMIT 8u
-#define S5_RECOVERY_LIMIT 16u
+#define S5_WAIT_LIMIT 30u /* stop ACK / scan ACK: 3 seconds at 100ms/tick */
+#define S5_MOTION_LIMIT 200u /* bypass/reverse: 20 seconds */
+#define S5_RECOVERY_LIMIT 150u /* line search: 15 seconds */
 /* Demonstration assumptions: adjust from measured chassis geometry later. */
 #define S5_CHASSIS_HALF_WIDTH_CM 8.0f
 #define S5_EXTRA_MARGIN_CM 8.0f
