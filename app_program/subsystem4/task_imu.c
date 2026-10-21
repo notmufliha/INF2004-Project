@@ -24,7 +24,7 @@ static bool hardware_read(uint32_t now_ms, imu_data_t *data)
         /* Configure signed axis mapping and magnetic calibration here after
          * checking the installed orientation. Defaults: sensor XYZ=robot XYZ. */
         if (!gy511_i2c_open(&bus) || !gy511_init(&sensor, &bus, &config)) {
-            tm_printf((UB*)"IMU REAL: GY-511 check failed (0x19 / 0x1e H43); retry in 1s\n");
+            tm_printf((UB*)"[B4] GY-511 not ready: check power/wiring; retry in 1 s\n");
             return true;
         }
         initialised = true;
@@ -32,7 +32,8 @@ static bool hardware_read(uint32_t now_ms, imu_data_t *data)
         count = failures = 0U;
         for (int i = 0; i < 3; ++i) { mean[i] = m2[i] = 0.0f; }
         last_data_ms = now_ms;
-        tm_printf((UB*)"IMU REAL: sensor configured; keep level and still for 200 fresh samples\n");
+        tm_printf((UB*)"[B4] GY-511 connected on I2C0 (GP4/GP5)\n");
+        tm_printf((UB*)"[B4] Calibration starting: keep level/still for 200 samples\n");
         return true;
     }
     gy511_result_t result = gy511_read(&sensor, now_ms, data);
@@ -64,9 +65,10 @@ static bool hardware_read(uint32_t now_ms, imu_data_t *data)
             }
             if (stable && gy511_set_level_calibration(&sensor, mean)) {
                 calibrated = true;
-                tm_printf((UB*)"IMU REAL: level calibration complete; magnetic heading uncalibrated, turn rate unavailable\n");
+                tm_printf((UB*)"[B4] Level calibration complete\n");
+                tm_printf((UB*)"[B4] Magnetic calibration pending; turn rate unavailable\n");
             } else {
-                tm_printf((UB*)"IMU REAL: calibration rejected; check orientation, keep level/still\n");
+                tm_printf((UB*)"[B4] Calibration rejected: keep level/still; retrying\n");
             }
             count = 0U;
             for (int i = 0; i < 3; ++i) { mean[i] = m2[i] = 0.0f; }
@@ -102,9 +104,9 @@ EXPORT void imu_sampling_task(INT stacd, void *exinf)
     }
 #if S4_IMU_USE_MOCK
     origin = now.lo;
-    tm_printf((UB*)"IMU: MOCK INPUT, 10 ms target, no motor commands\n");
+    tm_printf((UB*)"[B4] IMU starting: MOCK input, target period=10 ms\n");
 #else
-    tm_printf((UB*)"IMU: REAL GY-511 on I2C0 GP4/GP5; no motor commands\n");
+    tm_printf((UB*)"[B4] IMU starting: REAL GY-511, target period=10 ms\n");
 #endif
     deadline = now.lo;
     while (1) {
@@ -129,7 +131,7 @@ EXPORT void imu_sampling_task(INT stacd, void *exinf)
             if (er == E_TMOUT) {
                 /* Never block acquisition on a full queue; drop newest. */
                 if (++dropped == 1U || dropped % 100U == 0U) {
-                    tm_printf((UB*)"IMU: dropped readings=%u\n", dropped);
+                    tm_printf((UB*)"[B4] Queue full: dropped readings=%u\n", dropped);
                 }
             } else if (er < E_OK) {
                 CHECK(er, "IMU send");
@@ -172,6 +174,38 @@ static const char *motion_name(imu_motion_state_t state)
     }
 }
 
+/* Short integer-only lines match the other buddies' console format. */
+static void print_readings(const imu_data_t *data, const imu_event_t *event)
+{
+    tm_printf((UB*)"[B4] Tilt Pitch=%d Roll=%d deg Detected=%s\n",
+              (INT)event->pitch_deg, (INT)event->roll_deg,
+              event->tilt_detected ? "yes" : "no");
+    tm_printf((UB*)"[B4] Accel X=%d Y=%d Z=%d mg\n",
+              (INT)(data->accel_x * 1000.0f / 9.81f),
+              (INT)(data->accel_y * 1000.0f / 9.81f),
+              (INT)(data->accel_z * 1000.0f / 9.81f));
+    if (event->heading_valid) {
+        tm_printf((UB*)"[B4] Heading=%d deg Calibrated=%s\n",
+                  (INT)event->heading_deg, event->heading_calibrated ? "yes" : "no");
+    } else {
+        tm_printf((UB*)"[B4] Heading=N/A\n");
+    }
+    if (event->turn_rate_valid) {
+        tm_printf((UB*)"[B4] TurnRate=%d deg/s\n", (INT)event->turn_rate_dps);
+    } else {
+        tm_printf((UB*)"[B4] TurnRate=N/A\n");
+    }
+#if S4_IMU_LOG_RAW_MAG
+    if (data->magnetic_valid) {
+        tm_printf((UB*)"[B4] Mag X=%d Y=%d Z=%d uT\n",
+                  (INT)data->magnetic_x_ut, (INT)data->magnetic_y_ut,
+                  (INT)data->magnetic_z_ut);
+    } else {
+        tm_printf((UB*)"[B4] Mag=N/A\n");
+    }
+#endif
+}
+
 EXPORT void imu_analysis_task(INT stacd, void *exinf)
 {
     imu_analysis_t analysis;
@@ -194,12 +228,12 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
     imu_analysis_default_config(&config);
     imu_processing_default_config(&processing_config);
     if (!imu_processing_init(&processing, &processing_config)) {
-        tm_printf((UB*)"IMU: processing configuration failed\n");
+        tm_printf((UB*)"[B4] ERROR: processing configuration failed\n");
         tk_ext_tsk();
         return;
     }
     if (!imu_analysis_init(&analysis, &config)) {
-        tm_printf((UB*)"IMU: analysis configuration failed\n");
+        tm_printf((UB*)"[B4] ERROR: analysis configuration failed\n");
         tk_ext_tsk();
         return;
     }
@@ -223,7 +257,7 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
         bool usable = imu_processing_process(&processing, &data, data.timestamp_ms,
                                               &processed, &health);
         if (health.fault_started) {
-            tm_printf((UB*)"IMU: sensor unavailable/fault; unreliable readings suppressed\n");
+            tm_printf((UB*)"[B4] Sensor fault/unavailable: readings suppressed\n");
 #if APP_TEST
             imu_event_t fault = {0};
             fault.motion_state = IMU_MOTION_UNKNOWN;
@@ -236,7 +270,7 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
         /* An invalid processed reading resets any incomplete terrain sequence. */
         if (!imu_analysis_process(&analysis, &processed, &event) || !usable) {
             if (!warned) {
-                tm_printf((UB*)"IMU: invalid reading/timing; terrain sequence reset\n");
+                tm_printf((UB*)"[B4] Invalid reading/timing: terrain sequence reset\n");
             }
             warned = true;
             have_previous = false;
@@ -245,24 +279,20 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
         warned = false;
         event.sensor_recovered = health.recovered;
         if (health.recovered) {
-            tm_printf((UB*)"IMU: sensor recovered after consecutive good readings\n");
+            tm_printf((UB*)"[B4] Sensor recovered: readings valid\n");
         }
-        if (!have_previous || event.motion_state != previous || event.hump_completed ||
-            health.recovered || event.timestamp_ms - last_report >= 1000U) {
-            /* Integer output: T-Monitor does not require float formatting. */
-            tm_printf((UB*)"IMU: t=%u state=%s pitch=%d roll=%d turn=%d rate_valid=%d tilt=%d\n",
-                      (UW)event.timestamp_ms, motion_name(event.motion_state),
-                      (INT)event.pitch_deg, (INT)event.roll_deg,
-                      (INT)event.turn_rate_dps, (INT)event.turn_rate_valid, (INT)event.tilt_detected);
-            tm_printf((UB*)"IMU: accel mg=(%d,%d,%d) mag uT=(%d,%d,%d) mag_valid=%d heading=%d heading_valid=%d calibrated=%d\n",
-                      (INT)(data.accel_x * 1000.0f / 9.81f),
-                      (INT)(data.accel_y * 1000.0f / 9.81f),
-                      (INT)(data.accel_z * 1000.0f / 9.81f),
-                      (INT)data.magnetic_x_ut, (INT)data.magnetic_y_ut,
-                      (INT)data.magnetic_z_ut, (INT)data.magnetic_valid,
-                      (INT)data.heading_deg, (INT)data.heading_valid, (INT)data.heading_calibrated);
+        bool report_due = !have_previous || health.recovered ||
+                          event.timestamp_ms - last_report >= 1000U;
+        if (!have_previous || event.motion_state != previous || event.hump_completed || report_due) {
+            if (!have_previous || event.motion_state != previous) {
+                tm_printf((UB*)"[B4] Motion=%s\n", motion_name(event.motion_state));
+            }
+            if (report_due) {
+                print_readings(&data, &event);
+                last_report = event.timestamp_ms;
+            }
             if (event.hump_completed) {
-                tm_printf((UB*)"IMU: hump completed; height unavailable\n");
+                tm_printf((UB*)"[B4] Hump completed: height=N/A\n");
             }
 #if APP_TEST
             /* Test observer can lag without blocking analysis. */
@@ -273,7 +303,6 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
 #endif
             previous = event.motion_state;
             have_previous = true;
-            last_report = event.timestamp_ms;
         }
     }
 }

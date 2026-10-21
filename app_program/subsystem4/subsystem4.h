@@ -17,6 +17,11 @@
 #define S4_IMU_USE_MOCK 0
 #endif
 
+/* Enable only when diagnosing raw magnetic readings. */
+#ifndef S4_IMU_LOG_RAW_MAG
+#define S4_IMU_LOG_RAW_MAG 0
+#endif
+
 #define S4_PRI_IMU_SAMPLE 18
 #define S4_PRI_IMU_ANALYSIS 19
 #define S4_IMU_PERIOD_MS 10U
