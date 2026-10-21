@@ -39,9 +39,11 @@ Hold BOOTSEL while plugging the Pico in, then copy the matching USB/WiFi UF2 to
 RPI-RP2. Open the USB COM port at 115200 baud. Expected startup:
 
 ```text
-IMU: REAL GY-511 on I2C0 GP4/GP5; no motor commands
-IMU REAL: sensor configured; keep level and still for 200 fresh samples
-IMU REAL: level calibration complete; magnetic heading uncalibrated, turn rate unavailable
+[B4] IMU starting: REAL GY-511, target period=10 ms
+[B4] GY-511 connected on I2C0 (GP4/GP5)
+[B4] Calibration starting: keep level/still for 200 samples
+[B4] Level calibration complete
+[B4] Magnetic calibration pending; turn rate unavailable
 ```
 
 Keep the vehicle stationary and level throughout startup, approximately two
@@ -52,16 +54,28 @@ one-position offset calibration, not a full multi-position sensitivity calibrati
 Calibration/initialisation produces invalid readings until ready, so a temporary
 unavailable/fault report followed by recovery is expected.
 
-If `GY-511 check failed` repeats, check power, SDA/SCL, ground and module identity.
+If `GY-511 not ready` repeats, check power, SDA/SCL, ground and module identity.
 The task retries initialisation once per second. Ten acquisition failures trigger
 reinitialisation and a new level calibration. Do not move during recalibration.
 No fresh acceleration for over 100 ms enters the failure path. Magnetic read
 failure/overflow only invalidates magnetic/heading fields; acceleration continues.
 
-Serial reports include pitch/roll, acceleration in mg (1000mg approximately 1g),
-magnetic field in microtesla, heading and explicit availability/calibration flags.
-Numeric unavailable fields may be zero: only interpret them when their flags are
-true. Reports are periodic (about one second) and on motion-state changes.
+Serial reports use short `[B4]` lines, with a measurement snapshot about once a
+second and immediate notifications for motion changes, faults and hump completion:
+
+```text
+[B4] Motion=unknown/quiet
+[B4] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4] Accel X=0 Y=0 Z=1000 mg
+[B4] Heading=213 deg Calibrated=no
+[B4] TurnRate=N/A
+```
+
+Angles and rates are printed as whole numbers; internal calculations retain their
+existing precision. N/A means unavailable, not a measured zero. Raw magnetic
+readings are hidden by default; set `S4_IMU_LOG_RAW_MAG=1` in `subsystem4.h` for
+additional `[B4] Mag ... uT` lines. The legacy `monitor:` messages come from the
+template monitor and remain separate from B4 IMU reports.
 
 1. Level and still: expect approximately {0,0,1000}mg and pitch/roll near zero.
 2. Slowly raise the car's nose: pitch should increase; lower it: pitch decreases.
