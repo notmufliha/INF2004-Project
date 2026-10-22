@@ -18,6 +18,10 @@
 #include "motor_control.h"
 #include "encoder_control.h"
 #include "pid_control.h"
+#include "motion_command.h"
+
+/* Temporary test task simulating Buddy 1 commands. */
+extern void motion_command_test_task(INT stacd, void *exinf);
 
 /* Cyclic handler ID for the PI controller. */
 static ID cyc_pid = 0;
@@ -82,6 +86,14 @@ EXPORT ER subsystem2_init(void)
      */
     pid_init();
 
+    /* Initialize Buddy 2 motion command interface. */
+    err = motion_command_init();
+
+    if (err != E_OK) {
+        tm_printf((UB*)"[B2] Motion command initialization failed\n");
+        return err;
+    }
+
     /*
      * Create 10 ms cyclic handler.
      *
@@ -123,14 +135,13 @@ EXPORT ER subsystem2_stop_pid_cyclic(void)
 /*
  * Start Subsystem 2 tasks.
  */
+
 EXPORT ER subsystem2_start(void)
 {
     ID tid;
     ER err;
 
-    /*
-     * Original producer task.
-     */
+    /* Original producer task. */
     tid = app_start_task(
         producer_task,
         S2_PRI_PRODUCER,
@@ -142,9 +153,7 @@ EXPORT ER subsystem2_start(void)
         return tid;
     }
 
-    /*
-     * Encoder speed monitoring task.
-     */
+    /* Encoder speed monitoring task. */
     tid = app_start_task(
         (FP)encoder_speed_task,
         S2_PRI_PRODUCER,
@@ -156,31 +165,41 @@ EXPORT ER subsystem2_start(void)
         return tid;
     }
 
-    /*
-     * Start PI controller task.
-     */
+    /* Start command-driven PI controller. */
     tid_pid = app_start_task(
-        (FP)pid_test_task,
+        (FP)pid_control_task,
         S2_PRI_PRODUCER,
         TP_PRC2,
-        "pid_test_task"
+        "pid_control_task"
     );
 
     if (tid_pid < E_OK) {
         return tid_pid;
     }
 
-    /*
-     * Start the 10 ms cyclic handler.
-     */
+    /* Start 10 ms cyclic handler. */
     err = tk_sta_cyc(cyc_pid);
 
     if (err != E_OK) {
-        tm_printf((UB*)"[B2] Failed to start cyclic handler\n");
+        motor_stop();
         return err;
     }
 
-    tm_printf((UB*)"[B2] 10 ms cyclic handler started\n");
+    tm_printf((UB*)"[B2] 10 ms PI controller started\n");
+
+    /* Temporary Buddy 1 command simulator. */
+    tid = app_start_task(
+        (FP)motion_command_test_task,
+        S2_PRI_PRODUCER,
+        TP_PRC2,
+        "motion_command_test_task"
+    );
+
+    if (tid < E_OK) {
+        motor_stop();
+        (void)tk_stp_cyc(cyc_pid);
+        return tid;
+    }
 
     return E_OK;
 }
