@@ -4,7 +4,7 @@
 #include "../app.h"
 
 extern ID tid_pid;
-extern ER subsystem2_stop_pid_cyclic(void);
+// extern ER subsystem2_stop_pid_cyclic(void);
 
 void pid_cyclic_handler(void *exinf);
 
@@ -12,6 +12,6 @@ void pid_cyclic_handler(void *exinf);
 void pid_init(void);
 
 /* Temporary closed-loop motor test task. */
-void pid_test_task(INT stacd, void *exinf);
+void pid_control_task(INT stacd, void *exinf);
 
 #endif

@@ -105,9 +105,14 @@ void motor_init(void)
  *
  * Actual wheel direction depends on motor wiring.
  */
+
 void motor_left_set(int speed_percent)
 {
     UW duty;
+
+    if (!motor_ready) {
+        return;
+    }
 
     if (speed_percent > 100) {
         speed_percent = 100;
@@ -125,15 +130,14 @@ void motor_left_set(int speed_percent)
 
     duty = (duty * MOTOR_PWM_WRAP) / 100U;
 
-    /* Clear both channels before changing direction. */
-    motor_stop();
+    /* Stop only the left motor before updating PWM. */
+    pwm_set_cc(MOTOR_L_A_PIN, 0U);
+    pwm_set_cc(MOTOR_L_B_PIN, 0U);
 
-    /* Match software direction to physical motor wiring. */
+    /* Positive = forward, negative = reverse. */
     if (speed_percent > 0) {
-        /* Forward: PWM on GP9 (M1B). */
         pwm_set_cc(MOTOR_L_B_PIN, duty);
     } else if (speed_percent < 0) {
-        /* Reverse: PWM on GP8 (M1A). */
         pwm_set_cc(MOTOR_L_A_PIN, duty);
     }
 }
@@ -258,3 +262,4 @@ void motor_baseline_task(INT stacd, void *exinf)
         tk_dly_tsk(1000);
     }
 }
+
