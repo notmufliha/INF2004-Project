@@ -1,0 +1,2 @@
+   text	   data	    bss	    dec	    hex	filename
+ 298460	     88	  24540	 323088	  4ee10	mtk3pico_smp1_usb_cdc_wifi.elf
