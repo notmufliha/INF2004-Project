@@ -5,7 +5,7 @@
  * Rebuild and reflash the UF2 after changing this file.
  */
 #define ROBOT_MODE 1
-#define ROBOT_ENABLE_DRIVE 1
+#define ROBOT_ENABLE_DRIVE 0
 /* Real autonomous bypass requires working B2 encoder feedback and B3 line
  * sensing, measured robot geometry, and independent path safety checks.
  * The uploaded team project does not contain those working interfaces.
