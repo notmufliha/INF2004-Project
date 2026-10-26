@@ -88,9 +88,29 @@ void b2_request_stop(void)
 
     safety_lock_enter(&intsts);
 
+    /*
+     * A new STOP event invalidates the previous
+     * movement authorization.
+     *
+     * Repeated STOP requests while already latched
+     * do not increment the generation.
+     */
+    if (stop_latched == 0u) {
+        stop_generation++;
+    }
+
     clear_valid = 0u;
     stop_latched = 1u;
-    stop_generation++;
+
+    /*
+     * Disable motor PWM immediately while holding
+     * the safety spinlock.
+     *
+     * The PI controller acknowledges the STOP
+     * generation separately.
+     */
+    motor_stop();
+    stopped = 1u;
 
     safety_lock_leave(intsts);
 }
@@ -173,6 +193,19 @@ bool b2_safety_motion_allowed(void)
            B2_SAFETY_HEARTBEAT_MS;
 }
 
+// set motor PWM to zero without changing the STOP acknowledgement generation.
+void b2_safety_force_stop(void)
+{
+    UINT intsts;
+
+    safety_lock_enter(&intsts);
+
+    motor_stop();
+    stopped = 1u;
+
+    safety_lock_leave(intsts);
+}
+
 void b2_safety_acknowledge_stop(void)
 {
     UINT intsts;
@@ -190,7 +223,11 @@ void b2_safety_acknowledge_stop(void)
     safety_lock_leave(intsts);
 }
 
-void b2_safety_apply_pwm(int left_percent, int right_percent)
+void b2_safety_apply_pwm(
+    int left_percent,
+    int right_percent,
+    uint32_t command_safety_generation
+)
 {
     UINT intsts;
     uint32_t now = b2_now_ms();
@@ -199,11 +236,12 @@ void b2_safety_apply_pwm(int left_percent, int right_percent)
     safety_lock_enter(&intsts);
 
     allowed =
+        (command_safety_generation == stop_generation) &&
         (stop_generation == acknowledged_generation) &&
         (stop_latched == 0u) &&
         (clear_valid != 0u) &&
         ((uint32_t)(now - clear_heartbeat_ms) <=
-         B2_SAFETY_HEARTBEAT_MS);
+        B2_SAFETY_HEARTBEAT_MS);
 
 #if !ROBOT_ENABLE_DRIVE
     allowed = false;

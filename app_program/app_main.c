@@ -90,6 +90,19 @@ EXPORT ID app_start_task(FP entry, PRI pri, UW prc, const char *name)
 	/* tk_sta_tsk: DORMANT -> READY.  The int is passed as stacd. */
 	er = tk_sta_tsk(tid, 0);
 	CHECK(er, name);
+
+	if (er < E_OK) {
+		/*
+		* Task creation succeeded, but starting failed.
+		* Delete the task to avoid leaving an unused
+		* DORMANT task allocated.
+		*/
+		ER del_er = tk_del_tsk(tid);
+		CHECK(del_er, "delete failed-start task");
+
+		return er;
+	}
+
 	return tid;
 }
 

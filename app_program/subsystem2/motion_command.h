@@ -1,7 +1,6 @@
-
 #ifndef MOTION_COMMAND_H
 #define MOTION_COMMAND_H
-
+#include <stdint.h>
 #include "../app.h"
 
 /*
@@ -49,6 +48,15 @@ typedef struct {
     MOTION_TURN_DIRECTION turn_direction;
 
     INT target_angle_deg;
+
+    /*
+     * Safety STOP generation observed by Buddy 1
+     * when authorizing this motion command.
+     *
+     * Required for DRIVE.
+     * Ignored for STOP.
+     */
+    uint32_t safety_generation;
 } MOTION_COMMAND;
 
 /*

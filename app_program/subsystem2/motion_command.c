@@ -1,4 +1,3 @@
-
 /*
  * Buddy 2 - Motion Command Interface
  * RP2040 + micro T-Kernel 3.0
@@ -14,6 +13,7 @@
 
 #include "../app.h"
 #include "motion_command.h"
+#include "b2_motor.h"
 
 /*
  * Latest pending motion command.
@@ -23,6 +23,12 @@
 static MOTION_COMMAND pending_command;
 static BOOL command_pending = FALSE;
 static ID command_sem = 0;
+
+/*
+ * Safety STOP generation associated with
+ * the pending command.
+ */
+static uint32_t pending_safety_generation = 0u;
 
 /*
  * Initialize command interface.
@@ -47,6 +53,7 @@ ER motion_command_init(void)
     pending_command.target_speed_cps = 0;
 
     command_pending = FALSE;
+    pending_safety_generation = b2_safety_stop_generation();
 
     tm_printf((UB*)"[B2] Motion command interface initialized\n");
 
@@ -85,6 +92,17 @@ ER motion_send_command(const MOTION_COMMAND *command)
         }
     }
 
+    /*
+    * Reject DRIVE commands authorized under
+    * an outdated safety STOP generation.
+    *
+    * STOP commands do not require authorization.
+    */
+    if (command->safety_generation !=
+        b2_safety_stop_generation()) {
+        return E_OBJ;
+    }
+
     if (command_sem <= 0) {
         return E_OBJ;
     }
@@ -98,6 +116,44 @@ ER motion_send_command(const MOTION_COMMAND *command)
     if (err != E_OK) {
         return err;
     }
+
+    /*
+    * Recheck DRIVE authorization after acquiring
+    * the command semaphore.
+    *
+    * A safety STOP may have occurred while
+    * waiting for the semaphore.
+    */
+    if (command->type == MOTION_CMD_DRIVE &&
+        command->safety_generation !=
+            b2_safety_stop_generation()) {
+
+        (void)tk_sig_sem(command_sem, 1);
+
+        return E_OBJ;
+    }
+
+    /*
+    * STOP commands have priority.
+    *
+    * If a STOP is already pending, a DRIVE
+    * command must not overwrite it.
+    */
+    if (command_pending &&
+        pending_command.type == MOTION_CMD_STOP &&
+        command->type == MOTION_CMD_DRIVE) {
+
+        (void)tk_sig_sem(command_sem, 1);
+
+        return E_OBJ;
+    }
+
+    /*
+    * Associate the command with the current
+    * safety STOP generation.
+    */
+    pending_safety_generation =
+        b2_safety_stop_generation();
 
     pending_command = *command;
     command_pending = TRUE;
@@ -137,6 +193,27 @@ ER motion_receive_command(MOTION_COMMAND *command)
         return E_TMOUT;
     }
 
+    /*
+    * Reject a pending DRIVE if either:
+    * 1. Its original authorization is outdated, or
+    * 2. A new safety STOP occurred after it was queued.
+    */
+    if (pending_command.type == MOTION_CMD_DRIVE &&
+        (pending_command.safety_generation !=
+            b2_safety_stop_generation() ||
+        pending_safety_generation !=
+            b2_safety_stop_generation())) {
+
+        command_pending = FALSE;
+
+        (void)tk_sig_sem(command_sem, 1);
+
+        return E_TMOUT;
+    }
+
+    /*
+    * Deliver the valid pending command.
+    */
     *command = pending_command;
     command_pending = FALSE;
 
