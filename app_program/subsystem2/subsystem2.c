@@ -60,9 +60,16 @@ EXPORT ER subsystem2_init(void)
     }
 
     /*
-     * Initialize Buddy 2 hardware and controller.
-     */
-    motor_init();
+    * Initialize motor PWM.
+    * Do not continue if initialization fails.
+    */
+    err = motor_init();
+
+    if (err != E_OK) {
+        tm_printf((UB*)"[B2] Motor initialization failed: %d\n", err);
+        return err;
+    }
+
     motor_stop();
 
     err = b2_safety_init();
@@ -114,6 +121,8 @@ EXPORT ER subsystem2_start(void)
     );
 
     if (tid < E_OK) {
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
         return tid;
     }
 
@@ -126,7 +135,8 @@ EXPORT ER subsystem2_start(void)
     );
 
     if (tid < E_OK) {
-        motor_stop();
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
         return tid;
     }
 
@@ -139,7 +149,8 @@ EXPORT ER subsystem2_start(void)
     );
 
     if (tid_pid < E_OK) {
-        motor_stop();
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
         return tid_pid;
     }
 
@@ -147,7 +158,8 @@ EXPORT ER subsystem2_start(void)
     err = tk_sta_cyc(cyc_pid);
 
     if (err != E_OK) {
-        motor_stop();
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
         return err;
     }
 

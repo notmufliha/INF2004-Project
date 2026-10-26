@@ -39,8 +39,7 @@ void motor_stop(void)
 /*
  * Initialise left and right motor PWM.
  */
-
-void motor_init(void)
+ER motor_init(void)
 {
     UW timeout = PWM_RESET_TIMEOUT;
 
@@ -52,7 +51,7 @@ void motor_init(void)
     while ((RESETS_DONE_REG & PWM_RESET_MASK) == 0U) {
         if (timeout == 0U) {
             tm_printf((UB*)"[B2] PWM reset timeout\n");
-            return;
+            return E_TMOUT;
         }
 
         timeout--;
@@ -62,14 +61,14 @@ void motor_init(void)
     if (pwm_set_enabled(MOTOR_L_A_PIN, FALSE) != E_OK ||
         pwm_set_enabled(MOTOR_R_A_PIN, FALSE) != E_OK) {
         tm_printf((UB*)"[B2] PWM disable failed\n");
-        return;
+        return E_OBJ;
     }
 
     /* Configure PWM periods for both motors. */
     if (pwm_set_wrap(MOTOR_L_A_PIN, MOTOR_PWM_WRAP) != E_OK ||
         pwm_set_wrap(MOTOR_R_A_PIN, MOTOR_PWM_WRAP) != E_OK) {
         tm_printf((UB*)"[B2] PWM wrap configuration failed\n");
-        return;
+        return E_OBJ;
     }
 
     /* Clear all motor outputs. */
@@ -81,19 +80,21 @@ void motor_init(void)
         pwm_set_pin(MOTOR_R_A_PIN) != E_OK ||
         pwm_set_pin(MOTOR_R_B_PIN) != E_OK) {
         tm_printf((UB*)"[B2] PWM pin configuration failed\n");
-        return;
+        return E_OBJ;
     }
 
     /* Enable both PWM slices. */
     if (pwm_set_enabled(MOTOR_L_A_PIN, TRUE) != E_OK ||
         pwm_set_enabled(MOTOR_R_A_PIN, TRUE) != E_OK) {
         tm_printf((UB*)"[B2] PWM enable failed\n");
-        return;
+        return E_OBJ;
     }
 
     motor_ready = TRUE;
 
     tm_printf((UB*)"[B2] Both motor PWM channels initialized\n");
+
+    return E_OK;
 }
 
 /*
