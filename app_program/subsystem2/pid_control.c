@@ -31,6 +31,15 @@
 #define PID_WINDOW_SIZE   10
 #define PID_WATCHDOG_MS  100
 
+/*
+ * Maximum permitted interval before the
+ * PI controller enters its safe error state.
+ *
+ * Preliminary threshold: verify through
+ * timing measurements on hardware.
+ */
+#define PID_MAX_INTERVAL_MS 20
+
 ID tid_pid = 0;
 
 static INT clamp_pwm(INT pwm)
@@ -46,7 +55,7 @@ static INT clamp_pwm(INT pwm)
 
 void pid_init(void)
 {
-    motor_stop();
+    b2_safety_force_stop();
     tm_printf((UB*)"[B2] Command-driven PI initialized\n");
 }
 
@@ -142,7 +151,7 @@ void pid_control_task(INT stacd, void *exinf)
 
     last_seen_stop_generation = b2_safety_stop_generation();
 
-    motor_stop();
+    b2_safety_force_stop();
 
     tm_printf((UB*)"[B2] Controller ready - STOPPED\n");
 
@@ -177,7 +186,7 @@ void pid_control_task(INT stacd, void *exinf)
         dt_ms = current_ms - previous_ms;
         previous_ms = current_ms;
 
-        if (dt_ms <= 0 || dt_ms > PID_PERIOD_MS) {
+        if (dt_ms <= 0 || dt_ms > PID_MAX_INTERVAL_MS) {
             tm_printf(
                 (UB*)"[B2] Invalid PI interval: %d ms\n",
                 (INT)dt_ms
@@ -204,7 +213,6 @@ void pid_control_task(INT stacd, void *exinf)
                 );
             }
 
-            motor_stop();
             b2_safety_acknowledge_stop();
 
             active_command.type = MOTION_CMD_STOP;
@@ -232,7 +240,7 @@ void pid_control_task(INT stacd, void *exinf)
 
                 active_command = received_command;
 
-                motor_stop();
+                b2_safety_force_stop();
 
                 left_integral = 0.0f;
                 right_integral = 0.0f;
@@ -244,7 +252,13 @@ void pid_control_task(INT stacd, void *exinf)
 
             } else if (received_command.type == MOTION_CMD_DRIVE) {
 
-                if (!b2_safety_motion_allowed()) {
+                /*
+                * Reject DRIVE if its authorization is outdated
+                * or the safety interlock does not permit motion.
+                */
+                if (received_command.safety_generation !=
+                        b2_safety_stop_generation() ||
+                    !b2_safety_motion_allowed()) {
 
                     tm_printf(
                         (UB*)"[B2] DRIVE rejected: safety interlock active\n"
@@ -253,8 +267,11 @@ void pid_control_task(INT stacd, void *exinf)
                     active_command.type = MOTION_CMD_STOP;
                     active_command.direction = MOTION_DIR_STOP;
 
-                    motor_stop();
-                    b2_safety_acknowledge_stop();
+                    /*
+                    * Rejecting DRIVE must not acknowledge
+                    * a separate safety STOP event.
+                    */
+                    b2_safety_force_stop();
 
                     continue;
                 }
@@ -270,7 +287,7 @@ void pid_control_task(INT stacd, void *exinf)
                     active_command.target_speed_cps !=
                         received_command.target_speed_cps) {
 
-                    motor_stop();
+                    b2_safety_force_stop();
 
                     left_integral = 0.0f;
                     right_integral = 0.0f;
@@ -297,7 +314,7 @@ void pid_control_task(INT stacd, void *exinf)
         if (active_command.type == MOTION_CMD_DRIVE &&
             current_ms - last_drive_ms >= PID_WATCHDOG_MS) {
 
-            motor_stop();
+            b2_safety_force_stop();
 
             active_command.type = MOTION_CMD_STOP;
             active_command.direction = MOTION_DIR_STOP;
@@ -307,6 +324,33 @@ void pid_control_task(INT stacd, void *exinf)
             sample_count = 0;
 
             tm_printf((UB*)"[B2] DRIVE watchdog timeout\n");
+        }
+
+        /*
+        * An active DRIVE must remain authorized under
+        * the current safety STOP generation.
+        *
+        * This prevents an old DRIVE command from
+        * continuing after a STOP and subsequent clearance.
+        */
+        if (active_command.type == MOTION_CMD_DRIVE &&
+            active_command.safety_generation !=
+                b2_safety_stop_generation()) {
+
+            b2_safety_force_stop();
+
+            active_command.type = MOTION_CMD_STOP;
+            active_command.direction = MOTION_DIR_STOP;
+
+            left_integral = 0.0f;
+            right_integral = 0.0f;
+            left_pwm = 0;
+            right_pwm = 0;
+            sample_count = 0;
+
+            tm_printf(
+                (UB*)"[B2] Active DRIVE cancelled: outdated safety generation\n"
+            );
         }
 
         /*
@@ -419,7 +463,8 @@ void pid_control_task(INT stacd, void *exinf)
         */
         b2_safety_apply_pwm(
             direction_sign * left_pwm,
-            direction_sign * right_pwm
+            direction_sign * right_pwm,
+            active_command.safety_generation
         );
 
         sample_count++;
@@ -437,7 +482,7 @@ void pid_control_task(INT stacd, void *exinf)
 
 controller_error:
 
-    motor_stop();
+    b2_request_stop();
     b2_safety_acknowledge_stop();
 
     tm_printf((UB*)"[B2] PI controller stopped due to error\n");

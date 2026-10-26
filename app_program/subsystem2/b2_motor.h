@@ -31,6 +31,12 @@ bool b2_safety_motion_allowed(void);
 void b2_safety_acknowledge_stop(void);
 
 /*
+ * Apply zero PWM while holding the safety lock.
+ * Does not acknowledge a Buddy 5 STOP request.
+ */
+void b2_safety_force_stop(void);
+
+/*
  * Legacy motor task declaration.
  * The task must not be started in the integrated design.
  */
@@ -40,7 +46,11 @@ void b2_motor_task(INT stacd, void *exinf);
  * Called only by the PI task.
  * Applies motor outputs while enforcing Buddy 5 safety permission.
  */
-void b2_safety_apply_pwm(int left_percent, int right_percent);
+void b2_safety_apply_pwm(
+    int left_percent,
+    int right_percent,
+    uint32_t command_safety_generation
+);
 
 /*
  * Called by the PI task to determine whether a safety STOP
