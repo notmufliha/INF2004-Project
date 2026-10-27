@@ -55,6 +55,7 @@
 
 #include "app.h"
 #include "robot_config.h"
+#include "subsystem2/b2_motor.h"
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -122,13 +123,52 @@ EXPORT INT usermain(void)
 #endif
 
 #if ROBOT_MODE
+    ER robot_er;
+    BOOL b2_initialized = FALSE;
+
     tm_printf((UB*)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
               (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS);
-    CHECK(subsystem2_init(), "subsystem2_init");
-    CHECK(subsystem5_init(), "subsystem5_init");
-    CHECK(subsystem2_start(), "subsystem2_start");
-    CHECK(subsystem5_start(), "subsystem5_start");
+
+    robot_er = subsystem2_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem2_init");
+        goto robot_startup_failed;
+    }
+	b2_initialized = TRUE;
+
+    robot_er = subsystem5_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem5_init");
+        goto robot_startup_failed;
+    }
+
+    robot_er = subsystem2_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem2_start");
+        goto robot_startup_failed;
+    }
+
+    robot_er = subsystem5_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem5_start");
+        goto robot_startup_failed;
+    }
+
     tm_printf((UB*)"[ROBOT] B2 motor task + B5 obstacle task started\n");
+    goto robot_startup_complete;
+
+robot_startup_failed:
+    tm_printf((UB*)"[ROBOT] STARTUP FAILED: robot disabled\n");
+
+    if (b2_initialized) {
+        b2_request_stop();
+    }
+
+    for (;;) {
+        tk_slp_tsk(TMO_FEVR);
+    }
+
+robot_startup_complete:
 #else
 	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
 	CHECK(subsystem1_init(), "subsystem1_init");
