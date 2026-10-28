@@ -129,6 +129,15 @@ EXPORT INT usermain(void)
     tm_printf((UB*)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
               (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS);
 
+    /* Initialize telemetry storage before B2's telemetry task uses it.
+     * Do not start B1's standalone synthetic-data demo in robot mode.
+     */
+    robot_er = subsystem1_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem1_init");
+        goto robot_startup_failed;
+    }
+
     robot_er = subsystem2_init();
     if (robot_er < E_OK) {
         CHECK(robot_er, "subsystem2_init");
@@ -155,6 +164,9 @@ EXPORT INT usermain(void)
     }
 
     tm_printf((UB*)"[ROBOT] B2 motor task + B5 obstacle task started\n");
+#if APP_TEST
+    subsystem2_test();
+#endif
     goto robot_startup_complete;
 
 robot_startup_failed:

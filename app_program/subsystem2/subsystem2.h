@@ -11,6 +11,8 @@
 
 #include "../app.h"
 #define S2_PRI_PRODUCER        14    /* priority band 14-15 (TEAM.md) */
+/* Core 1 motion loop runs above encoder/telemetry diagnostics. */
+#define S2_PRI_CONTROL          5
 #define S2_PERIOD_MS        300    /* one sample every 300 ms */
 /* ---------------------------------------------------------------------
  *  IF-01 data format: one sample, sent to subsystem 3's mailbox.

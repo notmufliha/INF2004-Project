@@ -5,7 +5,9 @@
  * Rebuild and reflash the UF2 after changing this file.
  */
 #define ROBOT_MODE 1
-#define ROBOT_ENABLE_DRIVE 0
+#ifndef ROBOT_ENABLE_DRIVE
+#define ROBOT_ENABLE_DRIVE 1
+#endif
 /* Real autonomous bypass requires working B2 encoder feedback and B3 line
  * sensing, measured robot geometry, and independent path safety checks.
  * The uploaded team project does not contain those working interfaces.
@@ -33,6 +35,17 @@
  * use with wheels on the floor. Restore to 0 before driving on the floor.
  */
 #define ROBOT_WHEELS_UP_MOTOR_TEST 0
+#define ROBOT_ENCODER_DIAGNOSTICS 1
+/* Guarded B2 command tests: 0=off, 1=forward 10cm, 2=reverse 10cm,
+ * 3=straight DRIVE 1s then STOP, 4=left 90deg, 5=right 90deg, 6=all.
+ * Requires ROBOT_ENABLE_DRIVE=1 and valid Buddy 5 clearance.
+ * One run per boot; any fault/obstacle aborts the entire run.
+ */
+#ifndef ROBOT_MOTION_TEST
+#define ROBOT_MOTION_TEST 4
+#endif
+#define ROBOT_MOTION_TEST_SPEED_CPS 1000
+#define ROBOT_MOTION_TEST_BOOT_MS 5000u
 #define ROBOT_MOTOR_TEST_PWM 500u
 #define ROBOT_MOTOR_TEST_PULSE_MS 1500u
 

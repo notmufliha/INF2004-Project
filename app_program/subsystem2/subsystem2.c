@@ -15,16 +15,58 @@
 
 #include "subsystem2.h"
 #include "task_producer.h"
+#include "../subsystem1/subsystem1.h"
 #include "../robot_config.h"
 #include "b2_motor.h"
 #include "motor_control.h"
 #include "encoder_control.h"
 #include "pid_control.h"
 #include "motion_command.h"
+#include "motion_self_test.h"
 
 /* Cyclic handler ID for the PI controller. */
 
 static ID gh_cyc_pid = 0;
+
+/* Network/telemetry locks never run in the 10 ms motor loop. */
+static H b2_telemetry_speed(INT cps, float counts_per_rev)
+{
+    float speed = (float)cps * 3.14159265f *
+        ENC_WHEEL_DIAMETER_CM * 10.0f / counts_per_rev;
+    if (speed > 32767.0f)
+    {
+        speed = 32767.0f;
+    }
+    if (speed < -32768.0f)
+    {
+        speed = -32768.0f;
+    }
+    return (H)speed;
+}
+
+static void b2_telemetry_task(INT stacd, void *exinf)
+{
+    motion_status_snapshot_t snapshot;
+    (void)stacd;
+    (void)exinf;
+    for (;;)
+    {
+        if (motion_get_status(&snapshot) == E_OK)
+        {
+            float distance = snapshot.total_distance_mm;
+            if (distance > 2147483520.0f)
+            {
+                distance = 2147483520.0f;
+            }
+            comm_set_motion(b2_telemetry_speed(snapshot.left_speed_cps,
+                ENC_LEFT_COUNTS_PER_REV),
+                b2_telemetry_speed(snapshot.right_speed_cps,
+                ENC_RIGHT_COUNTS_PER_REV), snapshot.left_encoder_counts,
+                snapshot.right_encoder_counts, (W)distance);
+        }
+        tk_dly_tsk(100);
+    }
+}
 /* Original subsystem resources. */
 
 #if ROBOT_WHEELS_UP_MOTOR_TEST
@@ -162,11 +204,7 @@ EXPORT ER subsystem2_start(void)
     ID h_task;
     ER err;
     #if ROBOT_WHEELS_UP_MOTOR_TEST
-        /*
-        * Bench-test mode:
-        * Do not start the PI controller or its cyclic timer.
-        * The dedicated test task owns motor PWM.
-        */
+        /* Bench task owns PWM; the PI controller is not started. */
         motor_stop();
 
         h_task = app_start_task(
@@ -182,15 +220,10 @@ EXPORT ER subsystem2_start(void)
             return (h_task);
         }
 
-        tm_printf((UB *)"[B2-TEST] Bench task started\n");
         return (E_OK);
     #endif
     #if !ROBOT_MODE
-        /*
-        * Legacy sample producer for the teaching demonstration.
-        * Disabled in robot mode because Buddy 2 uses real
-        * encoder feedback instead of simulated sample messages.
-        */
+        /* Teaching-demo producer is excluded from real robot mode. */
         h_task = app_start_task(
             subsystem2_producer_task,
             S2_PRI_PRODUCER,
@@ -205,7 +238,8 @@ EXPORT ER subsystem2_start(void)
             return (h_task);
         }
     #endif
-    /* Encoder speed monitoring task. */
+    #if ROBOT_ENCODER_DIAGNOSTICS
+    /* Optional calibration tasks, disabled during ordinary operation. */
     h_task = app_start_task(
         (FP)encoder_speed_task,
         S2_PRI_PRODUCER,
@@ -219,7 +253,6 @@ EXPORT ER subsystem2_start(void)
         b2_safety_acknowledge_stop();
         return (h_task);
     }
-    /* TEMPORARY: Encoder distance calibration task. */
     h_task = app_start_task(
         (FP)encoder_test_task,
         S2_PRI_PRODUCER,
@@ -233,10 +266,11 @@ EXPORT ER subsystem2_start(void)
         b2_safety_acknowledge_stop();
         return (h_task);
     }
+    #endif
     /* PI controller task. */
     gh_pid_task = app_start_task(
         (FP)pid_control_task,
-        S2_PRI_PRODUCER,
+        S2_PRI_CONTROL,
         TP_PRC2,
         "pid_control_task"
     );
@@ -247,7 +281,13 @@ EXPORT ER subsystem2_start(void)
         b2_safety_acknowledge_stop();
         return (gh_pid_task);
     }
-    /* Start the 10 ms PI controller timer. */
+    h_task = app_start_task((FP)b2_telemetry_task, S2_PRI_PRODUCER,
+        TP_PRC2, "b2_telemetry_task");
+    if (h_task < E_OK)
+    {
+        b2_request_stop();
+        return h_task;
+    }
     err = tk_sta_cyc(gh_cyc_pid);
 
     if (E_OK != err)
@@ -256,6 +296,5 @@ EXPORT ER subsystem2_start(void)
         b2_safety_acknowledge_stop();
         return (err);
     }
-    tm_printf((UB *)"[B2] PI controller started\n");
-    return (E_OK);
+    return b2_motion_test_start();
 }
