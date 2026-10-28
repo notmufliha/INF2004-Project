@@ -166,21 +166,53 @@ void encoder_get_distance_cm(
     }
 }
 
-/** @brief Report counters during manual wheel rotation. */
+/** @brief Report encoder counts and estimated wheel distance. */
 void encoder_test_task(INT stacd, void *p_exinf)
 {
-    INT p_left;
-    INT p_right;
+    INT left_start;
+    INT right_start;
+    INT left_now;
+    INT right_now;
+    float left_cm;
+    float right_cm;
 
     (void)stacd;
     (void)p_exinf;
+
     tk_dly_tsk(3000);
-    tm_printf((UB *)"[B2] Encoder test starting\n");
+
+    /* Record the starting encoder counts. */
+    encoder_get_counts(&left_start, &right_start);
+
+    tm_printf((UB *)"[B2] Distance calibration test starting\n");
+
     for (;;)
     {
-        encoder_get_counts(&p_left, &p_right);
-        tm_printf((UB *)"[B2] Encoder L=%d R=%d\n",
-            p_left, p_right);
+        encoder_get_counts(&left_now, &right_now);
+
+        encoder_get_distance_cm(
+            left_start,
+            right_start,
+            &left_cm,
+            &right_cm
+        );
+
+        tm_printf(
+            (UB *)"[B2] Encoder L=%d R=%d\n",
+            left_now,
+            right_now
+        );
+
+        /*
+         * Print millimetres as integers because embedded
+         * tm_printf may not support floating-point formatting.
+         */
+        tm_printf(
+            (UB *)"[B2] Distance L=%d R=%d mm\n",
+            (INT)(left_cm * 10.0f),
+            (INT)(right_cm * 10.0f)
+        );
+
         tk_dly_tsk(500);
     }
 }
