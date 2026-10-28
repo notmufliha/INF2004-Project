@@ -2,6 +2,12 @@
 #include "../robot_config.h"
 #include "../subsystem2/b2_motor.h"
 #include "s5_logic.h"
+#include "s5_packed.h"
+
+/* Local B5 flags: single task owns all updates; no shared read-modify-write.
+ * These do not replace the team future shared fault event/mask. */
+#define S5_FAULT_NO_ECHO (1u << 0)
+#define S5_FAULT_NO_CLEARANCE (1u << 1)
 #include "s5_sim.h"
 #include "s5_bridge.h"
 #include "drv_ultrasonic.h"
@@ -56,11 +62,16 @@ static void emergency_halt(const char *reason)
  * Logs use cm_x100 to avoid floating-point printf in the RTOS console. */
 static void stationary_profile_mode(void)
 {
-    unsigned samples = 0u, close_hits = 0u, clear_hits = 0u;
+    uint8_t close_hits = 0u;
+    uint8_t clear_hits = 0u;
+#if ROBOT_VERBOSE_SENSOR_LOG
+    unsigned samples = 0u;
+#endif
     bool sensor_unavailable = false;
     bool obstacle_latched = false;
     bool scanned_this_obstacle = false;
     bool driving = false;
+    uint8_t b5_fault_flags = 0u;
     bool startup_scan_pending = (S5_FORCE_STARTUP_SCAN != 0);
     tm_printf((UB*)"[S5] REAL ROBOT: clear -> forward; close -> STOP -> coarse/fine/profile\n");
     tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=%s LINE=UNAVAILABLE\n",
@@ -115,7 +126,17 @@ static void stationary_profile_mode(void)
             tk_dly_tsk(S5_ECHO_GAP_MS);
         }
         valid = s5_measure_stable_cm(&cm);
+#if ROBOT_VERBOSE_SENSOR_LOG
         ++samples;
+#endif
+        if (valid)
+        {
+            b5_fault_flags &= (uint8_t)~S5_FAULT_NO_ECHO;
+        }
+        else
+        {
+            b5_fault_flags |= S5_FAULT_NO_ECHO;
+        }
         if (!valid) {
             close_hits = 0u;
             clear_hits = 0u;
@@ -250,7 +271,33 @@ static void stationary_profile_mode(void)
                     side = S5_SIDE_NONE;
                     tm_printf((UB*)"[S5-FAULT] width not bracketed by valid clear rays; no safe plan\n");
                 }
+                if (profile.valid)
+                {
+                    b5_fault_flags &= (uint8_t)~S5_FAULT_NO_CLEARANCE;
+                }
+                else
+                {
+                    b5_fault_flags |= S5_FAULT_NO_CLEARANCE;
+                }
+                tm_printf((UB*)"[S5-FAULT-MASK] b5=0x%02x\n",
+                          (unsigned int)b5_fault_flags);
                 print_profile(&profile);
+                {
+                    S5PackedProfile payload;
+                    bool packed_valid = s5_pack_profile(&profile, &payload);
+
+                    /* This is the actual 42-bit B5 application message.
+                     * MQTT or a future task queue must copy these six bytes,
+                     * not the compiler-dependent float-based structure. */
+                    tm_printf((UB*)"[S5-PACK] valid=%d bytes=%d payload=%02x%02x%02x%02x%02x%02x\n",
+                              (int)packed_valid, (int)S5_PACKED_BYTES,
+                              (unsigned int)payload.data[0],
+                              (unsigned int)payload.data[1],
+                              (unsigned int)payload.data[2],
+                              (unsigned int)payload.data[3],
+                              (unsigned int)payload.data[4],
+                              (unsigned int)payload.data[5]);
+                }
                 tm_printf((UB*)"[S5-PLAN] direction=%s width_valid=%d action=%s\n",
                           side == S5_SIDE_LEFT ? "LEFT" : side == S5_SIDE_RIGHT ? "RIGHT" : "NONE",
                           (int)profile.valid,

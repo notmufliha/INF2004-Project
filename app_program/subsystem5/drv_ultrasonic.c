@@ -133,7 +133,10 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
 
     r.pulse_us = in_w(S5_ECHO_CTR) & 0xffffu;
     r.cm = s5_echo_us_to_cm(r.pulse_us);
-    if (r.pulse_us < 100u) r.status = S5_ECHO_TOO_SHORT;
+    if (r.pulse_us < 100u)
+    {
+        r.status = S5_ECHO_TOO_SHORT;
+    }
     else if (r.cm > 400.0f) r.status = S5_ECHO_OUT_OF_RANGE;
     else r.status = S5_ECHO_OK;
     return r;
@@ -142,10 +145,16 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
 bool s5_ultrasonic_read_cm(float *out_cm)
 {
     S5EchoReading r;
-    if (!out_cm) return false;
+    if (!out_cm)
+    {
+        return false;
+    }
     *out_cm = 0.0f;
     r = s5_ultrasonic_read_detailed();
-    if (r.status != S5_ECHO_OK) return false;
+    if (r.status != S5_ECHO_OK)
+    {
+        return false;
+    }
     *out_cm = r.cm;
     return true;
 }
