@@ -33,6 +33,8 @@
 
 static volatile INT g_left_count = 0;
 static volatile INT g_right_count = 0;
+static volatile UW g_left_invalid;
+static volatile UW g_right_invalid;
 static UINT g_left_previous = 0;
 static UINT g_right_previous = 0;
 #if TK_SUPPORT_SMP
@@ -80,6 +82,8 @@ ER encoder_init(void)
     }
     g_left_count = 0;
     g_right_count = 0;
+    g_left_invalid = 0u;
+    g_right_invalid = 0u;
     g_left_previous =
         encoder_read_state(ENC_L_A, ENC_L_B);
     g_right_previous =
@@ -305,6 +309,21 @@ static void encoder_lock_leave(UINT status)
 }
 
 /** @brief Read both encoder channels as a two-bit state. */
+void encoder_get_invalid_counts(UW *left, UW *right)
+{
+    UINT status;
+    encoder_lock_enter(&status);
+    if (left != NULL)
+    {
+        *left = g_left_invalid;
+    }
+    if (right != NULL)
+    {
+        *right = g_right_invalid;
+    }
+    encoder_lock_leave(status);
+}
+
 static UINT encoder_read_state(UINT pin_a, UINT pin_b)
 {
     UINT channel_a = gpio_get_val(pin_a);
@@ -347,6 +366,10 @@ static void encoder_gpio_isr(UINT intno)
             current =
                 (((gpio_snapshot >> ENC_L_A) & 1U) << 1) |
                 ((gpio_snapshot >> ENC_L_B) & 1U);
+            if ((g_left_previous ^ current) == 3u)
+            {
+                g_left_invalid++;
+            }
             g_left_count += encoder_decode(g_left_previous, current);
             g_left_previous = current;
         }
@@ -356,6 +379,10 @@ static void encoder_gpio_isr(UINT intno)
             current =
                 (((gpio_snapshot >> ENC_R_A) & 1U) << 1) |
                 ((gpio_snapshot >> ENC_R_B) & 1U);
+            if ((g_right_previous ^ current) == 3u)
+            {
+                g_right_invalid++;
+            }
             g_right_count += encoder_decode(g_right_previous, current);
             g_right_previous = current;
         }

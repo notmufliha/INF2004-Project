@@ -104,7 +104,8 @@ typedef enum
     MOTION_FAULT_STALL,
     MOTION_FAULT_STOPPING,
     MOTION_FAULT_TIMING,
-    MOTION_FAULT_COMMAND
+    MOTION_FAULT_COMMAND,
+    MOTION_FAULT_ENCODER
 } motion_fault_t;
 
 /* The most recent eight terminal results survive later submissions.
@@ -153,6 +154,8 @@ typedef struct
  */
 
 ER motion_send_command(const motion_command_t *p_command);
+/* VC SPEED mapping; zero percent means submit STOP, not a zero-speed DRIVE. */
+ER motion_speed_from_percent(INT percent, INT *speed_cps);
 
 /* Task-context convenience APIs. All still require Buddy 5 clearance. */
 ER motion_move_cm(float distance_cm, INT speed_cps,

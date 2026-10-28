@@ -10,6 +10,8 @@
 ER encoder_init(void);
 
 void encoder_get_counts(INT *p_left, INT *p_right);
+/* Cumulative impossible A/B transitions; read atomically as a pair. */
+void encoder_get_invalid_counts(UW *left, UW *right);
 /* Wheel geometry and encoder resolution. */
 #define ENC_WHEEL_DIAMETER_CM     6.5f
 

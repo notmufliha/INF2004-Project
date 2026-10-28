@@ -12,6 +12,16 @@ typedef int32_t ID;
 typedef uint32_t UINT;
 typedef uint32_t UW;
 typedef uint8_t UB;
+typedef int16_t H;
+typedef int32_t W;
+#define IMPORT extern
+typedef struct { UINT flgatr; UINT iflgptn; } T_CFLG;
+typedef struct { UINT flgptn; } T_RFLG;
+#define TA_WMUL 0
+ID tk_cre_flg(const T_CFLG *flag);
+ER tk_set_flg(ID id, UINT bits);
+ER tk_clr_flg(ID id, UINT mask);
+ER tk_ref_flg(ID id, T_RFLG *flag);
 typedef void (*FP)(void);
 #define TP_PRC2 2u
 ID app_start_task(FP entry, INT priority, UW core, const char *name);

@@ -30,7 +30,7 @@ Choose one mode, rebuild, and flash the newly generated UF2:
 
 Start with individual modes. Firmware waits 5 seconds after task startup, then
 up to 30 seconds for Buddy 5 clearance and encoder standstill. Motor speed
-defaults to 1000 reference counts/s (approximately 8.17 mm/s with the current
+defaults to 1000 reference counts/s (approximately 81.7 mm/s with the current
 preliminary calibration). Each movement is tracked by its command ID. MOVE and
 TURN must complete and reach standstill; mode 3 explicitly tests STOP while
 DRIVE is active. The sequence runs only once per boot.
@@ -66,7 +66,7 @@ ER error = motion_send_command_with_id(&command, &id);
 
 - Speed uses **left-wheel reference counts/s**, 1..5000. The right-wheel
   target is converted using its own encoder resolution. At the preliminary
-  geometry, 1000 counts/s is approximately 8.17 mm/s. Confirm these encoder
+  geometry, 1000 counts/s is approximately 81.7 mm/s. Confirm these encoder
   calibrations before treating the speed as physically accurate.
 - DRIVE steering is -1000..1000: zero is straight; positive increases the left
   wheel speed and reduces the right. Full steering stops the inner wheel.
@@ -142,6 +142,11 @@ the bank handler. Four disjoint pin groups are supported. Keep USB console
 with `CRASH_REPORT=0` to leave GP0/GP1 available to the encoders.
 
 ## Validation and remaining integration
+
+For the newer B1 binary counts/s API, shared fault bits and error-code mapping,
+see [B1_INTEGRATION.md](B1_INTEGRATION.md). The adapter preserves this branch's
+legacy JSON/mm/s interface until the B1 header is merged. Encoder faults use a
+preliminary eight-invalid-transitions/100 ms limit and latch STOP.
 
 Run host tests using `testing/subsystem2/host/run_tests.ps1` (GCC required), or:
 
