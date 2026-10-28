@@ -8,33 +8,45 @@
  *
  *	HOW OTHER SUBSYSTEMS USE IT (all calls are non-blocking, NFR-B1-2)
  *	-----------------------------------------------------------------
+ *	Every value is stored and sent in the minimum number of bits for its
+ *	range (Change Requirement 1).  Out-of-range values are SATURATED to
+ *	the nearest limit, never wrapped, except the encoder totals (below).
+ *
  *	1. Keep the telemetry snapshot up to date (cheap, call as often as
- *	   you like; subsystem 1 samples it every COMM_TELEM_PERIOD_MS):
- *	       comm_set_motion(spd_l, spd_r, enc_l, enc_r, dist_mm);   B2
+ *	   you like; subsystem 1 samples it every telemetry period):
+ *	       comm_set_motion(spd_l, spd_r, enc_l, enc_r);           B2
  *	       comm_set_line(ir_l, ir_c, ir_r, LINE_F_DETECTED);       B3
- *	       comm_set_imu(IMU_EV_CLIMBING, pitch_ddeg, peak_mm);     B4
- *	       comm_set_obstacle(dist, width, left_clr, right_clr);    B5
+ *	       comm_set_imu(IMU_MOTION_CLIMBING_HUMP, pitch_ddeg);     B4
+ *	       comm_set_obstacle_dist(front_cm);                       B5
  *	       comm_set_robot_state(ROBOT_LINE_FOLLOW);                VC
+ *	   (B2: with S1_POLL_B2_ENCODERS = 1 subsystem 1 reads
+ *	    encoder_get_counts() itself, so B2 need not call anything.)
  *
  *	2. Report one-off events (queued, published once each):
  *	       comm_report_barcode('A', NAV_LEFT);                     B3
- *	       comm_report_hump(height_mm, peak_mm);                   B4
- *	       comm_report_obstacle(dist, width, lc, rc, AVOID_LEFT);  B5
- *	       comm_report_error(2, 17, "encoder stalled");            any
- *	   They return E_OK, or E_TMOUT if the queue is full (the event is
- *	   dropped and counted).  They NEVER wait for the network.
+ *	       comm_report_hump(TRUE, height_mm, peak_mm);             B4
+ *	       comm_report_obstacle(d, w, lc, rc, AVOID_LEFT);  (cm)   B5
+ *	       comm_report_error(ERR_S2_ENCODER, detail);              any
+ *	   They return E_OK, E_PAR for an invalid argument, or E_TMOUT if the
+ *	   queue is full (the event is dropped and counted).  They NEVER wait
+ *	   for the network.
  *
- *	3. Vehicle Controller: receive validated remote commands:
+ *	3. Faults: set/clear your bit in the shared mask (fault_flags.h).
+ *
+ *	4. Vehicle Controller: receive validated remote commands:
  *	       REMOTE_CMD cmd;
  *	       if (tk_rcv_mbf(mbf_remote_cmd, &cmd, TMO_POL) > 0) { ... }
  *
- *	Nothing here may be called from an interrupt handler.
+ *	Nothing here may be called from an interrupt handler, except
+ *	fault_raise() / fault_clear().
  */
 
 #ifndef SUBSYSTEM1_H
 #define SUBSYSTEM1_H
 
 #include "../app.h"
+#include "../error_codes.h"
+#include "../fault_flags.h"
 
 /* ---------------------------------------------------------------------
  *  Configuration
@@ -46,9 +58,10 @@
 #define S1_LED_PIN		19	/* GP19: link-status LED + 330R to GND */
 #define S1_TICK_MS		250	/* LED pattern step                    */
 
-#define COMM_TELEM_PERIOD_MS	500	/* default telemetry rate (2 Hz)       */
-#define COMM_TELEM_MIN_MS	100	/* limits for the TELEM command        */
-#define COMM_TELEM_MAX_MS	10000
+/* Telemetry period, in units of 100 ms (7 bits on the wire: 1..100) */
+#define COMM_TELEM_PERIOD_DS	5	/* default 500 ms (2 Hz)               */
+#define COMM_TELEM_MIN_DS	1	/* limits for the TELEM command        */
+#define COMM_TELEM_MAX_DS	100	/* 10 s                                */
 #define COMM_HEARTBEAT_MS	5000	/* status/heartbeat period             */
 #define COMM_WIFI_OFFLINE_MS	30000	/* WiFi down this long -> OFFLINE      */
 
@@ -56,16 +69,24 @@
  *     feeds telemetry/events and consumes remote commands, so the whole
  *     WiFi/MQTT path can be demonstrated without the other subsystems.
  * 0 = integration: the real subsystems feed it and the Vehicle
- *     Controller consumes mbf_remote_cmd.  SET TO 0 BEFORE INTEGRATING. */
+ *     Controller consumes mbf_remote_cmd. */
 #ifndef S1_STANDALONE_DEMO
-#define S1_STANDALONE_DEMO	1
+#define S1_STANDALONE_DEMO	0
+#endif
+
+/* 1 = comm_task reads B2's encoder_get_counts() each telemetry period
+ *     and works out the wheel speeds itself (counts/s), so B2 does not
+ *     have to call comm_set_motion().  Set to 0 once B2 calls it. */
+#ifndef S1_POLL_B2_ENCODERS
+#define S1_POLL_B2_ENCODERS	(!S1_STANDALONE_DEMO)
 #endif
 
 /* ---------------------------------------------------------------------
- *  Shared enums (string names are in comm_names.c)
+ *  Shared enums.  Each one fits the bit width given; the laptop decoder
+ *  (tools/s1_wire.py) holds the names.
  * --------------------------------------------------------------------- */
 
-/* Robot operating state = the system-level statechart */
+/* Robot operating state = the system-level statechart (4 bits) */
 typedef enum {
 	ROBOT_INIT = 0,
 	ROBOT_IDLE,
@@ -79,7 +100,7 @@ typedef enum {
 	ROBOT_STATE_COUNT
 } ROBOT_STATE;
 
-/* Navigation command decoded from a barcode */
+/* Navigation command decoded from a barcode (3 bits) */
 typedef enum {
 	NAV_NONE = 0,
 	NAV_LEFT,
@@ -89,19 +110,14 @@ typedef enum {
 	NAV_COUNT
 } NAV_CMD;
 
-/* IMU motion events (B4) */
-typedef enum {
-	IMU_EV_STATIONARY = 0,
-	IMU_EV_MOVING,
-	IMU_EV_ACCELERATING,
-	IMU_EV_TURNING,
-	IMU_EV_CLIMBING,
-	IMU_EV_DESCENDING,
-	IMU_EV_IMPACT,
-	IMU_EV_COUNT
-} IMU_EVENT;
+/* Barcodes 'A'..'D' are sent as 1..4, 0 = none yet (3 bits) */
+#define COMM_BARCODE_FIRST	'A'
+#define COMM_BARCODE_LAST	'D'
 
-/* Obstacle avoidance decision (B5) */
+/* IMU motion state: B4's imu_motion_state_t, 0..7 (3 bits) */
+#define COMM_MOTION_COUNT	8
+
+/* Obstacle avoidance decision (B5, 3 bits) */
 typedef enum {
 	AVOID_NONE = 0,
 	AVOID_STOP,
@@ -112,12 +128,12 @@ typedef enum {
 	AVOID_COUNT
 } AVOID_ACTION;
 
-/* Line-sensor flags for comm_set_line() (B3), OR them together */
+/* Line-sensor flags for comm_set_line() (B3), OR them together (3 bits) */
 #define LINE_F_DETECTED		0x01U
 #define LINE_F_LOST		0x02U
 #define LINE_F_JUNCTION		0x04U
 
-/* Link state = the Buddy 1 subsystem statechart */
+/* Link state = the Buddy 1 subsystem statechart (3 bits) */
 typedef enum {
 	COMM_INITIALISING = 0,
 	COMM_CONNECTING_WIFI,
@@ -128,6 +144,15 @@ typedef enum {
 	COMM_DISABLED,		/* built without WiFi/MQTT, or radio failed */
 	COMM_STATE_COUNT
 } COMM_STATE;
+
+/* Field limits (bits on the wire in brackets) */
+#define COMM_SPEED_MAX		8191	/* [14 signed] counts/s; B2 max 5000 */
+#define COMM_IR_MAX		4095	/* [12] raw ADC                       */
+#define COMM_PITCH_MAX		511	/* [10 signed] 0.1 deg (+-51.1 deg)   */
+#define COMM_HUMP_MAX_MM	126	/* [7]  0.1 cm = 1 mm resolution      */
+#define COMM_DIST_MAX_CM	510	/* [9]  distances / clearances, 1 cm  */
+#define COMM_WIDTH_MAX_CM	126	/* [7]  obstacle width, 1 cm          */
+#define COMM_CM_INVALID		0xFFFFU	/* pass for "no echo / not measured"  */
 
 /* ---------------------------------------------------------------------
  *  IF-S1-CMD: remote commands, Subsystem 1 -> Vehicle Controller
@@ -140,24 +165,26 @@ typedef enum {
 	RCMD_ESTOP,		/* emergency stop, motors off now          */
 	RCMD_PAUSE,		/* hold position, keep state               */
 	RCMD_RESUME,		/* continue after PAUSE                    */
-	RCMD_MODE,		/* arg = ROBOT_MODE                        */
+	RCMD_MODE,		/* arg = RUN_MODE                          */
 	RCMD_SPEED,		/* arg = target speed, percent 0..100      */
 	RCMD_RESET_PEAK,	/* forget the highest hump measured so far */
 	RCMD_COUNT
 } REMOTE_CMD_TYPE;
 
+/* (Not "ROBOT_MODE": robot_config.h #defines that name.) */
 typedef enum {
 	MODE_AUTO = 0,		/* full autonomous mission                 */
 	MODE_LINE_ONLY,		/* line following only, ignore barcodes    */
 	MODE_TEST,		/* bench test, motors disabled             */
 	MODE_COUNT
-} ROBOT_MODE;
+} RUN_MODE;
 
+/* 4 bytes (was 8).  Copied whole through the kernel, never shared. */
 typedef struct {
-	UB	type;		/* REMOTE_CMD_TYPE */
-	UB	reserved;
-	H	arg;		/* meaning depends on type (see above) */
-	UW	seq;		/* "#n" sent with the command, else 0 */
+	UINT	type	: 4;	/* REMOTE_CMD_TYPE */
+	UINT	arg	: 7;	/* meaning depends on type (see above) */
+	UINT	seq	: 8;	/* sender's sequence number, echoed in the ack */
+	UINT	spare	: 13;
 } REMOTE_CMD;
 
 #define REMOTE_CMD_QUEUE_LEN	8	/* commands buffered for the VC */
@@ -166,76 +193,83 @@ IMPORT ID	mbf_remote_cmd;		/* IF-S1-CMD */
 
 /* ---------------------------------------------------------------------
  *  IF-S1-TLM: telemetry snapshot setters (any task, non-blocking)
+ *
+ *  The snapshot is packed into C bit-fields (24 bytes, was 52).  Several
+ *  tasks write different fields of the same 32-bit words, so EVERY
+ *  access is a read-modify-write under mtx_telem (see comm_bridge.c).
  * --------------------------------------------------------------------- */
 typedef struct {
-	UB	robot_state;	/* ROBOT_STATE */
-	UB	line_flags;	/* LINE_F_xxx */
-	UB	imu_event;	/* IMU_EVENT */
-	UB	last_barcode;	/* ASCII letter, 0 = none yet */
-	H	speed_l;	/* mm/s */
-	H	speed_r;	/* mm/s */
-	W	enc_l;		/* encoder counts */
-	W	enc_r;
-	W	distance_mm;	/* total distance travelled */
-	UH	ir_left;	/* raw ADC 0..4095 */
-	UH	ir_centre;
-	UB	ir_right;	/* digital 0/1 */
-	UB	last_nav;	/* NAV_CMD of last barcode */
-	H	pitch_ddeg;	/* pitch, tenths of a degree */
-	H	hump_last_mm;	/* height of the most recent hump */
-	H	hump_peak_mm;	/* highest hump this run */
-	H	obs_dist_mm;	/* 0 = no obstacle */
-	H	obs_width_mm;
-	H	obs_left_mm;	/* left clearance */
-	H	obs_right_mm;	/* right clearance */
+	UINT	robot_state	: 4;	/* ROBOT_STATE */
+	UINT	line_flags	: 3;	/* LINE_F_xxx */
+	UINT	ir_right	: 1;	/* digital 0/1 */
+	UINT	ir_left		: 12;	/* raw ADC 0..4095 */
+	UINT	ir_centre	: 12;
+
+	INT	speed_l		: 14;	/* counts/s, saturated */
+	INT	speed_r		: 14;
+	UINT	motion		: 3;	/* imu_motion_state_t (B4) */
+	UINT	hump_valid	: 1;	/* hump heights are measured */
+
+	UINT	enc_l		: 24;	/* low 24 bits of B2's total count */
+	UINT	barcode		: 3;	/* 0 none, 1..4 = 'A'..'D' */
+	UINT	nav		: 3;	/* NAV_CMD of last barcode */
+	UINT	spare1		: 2;
+
+	UINT	enc_r		: 24;
+	UINT	hump_last_mm	: 7;	/* height of the most recent hump */
+	UINT	spare2		: 1;
+
+	INT	pitch_ddeg	: 10;	/* pitch, tenths of a degree */
+	UINT	hump_peak_mm	: 7;	/* highest hump this run */
+	UINT	obs_width_cm	: 7;	/* 127 = not measured */
+	UINT	spare3		: 8;
+
+	UINT	obs_dist_cm	: 9;	/* 511 = no echo / not measured */
+	UINT	obs_left_cm	: 9;	/* left clearance */
+	UINT	obs_right_cm	: 9;	/* right clearance */
+	UINT	spare4		: 5;
 } COMM_TELEMETRY;
 
 IMPORT void comm_set_robot_state(ROBOT_STATE state);
-IMPORT void comm_set_motion(H speed_l, H speed_r, W enc_l, W enc_r,
-			    W distance_mm);
+IMPORT void comm_set_motion(W speed_l_cps, W speed_r_cps, W enc_l, W enc_r);
 IMPORT void comm_set_line(UH ir_left, UH ir_centre, UB ir_right, UB flags);
-IMPORT void comm_set_imu(IMU_EVENT ev, H pitch_ddeg, H hump_peak_mm);
-IMPORT void comm_set_obstacle(H dist_mm, H width_mm, H left_mm, H right_mm);
+IMPORT void comm_set_imu(UB motion_state, H pitch_ddeg);
+IMPORT void comm_set_obstacle_dist(UH dist_cm);
 IMPORT void comm_get_telemetry(COMM_TELEMETRY *out);	/* copy of snapshot */
 
 /* ---------------------------------------------------------------------
  *  IF-S1-EVT: one-off events (any task, non-blocking)
- *  Return E_OK, or E_TMOUT when the queue is full (event dropped).
  * --------------------------------------------------------------------- */
-#define COMM_ERR_TEXT_MAX	24	/* error text is cut to this */
-
-IMPORT ER comm_report_barcode(UB code, NAV_CMD nav);
-IMPORT ER comm_report_hump(H height_mm, H peak_mm);
-IMPORT ER comm_report_obstacle(H dist_mm, H width_mm, H left_mm,
-			       H right_mm, AVOID_ACTION action);
-IMPORT ER comm_report_error(UB subsystem, H code, const char *text);
+IMPORT ER comm_report_barcode(UB letter, NAV_CMD nav);
+IMPORT ER comm_report_hump(BOOL valid, H height_mm, H peak_mm);
+IMPORT ER comm_report_obstacle(UH dist_cm, UH width_cm, UH left_cm,
+			       UH right_cm, AVOID_ACTION action);
+IMPORT ER comm_report_error(UB err_code, UB detail);	/* error_codes.h */
 
 /* ---------------------------------------------------------------------
- *  Link status, readable by anyone
+ *  Link status, readable by anyone.  16-bit counters that wrap: the
+ *  laptop works with differences between heartbeats.
  * --------------------------------------------------------------------- */
 typedef struct {
-	UW	tx_queued;	/* messages handed to the MQTT client      */
-	UW	tx_dropped;	/* lost because a queue was full/too long  */
-	UW	evt_dropped;	/* comm_report_xxx() calls that got E_TMOUT */
-	UW	rx_ok;		/* valid commands received                 */
-	UW	rx_rejected;	/* invalid commands rejected (NFR-B1-5)    */
-	UW	fwd_failed;	/* valid but the VC queue was full         */
-	UW	rx_dropped;	/* commands lost because mbf_rx was full   */
-	UW	reconnects;	/* times the link came back after a loss   */
+	UH	tx_queued;	/* messages handed to the MQTT client      */
+	UH	tx_dropped;	/* lost because a queue was full/too long  */
+	UH	evt_dropped;	/* comm_report_xxx() calls that got E_TMOUT */
+	UH	rx_ok;		/* valid commands received                 */
+	UH	rx_rejected;	/* invalid commands rejected (NFR-B1-5)    */
+	UH	fwd_failed;	/* valid but the VC queue was full         */
+	UH	rx_dropped;	/* commands lost because mbf_rx was full   */
+	UH	reconnects;	/* times the link came back after a loss   */
 } COMM_STATS;
 
 IMPORT COMM_STATE comm_get_state(void);
 IMPORT BOOL	  comm_is_connected(void);
 IMPORT void	  comm_get_stats(COMM_STATS *out);
 
-/* Names for printing / JSON (never NULL) */
+/* Names for the console only (const tables: flash, no RAM; never NULL) */
 IMPORT const char *comm_state_name(COMM_STATE s);
-IMPORT const char *robot_state_name(ROBOT_STATE s);
 IMPORT const char *nav_cmd_name(NAV_CMD n);
-IMPORT const char *imu_event_name(IMU_EVENT e);
 IMPORT const char *avoid_action_name(AVOID_ACTION a);
 IMPORT const char *remote_cmd_name(REMOTE_CMD_TYPE c);
-IMPORT const char *robot_mode_name(ROBOT_MODE m);
 
 /* IF-05 (template example, kept): the LED task's ID, so subsystem 4's
    example monitor can still pause/resume it */

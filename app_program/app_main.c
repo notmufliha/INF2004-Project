@@ -111,11 +111,15 @@ EXPORT INT usermain(void)
 #if ROBOT_MODE
     tm_printf((UB*)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
               (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS);
+    /* B1 first: it creates the shared fault mask (fault_flags.h) and the
+     * telemetry objects the B2/B5 code reports into. */
+    CHECK(subsystem1_init(), "subsystem1_init");
     CHECK(subsystem2_init(), "subsystem2_init");
     CHECK(subsystem5_init(), "subsystem5_init");
+    CHECK(subsystem1_start(), "subsystem1_start");
     CHECK(subsystem2_start(), "subsystem2_start");
     CHECK(subsystem5_start(), "subsystem5_start");
-    tm_printf((UB*)"[ROBOT] B2 motor task + B5 obstacle task started\n");
+    tm_printf((UB*)"[ROBOT] B1 telemetry + B2 motor task + B5 obstacle task started\n");
 #else
 	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
 	CHECK(subsystem1_init(), "subsystem1_init");

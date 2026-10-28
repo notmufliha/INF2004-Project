@@ -177,35 +177,40 @@ network (S1 then only prints events to the console).
 
 ## Part H — See telemetry and send commands from the laptop
 
-**Watch everything** (new Windows Command Prompt):
-```bat
-cd "C:\Program Files\mosquitto"
-mosquitto_sub -h localhost -v -t "inf2004/g25/car/#"
-```
-You should see `telemetry` twice a second, `status` every 5 s, and an
-`event` every few seconds (fake data while demo mode is on).
+Since Change Requirement 1 the car sends **binary frames** (MQTT.md
+section 2), so `mosquitto_sub` only shows unreadable bytes. Use the Python
+tools, which decode them (install Python on Windows from
+<https://www.python.org>, tick *Add python.exe to PATH*, then
+`pip install paho-mqtt`). Run them from the project folder; reach it from
+Windows at `\wsl$\Ubuntu\home\<you>\pico\INF2004-Project`.
 
-**Send a command** (another Command Prompt):
+**Watch everything, and type commands:**
 ```bat
-cd "C:\Program Files\mosquitto"
-mosquitto_pub -h localhost -t inf2004/g25/car/cmd -m "STOP #1"
-mosquitto_pub -h localhost -t inf2004/g25/car/cmd -m "SPEED 40 #2"
-mosquitto_pub -h localhost -t inf2004/g25/car/cmd -m "START #3"
-mosquitto_pub -h localhost -t inf2004/g25/car/cmd -m "FLY"
+python tools\mqtt_monitor.py
+python tools\mqtt_monitor.py --raw          (also shows each frame in hex)
 ```
-Each gets a reply on `cmd/ack`. `STOP` makes telemetry `state` change to
-`SAFE_STOP` and speeds drop to 0; `FLY` is rejected with
-`"reason":"unknown command"`. Full list: `MQTT.md`.
+You should see `telemetry` twice a second and `status` every 5 s, plus
+`event` lines when B4 sees a hump or B5 profiles an obstacle. Type `STOP`,
+`SPEED 40`, `START`, `MODE LINE`, `PING` or `TELEM 300` and press Enter:
+each is sent as a 3-byte frame and answered on `cmd/ack`.
 
-**Optional, for the 10-minute A1 test:** install Python on Windows
-(<https://www.python.org>, tick *Add python.exe to PATH*), then:
+**Send one command and wait for its ack** (exit status 0 = accepted):
 ```bat
-pip install paho-mqtt
+python tools\mqtt_send_cmd.py STOP --seq 1
+python tools\mqtt_send_cmd.py SPEED 40 --seq 2
+python tools\mqtt_send_cmd.py --hex 2e 00           (2-byte frame: rejected, "frame is not 3 bytes")
+```
+
+**10-minute A1 test:**
+```bat
 python tools\mqtt_monitor.py --quiet-telemetry --log soak.jsonl
 ```
-(Run it from the project folder; reach it from Windows at
-`\\wsl$\Ubuntu\home\<you>\pico\INF2004-Project`.) Type commands into it
-directly. **Ctrl-C** prints how many messages were missing per topic.
+**Ctrl-C** prints how many messages were missing per topic.
+
+**Host test of the wire format** (Ubuntu, no Pico needed):
+```sh
+sh testing/subsystem1/host/run_host_tests.sh
+```
 
 ## Part I — Run the automated tests
 
@@ -220,11 +225,11 @@ broker running, watch PuTTY. Expected:
 ...
 [TEST] S1-U09 PASS  WiFi + MQTT connected within 30 s
 [TEST] S1-U10 PASS  telemetry published for 3 s with no drops
-[TEST] subsystem1 SUMMARY 10 passed, 0 failed
+[TEST] subsystem1 SUMMARY 11 passed, 0 failed
 ```
 Save the output (PuTTY: *Session → Logging → All session output*) into
 `testing/subsystem1/logs/YYYY-MM-DD_unit.txt` and add rows to
-`testing/subsystem1/TEST_LOG.md`. The manual tests S1-U11…S1-U19 are listed
+`testing/subsystem1/TEST_LOG.md`. The manual tests (S1-U11…S1-U19, S1-U21, S1-U22) are listed
 there too.
 
 ## Part J — Commit
@@ -232,7 +237,7 @@ there too.
 ```sh
 cd ~/pico/INF2004-Project
 git add app_program/subsystem1 lib/liblwip/sysdepend/pico_rp2040 config/wifi_secrets.example.h \
-        TEAM.md testing/subsystem1 tools/mqtt_monitor.py
+        TEAM.md testing/subsystem1 tools/mqtt_monitor.py tools/mqtt_send_cmd.py tools/s1_wire.py
 git status                 # wifi_secrets.h must NOT be listed
 git commit -m "S1: WiFi/MQTT telemetry, commands, reconnect"
 git push -u origin b1-wifi-mqtt
@@ -259,13 +264,20 @@ the instructor** first.
 
 ## Before integration (checklist)
 
-1. In `subsystem1.h` set **`S1_STANDALONE_DEMO` to `0`**, otherwise the demo
-   task keeps generating fake data and steals the Vehicle Controller's
-   commands.
-2. Teammates call the functions at the top of `subsystem1.h`
-   (`comm_set_motion`, `comm_report_barcode`, …). The Vehicle Controller
-   reads `mbf_remote_cmd`.
-3. Priorities: the design review puts WiFi & Telemetry **lowest**
+1. `S1_STANDALONE_DEMO` now defaults to `0`: the real subsystems feed the
+   telemetry and the Vehicle Controller owns `mbf_remote_cmd`. Build with
+   `S1_STANDALONE_DEMO=1` only for a bench test without them.
+2. Connected: B2 (S1 polls `encoder_get_counts()`), B4 (`task_imu.c`),
+   B5 (`task_obstacle.c`). Still to do: B3 calls `comm_set_line()` and
+   `comm_report_barcode()`; the Vehicle Controller calls
+   `comm_set_robot_state()`, reads `mbf_remote_cmd`, and takes over
+   creating `flg_faults` from `subsystem1_init()`.
+3. Every buddy sets/clears only their own bit with `fault_raise()` /
+   `fault_clear()` (`app_program/fault_flags.h`) and adds error codes to
+   their block in `app_program/error_codes.h` (and the names to
+   `tools/s1_wire.py`).
+4. Priorities: the design review puts WiFi & Telemetry **lowest**
    (NFR-B1-3), but the template's bands give S1 the *highest* app band
-   (12–13). The task is light (sleeps > 95 % of the time, S1-U02), but the
-   team should swap bands so S1 is numerically the largest.
+   (12–13), above B4 (18–19) and B5 (20). The task is light (sleeps
+   > 95 % of the time, S1-U02), but the team should swap bands so S1 is
+   numerically the largest.
