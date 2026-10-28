@@ -5,12 +5,14 @@
  *
  *	Objects, and who uses them:
  *	  mbf_events      app tasks  -> comm_task     COMM_EVENT (fixed size)
- *	  mbf_tx          comm_task  -> WiFi task     topic + JSON (variable)
- *	  mbf_rx          WiFi task  -> comm_task     command text (variable)
+ *	  mbf_tx          comm_task  -> WiFi task     topic + binary frame (variable)
+ *	  mbf_rx          WiFi task  -> comm_task     3-byte command (variable)
  *	  mbf_remote_cmd  comm_task  -> Vehicle Ctrl  REMOTE_CMD   (IF-S1-CMD)
  *	  mtx_telem       guards the telemetry snapshot s1_telem
  *	  flg_comm        wakes comm_task as soon as something is queued
  *	  cyc_led         paces the status LED
+ *	  flg_faults      the shared fault bitmask (fault_flags.h), created
+ *	                  here until the Vehicle Controller takes it over
  *
  *	APIs shown: tk_cre_mbf, tk_cre_mtx (TA_INHERIT), tk_cre_flg,
  *	            tk_cre_cyc, tk_sta_cyc
@@ -27,6 +29,7 @@ EXPORT ID	mbf_rx;
 EXPORT ID	mbf_remote_cmd;		/* IF-S1-CMD */
 EXPORT ID	mtx_telem;
 EXPORT ID	flg_comm;
+EXPORT ID	flg_faults;		/* shared: fault_flags.h */
 
 LOCAL ID make_mbf(SZ bufsz, INT maxmsz)
 {
@@ -56,7 +59,7 @@ EXPORT ER subsystem1_init(void)
 		return mbf_tx;
 	}
 
-	mbf_rx = make_mbf(RX_BUF_SIZE, COMM_CMD_MAX + 1);
+	mbf_rx = make_mbf(RX_BUF_SIZE, COMM_CMD_MAX + 1);	/* +1: too long */
 	if (mbf_rx < E_OK) {
 		return mbf_rx;
 	}
@@ -82,6 +85,14 @@ EXPORT ER subsystem1_init(void)
 	flg_comm = tk_cre_flg(&cflg);
 	if (flg_comm < E_OK) {
 		return flg_comm;
+	}
+
+	/* Fault bitmask: any task may wait on it (TA_WMUL), all bits clear */
+	cflg.flgatr  = TA_TFIFO | TA_WMUL;
+	cflg.iflgptn = 0;
+	flg_faults = tk_cre_flg(&cflg);
+	if (flg_faults < E_OK) {
+		return flg_faults;
 	}
 
 	ccyc.cycatr = TA_HLNG;

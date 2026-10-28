@@ -9,7 +9,13 @@
  *
  *	Every kernel call here either polls (TMO_POL) or waits at most
  *	TELEM_LOCK_TMO ms for a mutex that is only ever held for a short
- *	memcpy.  Nothing here ever waits for the network (NFR-B1-2).
+ *	copy.  Nothing here ever waits for the network (NFR-B1-2).
+ *
+ *	PACKED SHARED DATA: s1_telem is a set of C bit-fields.  Writing one
+ *	bit-field reads, modifies and writes back the whole 32-bit word that
+ *	also holds other tasks' fields, so every write AND every read is done
+ *	while holding mtx_telem.  Values are range-checked (saturated) before
+ *	the lock is taken, so the lock is held only for the stores.
  *
  *	APIs shown: tk_snd_mbf/tk_rcv_mbf with TMO_POL, tk_loc_mtx with a
  *	            timeout, tk_set_flg, tk_get_otm
@@ -17,13 +23,13 @@
 
 #include "s1_private.h"
 
-EXPORT volatile INT	s1_mqtt_state = COMM_MQTT_IDLE;
-EXPORT volatile INT	s1_comm_state = COMM_INITIALISING;
+EXPORT volatile UB	s1_mqtt_state = COMM_MQTT_IDLE;
+EXPORT volatile UB	s1_comm_state = COMM_INITIALISING;
 EXPORT COMM_STATS	s1_stats;
 EXPORT COMM_TELEMETRY	s1_telem;
 
 /* Written only by the WiFi task, read by anyone */
-LOCAL volatile UW	bridge_rx_dropped;
+LOCAL volatile UH	bridge_rx_dropped;
 
 /* Milliseconds since boot (wraps after ~49 days, fine for a demo run) */
 EXPORT UW s1_now_ms(void)
@@ -35,7 +41,7 @@ EXPORT UW s1_now_ms(void)
 }
 
 /* Lock the snapshot.  FALSE = could not get it in time, skip the update.
- * The holder only copies ~60 bytes, and TA_INHERIT raises a low-priority
+ * The holder only copies 24 bytes, and TA_INHERIT raises a low-priority
  * holder, so in practice this never times out. */
 LOCAL BOOL telem_lock(void)
 {
@@ -47,61 +53,85 @@ LOCAL void telem_unlock(void)
 	tk_unl_mtx(mtx_telem);
 }
 
+/* cm value for a 9-bit / 7-bit field; all-ones = not measured */
+LOCAL UW dist_field(UH cm)
+{
+	return (cm == COMM_CM_INVALID) ? 0x1FFU : sat_u(cm, COMM_DIST_MAX_CM);
+}
+
+LOCAL UW width_field(UH cm)
+{
+	return (cm == COMM_CM_INVALID) ? 0x7FU : sat_u(cm, COMM_WIDTH_MAX_CM);
+}
+
 /* =====================================================================
  *  1a. Telemetry snapshot setters (IF-S1-TLM)
  * ===================================================================== */
 
 EXPORT void comm_set_robot_state(ROBOT_STATE state)
 {
+	if ((UINT)state >= (UINT)ROBOT_STATE_COUNT) {
+		return;
+	}
 	if (telem_lock()) {
-		s1_telem.robot_state = (UB)state;
+		s1_telem.robot_state = (UINT)state;
 		telem_unlock();
 	}
 }
 
-EXPORT void comm_set_motion(H speed_l, H speed_r, W enc_l, W enc_r,
-			    W distance_mm)
+/* Speeds in encoder counts/s (B2's unit).  Encoder totals keep only the
+ * low 24 bits: at B2's 5000 counts/s maximum that is 28 min of driving
+ * before wrapping, and the laptop decoder unwraps it anyway. */
+EXPORT void comm_set_motion(W speed_l_cps, W speed_r_cps, W enc_l, W enc_r)
 {
+	INT	sl = (INT)sat_s(speed_l_cps, COMM_SPEED_MAX);
+	INT	sr = (INT)sat_s(speed_r_cps, COMM_SPEED_MAX);
+	UINT	el = (UINT)enc_l & 0xFFFFFFU;
+	UINT	er = (UINT)enc_r & 0xFFFFFFU;
+
 	if (telem_lock()) {
-		s1_telem.speed_l     = speed_l;
-		s1_telem.speed_r     = speed_r;
-		s1_telem.enc_l       = enc_l;
-		s1_telem.enc_r       = enc_r;
-		s1_telem.distance_mm = distance_mm;
+		s1_telem.speed_l = sl;
+		s1_telem.speed_r = sr;
+		s1_telem.enc_l   = el;
+		s1_telem.enc_r   = er;
 		telem_unlock();
 	}
 }
 
 EXPORT void comm_set_line(UH ir_left, UH ir_centre, UB ir_right, UB flags)
 {
+	UINT l = sat_u(ir_left, COMM_IR_MAX);
+	UINT c = sat_u(ir_centre, COMM_IR_MAX);
+
 	if (telem_lock()) {
-		s1_telem.ir_left    = ir_left;
-		s1_telem.ir_centre  = ir_centre;
-		s1_telem.ir_right   = ir_right;
-		s1_telem.line_flags = flags;
+		s1_telem.ir_left    = l;
+		s1_telem.ir_centre  = c;
+		s1_telem.ir_right   = (ir_right != 0U) ? 1U : 0U;
+		s1_telem.line_flags = flags & 0x07U;
 		telem_unlock();
 	}
 }
 
-EXPORT void comm_set_imu(IMU_EVENT ev, H pitch_ddeg, H hump_peak_mm)
+EXPORT void comm_set_imu(UB motion_state, H pitch_ddeg)
 {
+	INT p = (INT)sat_s(pitch_ddeg, COMM_PITCH_MAX);
+
+	if (motion_state >= COMM_MOTION_COUNT) {
+		return;
+	}
 	if (telem_lock()) {
-		s1_telem.imu_event  = (UB)ev;
-		s1_telem.pitch_ddeg = pitch_ddeg;
-		if (hump_peak_mm > s1_telem.hump_peak_mm) {
-			s1_telem.hump_peak_mm = hump_peak_mm;
-		}
+		s1_telem.motion     = motion_state;
+		s1_telem.pitch_ddeg = p;
 		telem_unlock();
 	}
 }
 
-EXPORT void comm_set_obstacle(H dist_mm, H width_mm, H left_mm, H right_mm)
+EXPORT void comm_set_obstacle_dist(UH dist_cm)
 {
+	UINT d = dist_field(dist_cm);
+
 	if (telem_lock()) {
-		s1_telem.obs_dist_mm  = dist_mm;
-		s1_telem.obs_width_mm = width_mm;
-		s1_telem.obs_left_mm  = left_mm;
-		s1_telem.obs_right_mm = right_mm;
+		s1_telem.obs_dist_cm = d;
 		telem_unlock();
 	}
 }
@@ -122,7 +152,7 @@ LOCAL ER post_event(COMM_EVENT *ev)
 {
 	ER er;
 
-	ev->time_ms = s1_now_ms();
+	ev->time_ds = (s1_now_ms() / 100U) & 0xFFFFFU;
 	er = tk_snd_mbf(mbf_events, ev, (INT)sizeof(*ev), TMO_POL);
 	if (er == E_OK) {
 		tk_set_flg(flg_comm, FLG_COMM_EVENT);	/* wake comm_task */
@@ -135,71 +165,85 @@ LOCAL ER post_event(COMM_EVENT *ev)
 	return er;
 }
 
-EXPORT ER comm_report_barcode(UB code, NAV_CMD nav)
-{
-	COMM_EVENT ev = {0};
-
-	ev.type = EVT_BARCODE;
-	ev.code = code;
-	ev.nav  = (UB)nav;
-
-	if (telem_lock()) {			/* also kept in telemetry */
-		s1_telem.last_barcode = code;
-		s1_telem.last_nav     = (UB)nav;
-		telem_unlock();
-	}
-	return post_event(&ev);
-}
-
-EXPORT ER comm_report_hump(H height_mm, H peak_mm)
-{
-	COMM_EVENT ev = {0};
-
-	ev.type = EVT_HUMP;
-	ev.v[0] = height_mm;
-	ev.v[1] = peak_mm;
-
-	if (telem_lock()) {
-		s1_telem.hump_last_mm = height_mm;
-		if (peak_mm > s1_telem.hump_peak_mm) {
-			s1_telem.hump_peak_mm = peak_mm;
-		}
-		telem_unlock();
-	}
-	return post_event(&ev);
-}
-
-EXPORT ER comm_report_obstacle(H dist_mm, H width_mm, H left_mm,
-			       H right_mm, AVOID_ACTION action)
-{
-	COMM_EVENT ev = {0};
-
-	ev.type = EVT_OBSTACLE;
-	ev.code = (UB)action;
-	ev.v[0] = dist_mm;
-	ev.v[1] = width_mm;
-	ev.v[2] = left_mm;
-	ev.v[3] = right_mm;
-
-	comm_set_obstacle(dist_mm, width_mm, left_mm, right_mm);
-	return post_event(&ev);
-}
-
-EXPORT ER comm_report_error(UB subsystem, H code, const char *text)
+EXPORT ER comm_report_barcode(UB letter, NAV_CMD nav)
 {
 	COMM_EVENT	ev = {0};
-	INT		i = 0;
+	UINT		code;
+
+	if ((letter < COMM_BARCODE_FIRST) || (letter > COMM_BARCODE_LAST) ||
+	    ((UINT)nav >= (UINT)NAV_COUNT)) {
+		return E_PAR;
+	}
+	code = (UINT)(letter - COMM_BARCODE_FIRST) + 1U;
+
+	ev.type = EVT_BARCODE;
+	ev.a    = code;
+	ev.e    = (UINT)nav;
+
+	if (telem_lock()) {			/* also kept in telemetry */
+		s1_telem.barcode = code;
+		s1_telem.nav     = (UINT)nav;
+		telem_unlock();
+	}
+	return post_event(&ev);
+}
+
+/* Heights in mm (0.1 cm resolution), 0..126.  valid = FALSE while B4
+ * has no height estimator: the laptop then shows "n/a", not 0 mm. */
+EXPORT ER comm_report_hump(BOOL valid, H height_mm, H peak_mm)
+{
+	COMM_EVENT	ev = {0};
+	UINT		h = valid ? sat_u(height_mm, COMM_HUMP_MAX_MM) : 0U;
+	UINT		p = valid ? sat_u(peak_mm, COMM_HUMP_MAX_MM) : 0U;
+
+	ev.type = EVT_HUMP;
+	ev.flag = valid ? 1U : 0U;
+	ev.a    = h;
+	ev.b    = p;
+
+	if (telem_lock()) {
+		s1_telem.hump_valid   = ev.flag;
+		s1_telem.hump_last_mm = h;
+		if (p > s1_telem.hump_peak_mm) {
+			s1_telem.hump_peak_mm = p;
+		}
+		telem_unlock();
+	}
+	return post_event(&ev);
+}
+
+EXPORT ER comm_report_obstacle(UH dist_cm, UH width_cm, UH left_cm,
+			       UH right_cm, AVOID_ACTION action)
+{
+	COMM_EVENT ev = {0};
+
+	if ((UINT)action >= (UINT)AVOID_COUNT) {
+		return E_PAR;
+	}
+	ev.type = EVT_OBSTACLE;
+	ev.a    = dist_field(dist_cm);
+	ev.b    = width_field(width_cm);
+	ev.c    = dist_field(left_cm);
+	ev.d    = dist_field(right_cm);
+	ev.e    = (UINT)action;
+
+	if (telem_lock()) {
+		s1_telem.obs_dist_cm  = ev.a;
+		s1_telem.obs_width_cm = ev.b;
+		s1_telem.obs_left_cm  = ev.c;
+		s1_telem.obs_right_cm = ev.d;
+		telem_unlock();
+	}
+	return post_event(&ev);
+}
+
+EXPORT ER comm_report_error(UB err_code, UB detail)
+{
+	COMM_EVENT ev = {0};
 
 	ev.type = EVT_ERROR;
-	ev.code = subsystem;
-	ev.v[0] = code;
-	if (text != NULL) {
-		while ((i < COMM_ERR_TEXT_MAX) && (text[i] != '\0')) {
-			ev.text[i] = text[i];
-			i++;
-		}
-	}
-	ev.text[i] = '\0';
+	ev.a    = err_code;
+	ev.b    = detail;
 	return post_event(&ev);
 }
 
@@ -227,7 +271,37 @@ EXPORT void comm_get_stats(COMM_STATS *out)
 }
 
 /* =====================================================================
- *  1d. Outgoing queue, filled by comm_task only
+ *  1d. Shared fault bitmask (fault_flags.h).  flg_faults is created in
+ *  subsystem1.c.  The kernel updates the pattern atomically, so these
+ *  are safe from any task or interrupt handler.
+ * ===================================================================== */
+
+EXPORT void fault_raise(UINT bits)
+{
+	if (flg_faults > 0) {
+		tk_set_flg(flg_faults, bits & FAULT_ALL);
+	}
+}
+
+EXPORT void fault_clear(UINT bits)
+{
+	if (flg_faults > 0) {
+		tk_clr_flg(flg_faults, ~(bits & FAULT_ALL));	/* AND mask */
+	}
+}
+
+EXPORT UB fault_get(void)
+{
+	T_RFLG rflg;
+
+	if ((flg_faults <= 0) || (tk_ref_flg(flg_faults, &rflg) != E_OK)) {
+		return 0U;
+	}
+	return (UB)(rflg.flgptn & FAULT_ALL);
+}
+
+/* =====================================================================
+ *  1e. Outgoing queue, filled by comm_task only
  * ===================================================================== */
 
 EXPORT BOOL s1_tx_enqueue(COMM_TOPIC_ID topic, BOOL retain,
@@ -242,8 +316,7 @@ EXPORT BOOL s1_tx_enqueue(COMM_TOPIC_ID topic, BOOL retain,
 		return FALSE;
 	}
 
-	rec[0] = (UB)topic;
-	rec[1] = retain ? 1U : 0U;
+	rec[0] = (UB)(((UINT)topic & 0x03U) | (retain ? 0x04U : 0U));
 	for (i = 0; i < len; i++) {
 		rec[TX_RECORD_HDR + i] = payload[i];
 	}
@@ -280,8 +353,8 @@ int32_t comm_bridge_tx_pop(uint8_t *topic_id, uint8_t *retain,
 	if (n > (INT)payload_max) {
 		n = (INT)payload_max;
 	}
-	*topic_id = rec[0];
-	*retain   = rec[1];
+	*topic_id = rec[0] & 0x03U;
+	*retain   = (rec[0] >> 2) & 0x01U;
 	for (i = 0; i < n; i++) {
 		payload[i] = rec[TX_RECORD_HDR + i];
 	}
@@ -295,14 +368,14 @@ void comm_bridge_rx_command(const uint8_t *data, uint16_t len)
 	if (mbf_rx <= 0) {
 		return;
 	}
-	/* Over-long commands are cut to COMM_CMD_MAX + 1 bytes: still one
-	 * byte too long, so the parser rejects them as "too long". */
+	/* Over-long frames are cut to COMM_CMD_MAX + 1 bytes: still one
+	 * byte too long, so the decoder rejects them as the wrong length. */
 	if (n > (COMM_CMD_MAX + 1)) {
 		n = COMM_CMD_MAX + 1;
 	}
 	if (n == 0) {
 		n = 1;		/* an empty message still gets an ack */
-		data = (const uint8_t *)" ";
+		data = (const uint8_t *)"";
 	}
 	if (tk_snd_mbf(mbf_rx, data, n, TMO_POL) == E_OK) {
 		tk_set_flg(flg_comm, FLG_COMM_RX);
@@ -313,7 +386,7 @@ void comm_bridge_rx_command(const uint8_t *data, uint16_t len)
 
 void comm_bridge_mqtt_state(int32_t state)
 {
-	s1_mqtt_state = (INT)state;
+	s1_mqtt_state = (UB)state;
 	if (flg_comm > 0) {
 		tk_set_flg(flg_comm, FLG_COMM_LINK);
 	}

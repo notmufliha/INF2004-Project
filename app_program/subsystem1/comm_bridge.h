@@ -11,7 +11,7 @@
  *	touches the network itself.  Instead:
  *
  *	  app tasks --comm_report_xxx()--> [mbf_events] --> comm_task (S1)
- *	  comm_task formats JSON         --> [mbf_tx]   --> cyw43_utk_task
+ *	  comm_task packs binary frames  --> [mbf_tx]   --> cyw43_utk_task
  *	  cyw43_utk_task publishes it over MQTT (mqtt_utk.c pump timer)
  *
  *	  broker --> cyw43_utk_task --comm_bridge_rx_command()--> [mbf_rx]
@@ -43,7 +43,7 @@ typedef enum {
 	COMM_TOPIC_EVENT,		/* barcode / hump / obstacle... */
 	COMM_TOPIC_STATUS,		/* heartbeat + online/offline   */
 	COMM_TOPIC_ACK,			/* reply to every command       */
-	COMM_TOPIC_COUNT
+	COMM_TOPIC_COUNT		/* fits in 2 bits               */
 } COMM_TOPIC_ID;
 
 /* Same order as COMM_TOPIC_ID */
@@ -51,12 +51,14 @@ typedef enum {
 #define COMM_TOPIC_CMD_SUFFIX	"cmd"		/* the one we subscribe to */
 
 #define COMM_TOPIC_MAX		64	/* bytes, incl. NUL, full topic   */
-#define COMM_PAYLOAD_MAX	400	/* bytes, one published JSON msg (worst case 374) */
-#define COMM_CMD_MAX		64	/* bytes, one received command    */
+#define COMM_PAYLOAD_MAX	32	/* bytes, one binary frame (largest: telemetry 28) */
+#define COMM_CMD_MAX		3	/* bytes, one received command    */
 
-/* Last-will message, published by the BROKER if the car vanishes */
-#define COMM_STATUS_ONLINE	"{\"online\":true}"
-#define COMM_STATUS_OFFLINE	"{\"online\":false}"
+/* Online / Last-Will message: 1 byte, the first byte of the status frame
+ * (wire version 1 in bits 7..5, online flag in bit 4).  Never 0x00:
+ * lwIP takes the will message's length with strlen(). */
+#define COMM_STATUS_ONLINE	"\x30"
+#define COMM_STATUS_OFFLINE	"\x20"
 
 /* ---------------------------------------------------------------------
  *  MQTT connection state, as reported by mqtt_utk.c
