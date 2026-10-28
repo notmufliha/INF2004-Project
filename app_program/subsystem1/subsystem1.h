@@ -194,7 +194,7 @@ IMPORT ID	mbf_remote_cmd;		/* IF-S1-CMD */
 /* ---------------------------------------------------------------------
  *  IF-S1-TLM: telemetry snapshot setters (any task, non-blocking)
  *
- *  The snapshot is packed into C bit-fields (24 bytes, was 52).  Several
+ *  The snapshot is packed into C bit-fields (24 bytes, was 40).  Several
  *  tasks write different fields of the same 32-bit words, so EVERY
  *  access is a read-modify-write under mtx_telem (see comm_bridge.c).
  * --------------------------------------------------------------------- */

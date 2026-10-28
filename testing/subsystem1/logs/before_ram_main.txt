@@ -1,0 +1,33 @@
+# BEFORE: main 20e3981 (JSON/text MQTT)
+# Built 2026-10-28 on Windows/MSYS2: arm-none-eabi-gcc 16.1.0, pico-sdk 2.2.0
+# make SMP=0 NET=lwip MQTT=1, with ROBOT_MODE set to 0 for the build only so
+# every subsystem (incl. B1) is started and linked. SMP=0 because main's
+# b2_motor.c refuses SMP=1. Identical options for before_ram_main.txt and
+# after_ram.txt. GCC 16 needed -Wno-error=implicit-function-declaration,
+# incompatible-pointer-types,int-conversion for pico-sdk's cyw43 driver.
+#
+# Not comparable with before_ram.txt (ec0b859, SMP=1, before B4/B5 merged).
+
+## arm-none-eabi-size
+   text	   data	    bss	    dec	    hex	filename
+ 369078	    396	  80616	 450090	  6de2a	mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.elf
+
+## Subsystem 1 RAM symbols (arm-none-eabi-nm -S --size-sort -t d), bytes
+   4  bridge_rx_dropped
+   4  event_seq
+   4  ever_connected
+   4  hb_seq
+   4  s1_comm_state
+   4  s1_mqtt_state
+   4  telem_period_ms
+   4  telem_seq
+   4  wifi_down_since
+  32  s1_stats
+  40  s1_telem
+  65  rx_data        (mqtt_utk.c, sized by COMM_CMD_MAX)
+ 400  pend_payload   (mqtt_utk.c, sized by COMM_PAYLOAD_MAX)
+ 401  json_out
+ 402  rec.0          (s1_tx_enqueue)
+ 402  rec.1          (comm_bridge_tx_pop)
+----
+1778  total
