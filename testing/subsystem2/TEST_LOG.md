@@ -24,11 +24,16 @@ mocked RTOS, encoder and safety services.
 | S2-H09 | Immediate STOP, STOP command ID completion, full steering |
 | S2-H10 | Physical-unit APIs, NaN/infinity rejection, immutable terminal result |
 | S2-H11 | Hardware test mode command selection, lost-clearance abort, result handling |
+| S2-H12 | Invalid encoder transition threshold stops and reports ENCODER |
+| S2-I01 | B1 binary counts/s, full signed totals, B2-only fault bits |
+| S2-I02 | Legacy B1 API compatibility, error event retry/deduplication |
+| S2-I03 | Vehicle Controller percentage mapping: 0/50/100 and invalid input |
 
 | Date | Build | Tests | Result | Evidence |
 |---|---|---|---|---|
 | 2026-10-28 | Working tree based on `071640a` | S2-H01..H10 | PASS, 1116 assertions | `logs/2026-10-28_host_motion.txt` |
 | 2026-10-28 | Working tree with optional motion test task | S2-H01..H11 | PASS, 1133 assertions | `logs/2026-10-28_host_motion_harness.txt` |
+| 2026-10-28 | B2/B1 compatibility working tree | S2-H01..H12, S2-I01..I03 | PASS, 1158 controller assertions and both B1 API tests | `logs/2026-10-28_b1_integration.txt` |
 
 Additional on-target checks in `subsystem2_test.c` (not executed on hardware):
 S2-U03 straight correction, S2-U04 independent wheel completion, S2-U05 invalid

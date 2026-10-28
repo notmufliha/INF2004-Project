@@ -8,6 +8,7 @@
 #include "motion_command.h"
 #include "motion_profile.h"
 #include "b2_motor.h"
+#include "b2_integration.h"
 
 #define PID_PERIOD_MS 10
 #define PID_MAX_INTERVAL_MS 20
@@ -24,6 +25,8 @@
 #define PID_KI 0.005f
 #define PID_I_LIMIT 10.0f
 #define PID_PI 3.14159265f
+/* Preliminary noise/edge-loss limit over a 100 ms observation window. */
+#define PID_ENCODER_INVALID_LIMIT 8u
 
 typedef struct
 {
@@ -64,6 +67,9 @@ typedef struct
     uint32_t generation;
     uint32_t control_interval_ms;
     uint32_t maximum_interval_ms;
+    UW left_invalid_start;
+    UW right_invalid_start;
+    int64_t encoder_window_ms;
 } pid_state_t;
 
 ID gh_pid_task = 0;
@@ -123,6 +129,7 @@ static void pid_finish(pid_state_t *state, motion_status_t status,
     b2_safety_force_stop();
     state->status = status;
     state->fault = fault;
+    b2_integration_fault(fault);
     state->settling = false;
     pid_reset_pi(state);
     pid_publish(state);
@@ -229,6 +236,9 @@ static void pid_begin(pid_state_t *state, const motion_command_t *command)
     state->fault = MOTION_FAULT_NONE;
     state->left_start = state->left_now;
     state->right_start = state->right_now;
+    encoder_get_invalid_counts(&state->left_invalid_start,
+        &state->right_invalid_start);
+    state->encoder_window_ms = state->now_ms;
     state->left_mm = 0.0f;
     state->right_mm = 0.0f;
     state->started_ms = state->now_ms;
@@ -436,6 +446,25 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
 }
 
+static bool pid_encoder_invalid(pid_state_t *state)
+{
+    UW left;
+    UW right;
+    bool invalid;
+    encoder_get_invalid_counts(&left, &right);
+    invalid = (UW)(left - state->left_invalid_start) >=
+        PID_ENCODER_INVALID_LIMIT ||
+        (UW)(right - state->right_invalid_start) >=
+        PID_ENCODER_INVALID_LIMIT;
+    if (state->now_ms - state->encoder_window_ms >= 100)
+    {
+        state->left_invalid_start = left;
+        state->right_invalid_start = right;
+        state->encoder_window_ms = state->now_ms;
+    }
+    return invalid;
+}
+
 static void pid_execute(pid_state_t *state)
 {
     motion_profile_t profile;
@@ -455,6 +484,13 @@ static void pid_execute(pid_state_t *state)
     }
     if (!pid_movement(state))
     {
+        return;
+    }
+    if (pid_encoder_invalid(state))
+    {
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
+        pid_finish(state, MOTION_STATUS_FAULT, MOTION_FAULT_ENCODER);
         return;
     }
     profile = pid_profile(state);

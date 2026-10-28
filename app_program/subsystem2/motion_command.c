@@ -224,6 +224,21 @@ ER motion_send_command(const motion_command_t *command)
     return motion_send_command_with_id(command, &id);
 }
 
+ER motion_speed_from_percent(INT percent, INT *speed_cps)
+{
+    if (speed_cps == NULL)
+    {
+        return E_PAR;
+    }
+    *speed_cps = 0;
+    if (percent < 0 || percent > 100)
+    {
+        return E_PAR;
+    }
+    *speed_cps = percent * 50;
+    return E_OK;
+}
+
 ER motion_move_cm(float distance_cm, INT speed_cps,
     motion_direction_t direction, uint32_t *command_id)
 {

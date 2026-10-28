@@ -23,27 +23,13 @@
 #include "pid_control.h"
 #include "motion_command.h"
 #include "motion_self_test.h"
+#include "b2_integration.h"
 
 /* Cyclic handler ID for the PI controller. */
 
 static ID gh_cyc_pid = 0;
 
 /* Network/telemetry locks never run in the 10 ms motor loop. */
-static H b2_telemetry_speed(INT cps, float counts_per_rev)
-{
-    float speed = (float)cps * 3.14159265f *
-        ENC_WHEEL_DIAMETER_CM * 10.0f / counts_per_rev;
-    if (speed > 32767.0f)
-    {
-        speed = 32767.0f;
-    }
-    if (speed < -32768.0f)
-    {
-        speed = -32768.0f;
-    }
-    return (H)speed;
-}
-
 static void b2_telemetry_task(INT stacd, void *exinf)
 {
     motion_status_snapshot_t snapshot;
@@ -53,16 +39,7 @@ static void b2_telemetry_task(INT stacd, void *exinf)
     {
         if (motion_get_status(&snapshot) == E_OK)
         {
-            float distance = snapshot.total_distance_mm;
-            if (distance > 2147483520.0f)
-            {
-                distance = 2147483520.0f;
-            }
-            comm_set_motion(b2_telemetry_speed(snapshot.left_speed_cps,
-                ENC_LEFT_COUNTS_PER_REV),
-                b2_telemetry_speed(snapshot.right_speed_cps,
-                ENC_RIGHT_COUNTS_PER_REV), snapshot.left_encoder_counts,
-                snapshot.right_encoder_counts, (W)distance);
+            b2_integration_publish(&snapshot);
         }
         tk_dly_tsk(100);
     }
@@ -130,6 +107,11 @@ EXPORT ER subsystem2_init(void)
     T_CMPF cmpf = {0};
     T_CCYC ccyc = {0};
     ER err;
+    err = b2_integration_init();
+    if (err != E_OK)
+    {
+        return err;
+    }
     /* Original producer semaphore. */
     csem.sematr  = TA_TFIFO;
     csem.isemcnt = S2_POOL_COUNT;
@@ -172,6 +154,7 @@ EXPORT ER subsystem2_init(void)
 
     if (E_OK != err)
     {
+        b2_integration_fault(MOTION_FAULT_ENCODER);
         return (err);
     }
     pid_init();

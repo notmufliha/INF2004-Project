@@ -27,6 +27,9 @@ static INT pwm_left;
 static INT pwm_right;
 static INT semaphore;
 static UINT checks;
+static UW invalid_left;
+static UW invalid_right;
+static motion_fault_t last_integration_fault;
 #define CHECK(expr) do { assert(expr); checks++; } while (0)
 
 ER tk_get_tim(SYSTIM *time)
@@ -48,6 +51,10 @@ ER tk_dly_tsk(INT delay) { (void)delay; return E_OK; }
 INT tm_printf(UB *format, ...) { (void)format; return 0; }
 void encoder_get_counts(INT *left, INT *right)
 { *left = encoder_left; *right = encoder_right; }
+void encoder_get_invalid_counts(UW *left, UW *right)
+{ *left = invalid_left; *right = invalid_right; }
+void b2_integration_fault(motion_fault_t fault)
+{ last_integration_fault = fault; }
 void b2_request_stop(void)
 {
     if (!latched) safety_generation++;
@@ -74,6 +81,8 @@ static pid_state_t setup(void)
 {
     pid_state_t state = {0};
     clock_ms = 0; encoder_left = 0; encoder_right = 0;
+    invalid_left = 0; invalid_right = 0;
+    last_integration_fault = MOTION_FAULT_NONE;
     safety_generation = 1; acknowledged = 1;
     latched = false; clearance = true; pwm_left = 0; pwm_right = 0;
     CHECK(motion_command_init() == E_OK);
@@ -347,8 +356,33 @@ static void test_physical_api_and_history(void)
     CHECK(state.maximum_interval_ms == 10);
 }
 
+static void test_encoder_diagnostic_fault(void)
+{
+    pid_state_t state = setup();
+    motion_status_snapshot_t result;
+    uint32_t id = send(command(MOTION_CMD_MOVE));
+    tick(&state, 0, 0);
+    invalid_left = 7u;
+    tick(&state, 1, 1);
+    CHECK(state.status == MOTION_STATUS_RUNNING);
+    invalid_left = 8u;
+    tick(&state, 1, 1);
+    CHECK(motion_get_result(id, &result) == E_OK);
+    CHECK(result.fault == MOTION_FAULT_ENCODER);
+    CHECK(last_integration_fault == MOTION_FAULT_ENCODER);
+    CHECK(pwm_left == 0 && pwm_right == 0);
+}
+
 int main(void)
 {
+    INT mapped_speed;
+    CHECK(motion_speed_from_percent(100, &mapped_speed) == E_OK);
+    CHECK(mapped_speed == 5000);
+    CHECK(motion_speed_from_percent(50, &mapped_speed) == E_OK);
+    CHECK(mapped_speed == 2500);
+    CHECK(motion_speed_from_percent(0, &mapped_speed) == E_OK);
+    CHECK(mapped_speed == 0);
+    CHECK(motion_speed_from_percent(101, &mapped_speed) == E_PAR);
     motion_command_t hardware_test;
     motion_status_snapshot_t test_result = {0};
     hardware_test = b2_test_command(1);
@@ -384,6 +418,7 @@ int main(void)
     test_results_and_stale(); test_feedback_and_time();
     test_timeouts_and_standstill(); test_stop_and_steering();
     test_physical_api_and_history();
+    test_encoder_diagnostic_fault();
     printf("PASS: %u subsystem 2 host assertions\n", checks);
     return 0;
 }
