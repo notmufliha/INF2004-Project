@@ -1,5 +1,10 @@
+/** @file motion_command.h
+ * @brief Subsystem 2 motion command interface.
+ */
+
 #ifndef MOTION_COMMAND_H
 #define MOTION_COMMAND_H
+
 #include <stdint.h>
 #include "../app.h"
 
@@ -10,23 +15,25 @@
  * with Buddy 1 Vehicle Controller.
  */
 
-typedef enum {
+typedef enum
+{
     MOTION_CMD_STOP = 0,
     MOTION_CMD_DRIVE,
     MOTION_CMD_TURN
-} MOTION_CMD_TYPE;
+} motion_cmd_type_t;
 
-typedef enum {
+typedef enum
+{
     MOTION_DIR_STOP = 0,
     MOTION_DIR_FORWARD,
     MOTION_DIR_REVERSE
-} MOTION_DIRECTION;
+} motion_direction_t;
 
-typedef enum {
+typedef enum
+{
     MOTION_TURN_LEFT = 0,
     MOTION_TURN_RIGHT
-} MOTION_TURN_DIRECTION;
-
+} motion_turn_direction_t;
 /*
  * Motion command sent by Vehicle Controller.
  *
@@ -36,19 +43,15 @@ typedef enum {
  * Target distance and angle are reserved
  * for the next implementation stage.
  */
-typedef struct {
-    MOTION_CMD_TYPE type;
 
-    MOTION_DIRECTION direction;
-
+typedef struct
+{
+    motion_cmd_type_t type;
+    motion_direction_t direction;
     INT target_speed_cps;
-
     INT target_distance_counts;
-
-    MOTION_TURN_DIRECTION turn_direction;
-
+    motion_turn_direction_t turn_direction;
     INT target_angle_deg;
-
     /*
      * Safety STOP generation observed by Buddy 1
      * when authorizing this motion command.
@@ -57,18 +60,17 @@ typedef struct {
      * Ignored for STOP.
      */
     uint32_t safety_generation;
-} MOTION_COMMAND;
-
+} motion_command_t;
 /*
  * Public command interface.
  *
  * This will eventually send commands to
  * the Motion Control Task.
  */
-ER motion_send_command(const MOTION_COMMAND *command);
+
+ER motion_send_command(const motion_command_t *p_command);
 
 ER motion_command_init(void);
 
-ER motion_receive_command(MOTION_COMMAND *command);
-
+ER motion_receive_command(motion_command_t *p_command);
 #endif

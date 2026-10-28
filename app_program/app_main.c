@@ -26,7 +26,7 @@
  *
  *	How they talk to each other (the interfaces, see TEAM.md section 5):
  *	  IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
- *	  IF-02  S3 -> S2  semaphore sem_slots + memory pool mpf_samples
+ *	  IF-02  S3 -> S2  semaphore gh_sem_slots + memory pool gh_mpf_samples
  *	                   (owned by S2: S3 hands slots and blocks back)
  *	  IF-03  S3 -> S4  message buffer mbf_summary + event flag flg_events
  *	                   (owned by S4)

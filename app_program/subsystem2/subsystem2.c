@@ -14,6 +14,7 @@
  */
 
 #include "subsystem2.h"
+#include "task_producer.h"
 #include "../robot_config.h"
 #include "b2_motor.h"
 #include "motor_control.h"
@@ -22,73 +23,72 @@
 #include "motion_command.h"
 
 /* Cyclic handler ID for the PI controller. */
-static ID cyc_pid = 0;
 
+static ID gh_cyc_pid = 0;
 /* Original subsystem resources. */
-EXPORT ID sem_slots;
-EXPORT ID mpf_samples;
 
-/*
- * Initialize Subsystem 2.
- */
+EXPORT ID gh_sem_slots;
 
+EXPORT ID gh_mpf_samples;
+
+/** @brief Initialize resources, motors, encoders, commands and PI timing. */
 EXPORT ER subsystem2_init(void)
 {
     T_CSEM csem = {0};
     T_CMPF cmpf = {0};
     T_CCYC ccyc = {0};
     ER err;
-
     /* Original producer semaphore. */
     csem.sematr  = TA_TFIFO;
     csem.isemcnt = S2_POOL_COUNT;
     csem.maxsem  = S2_POOL_COUNT;
+    gh_sem_slots = tk_cre_sem(&csem);
 
-    sem_slots = tk_cre_sem(&csem);
-    if (sem_slots < E_OK) {
-        return sem_slots;
+    if (gh_sem_slots < E_OK)
+    {
+        return (gh_sem_slots);
     }
-
     /* Original fixed-size memory pool. */
     cmpf.mpfatr = TA_TFIFO | TA_RNG3;
     cmpf.mpfcnt = S2_POOL_COUNT;
-    cmpf.blfsz  = sizeof(SAMPLE_MSG);
+    cmpf.blfsz  = sizeof(subsystem2_sample_msg_t);
+    gh_mpf_samples = tk_cre_mpf(&cmpf);
 
-    mpf_samples = tk_cre_mpf(&cmpf);
-    if (mpf_samples < E_OK) {
-        return mpf_samples;
+    if (gh_mpf_samples < E_OK)
+    {
+        return (gh_mpf_samples);
     }
-
     /*
-    * Initialize motor PWM.
-    * Do not continue if initialization fails.
-    */
+     * Initialize motor PWM.
+     * Do not continue if initialization fails.
+     */
     err = motor_init();
 
-    if (err != E_OK) {
-        tm_printf((UB*)"[B2] Motor initialization failed: %d\n", err);
-        return err;
+    if (E_OK != err)
+    {
+        tm_printf((UB *)"[B2] Motor initialization failed: %d\n", err);
+        return (err);
     }
-
     motor_stop();
-
     err = b2_safety_init();
-    if (err != E_OK) {
-        return err;
-    }
 
+    if (E_OK != err)
+    {
+        return (err);
+    }
     err = encoder_init();
-    if (err != E_OK) {
-        return err;
-    }
 
+    if (E_OK != err)
+    {
+        return (err);
+    }
     pid_init();
-
     err = motion_command_init();
-    if (err != E_OK) {
-        return err;
-    }
 
+    if (E_OK != err)
+    {
+        return (err);
+    }
     /*
      * Create the 10 ms PI cyclic handler.
      */
@@ -96,74 +96,72 @@ EXPORT ER subsystem2_init(void)
     ccyc.cychdr = (FP)pid_cyclic_handler;
     ccyc.cyctim = 10;
     ccyc.cycphs = 10;
+    gh_cyc_pid = tk_cre_cyc(&ccyc);
 
-    cyc_pid = tk_cre_cyc(&ccyc);
-    if (cyc_pid < E_OK) {
-        return cyc_pid;
+    if (gh_cyc_pid < E_OK)
+    {
+        return (gh_cyc_pid);
     }
-
-    tm_printf((UB*)"[B2] Motion subsystem initialized\n");
-
-    return E_OK;
+    tm_printf((UB *)"[B2] Motion subsystem initialized\n");
+    return (E_OK);
 }
 
+/** @brief Start subsystem tasks and the PI cyclic handler. */
 EXPORT ER subsystem2_start(void)
 {
-    ID tid;
+    ID h_task;
     ER err;
-
     /* Original producer task. */
-    tid = app_start_task(
-        producer_task,
+    h_task = app_start_task(
+        subsystem2_producer_task,
         S2_PRI_PRODUCER,
         TP_PRC2,
-        "producer_task"
+        "subsystem2_producer_task"
     );
 
-    if (tid < E_OK) {
+    if (h_task < E_OK)
+    {
         b2_request_stop();
         b2_safety_acknowledge_stop();
-        return tid;
+        return (h_task);
     }
-
     /* Encoder speed monitoring task. */
-    tid = app_start_task(
+    h_task = app_start_task(
         (FP)encoder_speed_task,
         S2_PRI_PRODUCER,
         TP_PRC2,
         "encoder_speed_task"
     );
 
-    if (tid < E_OK) {
+    if (h_task < E_OK)
+    {
         b2_request_stop();
         b2_safety_acknowledge_stop();
-        return tid;
+        return (h_task);
     }
-
     /* PI controller task. */
-    tid_pid = app_start_task(
+    gh_pid_task = app_start_task(
         (FP)pid_control_task,
         S2_PRI_PRODUCER,
         TP_PRC2,
         "pid_control_task"
     );
 
-    if (tid_pid < E_OK) {
+    if (gh_pid_task < E_OK)
+    {
         b2_request_stop();
         b2_safety_acknowledge_stop();
-        return tid_pid;
+        return (gh_pid_task);
     }
-
     /* Start the 10 ms PI controller timer. */
-    err = tk_sta_cyc(cyc_pid);
+    err = tk_sta_cyc(gh_cyc_pid);
 
-    if (err != E_OK) {
+    if (E_OK != err)
+    {
         b2_request_stop();
         b2_safety_acknowledge_stop();
-        return err;
+        return (err);
     }
-
-    tm_printf((UB*)"[B2] PI controller started\n");
-
-    return E_OK;
+    tm_printf((UB *)"[B2] PI controller started\n");
+    return (E_OK);
 }

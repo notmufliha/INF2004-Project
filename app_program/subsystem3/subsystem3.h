@@ -23,7 +23,7 @@ typedef struct {
 	W sum;
 } APP_STATS;
 
-/* IF-01: S2 sends SAMPLE_MSG pointers to the S3-owned mailbox. */
+/* IF-01: S2 sends subsystem2_sample_msg_t pointers to the S3-owned mailbox. */
 IMPORT ID mbx_samples;
 
 /* IF-04: consumers must hold mtx_stats while reading or updating app_stats. */
