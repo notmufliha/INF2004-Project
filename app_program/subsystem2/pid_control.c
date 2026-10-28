@@ -132,14 +132,16 @@ void pid_control_task(INT stacd, void *p_exinf)
         }
         pid_check_safety(p_state);
         cmd_err = pid_accept_command(p_state);
-        if (E_TMOUT == cmd_err)
-        {
-            continue;
-        }
-        if (E_OK != cmd_err)
+
+        if (E_OK != cmd_err && E_TMOUT != cmd_err)
         {
             goto controller_error;
         }
+
+        /*
+        * Always check the DRIVE watchdog, even when
+        * no new motion command has arrived.
+        */
         pid_check_watchdog(p_state);
         /*
          * Stay stopped until a DRIVE command arrives.
@@ -303,6 +305,8 @@ static void pid_check_watchdog(pid_state_t *p_state)
         p_state->active_command.direction = MOTION_DIR_STOP;
         p_state->left_integral = 0.0f;
         p_state->right_integral = 0.0f;
+        p_state->left_pwm = 0;
+        p_state->right_pwm = 0;
         p_state->sample_count = 0;
         tm_printf((UB *)"[B2] DRIVE watchdog timeout\n");
     }

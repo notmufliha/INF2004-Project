@@ -88,9 +88,10 @@ ER motion_send_command(const motion_command_t *p_command)
      *
      * STOP commands do not require authorization.
      */
-    if (p_command->safety_generation !=
+    if (MOTION_CMD_DRIVE == p_command->type &&
+        p_command->safety_generation !=
             b2_safety_stop_generation())
-        {
+    {
         return (E_OBJ);
     }
     if (gh_command_sem <= 0)
