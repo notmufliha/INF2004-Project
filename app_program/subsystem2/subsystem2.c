@@ -27,6 +27,56 @@
 static ID gh_cyc_pid = 0;
 /* Original subsystem resources. */
 
+#if ROBOT_WHEELS_UP_MOTOR_TEST
+
+/*
+ * BENCH TEST ONLY:
+ * Both wheels must be raised and the robot securely supported.
+ * Keep external motor power disconnected until the firmware
+ * has been flashed and the setup checked.
+ *
+ * This test bypasses normal obstacle-clearance authorization.
+ * Never use it with wheels touching the floor.
+ */
+static void b2_wheels_up_test_task(INT stacd, void *exinf)
+{
+    (void)stacd;
+    (void)exinf;
+
+    /* Begin with both motors stopped. */
+    motor_stop();
+
+    tm_printf((UB *)"[B2-TEST] Wheels-up test starting\n");
+
+    /* Allow time to observe the startup message. */
+    tk_dly_tsk(2000);
+
+    /* Test left motor. */
+    tm_printf((UB *)"[B2-TEST] LEFT motor pulse\n");
+    motor_left_set(15);
+    tk_dly_tsk(300);
+    motor_stop();
+
+    tk_dly_tsk(1000);
+
+    /* Test right motor. */
+    tm_printf((UB *)"[B2-TEST] RIGHT motor pulse\n");
+    motor_right_set(15);
+    tk_dly_tsk(300);
+    motor_stop();
+
+    /* Finish in the stopped state. */
+    motor_stop();
+    tm_printf((UB *)"[B2-TEST] Complete - motors stopped\n");
+
+    for (;;)
+    {
+        motor_stop();
+        tk_dly_tsk(1000);
+    }
+}
+#endif
+
 EXPORT ID gh_sem_slots;
 
 EXPORT ID gh_mpf_samples;
@@ -111,12 +161,56 @@ EXPORT ER subsystem2_start(void)
 {
     ID h_task;
     ER err;
-    /* Original producer task. */
+    #if ROBOT_WHEELS_UP_MOTOR_TEST
+        /*
+        * Bench-test mode:
+        * Do not start the PI controller or its cyclic timer.
+        * The dedicated test task owns motor PWM.
+        */
+        motor_stop();
+
+        h_task = app_start_task(
+            (FP)b2_wheels_up_test_task,
+            S2_PRI_PRODUCER,
+            TP_PRC2,
+            "b2_wheels_up_test_task"
+        );
+
+        if (h_task < E_OK)
+        {
+            motor_stop();
+            return (h_task);
+        }
+
+        tm_printf((UB *)"[B2-TEST] Bench task started\n");
+        return (E_OK);
+    #endif
+    #if !ROBOT_MODE
+        /*
+        * Legacy sample producer for the teaching demonstration.
+        * Disabled in robot mode because Buddy 2 uses real
+        * encoder feedback instead of simulated sample messages.
+        */
+        h_task = app_start_task(
+            subsystem2_producer_task,
+            S2_PRI_PRODUCER,
+            TP_PRC2,
+            "subsystem2_producer_task"
+        );
+
+        if (h_task < E_OK)
+        {
+            b2_request_stop();
+            b2_safety_acknowledge_stop();
+            return (h_task);
+        }
+    #endif
+    /* Encoder speed monitoring task. */
     h_task = app_start_task(
-        subsystem2_producer_task,
+        (FP)encoder_speed_task,
         S2_PRI_PRODUCER,
         TP_PRC2,
-        "subsystem2_producer_task"
+        "encoder_speed_task"
     );
 
     if (h_task < E_OK)
@@ -125,12 +219,12 @@ EXPORT ER subsystem2_start(void)
         b2_safety_acknowledge_stop();
         return (h_task);
     }
-    /* Encoder speed monitoring task. */
+    /* TEMPORARY: Encoder distance calibration task. */
     h_task = app_start_task(
-        (FP)encoder_speed_task,
+        (FP)encoder_test_task,
         S2_PRI_PRODUCER,
         TP_PRC2,
-        "encoder_speed_task"
+        "encoder_test_task"
     );
 
     if (h_task < E_OK)

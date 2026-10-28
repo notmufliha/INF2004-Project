@@ -131,6 +131,41 @@ void encoder_get_counts(INT *p_left, INT *p_right)
     encoder_lock_leave(interrupt_status);
 }
 
+/** @brief Calculate signed wheel travel in centimetres. */
+void encoder_get_distance_cm(
+    INT left_start,
+    INT right_start,
+    float *p_left_cm,
+    float *p_right_cm
+)
+{
+    INT left_now;
+    INT right_now;
+    int64_t left_delta;
+    int64_t right_delta;
+
+    encoder_get_counts(&left_now, &right_now);
+
+    left_delta = (int64_t)left_now - (int64_t)left_start;
+    right_delta = (int64_t)right_now - (int64_t)right_start;
+
+    if (NULL != p_left_cm)
+    {
+        *p_left_cm =
+            ((float)left_delta * 3.14159265f *
+             ENC_WHEEL_DIAMETER_CM) /
+            ENC_LEFT_COUNTS_PER_REV;
+    }
+
+    if (NULL != p_right_cm)
+    {
+        *p_right_cm =
+            ((float)right_delta * 3.14159265f *
+             ENC_WHEEL_DIAMETER_CM) /
+            ENC_RIGHT_COUNTS_PER_REV;
+    }
+}
+
 /** @brief Report counters during manual wheel rotation. */
 void encoder_test_task(INT stacd, void *p_exinf)
 {
