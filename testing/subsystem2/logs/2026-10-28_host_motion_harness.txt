@@ -1,0 +1,10 @@
+Date: 2026-10-28 (Asia/Singapore)
+Source: working tree with optional guarded motion_self_test task.
+Host compilation: GCC C11, -Wall -Wextra -Werror -pedantic.
+Result: PASS: 1133 subsystem 2 host assertions.
+Added coverage: forward/reverse/DRIVE/left/right command selection, clearance
+loss abort, and accepted/cancelled terminal result interpretation.
+ARM syntax: all application C files, TEST=1, drive enabled, motion-test mode 6,
+SMP=0 and SMP=1, -Wall -Wextra -Werror: PASS.
+Subsystem 2 automated BARR-C subset checker: PASS.
+No physical robot test or full UF2 build was performed for this change.

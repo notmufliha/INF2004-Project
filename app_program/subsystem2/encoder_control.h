@@ -20,6 +20,17 @@ void encoder_get_counts(INT *p_left, INT *p_right);
  */
 #define ENC_WHEEL_TRACK_CM       9.7f
 
+/* Provisional turn-only correction: initial scale = 90/70.
+ * Left scale 1.3932155 produced a reported approximately 100 degrees.
+ * Current left trial = 1.3932155 * 90/100.
+ * Right retains the initial scale after reported improvement.
+ * Re-measure completed left/right turns on the same surface and load.
+ * New scale = old scale * requested angle / measured angle.
+ * Never tune these values from a cancelled, timed-out or faulted turn.
+ */
+#define ENC_TURN_LEFT_SCALE      1.2538940f
+#define ENC_TURN_RIGHT_SCALE     1.2857143f
+
 /* Preliminary encoder calibration values. */
 #define ENC_LEFT_COUNTS_PER_REV  2499
 #define ENC_RIGHT_COUNTS_PER_REV 2341

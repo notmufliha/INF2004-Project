@@ -13,7 +13,7 @@ void pid_cyclic_handler(void *p_exinf);
 /* Initialise the PID controller. */
 
 void pid_init(void);
-/* Temporary closed-loop motor test task. */
+/* Production motion execution task. */
 
 void pid_control_task(INT stacd, void *p_exinf);
 #endif

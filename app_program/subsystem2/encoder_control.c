@@ -2,12 +2,12 @@
  * Buddy 2 - Quadrature Encoder Feedback
  * RP2040 + micro T-Kernel 3.0
  *
- * Standalone encoder test:
- * GPIO bank IRQ owned temporarily by Buddy 2.
+ * GPIO bank IRQ is shared through the application dispatcher.
  */
 
 #include <stdint.h>
 #include "encoder_control.h"
+#include "../gpio_irq_dispatch.h"
 #if TK_SUPPORT_SMP
 
 #include <tk/smp.h>
@@ -16,9 +16,6 @@
 #define ENC_L_B  1U
 #define ENC_R_A  2U
 #define ENC_R_B  3U
-/* RP2040 GPIO bank interrupt: external IRQ 13. */
-#define ENC_GPIO_IRQ       13U
-#define ENC_IRQ_PRIORITY   2
 /* RP2040 IO_BANK0 registers. */
 #define ENC_IO_BASE        0x40014000U
 #define ENC_INTR0          (*(volatile UW *)(ENC_IO_BASE + 0x0F0U))
@@ -57,12 +54,6 @@ ER encoder_init(void)
     (void)InitSpinLock(&g_encoder_lock);
 #endif
 
-    const T_DINT dint =
-
-    {
-        .intatr = TA_HLNG,
-        .inthdr = encoder_gpio_isr
-    };
     err = gpio_set_pin(ENC_L_A, GPIO_MODE_IN);
 
     if (E_OK != err)
@@ -97,16 +88,13 @@ ER encoder_init(void)
     ENC_PROC0_INTE0 &= ~ENC_ALL_EDGES;
     /* Clear any previously latched encoder edges. */
     ENC_INTR0 = ENC_ALL_EDGES;
-    err = tk_def_int(ENC_GPIO_IRQ, &dint);
+    err = app_gpio_irq_register(0x0Fu, encoder_gpio_isr);
 
     if (E_OK != err)
     {
         tm_printf((UB *)"[B2] Encoder IRQ registration failed\n");
         return (err);
     }
-    ClearInt(ENC_GPIO_IRQ);
-    /* Enable GPIO bank IRQ on core 0. */
-    EnableInt(ENC_GPIO_IRQ, ENC_IRQ_PRIORITY);
     /* Enable rising/falling edges on encoder pins. */
     ENC_PROC0_INTE0 |= ENC_ALL_EDGES;
 
@@ -373,5 +361,5 @@ static void encoder_gpio_isr(UINT intno)
         }
     }
     encoder_lock_leave(interrupt_status);
-    ClearInt(intno);
+    (void)intno;
 }
