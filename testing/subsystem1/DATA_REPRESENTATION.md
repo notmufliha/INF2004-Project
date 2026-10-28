@@ -74,7 +74,7 @@ Inter-task messages:
 
 | Structure | Before | After |
 |---|---|---|
-| `COMM_TELEMETRY` snapshot | 52 B | 24 B |
+| `COMM_TELEMETRY` snapshot | 40 B | 24 B |
 | `COMM_EVENT` (mbf_events) | 44 B | 8 B |
 | `REMOTE_CMD` (mbf_remote_cmd → VC) | 8 B | 4 B |
 | `COMM_STATS` | 32 B | 16 B |
@@ -82,45 +82,50 @@ Inter-task messages:
 
 ## 3. RAM usage comparison
 
-**Static RAM owned by subsystem 1** (computed from the source; confirm
-with the measurement below):
+**Measured** with `arm-none-eabi-size` and `arm-none-eabi-nm` on two builds
+that differ only by this change (`logs/before_ram_main.txt` = `main`
+20e3981, `logs/after_ram.txt` = this branch). Both: pico-sdk 2.2.0,
+`make SMP=0 NET=lwip MQTT=1`, every subsystem started (`ROBOT_MODE` 0 for
+the build, so subsystem 1 is linked in both). SMP=0 because `main`'s
+`b2_motor.c` no longer builds with SMP=1, so `logs/before_ram.txt`
+(ec0b859, SMP=1, before B4/B5 were merged) cannot be compared directly.
 
-| Buffer | Before | After |
+| | Before | After | Change |
+|---|---|---|---|
+| Whole firmware `.data + .bss` | 81,012 B | 79,452 B | **−1,560 B** |
+| Subsystem 1 static RAM (symbols below) | 1,778 B | 192 B | **−1,586 B** |
+| Flash (`.text`) | 369,078 B | 370,546 B | +1,468 B (packing code, fault mask, hooks) |
+
+| Subsystem 1 symbol | Before | After |
 |---|---|---|
-| `json_out` / `frame` (comm_task) | 401 | 32 |
-| `rec` in `s1_tx_enqueue` + `comm_bridge_tx_pop` | 2 × 402 | 2 × 33 |
+| `json_out` → `frame` (comm_task) | 401 | 32 |
+| `rec` in `s1_tx_enqueue` + `comm_bridge_tx_pop` | 402 + 402 | 33 + 33 |
 | `pend_payload` (mqtt_utk.c, sized by `COMM_PAYLOAD_MAX`) | 400 | 32 |
 | `rx_data` (mqtt_utk.c, sized by `COMM_CMD_MAX`) | 65 | 4 |
-| `s1_telem` + `s1_stats` | 84 | 40 |
-| **Total** | **1,754 B** | **174 B** (−1,580 B) |
+| `s1_telem` | 40 | 24 |
+| `s1_stats` | 32 | 16 |
+| state, sequence numbers, period, counters (9 variables) | 36 | 18 |
 
-**Kernel message-buffer memory** (`bufsz` passed to `tk_cre_mbf`, taken
-from the kernel's memory area at start-up):
+**Kernel message-buffer memory** is not in `.bss`: the kernel takes it from
+its own memory area when `tk_cre_mbf` runs, so `size` cannot show it. It is
+the `bufsz` each buffer is created with:
 
 | Buffer | Before | After |
 |---|---|---|
-| `mbf_events` 16 × (msg + 8) | 832 | 256 |
+| `mbf_events` 16 × (msg + 8) | 16 × (44 + 8) = 832 | 16 × (8 + 8) = 256 |
 | `mbf_tx` | 3,072 | 640 |
-| `mbf_rx` | 288 | 96 |
-| `mbf_remote_cmd` 8 × (msg + 8) | 128 | 96 |
+| `mbf_rx` | 4 × (65 + 8) = 288 | 8 × (4 + 8) = 96 |
+| `mbf_remote_cmd` 8 × (msg + 8) | 8 × (8 + 8) = 128 | 8 × (4 + 8) = 96 |
 | **Total** | **4,320 B** | **1,088 B** (−3,232 B) |
 
-Together about **4.8 KB** less RAM for subsystem 1 (the Week 8 estimate was
-~6 KB). The new fault-mask event flag adds one kernel control block.
+In total subsystem 1 uses about **4.8 KB less RAM** (1.6 KB measured static
++ 3.2 KB kernel buffers). The Week 8 estimate was ~6 KB.
 
-**How to measure** (Ubuntu, same build options as `logs/before_ram.txt`):
-
-```sh
-cd ~/pico/INF2004-Project/build_make
-git checkout 20e3981 && make clean && make NET=lwip MQTT=1 -j8   # main, before this change
-arm-none-eabi-size *_lwip_mqtt.elf | tee ../testing/subsystem1/logs/before_ram_main.txt
-git checkout b1-wifi-mqtt && make clean && make NET=lwip MQTT=1 -j8
-arm-none-eabi-size *_lwip_mqtt.elf | tee ../testing/subsystem1/logs/after_ram.txt
-```
-
-`logs/before_ram.txt` (ec0b859) was built before B4/B5 were merged into
-`main`, so compare `after_ram.txt` with `before_ram_main.txt`, which differs
-only by this change. Expect `bss` to drop by about 1.6 KB.
+To repeat in Ubuntu: check out each commit, set `ROBOT_MODE` to 0 in
+`app_program/robot_config.h` (do not commit it), then
+`make clean && make SMP=0 NET=lwip MQTT=1 -j8` and
+`arm-none-eabi-size *_lwip_mqtt.elf`. A different compiler version gives
+slightly different totals, but the difference should be about the same.
 
 ## 4. Correctness and performance
 

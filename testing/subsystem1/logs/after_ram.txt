@@ -1,0 +1,35 @@
+# AFTER: b1-wifi-mqtt (binary MQTT, minimum-bit representation)
+# Built 2026-10-28 on Windows/MSYS2: arm-none-eabi-gcc 16.1.0, pico-sdk 2.2.0
+# make SMP=0 NET=lwip MQTT=1, with ROBOT_MODE set to 0 for the build only so
+# every subsystem (incl. B1) is started and linked. Identical options to
+# before_ram_main.txt. The default build (ROBOT_MODE 1) and the test build
+# (TEST=1) also compile and link with no subsystem 1 warnings.
+
+## arm-none-eabi-size
+   text	   data	    bss	    dec	    hex	filename
+ 370546	    392	  79060	 449998	  6ddce	mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.elf
+
+## Subsystem 1 RAM symbols (arm-none-eabi-nm -S --size-sort -t d), bytes
+   1  event_seq
+   1  s1_comm_state
+   1  s1_mqtt_state
+   1  telem_period_ds
+   2  bridge_rx_dropped
+   2  hb_seq
+   2  telem_seq
+   4  ever_connected
+   4  rx_data
+   4  wifi_down_since
+  16  s1_stats
+  24  s1_telem
+  32  frame
+  32  pend_payload
+  33  rec.0
+  33  rec.1
+----
+ 192  total
+
+## Difference (after - before)
+data + bss : 81012 -> 79452  = -1560 B for the whole firmware
+B1 symbols : 1778  -> 192    = -1586 B
+text       : +1468 B flash (bit packing, fault mask, B4/B5 hooks), no RAM

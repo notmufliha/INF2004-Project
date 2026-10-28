@@ -46,3 +46,5 @@ Add a new row for every run. Never edit or delete old rows.
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S1-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+| 2026-10-28 | S1-H01 | PR #7 | B1 | PASS | `logs/2026-10-28_host_S1-H01.txt` | 18 frames + 24 command frames + unwrap; run on the laptop, no Pico |
+| 2026-10-28 | S1-M01 | PR #7 | B1 | DONE | `logs/before_ram_main.txt`, `logs/after_ram.txt` | data+bss 81,012 -> 79,452 B (-1,560); B1 symbols 1,778 -> 192 B. Build only, not run |

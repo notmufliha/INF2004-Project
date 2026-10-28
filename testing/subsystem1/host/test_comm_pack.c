@@ -261,7 +261,7 @@ LOCAL void sizes(void)
 	printf("%-28s %12s %8d\n", "command frame (B)", "11 / 64",
 	       WIRE_CMD_LEN);
 	printf("%-28s %12s %8d\n", "ack frame (B)", "60 / 143", WIRE_ACK_LEN);
-	printf("%-28s %8d %8d\n", "COMM_TELEMETRY struct", 52,
+	printf("%-28s %8d %8d\n", "COMM_TELEMETRY struct", 40,
 	       (int)sizeof(COMM_TELEMETRY));
 	printf("%-28s %8d %8d\n", "COMM_EVENT struct", 44,
 	       (int)sizeof(COMM_EVENT));
