@@ -17,8 +17,8 @@
 IMPORT ID	cyc_led;	/* LED pattern tick */
 IMPORT ID	tid_comm;	/* the WiFi & Telemetry task */
 IMPORT ID	mbf_events;	/* app tasks -> comm_task, COMM_EVENT  */
-IMPORT ID	mbf_tx;		/* comm_task -> WiFi task, TX_RECORD   */
-IMPORT ID	mbf_rx;		/* WiFi task -> comm_task, command text */
+IMPORT ID	mbf_tx;		/* comm_task -> WiFi task, TX record   */
+IMPORT ID	mbf_rx;		/* WiFi task -> comm_task, command     */
 IMPORT ID	mtx_telem;	/* protects the telemetry snapshot     */
 IMPORT ID	flg_comm;	/* wakes comm_task early               */
 
@@ -28,46 +28,61 @@ IMPORT ID	flg_comm;	/* wakes comm_task early               */
 #define FLG_COMM_LINK		0x04U	/* MQTT state changed      */
 #define FLG_COMM_ALL		(FLG_COMM_EVENT | FLG_COMM_RX | FLG_COMM_LINK)
 
-/* Queue sizes */
+/* Queue sizes (binary frames: was 3072 + 288 + 832 bytes of buffers) */
 #define EVENT_QUEUE_LEN		16		/* events buffered      */
-#define TX_RECORD_HDR		2		/* topic id + retain    */
+#define TX_RECORD_HDR		1		/* topic (2 bits) + retain (1 bit) */
 #define TX_RECORD_MAX		(TX_RECORD_HDR + COMM_PAYLOAD_MAX)
-#define TX_BUF_SIZE		3072		/* bytes of mbf_tx, ~8 typical msgs */
-#define RX_BUF_SIZE		(4 * (COMM_CMD_MAX + 8))
+#define TX_BUF_SIZE		640		/* ~17 telemetry or ~40 event frames */
+#define RX_QUEUE_LEN		8		/* commands buffered    */
 #define MBF_MSG_OVERHEAD	8		/* kernel header/align  */
+#define RX_BUF_SIZE		(RX_QUEUE_LEN * (COMM_CMD_MAX + 1 + MBF_MSG_OVERHEAD))
 
 #define TELEM_LOCK_TMO		5		/* ms, mutex wait limit */
 
 /* ---------------------------------------------------------------------
- *  One event, as queued by comm_report_xxx()
+ *  One event, as queued by comm_report_xxx(): 8 bytes (was 44).
+ *  Built in the caller's own stack and copied whole by tk_snd_mbf, so it
+ *  is never shared while being written.
+ *
+ *  type      a          b         c        d        e        flag
+ *  BARCODE   1..4       -         -        -        NAV_CMD  -
+ *  HUMP      height mm  peak mm   -        -        -        valid
+ *  OBSTACLE  dist cm    width cm  left cm  right cm action   -
+ *  ERROR     err code   detail    -        -        -        -
  * --------------------------------------------------------------------- */
 typedef enum {
-	EVT_BARCODE = 1,
+	EVT_BARCODE = 0,
 	EVT_HUMP,
 	EVT_OBSTACLE,
-	EVT_ERROR
+	EVT_ERROR		/* 4 types: 2 bits */
 } COMM_EVT_TYPE;
 
 typedef struct {
-	UB	type;		/* COMM_EVT_TYPE */
-	UB	code;		/* barcode letter / subsystem no. / action */
-	UB	nav;		/* NAV_CMD (barcode) */
-	UB	reserved;
-	H	v[4];		/* values, meaning per type */
-	UW	time_ms;	/* when it was reported */
-	char	text[COMM_ERR_TEXT_MAX + 1];
+	UINT	time_ds	: 20;	/* 0.1 s since boot (wraps after 29 h) */
+	UINT	type	: 2;	/* COMM_EVT_TYPE */
+	UINT	a	: 9;
+	UINT	flag	: 1;
+	UINT	b	: 9;
+	UINT	c	: 9;
+	UINT	d	: 9;
+	UINT	e	: 3;
+	UINT	spare	: 2;
 } COMM_EVENT;
 
 /* ---------------------------------------------------------------------
  *  Shared state (comm_bridge.c / task_comm.c)
+ *
+ *  The two link states are 3-bit values but are kept in a whole byte:
+ *  each has ONE writer and is read by other tasks without a lock, and a
+ *  byte store is atomic on the RP2040 while a bit-field store is a
+ *  read-modify-write of the whole word.
  * --------------------------------------------------------------------- */
-IMPORT volatile INT	s1_mqtt_state;	/* COMM_MQTT_STATE, from bridge */
-IMPORT volatile INT	s1_comm_state;	/* COMM_STATE, from comm_task   */
+IMPORT volatile UB	s1_mqtt_state;	/* COMM_MQTT_STATE, from bridge */
+IMPORT volatile UB	s1_comm_state;	/* COMM_STATE, from comm_task   */
 IMPORT COMM_STATS	s1_stats;
 IMPORT COMM_TELEMETRY	s1_telem;	/* guarded by mtx_telem */
 
 IMPORT UW   s1_now_ms(void);
-IMPORT void s1_stat_inc(volatile UW *counter);
 IMPORT void comm_task(INT stacd, void *exinf);
 IMPORT void led_task(INT stacd, void *exinf);
 IMPORT void led_cyclic_handler(void *exinf);
@@ -81,57 +96,90 @@ IMPORT void demo_task(INT stacd, void *exinf);
 #endif
 
 /* ---------------------------------------------------------------------
- *  comm_json.c -- tiny bounded JSON writer (never overruns the buffer)
+ *  comm_pack.c -- binary wire format (pure functions, no kernel calls,
+ *  so they are unit-tested on the host: testing/subsystem1/host/).
+ *  The layouts are in MQTT.md section 2.
  * --------------------------------------------------------------------- */
+#define WIRE_VERSION		1	/* 3 bits, first field of every frame */
+
+/* Frame sizes in bytes */
+#define WIRE_TELEM_LEN		28
+#define WIRE_STATUS_LEN		23
+#define WIRE_ACK_LEN		3
+#define WIRE_CMD_LEN		3
+#define WIRE_EVT_MAX_LEN	9	/* obstacle; barcode 5, hump 6, error 7 */
+
+/* MSB-first bit writer / reader over a byte array */
 typedef struct {
 	UB	*buf;
-	INT	cap;		/* total bytes available, incl. NUL */
-	INT	len;		/* bytes written so far */
+	UH	cap_bits;
+	UH	pos;		/* bits written / read so far */
 	BOOL	overflow;	/* TRUE once anything did not fit */
-} JSON_BUF;
+} BITBUF;
 
-IMPORT void json_begin(JSON_BUF *jb, UB *buf, INT cap);
-IMPORT void json_int(JSON_BUF *jb, const char *key, W value);
-IMPORT void json_uint(JSON_BUF *jb, const char *key, UW value);
-IMPORT void json_str(JSON_BUF *jb, const char *key, const char *value);
-IMPORT void json_bool(JSON_BUF *jb, const char *key, BOOL value);
-IMPORT void json_pair(JSON_BUF *jb, const char *key, W a, W b);
-IMPORT void json_obj_open(JSON_BUF *jb, const char *key);
-IMPORT void json_obj_close(JSON_BUF *jb);
-IMPORT INT  json_end(JSON_BUF *jb);	/* length, or -1 if it overflowed */
+IMPORT void bits_begin(BITBUF *b, UB *buf, INT cap_bytes);	/* zero-fills */
+IMPORT void bits_put(BITBUF *b, UW value, INT nbits);
+IMPORT UW   bits_get(BITBUF *b, INT nbits);
+IMPORT W    bits_get_signed(BITBUF *b, INT nbits);
+IMPORT INT  bits_bytes(const BITBUF *b);	/* bytes used, -1 if overflow */
 
-/* ---------------------------------------------------------------------
- *  comm_cmd.c -- command parser / validator (pure function)
- * --------------------------------------------------------------------- */
+/* Clamp to the range of an n-bit field */
+IMPORT UW   sat_u(W value, UW max);
+IMPORT W    sat_s(W value, W max);
+
+/* Heartbeat contents */
+typedef struct {
+	UB		link;		/* COMM_STATE */
+	BOOL		demo;
+	UH		seq;
+	UW		time_ds;
+	UW		ip;		/* lwIP order: first octet lowest */
+	UB		telem_ds;
+	UB		faults;
+	COMM_STATS	st;
+} STATUS_INFO;
+
+IMPORT INT pack_telemetry(UB *out, INT cap, UH seq, UW time_ds, UB faults,
+			  const COMM_TELEMETRY *t);
+IMPORT INT pack_event(UB *out, INT cap, UB seq, const COMM_EVENT *ev);
+IMPORT INT pack_status(UB *out, INT cap, const STATUS_INFO *s);
+IMPORT INT pack_ack(UB *out, INT cap, UB seq, UB cmd_id, UB result);
+
+/* Commands as sent by the laptop (4-bit id): 1..8 = REMOTE_CMD_TYPE,
+ * then the ones subsystem 1 handles itself. */
+#define WCMD_PING		9	/* reply "pong"                    */
+#define WCMD_STATUS		10	/* publish a status message now    */
+#define WCMD_TELEM		11	/* arg = period in 100 ms, 1..100  */
+#define WCMD_COUNT		12
+
+/* Ack result (5 bits).  Below CMD_ERR_FIRST = accepted. */
 typedef enum {
-	CMD_OK = 0,
-	CMD_ERR_EMPTY,
-	CMD_ERR_TOO_LONG,
-	CMD_ERR_BAD_CHAR,
-	CMD_ERR_UNKNOWN,
-	CMD_ERR_MISSING_ARG,
-	CMD_ERR_EXTRA_ARG,
-	CMD_ERR_BAD_NUMBER,
-	CMD_ERR_RANGE,
-	CMD_ERR_BAD_MODE,
-	CMD_ERR_COUNT
+	CMD_OK = 0,		/* forwarded to the Vehicle Controller */
+	CMD_OK_PONG,
+	CMD_OK_STATUS,
+	CMD_OK_TELEM,
+	CMD_ERR_FIRST = 8,
+	CMD_ERR_LENGTH = CMD_ERR_FIRST,	/* frame is not 3 bytes         */
+	CMD_ERR_VERSION,	/* unknown wire version                 */
+	CMD_ERR_RESERVED,	/* reserved bits not zero               */
+	CMD_ERR_UNKNOWN,	/* no such command id                   */
+	CMD_ERR_RANGE,		/* argument out of range                */
+	CMD_ERR_EXTRA_ARG,	/* argument given to a command without  */
+	CMD_ERR_BUSY,		/* valid, but the VC queue was full     */
+	CMD_RESULT_COUNT
 } CMD_RESULT;
 
-/* Commands handled by subsystem 1 itself (never forwarded) */
-typedef enum {
-	LOCAL_NONE = 0,		/* forward to the Vehicle Controller */
-	LOCAL_PING,		/* reply "pong"                      */
-	LOCAL_STATUS,		/* publish a status message now      */
-	LOCAL_TELEM		/* change the telemetry period       */
-} LOCAL_CMD;
-
 typedef struct {
-	REMOTE_CMD	cmd;	/* filled when local == LOCAL_NONE */
-	LOCAL_CMD	local;
-	W		local_arg;
+	REMOTE_CMD	cmd;	/* filled for ids 1..8 */
+	UB		id;	/* wire command id, echoed in the ack */
+	UB		seq;
+	UB		arg;
 } PARSED_CMD;
 
-IMPORT CMD_RESULT comm_cmd_parse(const UB *text, INT len, PARSED_CMD *out);
-IMPORT const char *cmd_result_text(CMD_RESULT r);
+/* Validates one received frame.  id/seq are filled whenever the frame
+ * had the right length, so even a rejection can be matched by the
+ * sender. */
+IMPORT CMD_RESULT comm_cmd_decode(const UB *in, INT len, PARSED_CMD *out);
+IMPORT const char *cmd_result_text(CMD_RESULT r);	/* console only */
 
 #endif /* S1_PRIVATE_H */
