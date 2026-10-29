@@ -1,24 +1,25 @@
 # Subsystem 3 — test log
 
-**Subsystem:** Consumer (example)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem3/`
+**Current implementation:** sample consumer example · **Priority:** 16 ·
+**Core:** 0 on SMP · **Code:** `app_program/subsystem3/`
 
-See `testing/README.md` for how to run tests and record results.
+The attached Week 6 design review assigns Buddy 3 to IR line following and
+barcode decoding. Those robot requirements are not yet implemented in this
+checkout; see `app_program/subsystem3/README.md`. Do not record them as passed
+based on the sample-consumer tests below.
 
 ## Test cases
 
-Define a test here before running it. Test IDs never change.
-
-| ID | What is tested | Requirement / interface | Method | Steps / how | Expected result |
+| ID | What is tested | Requirement / interface | Method | Steps | Expected result |
 |---|---|---|---|---|---|
-| S3-U01 | statistics self-consistent (min ≤ max, 0..100) | | auto | `subsystem3_test.c` | `[TEST] S3-U01 PASS` |
+| S3-U01 | Count, min, max, and sum for a known sequence | Statistics helper | auto | `subsystem3_test.c` | `[TEST] S3-U01 PASS` |
+| S3-U02 | Live statistics bounds and mutex usability | IF-04 | auto | `subsystem3_test.c` | `[TEST] S3-U02 PASS` |
+| INT-01 | Samples move from S2 to S3 and update count | IF-01, IF-02 | auto | `subsystem3_test.c`; integration log | `[TEST] INT-01 PASS` |
 
-*Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
-**manual** = a person observes the result (LED, scope, meter, phone app…).
+Test implementation is built with `make TEST=1 -j8` from `build_make`, then
+flashed to the Pico W. This firmware uses a `.uf2` image, not `sysmain.exe`.
 
 ## Results
 
-Add a new row for every run. Never edit or delete old rows.
-
-| Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
-|---|---|---|---|---|---|---|
-| YYYY-MM-DD | S3-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+No hardware test results have been recorded in this change. Add one row for
+each actual run with date, tested commit, tester, result, and saved evidence.

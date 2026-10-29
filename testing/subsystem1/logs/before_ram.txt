@@ -1,0 +1,2 @@
+   text	   data	    bss	    dec	    hex	filename
+ 349140	    104	  84204	 433448	  69d28	mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt.elf

@@ -1,149 +1,275 @@
-/* Buddy 2 motor owner: PWM is written ONLY here. The B5 task sends a
- * forward/stop heartbeat. Stale commands, invalid sensor data and power-up
- * all produce zero duty. Single-core RTOS build only.
+/*
+ * Buddy 2 - Buddy 5 Safety Interface
+ *
+ * Buddy 5 publishes obstacle STOP and clear-path requests.
+ * Buddy 2 is the sole owner of motor PWM.
+ *
+ * Shared state is protected using micro T-Kernel spinlocks.
+ *
+ * Flow: Buddy 5 requests STOP → Buddy 2 applies zero PWM → Buddy 2
+ * acknowledges STOP →
+ *       Buddy 5 can report a clear path → Buddy 1 must issue a new DRIVE
+ * command.
+ *
  */
-#include "b2_motor.h"
-#include "../robot_config.h"
-#include <sys/sysdef.h>
-#include <tk/syslib.h>
 
+#include <stdbool.h>
+#include <stdint.h>
+#include "b2_motor.h"
+#include "motor_control.h"
+#include "../robot_config.h"
+#include <tk/smp.h>
+#define B2_SAFETY_HEARTBEAT_MS ROBOT_MOTOR_WATCHDOG_MS
+
+static uint32_t g_stop_generation = 1u;
+static uint32_t g_acknowledged_generation = 0u;
+static uint32_t g_clear_heartbeat_ms = 0u;
+static bool gb_clear_valid = false;
+static bool gb_stopped = true;
+/*
+ * STOP remains latched until a fresh clear-path report
+ * arrives after Buddy 2 acknowledges the STOP.
+ */
+
+static bool gb_stop_latched = true;
 #if TK_SUPPORT_SMP
-#error "Motor request mailbox requires SMP=0."
+
+static T_SPLOCK g_safety_lock = 0;
 #endif
 
-#define B2_CMD_STOP 0u
-#define B2_CMD_FORWARD 1u
-#define RESETS_RESET_REG  (*(volatile UW *)0x4000C000u)
-#define RESETS_DONE_REG   (*(volatile UW *)0x4000C008u)
-#define PWM_RESET_MASK (1u << 14u)
+static void safety_lock_enter(UINT *p_interrupt_status);
+static void safety_lock_leave(UINT interrupt_status);
+static uint32_t b2_now_ms(void);
 
-static volatile uint32_t request_word = 0u;
-static volatile uint32_t motor_stopped = 1u;
-static bool initialized = false;
-static uint32_t millis(void) { SYSTIM t; tk_get_tim(&t); return (uint32_t)t.lo; }
-static void publish(uint32_t cmd)
+ER b2_safety_init(void)
 {
-    uint32_t old = request_word;
-    request_word = ((old + 0x100u) & ~0xffu) | cmd;
+    g_stop_generation = 1u;
+    g_acknowledged_generation = 0u;
+    g_clear_heartbeat_ms = 0u;
+    gb_clear_valid = false;
+    gb_stopped = true;
+    gb_stop_latched = true;
+#if TK_SUPPORT_SMP
+    g_safety_lock = 0;
+#endif
+
+    motor_stop();
+    return (E_OK);
 }
-void b2_request_stop(void) { publish(B2_CMD_STOP); }
+
+/** @brief Latch STOP and immediately disable PWM under the safety lock. */
+void b2_request_stop(void)
+{
+    UINT interrupt_status;
+
+    safety_lock_enter(&interrupt_status);
+    /*
+     * A new STOP event invalidates the previous
+     * movement authorization.
+     *
+     * Repeated STOP requests while already latched
+     * do not increment the generation.
+     */
+    if (!gb_stop_latched)
+    {
+        g_stop_generation++;
+    }
+    gb_clear_valid = false;
+    gb_stop_latched = true;
+    /*
+     * Disable motor PWM immediately while holding
+     * the safety spinlock.
+     *
+     * The PI controller acknowledges the STOP
+     * generation separately.
+     */
+    motor_stop();
+    gb_stopped = true;
+
+    safety_lock_leave(interrupt_status);
+}
+
+/** @brief Record clearance only after the current STOP is acknowledged. */
 void b2_request_forward(void)
 {
-#if ROBOT_ENABLE_DRIVE && !ROBOT_WHEELS_UP_MOTOR_TEST
-    publish(B2_CMD_FORWARD);
+    UINT interrupt_status;
+    uint32_t now = b2_now_ms();
+
+    safety_lock_enter(&interrupt_status);
+    /*
+     * A clear-path report cannot cancel an
+     * unacknowledged STOP.
+     */
+    if (g_stop_generation == g_acknowledged_generation)
+    {
+        g_clear_heartbeat_ms = now;
+        gb_clear_valid = true;
+        gb_stop_latched = false;
+    }
+    safety_lock_leave(interrupt_status);
+}
+
+bool b2_safety_stop_requested(void)
+{
+    UINT interrupt_status;
+    bool b_pending;
+
+    safety_lock_enter(&interrupt_status);
+    b_pending = (g_stop_generation != g_acknowledged_generation);
+
+    safety_lock_leave(interrupt_status);
+    return (b_pending);
+}
+
+uint32_t b2_safety_stop_generation(void)
+{
+    UINT interrupt_status;
+    uint32_t generation;
+
+    safety_lock_enter(&interrupt_status);
+    generation = g_stop_generation;
+
+    safety_lock_leave(interrupt_status);
+    return (generation);
+}
+
+bool b2_safety_motion_allowed(void)
+{
+    UINT interrupt_status;
+    uint32_t last;
+    bool b_allowed;
+    uint32_t now = b2_now_ms();
+#if !ROBOT_ENABLE_DRIVE
+    return (false);
+#endif
+
+    safety_lock_enter(&interrupt_status);
+    b_allowed =
+        (g_stop_generation == g_acknowledged_generation) &&
+        (!gb_stop_latched) &&
+        (gb_clear_valid);
+    last = g_clear_heartbeat_ms;
+
+    safety_lock_leave(interrupt_status);
+    if (!b_allowed)
+    {
+        return (false);
+    }
+    return (uint32_t)(now - last) <=
+        B2_SAFETY_HEARTBEAT_MS;
+}
+
+/** @brief Disable PWM without acknowledging a safety STOP generation. */
+void b2_safety_force_stop(void)
+{
+    UINT interrupt_status;
+
+    safety_lock_enter(&interrupt_status);
+    motor_stop();
+    gb_stopped = true;
+
+    safety_lock_leave(interrupt_status);
+}
+
+/** @brief Disable PWM and acknowledge the current STOP generation. */
+void b2_safety_acknowledge_stop(void)
+{
+    UINT interrupt_status;
+    /*
+     * Only Buddy 2's controller calls this function.
+     */
+    safety_lock_enter(&interrupt_status);
+    motor_stop();
+    gb_stopped = true;
+    g_acknowledged_generation = g_stop_generation;
+
+    safety_lock_leave(interrupt_status);
+}
+
+void b2_safety_apply_pwm(
+    int left_percent,
+    int right_percent,
+    uint32_t command_safety_generation
+)
+{
+    UINT interrupt_status;
+    uint32_t now = b2_now_ms();
+    bool b_allowed;
+
+    safety_lock_enter(&interrupt_status);
+    b_allowed =
+        (command_safety_generation == g_stop_generation) &&
+        (g_stop_generation == g_acknowledged_generation) &&
+        (!gb_stop_latched) &&
+        (gb_clear_valid) &&
+        ((uint32_t)(now - g_clear_heartbeat_ms) <=
+            B2_SAFETY_HEARTBEAT_MS);
+#if !ROBOT_ENABLE_DRIVE
+    b_allowed = false;
+#endif
+
+    if (!b_allowed)
+    {
+        motor_stop();
+        gb_stopped = true;
+        g_acknowledged_generation = g_stop_generation;
+    }
+    else
+    {
+        gb_stopped = false;
+        motor_left_set(left_percent);
+        motor_right_set(right_percent);
+    }
+    safety_lock_leave(interrupt_status);
+}
+
+bool b2_motor_is_stopped(void)
+{
+    UINT interrupt_status;
+    bool b_result;
+
+    safety_lock_enter(&interrupt_status);
+    b_result =
+        (gb_stopped) &&
+        (g_stop_generation == g_acknowledged_generation);
+
+    safety_lock_leave(interrupt_status);
+    return (b_result);
+}
+
+/** @brief Legacy task entry; do not start in the integrated application. */
+void b2_motor_task(INT stacd, void *p_exinf)
+{
+    (void)stacd;
+    (void)p_exinf;
+    tm_printf((UB *)"[B2] Legacy motor task disabled\n");
+}
+
+static void safety_lock_enter(UINT *p_interrupt_status)
+{
+#if TK_SUPPORT_SMP
+    (void)ISpinLock(&g_safety_lock, p_interrupt_status);
 #else
-    publish(B2_CMD_STOP);
+    DI(*p_interrupt_status);
 #endif
 }
-bool b2_motor_is_stopped(void) { return motor_stopped != 0u; }
-static void stop_pwm(void)
+
+static void safety_lock_leave(UINT interrupt_status)
 {
-    pwm_set_cc(ROBOT_MOTOR_L_FWD_PIN, 0u);
-    pwm_set_cc(ROBOT_MOTOR_L_REV_PIN, 0u);
-    pwm_set_cc(ROBOT_MOTOR_R_FWD_PIN, 0u);
-    pwm_set_cc(ROBOT_MOTOR_R_REV_PIN, 0u);
-    motor_stopped = 1u;
-}
-static void wheels(uint32_t l, uint32_t r)
-{
-    if (l > ROBOT_PWM_TOP) l = ROBOT_PWM_TOP;
-    if (r > ROBOT_PWM_TOP) r = ROBOT_PWM_TOP;
-    /* Break-before-make: no forward/reverse overlap on either motor. */
-    pwm_set_cc(ROBOT_MOTOR_L_REV_PIN, 0u);
-    pwm_set_cc(ROBOT_MOTOR_R_REV_PIN, 0u);
-    pwm_set_cc(ROBOT_MOTOR_L_FWD_PIN, l);
-    pwm_set_cc(ROBOT_MOTOR_R_FWD_PIN, r);
-    motor_stopped = (l == 0u && r == 0u);
-}
-static bool pwm_init(void)
-{
-    static const uint32_t pins[4] = {
-        ROBOT_MOTOR_L_FWD_PIN, ROBOT_MOTOR_L_REV_PIN,
-        ROBOT_MOTOR_R_FWD_PIN, ROBOT_MOTOR_R_REV_PIN
-    };
-    uint32_t limit = 1000000u;
-    int i;
-    /* The board's PWM peripheral may be held in reset on power-on. */
-    RESETS_RESET_REG &= ~PWM_RESET_MASK;
-    while (!(RESETS_DONE_REG & PWM_RESET_MASK)) {
-        if (--limit == 0u) return false;
-    }
-    for (i = 0; i < 4; ++i)
-        if (pwm_set_enabled(pins[i], FALSE) != E_OK) return false;
-    for (i = 0; i < 4; ++i) {
-        if (pwm_set_wrap(pins[i], ROBOT_PWM_TOP) != E_OK) return false;
-        if (pwm_set_cc(pins[i], 0u) != E_OK) return false;
-    }
-    /* 125 MHz / 125 / 1000 = 1 kHz. GP8/9 are PWM slice 4,
-       GP10/11 slice 5, GP12 servo slice 6 (no timer conflict). */
-    out_w(PWM_BASE + (((ROBOT_MOTOR_L_FWD_PIN >> 1u) & 7u) * 0x14u) + PWM_CHx_DIV, 125u << 4u);
-    out_w(PWM_BASE + (((ROBOT_MOTOR_R_FWD_PIN >> 1u) & 7u) * 0x14u) + PWM_CHx_DIV, 125u << 4u);
-    for (i = 0; i < 4; ++i)
-        if (pwm_set_pin(pins[i]) != E_OK) return false;
-    for (i = 0; i < 4; ++i)
-        if (pwm_set_enabled(pins[i], TRUE) != E_OK) return false;
-    stop_pwm();
-    return true;
-}
-void b2_motor_task(INT stacd, void *exinf)
-{
-    uint32_t last_word = 0u, last_forward = 0u;
-    bool was_running = false;
-    (void)stacd; (void)exinf;
-    initialized = pwm_init();
-    if (!initialized) {
-        tm_printf((UB*)"[B2-FAULT] PWM init failed; MOTOR LOCKED OFF\n");
-        for (;;) tk_dly_tsk(1000);
-    }
-    tm_printf((UB*)"[B2] PWM READY M1 GP%d/GP%d M2 GP%d/GP%d duty=%d/999 drive=%d diagnostic=%d\n",
-              (int)ROBOT_MOTOR_L_FWD_PIN, (int)ROBOT_MOTOR_L_REV_PIN,
-              (int)ROBOT_MOTOR_R_FWD_PIN, (int)ROBOT_MOTOR_R_REV_PIN,
-              (int)ROBOT_FORWARD_PWM, (int)ROBOT_ENABLE_DRIVE,
-              (int)ROBOT_WHEELS_UP_MOTOR_TEST);
-#if ROBOT_WHEELS_UP_MOTOR_TEST
-    tm_printf((UB*)"[B2-TEST] WHEELS MUST BE RAISED. Starting in 3 seconds\n");
-    tk_dly_tsk(3000);
-    tm_printf((UB*)"[B2-TEST] LEFT only\n");
-    wheels(ROBOT_MOTOR_TEST_PWM, 0u);
-    tk_dly_tsk(ROBOT_MOTOR_TEST_PULSE_MS); stop_pwm(); tk_dly_tsk(700);
-    tm_printf((UB*)"[B2-TEST] RIGHT only\n");
-    wheels(0u, ROBOT_MOTOR_TEST_PWM);
-    tk_dly_tsk(ROBOT_MOTOR_TEST_PULSE_MS); stop_pwm(); tk_dly_tsk(700);
-    tm_printf((UB*)"[B2-TEST] BOTH forward\n");
-    wheels(ROBOT_MOTOR_TEST_PWM, ROBOT_MOTOR_TEST_PWM);
-    tk_dly_tsk(ROBOT_MOTOR_TEST_PULSE_MS); stop_pwm();
-    tm_printf((UB*)"[B2-TEST] FINISHED. Motors will stay off until reflashed\n");
-    for (;;) { stop_pwm(); tk_dly_tsk(1000); }
+#if TK_SUPPORT_SMP
+    (void)ISpinUnlock(&g_safety_lock, interrupt_status);
 #else
-    tk_dly_tsk(ROBOT_BOOT_DELAY_MS);
-    tm_printf((UB*)"[B2] WAITING_FOR_CLEAR: motors OFF until Buddy 5 sends FORWARD\n");
-    for (;;) {
-        uint32_t now = millis();
-        uint32_t word = request_word;
-        uint32_t cmd = word & 0xffu;
-        if (word != last_word) {
-            last_word = word;
-            if (cmd == B2_CMD_FORWARD) last_forward = now;
-        }
-        if (cmd != B2_CMD_FORWARD ||
-            (uint32_t)(now - last_forward) > ROBOT_MOTOR_WATCHDOG_MS) {
-            if (was_running) {
-                stop_pwm(); was_running = false;
-                tm_printf((UB*)"[B2] STOP: %s\n",
-                          cmd != B2_CMD_FORWARD ? "Buddy 5 stop request" : "forward heartbeat expired");
-            }
-        } else if (!was_running) {
-#if ROBOT_ENABLE_DRIVE
-            wheels(ROBOT_FORWARD_PWM, ROBOT_FORWARD_PWM);
-            was_running = true;
-            tm_printf((UB*)"[B2] FORWARD left=%d right=%d\n",
-                      (int)ROBOT_FORWARD_PWM, (int)ROBOT_FORWARD_PWM);
+    EI(interrupt_status);
 #endif
-        }
-        /* Do not repeatedly print STOPPED every five seconds. The motor
-         * remains stopped until a real, fresh Buddy 5 FORWARD request.
-         * Transitions are already logged in the branches above. */
-        tk_dly_tsk(ROBOT_MOTOR_PERIOD_MS);
+}
+
+static uint32_t b2_now_ms(void)
+{
+    SYSTIM now;
+
+    if (E_OK != tk_get_tim(&now))
+    {
+        return (0u);
     }
-#endif
+    return ((uint32_t)now.lo);
 }
