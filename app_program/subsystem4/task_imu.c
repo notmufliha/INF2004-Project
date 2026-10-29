@@ -3,6 +3,7 @@
 #include "imu_demo.h"
 #include "imu_processing.h"
 #include "gy511_i2c.h"
+#include "../subsystem1/subsystem1.h"   /* B1 telemetry + shared fault mask */
 
 #if !S4_IMU_USE_MOCK
 static bool hardware_read(uint32_t now_ms, imu_data_t *data)
@@ -258,6 +259,8 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
                                               &processed, &health);
         if (health.fault_started) {
             tm_printf((UB*)"[B4] Sensor fault/unavailable: readings suppressed\n");
+            fault_raise(FAULT_IMU);                       /* B1 fault mask */
+            (void)comm_report_error(ERR_S4_IMU_FAULT, 0U);
 #if APP_TEST
             imu_event_t fault = {0};
             fault.motion_state = IMU_MOTION_UNKNOWN;
@@ -280,6 +283,7 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
         event.sensor_recovered = health.recovered;
         if (health.recovered) {
             tm_printf((UB*)"[B4] Sensor recovered: readings valid\n");
+            fault_clear(FAULT_IMU);
         }
         bool report_due = !have_previous || health.recovered ||
                           event.timestamp_ms - last_report >= 1000U;
@@ -293,7 +297,14 @@ EXPORT void imu_analysis_task(INT stacd, void *exinf)
             }
             if (event.hump_completed) {
                 tm_printf((UB*)"[B4] Hump completed: height=N/A\n");
+                /* B1 event: heights in mm; valid=false until B4 has a
+                 * height estimator, so the laptop shows n/a, not 0 */
+                (void)comm_report_hump(event.height_valid ? TRUE : FALSE,
+                                       (H)(event.hump_peak_cm * 10.0f + 0.5f),
+                                       (H)(event.highest_hump_cm * 10.0f + 0.5f));
             }
+            /* B1 telemetry: motion state (3 bits) and pitch in 0.1 deg */
+            comm_set_imu((UB)event.motion_state, (H)(event.pitch_deg * 10.0f));
 #if APP_TEST
             /* Test observer can lag without blocking analysis. */
             ER er = tk_snd_mbf(mbf_imu_test_events, &event, sizeof(event), TMO_POL);

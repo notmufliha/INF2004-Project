@@ -6,6 +6,9 @@
  *	Each TEST_CHECK prints a PASS/FAIL line on the console.  Save the
  *	output to testing/subsystem1/logs/ and record the result in
  *	testing/subsystem1/TEST_LOG.md.
+ *
+ *	The bit-exact packing of every frame is also checked on the laptop,
+ *	against the Python decoder: testing/subsystem1/host/.
  */
 
 #include "s1_private.h"
@@ -16,29 +19,51 @@
 #define CONNECT_WAIT_MS		30000	/* S1-U09: time allowed to connect */
 #define BURST_EVENTS		40	/* S1-U06: events posted in a burst */
 #define BURST_LIMIT_MS		20	/* S1-U06: must finish within this  */
+#define FAULT_ROUNDS		1000	/* S1-U20: set/clear repetitions    */
 
-LOCAL BOOL parses_to(const char *s, REMOTE_CMD_TYPE type, H arg, UW seq)
+/* Build a 3-byte command frame: ver:3 id:4 arg:7 seq:8 reserved:2 */
+LOCAL void make_cmd(UB out[WIRE_CMD_LEN], UW ver, UW id, UW arg, UW seq,
+		    UW reserved)
 {
-	PARSED_CMD pc;
-	INT len = 0;
+	BITBUF b;
 
-	while (s[len] != '\0') {
-		len++;
-	}
-	return ((comm_cmd_parse((const UB *)s, len, &pc) == CMD_OK) &&
-		(pc.local == LOCAL_NONE) && (pc.cmd.type == type) &&
-		(pc.cmd.arg == arg) && (pc.cmd.seq == seq)) ? TRUE : FALSE;
+	bits_begin(&b, out, WIRE_CMD_LEN);
+	bits_put(&b, ver, 3);
+	bits_put(&b, id, 4);
+	bits_put(&b, arg, 7);
+	bits_put(&b, seq, 8);
+	bits_put(&b, reserved, 2);
 }
 
-LOCAL CMD_RESULT parse_result(const char *s)
+LOCAL CMD_RESULT decode(UW ver, UW id, UW arg, UW seq, UW reserved,
+			PARSED_CMD *pc)
+{
+	UB f[WIRE_CMD_LEN];
+
+	make_cmd(f, ver, id, arg, seq, reserved);
+	return comm_cmd_decode(f, WIRE_CMD_LEN, pc);
+}
+
+LOCAL BOOL decodes_to(UW id, UW arg, UW seq)
 {
 	PARSED_CMD pc;
-	INT len = 0;
 
-	while (s[len] != '\0') {
-		len++;
+	if ((decode(WIRE_VERSION, id, arg, seq, 0U, &pc) != CMD_OK) ||
+	    (pc.id != id) || (pc.arg != arg) || (pc.seq != seq)) {
+		return FALSE;
 	}
-	return comm_cmd_parse((const UB *)s, len, &pc);
+	if (id >= RCMD_COUNT) {
+		return TRUE;		/* handled by S1, not forwarded */
+	}
+	return ((pc.cmd.type == id) && (pc.cmd.arg == arg) &&
+		(pc.cmd.seq == seq)) ? TRUE : FALSE;
+}
+
+LOCAL CMD_RESULT result_of(UW ver, UW id, UW arg, UW reserved)
+{
+	PARSED_CMD pc;
+
+	return decode(ver, id, arg, 7U, reserved, &pc);
 }
 
 EXPORT void subsystem1_test(void)
@@ -68,57 +93,73 @@ EXPORT void subsystem1_test(void)
 		TEST_CHECK("S1-U02", waiting >= 9, "comm_task sleeps between loops");
 	}
 
-	/* S1-U03: valid commands are accepted and decoded (FR-B1-5) */
+	/* S1-U03: valid binary commands are accepted and decoded (FR-B1-5) */
 	TEST_CHECK("S1-U03",
-		   parses_to("START", RCMD_START, 0, 0) &&
-		   parses_to("stop", RCMD_STOP, 0, 0) &&
-		   parses_to("  Stop  #17 ", RCMD_STOP, 0, 17) &&
-		   parses_to("SPEED 40", RCMD_SPEED, 40, 0) &&
-		   parses_to("speed 100 #3", RCMD_SPEED, 100, 3) &&
-		   parses_to("MODE line", RCMD_MODE, MODE_LINE_ONLY, 0) &&
-		   parses_to("ESTOP", RCMD_ESTOP, 0, 0) &&
-		   (parse_result("PING") == CMD_OK) &&
-		   (parse_result("TELEM 250") == CMD_OK),
-		   "valid commands accepted and decoded");
+		   decodes_to(RCMD_START, 0, 0) &&
+		   decodes_to(RCMD_STOP, 0, 17) &&
+		   decodes_to(RCMD_SPEED, 40, 3) &&
+		   decodes_to(RCMD_SPEED, 100, 255) &&
+		   decodes_to(RCMD_MODE, MODE_LINE_ONLY, 1) &&
+		   decodes_to(RCMD_ESTOP, 0, 9) &&
+		   decodes_to(WCMD_PING, 0, 2) &&
+		   decodes_to(WCMD_TELEM, COMM_TELEM_MIN_DS, 4) &&
+		   decodes_to(WCMD_TELEM, COMM_TELEM_MAX_DS, 5),
+		   "valid 3-byte commands accepted and decoded");
 
-	/* S1-U04: invalid commands are rejected (NFR-B1-5) */
-	TEST_CHECK("S1-U04",
-		   (parse_result("") == CMD_ERR_EMPTY) &&
-		   (parse_result("FLY") == CMD_ERR_UNKNOWN) &&
-		   (parse_result("SPEED") == CMD_ERR_MISSING_ARG) &&
-		   (parse_result("SPEED 101") == CMD_ERR_RANGE) &&
-		   (parse_result("SPEED -5") == CMD_ERR_BAD_NUMBER) &&
-		   (parse_result("SPEED fast") == CMD_ERR_BAD_NUMBER) &&
-		   (parse_result("STOP now") == CMD_ERR_EXTRA_ARG) &&
-		   (parse_result("MODE FLY") == CMD_ERR_BAD_MODE) &&
-		   (parse_result("TELEM 5") == CMD_ERR_RANGE) &&
-		   (parse_result("STOP #x") == CMD_ERR_BAD_NUMBER) &&
-		   (parse_result("ST\x01OP") == CMD_ERR_BAD_CHAR) &&
-		   (parse_result("A B C D") == CMD_ERR_EXTRA_ARG),
-		   "invalid commands rejected");
-
-	/* S1-U05: JSON writer never overruns, and flags overflow */
+	/* S1-U04: invalid frames are rejected (NFR-B1-5) */
 	{
-		UB		small[16];
-		UB		big[64];
-		JSON_BUF	jb;
-		INT		n1, n2;
+		PARSED_CMD	pc;
+		UB		f[WIRE_CMD_LEN + 1] = {0};
 
-		small[15] = 0xA5U;			/* guard byte */
-		json_begin(&jb, small, 15);
-		json_str(&jb, "key", "a value that is far too long");
-		n1 = json_end(&jb);
+		make_cmd(f, WIRE_VERSION, RCMD_STOP, 0U, 0U, 0U);
+		TEST_CHECK("S1-U04",
+			   (comm_cmd_decode(f, 2, &pc) == CMD_ERR_LENGTH) &&
+			   (comm_cmd_decode(f, 4, &pc) == CMD_ERR_LENGTH) &&
+			   (result_of(2U, RCMD_STOP, 0U, 0U) == CMD_ERR_VERSION) &&
+			   (result_of(WIRE_VERSION, RCMD_STOP, 0U, 1U) == CMD_ERR_RESERVED) &&
+			   (result_of(WIRE_VERSION, 0U, 0U, 0U) == CMD_ERR_UNKNOWN) &&
+			   (result_of(WIRE_VERSION, 15U, 0U, 0U) == CMD_ERR_UNKNOWN) &&
+			   (result_of(WIRE_VERSION, RCMD_SPEED, 101U, 0U) == CMD_ERR_RANGE) &&
+			   (result_of(WIRE_VERSION, RCMD_MODE, MODE_COUNT, 0U) == CMD_ERR_RANGE) &&
+			   (result_of(WIRE_VERSION, WCMD_TELEM, 0U, 0U) == CMD_ERR_RANGE) &&
+			   (result_of(WIRE_VERSION, RCMD_STOP, 5U, 0U) == CMD_ERR_EXTRA_ARG),
+			   "invalid command frames rejected");
+	}
 
-		json_begin(&jb, big, (INT)sizeof(big));
-		json_int(&jb, "a", -2147483647 - 1);
-		json_str(&jb, "q", "x\"y");
-		n2 = json_end(&jb);
+	/* S1-U05: frames have the documented sizes, and packing never
+	   writes past the buffer (guard byte) */
+	{
+		UB		buf[COMM_PAYLOAD_MAX + 1];
+		COMM_TELEMETRY	t = {0};
+		COMM_EVENT	ev = {0};
+		STATUS_INFO	st = {0};
+		INT		n_tel, n_bc, n_obs, n_err, n_st, n_ack, n_small;
 
+		buf[COMM_PAYLOAD_MAX] = 0xA5U;
+		n_tel = pack_telemetry(buf, COMM_PAYLOAD_MAX, 1, 2, 0, &t);
+		ev.type = EVT_BARCODE;
+		n_bc  = pack_event(buf, COMM_PAYLOAD_MAX, 1, &ev);
+		ev.type = EVT_OBSTACLE;
+		n_obs = pack_event(buf, COMM_PAYLOAD_MAX, 1, &ev);
+		ev.type = EVT_ERROR;
+		n_err = pack_event(buf, COMM_PAYLOAD_MAX, 1, &ev);
+		n_st  = pack_status(buf, COMM_PAYLOAD_MAX, &st);
+		n_ack = pack_ack(buf, COMM_PAYLOAD_MAX, 1, 1, CMD_OK);
+		n_small = pack_telemetry(buf, 10, 1, 2, 0, &t);	/* too small */
+
+		tm_printf((UB*)"[TEST] S1-U05 info: telemetry %d B, event %d-%d B, "
+			  "status %d B, ack %d B; sizeof telem %d, event %d, "
+			  "cmd %d\n", n_tel, n_bc, n_obs, n_st, n_ack,
+			  (INT)sizeof(COMM_TELEMETRY), (INT)sizeof(COMM_EVENT),
+			  (INT)sizeof(REMOTE_CMD));
 		TEST_CHECK("S1-U05",
-			   (n1 == -1) && (small[15] == 0xA5U) &&
-			   (small[14] == '\0') && (n2 > 0) &&
-			   (big[n2] == '\0'),
-			   "JSON writer is bounded and escapes quotes");
+			   (n_tel == WIRE_TELEM_LEN) && (n_bc == 5) &&
+			   (n_err == 7) && (n_obs == WIRE_EVT_MAX_LEN) &&
+			   (n_st == WIRE_STATUS_LEN) && (n_ack == WIRE_ACK_LEN) &&
+			   (n_small == -1) && (buf[COMM_PAYLOAD_MAX] == 0xA5U) &&
+			   (sizeof(COMM_TELEMETRY) == 24U) &&
+			   (sizeof(COMM_EVENT) == 8U) && (sizeof(REMOTE_CMD) == 4U),
+			   "binary frame sizes and bounded packing");
 	}
 
 	/* S1-U06: reporting events never blocks, even when the queue is
@@ -128,7 +169,7 @@ EXPORT void subsystem1_test(void)
 		INT	i, ok = 0, full = 0;
 
 		for (i = 0; i < BURST_EVENTS; i++) {
-			er = comm_report_error(1, (H)i, "S1-U06 burst");
+			er = comm_report_error(ERR_S1_TEST, (UB)i);
 			if (er == E_OK) {
 				ok++;
 			} else if (er == E_TMOUT) {
@@ -142,35 +183,66 @@ EXPORT void subsystem1_test(void)
 		tk_dly_tsk(500);		/* let comm_task drain them */
 	}
 
-	/* S1-U07: telemetry setters update the snapshot consistently */
+	/* S1-U07: telemetry setters update the packed snapshot, saturate
+	   out-of-range values, and keep the low 24 bits of encoder totals */
 	{
 		COMM_TELEMETRY t;
 
-		comm_set_motion(123, -45, 1000, 999, 4321);
-		comm_set_line(11, 22, 1, LINE_F_DETECTED | LINE_F_JUNCTION);
+		comm_set_motion(123, -9000, 1000, -1);
+		comm_set_line(11, 5000, 1, LINE_F_DETECTED | LINE_F_JUNCTION);
+		comm_set_imu(3U, -700);
+		comm_set_obstacle_dist(COMM_CM_INVALID);
 		comm_get_telemetry(&t);
 		TEST_CHECK("S1-U07",
-			   (t.speed_l == 123) && (t.speed_r == -45) &&
-			   (t.enc_l == 1000) && (t.distance_mm == 4321) &&
-			   (t.ir_left == 11) && (t.ir_centre == 22) &&
-			   (t.line_flags == (LINE_F_DETECTED | LINE_F_JUNCTION)),
-			   "telemetry snapshot setters/getter");
+			   (t.speed_l == 123) && (t.speed_r == -COMM_SPEED_MAX) &&
+			   (t.enc_l == 1000U) && (t.enc_r == 0xFFFFFFU) &&
+			   (t.ir_left == 11U) && (t.ir_centre == COMM_IR_MAX) &&
+			   (t.ir_right == 1U) &&
+			   (t.line_flags == (LINE_F_DETECTED | LINE_F_JUNCTION)) &&
+			   (t.motion == 3U) && (t.pitch_ddeg == -COMM_PITCH_MAX) &&
+			   (t.obs_dist_cm == 0x1FFU),
+			   "packed telemetry setters/getter, saturation");
 	}
 
-	/* S1-U08: a received command goes through validation:
-	   one valid (forwarded or reported busy), one rejected */
+	/* S1-U08: a received frame goes through validation:
+	   one valid (PING), one rejected (unknown id) */
 	{
-		COMM_STATS before, after;
+		COMM_STATS	before, after;
+		UB		ping[WIRE_CMD_LEN], bad[WIRE_CMD_LEN];
 
+		make_cmd(ping, WIRE_VERSION, WCMD_PING, 0U, 1U, 0U);
+		make_cmd(bad, WIRE_VERSION, 14U, 0U, 2U, 0U);
 		comm_get_stats(&before);
-		comm_bridge_rx_command((const uint8_t *)"PING #1", 7);
-		comm_bridge_rx_command((const uint8_t *)"LAUNCH", 6);
+		comm_bridge_rx_command(ping, WIRE_CMD_LEN);
+		comm_bridge_rx_command(bad, WIRE_CMD_LEN);
 		tk_dly_tsk(300);
 		comm_get_stats(&after);
 		TEST_CHECK("S1-U08",
-			   (after.rx_ok == before.rx_ok + 1U) &&
-			   (after.rx_rejected == before.rx_rejected + 1U),
+			   (after.rx_ok == (UH)(before.rx_ok + 1U)) &&
+			   (after.rx_rejected == (UH)(before.rx_rejected + 1U)),
 			   "received commands validated (1 ok, 1 rejected)");
+	}
+
+	/* S1-U20: the shared fault mask -- setting and clearing one bit
+	   never disturbs another subsystem's bit */
+	{
+		UB	saved = fault_get();
+		BOOL	ok = TRUE;
+		INT	i;
+
+		fault_clear(FAULT_ALL);
+		for (i = 0; i < FAULT_ROUNDS; i++) {
+			fault_raise(FAULT_IMU);
+			fault_raise(FAULT_NO_ECHO);
+			fault_clear(FAULT_IMU);
+			if (fault_get() != FAULT_NO_ECHO) {
+				ok = FALSE;
+			}
+			fault_clear(FAULT_NO_ECHO);
+		}
+		fault_raise(saved);
+		TEST_CHECK("S1-U20", ok && (flg_faults > 0),
+			   "fault bitmask set/clear keeps other bits");
 	}
 
 #if TM_MQTT
@@ -196,7 +268,7 @@ EXPORT void subsystem1_test(void)
 		tk_dly_tsk(3000);
 		comm_get_stats(&after);
 		TEST_CHECK("S1-U10",
-			   (after.tx_queued >= before.tx_queued + 4U) &&
+			   ((UH)(after.tx_queued - before.tx_queued) >= 4U) &&
 			   (after.tx_dropped == before.tx_dropped),
 			   "telemetry published for 3 s with no drops");
 	}

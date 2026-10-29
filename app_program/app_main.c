@@ -129,8 +129,9 @@ EXPORT INT usermain(void)
     tm_printf((UB*)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
               (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS);
 
-    /* Initialize telemetry storage before B2's telemetry task uses it.
-     * Do not start B1's standalone synthetic-data demo in robot mode.
+    /* B1 first: it creates the shared fault mask (fault_flags.h) and the
+     * telemetry storage that B2's telemetry task and B5 report into.
+     * S1_STANDALONE_DEMO is 0, so B1 publishes real data, not the demo.
      */
     robot_er = subsystem1_init();
     if (robot_er < E_OK) {
@@ -163,7 +164,15 @@ EXPORT INT usermain(void)
         goto robot_startup_failed;
     }
 
-    tm_printf((UB*)"[ROBOT] B2 motor task + B5 obstacle task started\n");
+    /* Started last, and a failure here does not disable the robot:
+     * losing WiFi/MQTT must never stop driving (NFR-B1-1). */
+    robot_er = subsystem1_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem1_start");
+        tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
+    }
+
+    tm_printf((UB*)"[ROBOT] B2 motor + B5 obstacle + B1 telemetry tasks started\n");
 #if APP_TEST
     subsystem2_test();
 #endif
