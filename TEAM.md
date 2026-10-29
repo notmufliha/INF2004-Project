@@ -17,10 +17,10 @@ subsystem, ask its owner or open a pull request for them to review.
 
 | # | Subsystem (what it does) | Student ID | GitHub username | Code | Tests |
 |---|---|---|---|---|---|
-| 1 | *example:* LED heartbeat on GP19 | | | `app_program/subsystem1/` | `testing/subsystem1/` |
+| 1 | WiFi Communication, Command & Telemetry (MQTT) | 2502999 | notmufliha | `app_program/subsystem1/` | `testing/subsystem1/` |
 | 2 | *example:* Producer: makes a sample every 300 ms | | | `app_program/subsystem2/` | `testing/subsystem2/` |
 | 3 | *example:* Consumer: collects samples into statistics | | | `app_program/subsystem3/` | `testing/subsystem3/` |
-| 4 | *example:* Monitor: prints reports, pauses the LED | | | `app_program/subsystem4/` | `testing/subsystem4/` |
+| 4 | IMU motion/terrain monitoring (mock RTOS demo); legacy example monitor retained | 2503027 | | `app_program/subsystem4/` | `testing/subsystem4/` |
 | 5 | | | | `app_program/subsystem5/` | `testing/subsystem5/` |
 
 Shared files (`app_program/app_main.c`, `app_program/app.h`, this file)
@@ -52,8 +52,8 @@ fixed.
 | GP1 | | (taken whenever the team builds with `CRASH_REPORT=1`) |
 | GP2 | | |
 | GP3 | | |
-| GP4 | | |
-| GP5 | | |
+| GP4 | B4 | GY-511 I2C0 SDA |
+| GP5 | B4 | GY-511 I2C0 SCL |
 | GP6 | | |
 | GP7 | | |
 | GP8 | | |
@@ -67,7 +67,7 @@ fixed.
 | GP16 | | |
 | GP17 | | |
 | GP18 | | |
-| GP19 | *example:* S1 | external LED (LED + 330 Ω to GND) |
+| GP19 | S1 | WiFi/MQTT link-status LED (LED + 330 Ω to GND) |
 | GP20 | | |
 | GP21 | | |
 | GP22 | | |
@@ -106,13 +106,13 @@ the drivers have no locking to stop it.
 | Peripheral | Owner subsystem | Owning task | Pins |
 |---|---|---|---|
 | UART1 | | | |
-| I2C0 | | | |
+| I2C0 | B4 | imu_sampling_task | GP4 SDA, GP5 SCL; kernel I2C driver enabled, 5 ms transaction-phase timeout |
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |
 | ADC | | | GP26–GP28 |
 | PWM slices (list) | | | |
-| WiFi radio, TCP/IP, MQTT | *kernel* | `cyw43_utk_task` (built in) | GP23–25, GP29 |
+| WiFi radio, TCP/IP, MQTT | *kernel* (S1 feeds it via `comm_bridge.h`) | `cyw43_utk_task` (built in) | GP23–25, GP29 |
 
 ### WiFi and MQTT are special
 
@@ -146,10 +146,10 @@ change it only by team agreement. Write down every task you create.
 
 | Subsystem | Priority band | Tasks (name – priority – core) |
 |---|---|---|
-| 1 | 12–13 | *example:* led_task – 12 – any |
+| 1 | 12–13 | led_task – 12 – any; comm_task – 13 – any; demo_task – 12 – any (only while `S1_STANDALONE_DEMO`=1) |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
 | 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
-| 4 | 18–19 | *example:* monitor_task – 18 – any |
+| 4 | 18–19 | imu_sampling_task – 18 – any; imu_analysis_task – 19 – any; legacy monitor_task – 19 – any |
 | 5 | 20–21 | |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
@@ -167,6 +167,10 @@ sends to it or waits on it. Agree on the data format before coding.
 | IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `mbf_summary`, `flg_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
 | IF-04 | S4 → S3 | shared data under a mutex (owned by S3) | `app_stats`, `mtx_stats` | `APP_STATS`, read only while locked | *example* |
 | IF-05 | S4 → S1 | task control | `tid_led` | `tk_sus_tsk` / `tk_rsm_tsk` / `tk_chg_pri` | *example* |
+| IF-S1-TLM | any → S1 | shared snapshot under mutex (owned by S1) | `mtx_telem` via `comm_set_xxx()` | `COMM_TELEMETRY` in `subsystem1.h` | *proposed* |
+| IF-S1-EVT | any → S1 | message buffer (owned by S1), `TMO_POL` | `mbf_events` via `comm_report_xxx()` | barcode / hump / obstacle / error | *proposed* |
+| IF-S1-CMD | S1 → Vehicle Controller | message buffer (owned by S1) | `mbf_remote_cmd` | `REMOTE_CMD` in `subsystem1.h`, receive with `TMO_POL` | *proposed* |
+| IF-S1-NET | S1 ↔ kernel WiFi task | message buffers `mbf_tx` / `mbf_rx`, `TMO_POL` only | `comm_bridge_xxx()` in `comm_bridge.h` | topic id + JSON / command text; see `subsystem1/MQTT.md` | *needs team + instructor OK (changes `mqtt_utk.c`)* |
 | IF-06 | | | | | |
 
 Each interface is tested by at least one integration test
@@ -179,12 +183,12 @@ limit there. The numbers below are the example's usage.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 1 | 1 | 1 | 1 | |
+| Task | 32 | 2 (+1 demo) | 1 | 1 | 3 | |
 | Semaphore | 16 | | 1 | | | |
-| Event flag | 16 | | | | 1 | |
+| Event flag | 16 | 1 | | | 1 | |
 | Mailbox | 12 | | | 1 | | |
-| Mutex | 12 | | | 1 | | |
-| Message buffer | 12 | | | | 1 | |
+| Mutex | 12 | 1 | | 1 | | |
+| Message buffer | 12 | 4 | | | 2 (3 with TEST=1) | |
 | Fixed memory pool | 12 | | 1 | | | |
 | Variable memory pool | 12 | | | | | |
 | Cyclic handler | 12 | 1 | | | | |

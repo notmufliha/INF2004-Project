@@ -192,15 +192,10 @@ static void stationary_profile_mode(void)
         ++samples;
         /* B1 telemetry (non-blocking): front distance in cm, and the
          * shared no-echo fault bit */
-        comm_set_obstacle_dist(valid ?
-                               s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
-                               COMM_CM_INVALID);
-        if (valid)
-        {
+        comm_set_obstacle_dist(valid ? (UH)(cm + 0.5f) : COMM_CM_INVALID);
+        if (valid) {
             fault_clear(FAULT_NO_ECHO);
-        }
-        else
-        {
+        } else {
             fault_raise(FAULT_NO_ECHO);
         }
         if (!valid) {
@@ -348,6 +343,14 @@ static void stationary_profile_mode(void)
                     tm_printf((UB*)"[S5-FAULT] width not bracketed by valid clear rays; no safe plan\n");
                 }
                 print_profile(&profile);
+                /* B1 obstacle event (cm); STOP when no safe side */
+                (void)comm_report_obstacle(
+                    profile.valid ? (UH)(profile.nearest_cm + 0.5f) : COMM_CM_INVALID,
+                    profile.valid ? (UH)(profile.estimated_width_cm + 0.5f) : COMM_CM_INVALID,
+                    profile.valid ? (UH)(profile.left_clearance_cm + 0.5f) : COMM_CM_INVALID,
+                    profile.valid ? (UH)(profile.right_clearance_cm + 0.5f) : COMM_CM_INVALID,
+                    side == S5_SIDE_LEFT ? AVOID_LEFT :
+                    side == S5_SIDE_RIGHT ? AVOID_RIGHT : AVOID_STOP);
                 tm_printf((UB*)"[S5-PLAN] direction=%s width_valid=%d action=%s\n",
                           side == S5_SIDE_LEFT ? "LEFT" : side == S5_SIDE_RIGHT ? "RIGHT" : "NONE",
                           (int)profile.valid,

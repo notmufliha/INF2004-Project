@@ -10,7 +10,7 @@
 
 #include "subsystem4.h"
 #include "../subsystem1/subsystem1.h"	/* IF-05: tid_led */
-#include "../subsystem2/subsystem2.h"	/* sem_slots, mpf_samples (read only) */
+#include "../subsystem2/subsystem2.h"	/* gh_sem_slots, gh_mpf_samples (read only) */
 #include "../subsystem3/subsystem3.h"	/* IF-04: app_stats, mtx_stats */
 
 EXPORT UW	s4_lines_received;
@@ -89,8 +89,8 @@ EXPORT void monitor_task(INT stacd, void *exinf)
 		tk_unl_mtx(mtx_stats);
 
 		tk_get_tim(&now);
-		tk_ref_sem(sem_slots, &rsem);
-		tk_ref_mpf(mpf_samples, &rmpf);
+		tk_ref_sem(gh_sem_slots, &rsem);
+		tk_ref_mpf(gh_mpf_samples, &rmpf);
 		tm_printf((UB*)"monitor: t=%u ms  samples=%u  min=%d max=%d avg=%d"
 			  "  free slots=%d  free blocks=%d\n",
 			  now.lo, snap.received, snap.min, snap.max,

@@ -20,13 +20,13 @@
  *	------------------------------------------------------------
  *	  subsystem1/  LED       blinks GP19, paced by a cyclic handler
  *	  subsystem2/  Producer  makes a "sample" every 300 ms     (core 1)
- *	  subsystem3/  Consumer  collects samples into statistics  (core 0)
+ *	  subsystem3/  Consumer  collects samples into statistics  (priority 16, core 0)
  *	  subsystem4/  Monitor   prints reports, pauses/resumes the LED
  *	  subsystem5/  (empty template for the fifth student)
  *
  *	How they talk to each other (the interfaces, see TEAM.md section 5):
  *	  IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
- *	  IF-02  S3 -> S2  semaphore sem_slots + memory pool mpf_samples
+ *	  IF-02  S3 -> S2  semaphore gh_sem_slots + memory pool gh_mpf_samples
  *	                   (owned by S2: S3 hands slots and blocks back)
  *	  IF-03  S3 -> S4  message buffer mbf_summary + event flag flg_events
  *	                   (owned by S4)
@@ -55,6 +55,7 @@
 
 #include "app.h"
 #include "robot_config.h"
+#include "subsystem2/b2_motor.h"
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -90,6 +91,19 @@ EXPORT ID app_start_task(FP entry, PRI pri, UW prc, const char *name)
 	/* tk_sta_tsk: DORMANT -> READY.  The int is passed as stacd. */
 	er = tk_sta_tsk(tid, 0);
 	CHECK(er, name);
+
+	if (er < E_OK) {
+		/*
+		* Task creation succeeded, but starting failed.
+		* Delete the task to avoid leaving an unused
+		* DORMANT task allocated.
+		*/
+		ER del_er = tk_del_tsk(tid);
+		CHECK(del_er, "delete failed-start task");
+
+		return er;
+	}
+
 	return tid;
 }
 
@@ -109,13 +123,73 @@ EXPORT INT usermain(void)
 #endif
 
 #if ROBOT_MODE
+    ER robot_er;
+    BOOL b2_initialized = FALSE;
+
     tm_printf((UB*)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
               (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS);
-    CHECK(subsystem2_init(), "subsystem2_init");
-    CHECK(subsystem5_init(), "subsystem5_init");
-    CHECK(subsystem2_start(), "subsystem2_start");
-    CHECK(subsystem5_start(), "subsystem5_start");
-    tm_printf((UB*)"[ROBOT] B2 motor task + B5 obstacle task started\n");
+
+    /* B1 first: it creates the shared fault mask (fault_flags.h) and the
+     * telemetry storage that B2's telemetry task and B5 report into.
+     * S1_STANDALONE_DEMO is 0, so B1 publishes real data, not the demo.
+     */
+    robot_er = subsystem1_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem1_init");
+        goto robot_startup_failed;
+    }
+
+    robot_er = subsystem2_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem2_init");
+        goto robot_startup_failed;
+    }
+	b2_initialized = TRUE;
+
+    robot_er = subsystem5_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem5_init");
+        goto robot_startup_failed;
+    }
+
+    robot_er = subsystem2_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem2_start");
+        goto robot_startup_failed;
+    }
+
+    robot_er = subsystem5_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem5_start");
+        goto robot_startup_failed;
+    }
+
+    /* Started last, and a failure here does not disable the robot:
+     * losing WiFi/MQTT must never stop driving (NFR-B1-1). */
+    robot_er = subsystem1_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "subsystem1_start");
+        tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
+    }
+
+    tm_printf((UB*)"[ROBOT] B2 motor + B5 obstacle + B1 telemetry tasks started\n");
+#if APP_TEST
+    subsystem2_test();
+#endif
+    goto robot_startup_complete;
+
+robot_startup_failed:
+    tm_printf((UB*)"[ROBOT] STARTUP FAILED: robot disabled\n");
+
+    if (b2_initialized) {
+        b2_request_stop();
+    }
+
+    for (;;) {
+        tk_slp_tsk(TMO_FEVR);
+    }
+
+robot_startup_complete:
 #else
 	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
 	CHECK(subsystem1_init(), "subsystem1_init");

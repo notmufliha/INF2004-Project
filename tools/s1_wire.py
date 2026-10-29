@@ -59,19 +59,11 @@ ERROR_NAMES = {
     (2, 6): "motion command fault", (2, 7): "B2 DRIVE refresh missed",
     (3, 1): "line lost", (3, 2): "bad barcode",
     (4, 1): "IMU fault",
-    # B5: numbers match S5Error in subsystem5/s5_logic.h.
-    # 0xA1: detail = forward servo angle / 2 (90 / 2 = 45).
-    # Do not relabel 0xA2 as clearance or 0xA3 as servo-not-settled:
-    # those would conflict with the team's existing firmware codes.
-    (5, 1): "B5 no reliable ultrasonic echo / front sensor failure",
-    (5, 2): "B5 motor stop acknowledgement failed",
-    (5, 3): "B5 scan timeout",
-    (5, 4): "B5 no safe obstacle bypass route",
-    (5, 5): "B5 fine scan failed",
-    (5, 6): "B5 motion timeout",
-    (5, 7): "B5 line reacquisition timeout",
-    (5, 8): "B5 insufficient clearance",
-    (5, 9): "B5 reverse timeout",
+    # B5: number = S5Error (subsystem5/s5_logic.h)
+    (5, 1): "front sensor", (5, 2): "stop timeout", (5, 3): "scan timeout",
+    (5, 4): "no clear route", (5, 5): "fine scan", (5, 6): "motion timeout",
+    (5, 7): "line timeout", (5, 8): "insufficient clearance",
+    (5, 9): "reverse timeout",
 }
 
 DIST_INVALID = 0x1FF    # 9-bit all ones: no echo / not measured
