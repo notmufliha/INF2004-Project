@@ -267,7 +267,8 @@ the instructor** first.
 1. `S1_STANDALONE_DEMO` now defaults to `0`: the real subsystems feed the
    telemetry and the Vehicle Controller owns `mbf_remote_cmd`. Build with
    `S1_STANDALONE_DEMO=1` only for a bench test without them.
-2. Connected: B2 (S1 polls `encoder_get_counts()`), B4 (`task_imu.c`),
+2. Connected: B2 (`subsystem2/b2_integration.c` calls `comm_set_motion()`;
+   keep `S1_POLL_B2_ENCODERS` at 0), B4 (`task_imu.c`),
    B5 (`task_obstacle.c`). Still to do: B3 calls `comm_set_line()` and
    `comm_report_barcode()`; the Vehicle Controller calls
    `comm_set_robot_state()`, reads `mbf_remote_cmd`, and takes over

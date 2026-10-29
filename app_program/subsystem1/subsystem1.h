@@ -19,8 +19,7 @@
  *	       comm_set_imu(IMU_MOTION_CLIMBING_HUMP, pitch_ddeg);     B4
  *	       comm_set_obstacle_dist(front_cm);                       B5
  *	       comm_set_robot_state(ROBOT_LINE_FOLLOW);                VC
- *	   (B2: with S1_POLL_B2_ENCODERS = 1 subsystem 1 reads
- *	    encoder_get_counts() itself, so B2 need not call anything.)
+ *	   (B2 calls comm_set_motion() from subsystem2/b2_integration.c.)
  *
  *	2. Report one-off events (queued, published once each):
  *	       comm_report_barcode('A', NAV_LEFT);                     B3
@@ -74,11 +73,13 @@
 #define S1_STANDALONE_DEMO	0
 #endif
 
-/* 1 = comm_task reads B2's encoder_get_counts() each telemetry period
- *     and works out the wheel speeds itself (counts/s), so B2 does not
- *     have to call comm_set_motion().  Set to 0 once B2 calls it. */
+/* 0 = B2's telemetry task calls comm_set_motion() every 100 ms
+ *     (subsystem2/b2_integration.c).  This is the normal setting.
+ * 1 = comm_task reads B2's encoder_get_counts() itself and works out
+ *     the speeds.  Only for a build without B2's telemetry task: with
+ *     both, each would overwrite the other's values. */
 #ifndef S1_POLL_B2_ENCODERS
-#define S1_POLL_B2_ENCODERS	(!S1_STANDALONE_DEMO)
+#define S1_POLL_B2_ENCODERS	0
 #endif
 
 /* ---------------------------------------------------------------------

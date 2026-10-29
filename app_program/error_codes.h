@@ -35,6 +35,10 @@
 #define ERR_S2_MOTOR_STALL	ERR_CODE(2, 1)
 #define ERR_S2_ENCODER		ERR_CODE(2, 2)
 #define ERR_S2_LOOP_OVERRUN	ERR_CODE(2, 3)	/* 10 ms period missed       */
+#define ERR_S2_MOTION_TIMEOUT ERR_CODE(2, 4)
+#define ERR_S2_STOP_TIMEOUT   ERR_CODE(2, 5)
+#define ERR_S2_COMMAND        ERR_CODE(2, 6)
+#define ERR_S2_DRIVE_WATCHDOG ERR_CODE(2, 7)
 
 /* 3: Buddy 3, line following and barcodes */
 #define ERR_S3_LINE_LOST	ERR_CODE(3, 1)

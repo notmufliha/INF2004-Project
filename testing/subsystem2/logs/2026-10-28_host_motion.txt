@@ -1,0 +1,13 @@
+Date: 2026-10-28 (Asia/Singapore)
+Source: working tree based on 071640a; not a committed or flashed build.
+Compiler: GCC, C11, -Wall -Wextra -Werror -pedantic
+Command: gcc -std=c11 -Wall -Wextra -Werror -pedantic testing/subsystem2/host/motion_test.c app_program/subsystem2/motion_profile.c -lm -o <temporary executable>
+Result: PASS: 1116 subsystem 2 host assertions
+
+Real production motion_command.c and pid_control.c compiled with mocked RTOS,
+encoder and safety services. Covers S2-H01..H10 in TEST_LOG.md.
+No physical hardware, SMP scheduling or IRQ timing was tested.
+
+Full USB/Wi-Fi firmware build attempted with installed Pico SDK 1.5.1.
+Blocked in USB compatibility code: build include layout does not locate
+pico.h / pico/platform.h from that SDK. No new complete UF2 was produced.
