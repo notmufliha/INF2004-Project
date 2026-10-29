@@ -213,7 +213,7 @@ static void stationary_profile_mode(void)
             {
                 /* Send the event only on the transition to no-echo;
                  * repeated failures still keep the shared fault raised. */
-                (void)comm_report_error(ERR_S5(S5_ERR_FRONT_SENSOR),
+                (void)comm_report_error(ERR_S5_NO_ECHO,
                                         S5_FRONT_ANGLE_DETAIL);
                 tm_printf((UB*)"[S5-STOP] no reliable distance; motors stopped until clear path confirmed\n");
                 sensor_unavailable = true;
@@ -294,7 +294,7 @@ static void stationary_profile_mode(void)
             driving = false;
             tk_dly_tsk(ROBOT_STOP_SETTLE_MS);
             if (!b2_motor_is_stopped()) {
-                (void)comm_report_error(ERR_S5(S5_ERR_STOP_TIMEOUT), 0u);
+                (void)comm_report_error(ERR_S5_STOP_ACK, 0u);
                 tm_printf((UB*)"[S5-FAULT] motor PWM stop not acknowledged; scan aborted\n");
                 tk_dly_tsk(S5_FRONT_POLL_MS);
                 continue;
@@ -310,7 +310,7 @@ static void stationary_profile_mode(void)
             if (coarse.nearest_index < 0) {
                 /* No profile can be inferred; still send an explicit
                  * invalid STOP event instead of silently omitting it. */
-                (void)comm_report_error(ERR_S5(S5_ERR_FRONT_SENSOR),
+                (void)comm_report_error(ERR_S5_NO_ECHO,
                                         S5_FRONT_ANGLE_DETAIL);
                 tm_printf((UB*)"[S5-FAULT] no valid coarse readings; cannot plan bypass\n");
             } else {
@@ -358,7 +358,7 @@ static void stationary_profile_mode(void)
             {
                 /* Existing team code: S5_ERR_NO_CLEAR_ROUTE = 4.
                  * Do not repurpose the team's 0xA2 STOP_TIMEOUT code. */
-                (void)comm_report_error(ERR_S5(S5_ERR_NO_CLEAR_ROUTE), 0u);
+                (void)comm_report_error(ERR_S5_NO_CLEAR_ROUTE, 0u);
             }
             s5_report_profile(&profile, side);
             tk_get_tim(&ended);
@@ -406,7 +406,7 @@ static void live_controller_mode(void)
             fault_raise(FAULT_NO_ECHO);
             if (!sensor_unavailable)
             {
-                (void)comm_report_error(ERR_S5(S5_ERR_FRONT_SENSOR),
+                (void)comm_report_error(ERR_S5_NO_ECHO,
                                         S5_FRONT_ANGLE_DETAIL);
                 sensor_unavailable = true;
             }
