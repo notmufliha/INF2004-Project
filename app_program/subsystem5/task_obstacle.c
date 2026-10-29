@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include "subsystem5.h"
 #include "../robot_config.h"
 #include "../subsystem1/subsystem1.h"   /* B1 telemetry + shared fault mask */
@@ -9,6 +10,74 @@
 #include "s5_measure.h"
 #include "drv_servo.h"
 #include "obstacle_scan.h"
+
+/* The B1 wire format uses 9/7-bit obstacle fields.  B5's approved
+ * application ranges are 0..400 cm (distance/clearance) and 0..100 cm
+ * (width).  Invalid data uses B1's reserved all-ones sentinel. */
+#define S5_WIRE_DISTANCE_MAX_CM (400.0f)
+#define S5_WIRE_WIDTH_MAX_CM    (100.0f)
+#define S5_FRONT_ANGLE_DETAIL  (45u) /* 90 degrees / 2, Tribunal A1 */
+
+#if !S5_SIMULATION && S5_HARDWARE_ENABLED
+static UH s5_wire_cm(float cm, float maximum_cm)
+{
+    /* This rejects NaN as well as negative measurements.  A valid
+     * measurement beyond B5's range saturates rather than wraps. */
+    if (!(cm >= 0.0f))
+    {
+        return COMM_CM_INVALID;
+    }
+
+    if (cm > maximum_cm)
+    {
+        cm = maximum_cm;
+    }
+
+    return (UH)(cm + 0.5f);
+}
+
+static void s5_report_profile(const S5Profile *profile, S5Side side)
+{
+    UH distance_cm = COMM_CM_INVALID;
+    UH width_cm = COMM_CM_INVALID;
+    UH left_cm = COMM_CM_INVALID;
+    UH right_cm = COMM_CM_INVALID;
+    AVOID_ACTION action = AVOID_STOP;
+
+    if ((profile != NULL) && profile->valid)
+    {
+        distance_cm = s5_wire_cm(profile->nearest_cm,
+                                 S5_WIRE_DISTANCE_MAX_CM);
+        width_cm = s5_wire_cm(profile->estimated_width_cm,
+                              S5_WIRE_WIDTH_MAX_CM);
+        left_cm = s5_wire_cm(profile->left_clearance_cm,
+                             S5_WIRE_DISTANCE_MAX_CM);
+        right_cm = s5_wire_cm(profile->right_clearance_cm,
+                              S5_WIRE_DISTANCE_MAX_CM);
+
+        if (side == S5_SIDE_LEFT)
+        {
+            action = AVOID_LEFT;
+        }
+        else if (side == S5_SIDE_RIGHT)
+        {
+            action = AVOID_RIGHT;
+        }
+
+        /* A malformed field must not authorise a bypass. */
+        if ((distance_cm == COMM_CM_INVALID) ||
+            (width_cm == COMM_CM_INVALID) ||
+            (left_cm == COMM_CM_INVALID) ||
+            (right_cm == COMM_CM_INVALID))
+        {
+            action = AVOID_STOP;
+        }
+    }
+
+    (void)comm_report_obstacle(distance_cm, width_cm, left_cm, right_cm,
+                               action);
+}
+#endif /* !S5_SIMULATION && S5_HARDWARE_ENABLED */
 
 #if S5_SIMULATION
 #include "s5_pico_demo.h"
@@ -45,7 +114,11 @@ static void emergency_halt(const char *reason)
     tm_printf((UB*)"[S5-FAULT] %s; requesting emergency stop\n", reason);
     s5_bridge_emergency_stop();
     s5_servo_angle(90u);
-    for (;;) tk_dly_tsk(1000);
+
+    for (;;)
+    {
+        tk_dly_tsk(1000);
+    }
 }
 
 #endif /* S5_MOTION_BRIDGE_ENABLED */
@@ -131,7 +204,12 @@ static void stationary_profile_mode(void)
             b2_request_stop();
             if (driving) tm_printf((UB*)"[S5-STOP] invalid ultrasonic echo: motors disabled\n");
             driving = false;
-            if (!sensor_unavailable) {
+            if (!sensor_unavailable)
+            {
+                /* Send the event only on the transition to no-echo;
+                 * repeated failures still keep the shared fault raised. */
+                (void)comm_report_error(ERR_S5_NO_ECHO,
+                                        S5_FRONT_ANGLE_DETAIL);
                 tm_printf((UB*)"[S5-STOP] no reliable distance; motors stopped until clear path confirmed\n");
                 sensor_unavailable = true;
             }
@@ -200,8 +278,8 @@ static void stationary_profile_mode(void)
         }
         if (scan_needed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST) {
             S5Scan coarse = {0}, fine = {0};
-            S5Profile profile;
-            S5Side side;
+            S5Profile profile = {0};
+            S5Side side = S5_SIDE_NONE;
             SYSTIM started, ended;
             unsigned elapsed;
             startup_scan_pending = false;
@@ -211,6 +289,7 @@ static void stationary_profile_mode(void)
             driving = false;
             tk_dly_tsk(ROBOT_STOP_SETTLE_MS);
             if (!b2_motor_is_stopped()) {
+                (void)comm_report_error(ERR_S5_STOP_ACK, 0u);
                 tm_printf((UB*)"[S5-FAULT] motor PWM stop not acknowledged; scan aborted\n");
                 tk_dly_tsk(S5_FRONT_POLL_MS);
                 continue;
@@ -224,6 +303,10 @@ static void stationary_profile_mode(void)
 #endif
             side = s5_choose_side(&coarse);
             if (coarse.nearest_index < 0) {
+                /* No profile can be inferred; still send an explicit
+                 * invalid STOP event instead of silently omitting it. */
+                (void)comm_report_error(ERR_S5_NO_ECHO,
+                                        S5_FRONT_ANGLE_DETAIL);
                 tm_printf((UB*)"[S5-FAULT] no valid coarse readings; cannot plan bypass\n");
             } else {
                 uint16_t center = coarse.points[coarse.nearest_index].angle_deg;
@@ -274,6 +357,13 @@ static void stationary_profile_mode(void)
                           side == S5_SIDE_NONE ? "STOP/REASSESS" : "BYPASS_REQUEST_ONLY");
                 tm_printf((UB*)"[S5-RECOVER] physical bypass NOT enabled: no calibrated encoder/IR bridge\n");
             }
+            if (!profile.valid || (side == S5_SIDE_NONE))
+            {
+                /* Existing team code: S5_ERR_NO_CLEAR_ROUTE = 4.
+                 * Do not repurpose the team's 0xA2 STOP_TIMEOUT code. */
+                (void)comm_report_error(ERR_S5_NO_CLEAR_ROUTE, 0u);
+            }
+            s5_report_profile(&profile, side);
             tk_get_tim(&ended);
             elapsed = (unsigned)(ended.lo - started.lo);
             tm_printf((UB*)"[S5-METRIC] scan_profile_ms=%d (physical bypass not timed)\n", (int)elapsed);
@@ -293,6 +383,7 @@ static void live_controller_mode(void)
     bool coarse_ready = false, fine_ready = false;
     unsigned invalid_motion_echo = 0;
     bool stop_requested = false;
+    bool sensor_unavailable = false;
     if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
     s5_controller_init(&c);
     tm_printf((UB*)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
@@ -305,6 +396,24 @@ static void live_controller_mode(void)
          * during movement. Repeated invalid readings fail closed. */
         in.front_valid = s5_ultrasonic_read_cm(&cm);
         in.front_cm = cm;
+        comm_set_obstacle_dist(in.front_valid ?
+                               s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
+                               COMM_CM_INVALID);
+        if (in.front_valid)
+        {
+            fault_clear(FAULT_NO_ECHO);
+            sensor_unavailable = false;
+        }
+        else
+        {
+            fault_raise(FAULT_NO_ECHO);
+            if (!sensor_unavailable)
+            {
+                (void)comm_report_error(ERR_S5_NO_ECHO,
+                                        S5_FRONT_ANGLE_DETAIL);
+                sensor_unavailable = true;
+            }
+        }
         if (c.state == S5_AVOID || c.state == S5_RECOVER || c.state == S5_REVERSE) {
             if (!in.front_valid) {
                 if (++invalid_motion_echo >= S5_FRONT_INVALID_LIMIT)
@@ -341,6 +450,16 @@ static void live_controller_mode(void)
             fine_ready = true;
             break;
         case S5_CMD_HALT:
+            if ((c.error == S5_ERR_NO_CLEAR_ROUTE) ||
+                (c.error == S5_ERR_FINE_SCAN) ||
+                (c.error == S5_ERR_INSUFFICIENT_CLEARANCE))
+            {
+                s5_report_profile(&c.profile, S5_SIDE_NONE);
+            }
+            if (c.error != S5_ERR_NONE)
+            {
+                (void)comm_report_error(ERR_S5(c.error), 0u);
+            }
             emergency_halt(s5_error_name(c.error));
             break;
         case S5_CMD_STOP:
@@ -353,6 +472,9 @@ static void live_controller_mode(void)
         case S5_CMD_GO_LEFT:
         case S5_CMD_GO_RIGHT:
             print_profile(&c.profile);
+            s5_report_profile(&c.profile,
+                              cmd == S5_CMD_GO_LEFT ? S5_SIDE_LEFT :
+                              S5_SIDE_RIGHT);
             /* fall through */
         default:
             if (!s5_bridge_request(cmd, &c.profile))
