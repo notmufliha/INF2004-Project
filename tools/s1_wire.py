@@ -55,6 +55,8 @@ ERROR_NAMES = {
     (1, 1): "S1 outgoing queue full", (1, 2): "S1 controller queue full",
     (1, 31): "S1 self-test",
     (2, 1): "motor stall", (2, 2): "encoder fault", (2, 3): "10 ms loop overrun",
+    (2, 4): "motion deadline exceeded", (2, 5): "standstill timeout",
+    (2, 6): "motion command fault", (2, 7): "B2 DRIVE refresh missed",
     (3, 1): "line lost", (3, 2): "bad barcode",
     (4, 1): "IMU fault",
     # B5: number = S5Error (subsystem5/s5_logic.h)

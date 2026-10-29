@@ -154,8 +154,10 @@ seq 8) from `mbf_remote_cmd`.
  Vehicle Controller <-- mbf_remote_cmd <-- validates <-- mbf_rx <---------------- mqtt_utk.c <-- broker
 ```
 
-Connected today: **B2** — `comm_task` reads `encoder_get_counts()` every
-telemetry period and derives counts/s (`S1_POLL_B2_ENCODERS`); **B4** —
+Connected today: **B2** — its telemetry task (`subsystem2/b2_integration.c`)
+calls `comm_set_motion()` every 100 ms with counts/s and full encoder
+totals, reports its faults as error events (`ERR_S2_*`) and owns
+`FAULT_MOTOR_STALL` / `FAULT_ENCODER`; **B4** —
 `task_imu.c` sets motion state and pitch, reports humps, and owns
 `FAULT_IMU`; **B5** — `task_obstacle.c` sets the front distance, reports
 each obstacle profile, and owns `FAULT_NO_ECHO`. **B3** has no line/barcode
