@@ -47,8 +47,21 @@
 /* 4: Buddy 4, IMU */
 #define ERR_S4_IMU_FAULT	ERR_CODE(4, 1)	/* readings suppressed       */
 
-/* 5: Buddy 5, obstacles.  Number = S5Error (s5_logic.h), so B5 can
- *    report ERR_CODE(5, c.error) directly. */
-#define ERR_S5(s5_error)	ERR_CODE(5, (s5_error))
+/* 5: Buddy 5, obstacle detection and servo scanning.
+ * The numerical values match S5Error in subsystem5/s5_logic.h.
+ * Preserve these values: B1's laptop decoder and existing logs depend
+ * on them.  Do not reinterpret 0xA2 as clearance or 0xA3 as servo settle.
+ * Detail for NO_ECHO is forward servo angle / 2 (90 / 2 = 45).
+ */
+#define ERR_S5(s5_error)         ERR_CODE(5, (s5_error))
+#define ERR_S5_NO_ECHO           ERR_CODE(5, 1) /* 0xA1: no reliable echo */
+#define ERR_S5_STOP_ACK          ERR_CODE(5, 2) /* 0xA2: stop ack failed */
+#define ERR_S5_SCAN_TIMEOUT      ERR_CODE(5, 3) /* 0xA3: scan timeout */
+#define ERR_S5_NO_CLEAR_ROUTE    ERR_CODE(5, 4) /* 0xA4: unsafe route */
+#define ERR_S5_FINE_SCAN         ERR_CODE(5, 5) /* 0xA5: fine scan failed */
+#define ERR_S5_MOTION_TIMEOUT    ERR_CODE(5, 6)
+#define ERR_S5_LINE_TIMEOUT      ERR_CODE(5, 7)
+#define ERR_S5_CLEARANCE        ERR_CODE(5, 8) /* 0xA8: insufficient */
+#define ERR_S5_REVERSE_TIMEOUT   ERR_CODE(5, 9)
 
 #endif /* ERROR_CODES_H */

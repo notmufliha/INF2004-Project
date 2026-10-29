@@ -1,5 +1,6 @@
 #include "subsystem5.h"
 #include "drv_servo.h"
+#include "../robot_config.h"
 #include <tk/syslib.h>
 #include <sys/sysdef.h>
 
@@ -10,7 +11,10 @@ static uint16_t last_angle_deg = 90u;
 
 uint16_t s5_servo_pulse_us(uint16_t angle_deg)
 {
-    if (angle_deg > 180u) angle_deg = 180u;
+    if (angle_deg > 180u)
+    {
+        angle_deg = 180u;
+    }
     return (uint16_t)(S5_MIN_PULSE_US +
            ((uint32_t)angle_deg * (S5_MAX_PULSE_US - S5_MIN_PULSE_US)) / 180u);
 }
@@ -42,8 +46,14 @@ void s5_servo_init(void)
 void s5_servo_angle(uint16_t angle_deg)
 {
     uint16_t target = angle_deg;
-    if (target < S5_SAFE_MIN_DEG) target = S5_SAFE_MIN_DEG;
-    if (target > S5_SAFE_MAX_DEG) target = S5_SAFE_MAX_DEG;
+    if (target < S5_SAFE_MIN_DEG)
+    {
+        target = S5_SAFE_MIN_DEG;
+    }
+    if (target > S5_SAFE_MAX_DEG)
+    {
+        target = S5_SAFE_MAX_DEG;
+    }
     if (target != angle_deg)
         tm_printf((UB*)"[S5-SERVO] angle limited requested=%d safe=%d\n",
                   (int)angle_deg, (int)target);
@@ -65,7 +75,9 @@ void s5_servo_angle(uint16_t angle_deg)
         last_angle_deg = next;
         tk_dly_tsk(S5_SERVO_STEP_DELAY_MS);
     }
+#if ROBOT_VERBOSE_SENSOR_LOG
     tm_printf((UB*)"[S5-SERVO] GP%d settled target=%d deg pulse=%d us\n",
               (int)S5_SERVO_PIN, (int)target,
               (int)s5_servo_pulse_us(target));
+#endif
 }
