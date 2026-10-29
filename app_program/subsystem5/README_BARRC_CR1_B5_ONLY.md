@@ -1,34 +1,38 @@
-# Buddy 5 only: Barr-C-oriented changes and Tribunal CR1
+# Buddy 5: Barr-C-oriented style and Tribunal minimum-bit change
 
-**Scope:** This patch modifies ONLY `app_program/subsystem5/` and adds host tests under `testing/subsystem5/`. It does not change Buddy 1–4, the vehicle controller, global configuration, build scripts, or shared fault handling.
+This folder contains **B5-only application changes** carried forward from the
+`buddy_5` branch onto the team's B1-merged `origin/main`.
 
-## Implemented
+## Current, integrated team interfaces
 
-- Explicit 42-bit B5 data payload: obstacle distance (9 bits), width (7), left clearance (9), right clearance (9), servo angle (8). A four-bit protocol version and two padding bits produce a six-byte message. The byte order and bit order are defined explicitly, not dependent on C compiler bit-field layout.
-- Reserved invalid codes: 511 for distances/clearances, 127 for width, 255 for servo angle. Valid ranges remain 0–400 cm, 0–100 cm, and 0–180 degrees.
-- B5 packs a completed obstacle profile after scanning; the bytes are currently printed for inspection. No B1 MQTT publisher or team-wide queue is implemented here.
-- B5-owned local two-bit fault flags (no echo and invalid clearance), updated by the B5 task alone. **This is NOT the team shared eight-bit fault mask**. Integrating the shared mask would require an agreed team interface and changes outside B5, which are intentionally excluded.
-- Barr-C-oriented style cleanup in selected B5 source files; not a complete certification of every line against a particular Barr-C edition.
-- Existing safe forward/stop behaviour is retained. Missing/invalid ultrasonic measurements still prevent movement; physical bypass/line reacquisition remain disabled pending B2/B3 integration.
+- B5 sends the front distance in cm using `comm_set_obstacle_dist()`.
+- B5 reports a scan using `comm_report_obstacle()`; B1 packs the binary
+  obstacle event as 9 + 7 + 9 + 9 + 3 = **37 application bits**.
+- B5 raises and clears **only** `FAULT_NO_ECHO` using the kernel-backed
+  shared fault interface (`fault_raise`/`fault_clear`). B5 does not modify
+  the event-flag implementation or any other subsystem's fault bit.
+- B5 reports its existing error numbers through `comm_report_error()`;
+  the B5 block of `error_codes.h` and B5 names in `s1_wire.py` are aligned.
 
-## Tests
+## Separate optional 42-bit B5 representation
 
-From the project root:
+`S5PackedProfile` encodes 9-bit obstacle distance, 7-bit width, 9-bit left
+clearance, 9-bit right clearance, and 8-bit servo angle (42 data bits), plus
+4-bit version and 2 pad bits in **6 bytes**. Reserved invalid values are
+511, 127 and 255 respectively. It is an independent host-tested format,
+**not** the MQTT format currently sent by B1. Do not replace B1's MQTT
+frames with this format without an agreed interface change.
 
-```bash
-bash testing/subsystem5/run_host_tests.sh
-bash testing/subsystem5/run_packed_tests.sh
-```
+## Barr-C scope
 
-To build on your own WSL environment, run your team **unchanged** build command from `build_make/`. The Make configuration uses a wildcard for application `.c` files, so it should compile the new `s5_packed.c` without changing build scripts. Confirm with a clean build.
+Selected B5 files have explicit braces, clearer fixed-width representation
+and improved formatting. This is not a certification against every Barr-C
+rule or a claim that all legacy B5 lines have been reformatted.
 
-## Required Week 13 evidence not fabricated
+## Safety and verification
 
-- Measure **before/after** RAM from the two actual linker map files on the same toolchain; the six-byte payload is a wire format, not automatically six bytes of total RAM.
-- Compare six-byte packed B5 message with the old application message format actually used by your team (if one exists).
-- Record measured timing and robot behaviour at known distances, including cold boot without BOOTSEL and invalid echo.
-- Confirm the final shared fault-bit allocation with the vehicle-controller owner; local B5 fault flags are not a substitute for the shared interface.
-
-## Install
-
-Copy only `app_program/subsystem5/` and, optionally, `testing/subsystem5/` from the patch into your team current project. Do not replace files from other subsystems.
+Existing STOP-on-unknown behaviour and the physical bypass gate remain.
+The real encoder/line-reacquisition integration, firmware build on the Pico
+SDK, and hardware performance/RAM measurements must be tested by the team.
+See `README_B5_MAIN_INTEGRATION.md` for the merged B1 interface and the
+error-code discrepancy with the original Tribunal table.
