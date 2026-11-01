@@ -53,6 +53,9 @@ int main(void)
     assert(s5_wire_cm(500.0f, S5_WIRE_DISTANCE_MAX_CM) == 400u);
     assert(s5_wire_cm(-1.0f, S5_WIRE_DISTANCE_MAX_CM) == COMM_CM_INVALID);
     assert(s5_wire_cm(NAN, S5_WIRE_DISTANCE_MAX_CM) == COMM_CM_INVALID);
+    assert(s5_wire_cm(INFINITY, S5_WIRE_DISTANCE_MAX_CM) == COMM_CM_INVALID);
+    assert(s5_wire_cm(-INFINITY, S5_WIRE_DISTANCE_MAX_CM) == COMM_CM_INVALID);
+    assert(s5_wire_cm(401.0f, S5_WIRE_DISTANCE_MAX_CM) == 400u);
     assert(s5_wire_cm(101.0f, S5_WIRE_WIDTH_MAX_CM) == 100u);
     s5_report_profile(&profile, S5_SIDE_LEFT);
     assert(report_count == 1u && reported_action == AVOID_LEFT);
@@ -68,9 +71,21 @@ int main(void)
     profile.nearest_cm = -1.0f;
     s5_report_profile(&profile, S5_SIDE_LEFT);
     assert(report_count == 4u && reported_action == AVOID_STOP);
+    assert(reported[2] == COMM_CM_INVALID && reported[3] == COMM_CM_INVALID);
     s5_report_profile(NULL, S5_SIDE_RIGHT);
     assert(report_count == 5u && reported_action == AVOID_STOP);
-    puts("B5/B1 wire adapter: 14 assertions passed");
+    profile.nearest_cm = 30.0f;
+    profile.left_clearance_cm = INFINITY;
+    s5_report_profile(&profile, S5_SIDE_LEFT);
+    assert(report_count == 6u && reported_action == AVOID_STOP);
+    assert(reported[0] == COMM_CM_INVALID && reported[1] == COMM_CM_INVALID);
+    assert(reported[2] == COMM_CM_INVALID && reported[3] == COMM_CM_INVALID);
+    profile.left_clearance_cm = 400.0f;
+    profile.estimated_width_cm = 900.0f;
+    s5_report_profile(&profile, S5_SIDE_RIGHT);
+    assert(report_count == 7u && reported_action == AVOID_RIGHT);
+    assert(reported[1] == 100u);
+    puts("B5/B1 wire adapter: PASS (7 event cases + numeric boundaries)");
     return 0;
 }
 '''
