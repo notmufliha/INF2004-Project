@@ -142,3 +142,11 @@ Saved results are linked in `testing/subsystem4/TEST_LOG.md`.
 
 Use `git -c core.whitespace=-blank-at-eof diff --check`: the final blank line is
 required by 3.3.c. Desktop/build evidence does not replace a fresh Pico test.
+
+The controller handoff (`imu_notice` and `imu_vc`) uses the same C99 profile,
+module prefixes, fixed-width payloads, Allman braces and documented interfaces.
+Its producer state has one owner; kernel copied messages cross task boundaries.
+The private queue ID is initialized before tasks start. Payload-size checks
+bound kernel size conversions. Native startup queue stubs deliberately retain
+kernel ABI function names. Selected automated checks do not establish complete
+BARR-C compliance or replace semantic and concurrency review.

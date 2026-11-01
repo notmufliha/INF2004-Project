@@ -40,11 +40,11 @@ main (void)
 #if ROBOT_MODE
     assert((0 == gh_summary) && (0 == gh_monitor_alarm));
     assert(0U == g_alarm_calls);
-    assert((1U + APP_TEST) == g_buffers);
+    assert((2U + APP_TEST) == g_buffers);
 #else
     assert(gh_summary > 0);
     assert(1U == g_alarm_calls);
-    assert((2U + APP_TEST) == g_buffers);
+    assert((3U + APP_TEST) == g_buffers);
 #endif
     assert(E_OK == subsystem4_start());
 #if ROBOT_MODE

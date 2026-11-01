@@ -38,6 +38,8 @@ typedef struct
 } T_CFLG;
 
 #define E_OK 0
+#define E_SYS (-5)
+#define TMO_POL 0
 #define E_PAR (-17)
 #define E_OBJ (-41)
 #define E_TMOUT (-50)
@@ -46,6 +48,8 @@ typedef struct
 #define TWF_ORW 1U
 
 ID tk_cre_mbf (const T_CMBF * p_config);
+ER tk_snd_mbf (ID h_buffer, const void * p_data, INT length, TMO timeout);
+INT tk_rcv_mbf (ID h_buffer, void * p_data, TMO timeout);
 ID tk_cre_flg (const T_CFLG * p_config);
 ER tk_wai_flg (ID h_flag, UINT mask, UINT mode, UINT * p_flags, TMO timeout);
 ER tk_set_flg (ID h_flag, UINT mask);

@@ -1,5 +1,12 @@
 # Subsystem 4 — test log
 
+B4 controller handoff (2026-11-01): production queue/transition tests, existing
+host tests, eight startup profiles, eight ARM configurations and changed B4 ARM
+objects PASS. Full firmware build remains blocked by B3's size assertion.
+Hardware/controller policy remains untested. See the
+[verification record](logs/2026-11-01_controller_handoff.txt) and
+[controller handoff guide](../../app_program/subsystem4/VC_HANDOFF.md).
+
 BARR-C complete scoped audit (2026-10-28): all 39 numbered sections were
 reviewed for B4, and the earlier shared-name/module-name findings were fixed.
 All six strict C99 host test programs and seven checker regression tests PASS.

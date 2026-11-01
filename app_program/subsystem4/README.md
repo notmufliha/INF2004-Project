@@ -168,8 +168,8 @@ if ((imu_mock_read(&data)) &&
 - Impact takes precedence and cancels an in-progress hump. Invalid data, duplicate
   or backward timestamps, gaps over 100 ms, and a 10-second hump timeout also
   break the sequence. Unsigned timestamps support normal 32-bit wraparound.
-- Output is a snapshot on every accepted reading, not an event queue notification.
-  A future publisher must decide when to forward changes or periodic telemetry.
+- Analysis produces snapshots; B4 also publishes transitions and periodic state
+  to its bounded controller queue. See [VC_HANDOFF.md](VC_HANDOFF.md).
 - Quiet IMU data alone remains UNKNOWN. Fresh nonfaulted B2 physical-stop
   feedback can now confirm STATIONARY; stale or unavailable feedback cannot.
 - Acceleration is in m/s^2 and includes gravity; pitch/roll and turn rate are
