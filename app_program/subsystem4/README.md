@@ -1,5 +1,9 @@
 # Buddy 4: GY-511 hardware input and mock tests
 
+B4 now consumes B2's existing motion snapshots without editing B2. See
+[B2_SNAPSHOTS.md](B2_SNAPSHOTS.md) for freshness checks, measured speed/travel,
+height gating and tests.
+
 ## B1 integration after the merge
 
 B4 reports motion and pitch through `comm_set_imu()`, raises/clears `FAULT_IMU`
@@ -166,9 +170,8 @@ if ((imu_mock_read(&data)) &&
   break the sequence. Unsigned timestamps support normal 32-bit wraparound.
 - Output is a snapshot on every accepted reading, not an event queue notification.
   A future publisher must decide when to forward changes or periodic telemetry.
-- Quiet acceleration is classified as UNKNOWN: IMU readings alone cannot
-  distinguish stationary from constant-speed travel. STATIONARY remains in the
-  shared enum for later use with independently confirmed motion status.
+- Quiet IMU data alone remains UNKNOWN. Fresh nonfaulted B2 physical-stop
+  feedback can now confirm STATIONARY; stale or unavailable feedback cannot.
 - Acceleration is in m/s^2 and includes gravity; pitch/roll and turn rate are
   supplied in degrees and degrees/second. X is forward, Y sideways, Z upward;
   positive pitch means nose-up. Driver calibration must preserve gravity.

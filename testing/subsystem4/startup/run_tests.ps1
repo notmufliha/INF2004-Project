@@ -23,9 +23,24 @@ $odometryExecutable = Join-Path $PSScriptRoot 'testodom_main.exe'
 $odometrySources = @(
     (Join-Path $sourceDirectory 'imu_odom.c'),
     (Join-Path $sourceDirectory 'imu_height.c'),
+    (Join-Path $sourceDirectory 'imu_motion.c'),
+    (Join-Path $sourceDirectory 'imu_numeric.c'),
     (Join-Path $PSScriptRoot 'testodom_main.c')
 )
 & gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'boot_stub.h') @odometrySources -lm -o $odometryExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Odometry adapter compilation failed' }
 & $odometryExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Odometry adapter test failed' }
+
+$motionExecutable = Join-Path $PSScriptRoot 'testmoti_main.exe'
+$motionSources = @(
+    (Join-Path $sourceDirectory 'imu_motion.c'),
+    (Join-Path $sourceDirectory 'imu_numeric.c'),
+    (Join-Path $sourceDirectory 'imu_analysis.c'),
+    (Join-Path $sourceDirectory 'imu_processing.c'),
+    (Join-Path $PSScriptRoot 'testmoti_main.c')
+)
+& gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'boot_stub.h') @motionSources -lm -o $motionExecutable
+if ($LASTEXITCODE -ne 0) { throw 'B2 snapshot reader compilation failed' }
+& $motionExecutable
+if ($LASTEXITCODE -ne 0) { throw 'B2 snapshot reader test failed' }

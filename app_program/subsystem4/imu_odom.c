@@ -19,6 +19,7 @@ imu_odom_init (imu_height_t * p_height)
     imu_height_config_t config;
 
     imu_height_default_config(&config);
+    config.b_require_motion = true;
 
     if ((ENC_LEFT_COUNTS_PER_REV <= 0) || (ENC_RIGHT_COUNTS_PER_REV <= 0))
     {
@@ -54,6 +55,7 @@ imu_odom_capture (imu_data_t * p_data)
     }
 
     p_data->b_odometry_valid = false;
+    p_data->motion           = (imu_motion_t){0};
 
     if (!p_data->b_valid)
     {
@@ -63,6 +65,9 @@ imu_odom_capture (imu_data_t * p_data)
     encoder_get_invalid_counts(&left_before, &right_before);
     encoder_get_counts(&left_count, &right_count);
     encoder_get_invalid_counts(&left_after, &right_after);
+    /* Optional B2 context must not suppress IMU readiness or raw count capture.
+     * Its validity flag records a missing/stale snapshot independently. */
+    (void)imu_motion_capture(&p_data->motion);
 
     if (tk_get_tim(&now) < E_OK)
     {

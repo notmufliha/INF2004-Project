@@ -15,10 +15,11 @@
 #include "task_monitor.h"
 #endif
 
-/* Both payloads fit 96 bytes; aligned storage times either queue depth fits SZ.
+/* Both payloads fit 128 bytes; aligned storage times either queue depth fits
+ * SZ.
  */
 typedef uint8_t s4_payload_size_check_t
-    [((sizeof(imu_data_t) <= 96U) && (sizeof(imu_event_t) <= 96U)) ? 1 : -1];
+    [((sizeof(imu_data_t) <= 128U) && (sizeof(imu_event_t) <= 128U)) ? 1 : -1];
 
 volatile ID gh_summary; /* IF-03. */
 volatile ID gh_events;  /* IMU readiness and optional IF-03 demo events. */
@@ -167,7 +168,7 @@ static SZ
 message_storage_bytes (uint32_t payload_bytes)
 {
     /* Only the fixed, small B4 payload sizes are passed by this module. */
-    /* The compile-time payload check bounds this unsigned result to 100. */
+    /* The compile-time payload check bounds this unsigned result to 132. */
     return (SZ)(4U + ((payload_bytes + 3U) & ~3U));
 }
 

@@ -17,6 +17,7 @@ typedef struct
     float32_t level_deg;
     float32_t closure_cm;
     uint32_t  max_gap_ms;
+    bool      b_require_motion;
 } imu_height_config_t;
 
 typedef struct

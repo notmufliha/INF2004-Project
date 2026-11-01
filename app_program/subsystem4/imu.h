@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "imu_numeric.h"
+#include "imu_motion.h"
 
 /* Motion states for Buddy 4. */
 typedef enum
@@ -49,11 +50,12 @@ typedef struct
     uint32_t  sample_sequence;
 
     /* Encoder snapshot captured by the sampling task, never fabricated. */
-    int32_t  encoder_left;
-    int32_t  encoder_right;
-    uint32_t encoder_left_errors;
-    uint32_t encoder_right_errors;
-    bool     b_odometry_valid;
+    int32_t      encoder_left;
+    int32_t      encoder_right;
+    uint32_t     encoder_left_errors;
+    uint32_t     encoder_right_errors;
+    bool         b_odometry_valid;
+    imu_motion_t motion;
 } imu_data_t;
 
 /* Motion and terrain analysis results. */
