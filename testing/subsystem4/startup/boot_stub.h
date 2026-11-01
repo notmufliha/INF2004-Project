@@ -8,13 +8,21 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef int32_t ID;
-typedef int32_t ER;
-typedef int32_t SZ;
-typedef int32_t INT;
-typedef int32_t TMO;
+typedef int32_t  ID;
+typedef int32_t  ER;
+typedef int32_t  SZ;
+typedef int32_t  INT;
+typedef int32_t  TMO;
 typedef uint32_t UW;
 typedef uint32_t UINT;
+
+typedef struct
+{
+    uint32_t hi;
+    uint32_t lo;
+} SYSTIM;
+
+ER tk_get_tim (SYSTIM * p_time);
 
 typedef struct
 {
@@ -42,8 +50,8 @@ ID tk_cre_flg (const T_CFLG * p_config);
 ER tk_wai_flg (ID h_flag, UINT mask, UINT mode, UINT * p_flags, TMO timeout);
 ER tk_set_flg (ID h_flag, UINT mask);
 ER tk_clr_flg (ID h_flag, UINT mask);
-ID app_start_task (void (*p_entry)(INT, void *), INT priority,
-                   UW core, const char * p_name);
+ID app_start_task (void (*p_entry)(INT, void *), INT priority, UW core,
+                   const char * p_name);
 
 #endif
 

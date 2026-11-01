@@ -40,6 +40,7 @@ imu_mock_read (imu_data_t * p_data)
     }
 
     /* Default stationary measurements. */
+    *p_data              = (imu_data_t){0};
     p_data->timestamp_ms = g_mock_timestamp_ms;
 
     p_data->accel_x = 0.0f;

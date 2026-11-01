@@ -46,6 +46,14 @@ typedef struct
     float32_t heading_deg;
     bool      b_heading_valid;
     bool      b_heading_calibrated;
+    uint32_t  sample_sequence;
+
+    /* Encoder snapshot captured by the sampling task, never fabricated. */
+    int32_t  encoder_left;
+    int32_t  encoder_right;
+    uint32_t encoder_left_errors;
+    uint32_t encoder_right_errors;
+    bool     b_odometry_valid;
 } imu_data_t;
 
 /* Motion and terrain analysis results. */
@@ -59,7 +67,8 @@ typedef struct
     bool b_hump_completed; /* One-reading pulse after a complete traversal. */
     bool b_tilt_detected;
     bool b_valid;
-    bool b_height_valid; /* False until a height estimator is implemented. */
+    bool b_height_valid; /* Accepted completed-traversal estimate. */
+    bool b_highest_hump_valid;
     bool b_sensor_fault; /* Invalid fault notifications carry valid=false. */
     bool b_sensor_recovered; /* One-notification recovery pulse. */
     bool b_turn_rate_valid;

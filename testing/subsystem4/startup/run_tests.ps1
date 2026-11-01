@@ -18,3 +18,14 @@ foreach ($robotMode in @(0, 1)) {
         }
     }
 }
+
+$odometryExecutable = Join-Path $PSScriptRoot 'testodom_main.exe'
+$odometrySources = @(
+    (Join-Path $sourceDirectory 'imu_odom.c'),
+    (Join-Path $sourceDirectory 'imu_height.c'),
+    (Join-Path $PSScriptRoot 'testodom_main.c')
+)
+& gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'boot_stub.h') @odometrySources -lm -o $odometryExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Odometry adapter compilation failed' }
+& $odometryExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Odometry adapter test failed' }

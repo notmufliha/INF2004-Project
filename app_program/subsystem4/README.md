@@ -4,7 +4,8 @@
 
 B4 reports motion and pitch through `comm_set_imu()`, raises/clears `FAULT_IMU`
 on fault/recovery, and reports completed humps through `comm_report_hump()`.
-Height stays explicitly invalid until a height estimator is implemented.
+Real paired encoder/pitch readings now feed the [height estimator](HEIGHT.md).
+Rejected or missing odometry keeps height explicitly unavailable.
 Telemetry conversions clamp to the signed 16-bit B1 range before narrowing.
 
 With `ROBOT_MODE=1`, startup initializes B1 and B2, then starts B4 before starting
@@ -50,7 +51,7 @@ and checks the magnetic H43 ID plus configuration readback before use.
 The mock demo described below is available only by setting
 `S4_IMU_USE_MOCK` to `1` in `s4_runtime.h`. With the default `0`, TEST=1 runs
 S4-U16 (real calibrated readings) instead of mock-only S4-U11/S4-U14.
-Height remains unavailable. Heading is an uncalibrated magnetic estimate by
+Mock height remains unavailable. Heading is an uncalibrated magnetic estimate by
 default; turn rate remains unavailable until magnetic calibration is configured.
 The sections below describe the retained mock demo and processing policy.
 
@@ -175,9 +176,10 @@ if ((imu_mock_read(&data)) &&
   provide calibrated readings. Gravity compensation and
   real vibration/impact trials remain necessary; these tests do not establish
   collision-detection reliability.
-- Height and highest-height fields are zero with `b_height_valid=false`. No height
-  in centimetres is inferred from pitch. Add a validated estimator before using
-  these fields in telemetry or claiming the highest-hump requirement is met.
+- Height uses real encoder travel and raw pitch after a confirmed full traversal.
+  It is a consistency-checked estimate, not a direct measurement. Highest accepted
+  height persists until reboot/context initialization. See [HEIGHT.md](HEIGHT.md)
+  for rejection rules, preliminary calibration and physical-validation limits.
 
 ## Next integration steps
 

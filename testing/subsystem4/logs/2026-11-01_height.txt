@@ -1,0 +1,22 @@
+B4 real-data height estimator -- 2026-11-01, working tree
+
+PASS: seven strict C99 desktop test programs, including the new height suite.
+      Analytic 5/10/15 cm traversals; peak and session maximum; raw encoder/pitch
+      integration through the actual filter/terrain pipeline; error recovery;
+      reverse/pivot/reset rejection; sequence loss; timestamp wrap; impact;
+      nonfinite/null guards; stationary tilt and poor return-to-level closure.
+PASS: native startup contract in eight robot/demo, test/normal, real/mock modes.
+PASS: actual imu_odom.c acquisition adapter against kernel/B2 ABI stubs:
+      B2 calibration, paired counts, error races, stale capture and clock failure.
+PASS: strict ARM C99 compilation checks in all eight B4 configurations.
+PASS: B4 ARM object compilation, including imu_height.c and imu_odom.c.
+PASS: ARM sizeof assertions: imu_data_t=80, imu_event_t=52, imu_height_t=88.
+PASS: B4 style scanner, seven checker regressions and stable formatting.
+
+BLOCKED: full UART/no-WiFi TEST=1 firmware build still fails at
+app_program/subsystem3/b3_line_barcode.h:52, unrelated B3_STATE size assertion.
+
+NOT RUN: physical encoder calibration, known-height car trials, slip/dynamic
+acceleration trials, on-board stack watermark and laptop event validation.
+No firmware was flashed. Valid means software consistency checks passed;
+it does not establish actual height accuracy.

@@ -1,5 +1,12 @@
 # B4 BARR-C:2018 audit
 
+2026-11-01 height update: `imu_height` is a pure C99 estimator and `imu_odom`
+adapts the existing kernel/B2 interfaces. New state uses fixed-width counts,
+Boolean prefixes, private static helpers and finite/range-checked calculations.
+Tests cover analytic profiles, filtered terrain integration, acquisition races,
+queue sequence loss and rejection/recovery. Reading/event queues use sizeof;
+their checked native layouts are now 80/52 bytes, not the historical 56/48.
+
 2026-11-01 startup update: production B4 uses C99 checks in eight robot/demo,
 real/mock and test/normal configurations. Readiness uses bounded kernel waits,
 unsigned masks and checked results. Native startup tests execute `subsystem4.c`

@@ -110,8 +110,9 @@ the robot to test impacts. The software does not command motors.
 - Estimated turn rate uses fresh calibrated heading changes, shortest-angle wrap
   and a maximum 100ms interval. Without calibration, `b_turn_rate_valid=false` and
   turning classification is disabled. It remains an estimate, not a gyro reading.
-- Existing hump and impact algorithms consume real data but thresholds still
-  require real-car tests. Height in centimetres and highest height remain unavailable.
+- Hump and impact thresholds still require real-car tests. Hump height and highest
+  height are now estimated from paired encoder travel and pitch when consistency
+  checks pass. Validate against a known-height hump using [HEIGHT.md](HEIGHT.md).
 
 Desktop regression command (no board required):
 
