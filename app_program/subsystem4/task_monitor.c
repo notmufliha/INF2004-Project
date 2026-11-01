@@ -19,7 +19,7 @@
 #include "subsystem4.h"
 #include "s4_runtime.h"
 #include "../subsystem1/subsystem1.h" /* IF-05: tid_led. */
-#include "../subsystem2/subsystem2.h" /* sem_slots, mpf_samples (read only). */
+#include "../subsystem2/subsystem2.h" /* Shared sample semaphore and pool. */
 #include "../subsystem3/subsystem3.h" /* IF-04: app_stats, mtx_stats. */
 
 /* One task writes this aligned word; tests only take snapshots.
@@ -169,8 +169,8 @@ report_monitor_stats (void)
     snap = app_stats;
     CHECK(tk_unl_mtx(mtx_stats), "monitor stats unlock");
 
-    if ((tk_get_tim(&now) < E_OK) || (tk_ref_sem(sem_slots, &rsem) < E_OK) ||
-        (tk_ref_mpf(mpf_samples, &rmpf) < E_OK))
+    if ((tk_get_tim(&now) < E_OK) || (tk_ref_sem(gh_sem_slots, &rsem) < E_OK) ||
+        (tk_ref_mpf(gh_mpf_samples, &rmpf) < E_OK))
     {
         tm_printf((UB *)"monitor: statistics unavailable\n");
         return;

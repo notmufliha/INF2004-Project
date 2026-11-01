@@ -9,6 +9,7 @@
 #include "s4_runtime.h"
 #include "imu_analysis.h"
 #include "imu_processing.h"
+#include "../subsystem1/subsystem1.h"
 #if S4_IMU_USE_MOCK
 #include "imu_demo.h"
 #else
@@ -42,6 +43,7 @@ typedef struct
 /* Short integer-only lines match the other buddies' console format. */
 
 static INT console_integer (float32_t value);
+static H telemetry_integer (float32_t value);
 
 #if !S4_IMU_USE_MOCK
 static bool initialise_hardware (imu_hardware_state_t * p_state,
@@ -246,6 +248,7 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
             if (health.b_recovered)
             {
                 tm_printf((UB *)"[B4] Sensor recovered: readings valid\n");
+                fault_clear(FAULT_IMU);
             }
 
             report_event(&data, &event, &b_have_previous, &previous,
@@ -287,6 +290,29 @@ publish_reading (const imu_data_t * p_data, bool b_publish, UW * p_dropped)
     }
 
     return true;
+}
+
+/** @brief Clamp a telemetry value before narrowing to the signed 16-bit ABI. */
+static H
+telemetry_integer (float32_t value)
+{
+    int32_t converted = imu_numeric_to_int(value);
+
+    if (converted > INT16_MAX)
+    {
+        converted = INT16_MAX;
+    }
+    else if (converted < INT16_MIN)
+    {
+        converted = INT16_MIN;
+    }
+    else
+    {
+        /* The converted value already fits the telemetry range. */
+    }
+
+    /* The bounds above ensure the value fits the kernel's signed 16-bit H. */
+    return (H)converted;
 }
 
 /** @brief Convert a sensor value to the kernel console integer ABI. */
@@ -583,6 +609,8 @@ report_fault (const imu_processing_health_t * p_health, uint32_t timestamp_ms)
     if (p_health->b_fault_started)
     {
         tm_printf((UB *)"[B4] Sensor fault/unavailable: readings suppressed\n");
+        fault_raise(FAULT_IMU);
+        (void)comm_report_error(ERR_S4_IMU_FAULT, 0U);
 #if APP_TEST
         imu_event_t fault = {0};
 
@@ -629,7 +657,15 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
         if (p_event->b_hump_completed)
         {
             tm_printf((UB *)"[B4] Hump completed: height=N/A\n");
+            /* Unavailable heights remain explicitly invalid in B1. */
+            (void)comm_report_hump(
+                p_event->b_height_valid ? TRUE : FALSE,
+                telemetry_integer(p_event->hump_peak_cm * 10.0f),
+                telemetry_integer(p_event->highest_hump_cm * 10.0f));
         }
+        /* Motion values are the shared 0..7 enum; the byte cast is exact. */
+        comm_set_imu((UB)p_event->motion_state,
+                     telemetry_integer(p_event->pitch_deg * 10.0f));
 #if APP_TEST
         /* Test observer can lag without blocking analysis. */
         ER error_code =

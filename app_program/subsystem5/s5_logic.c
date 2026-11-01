@@ -22,9 +22,18 @@ void s5_make_fine_angles(uint16_t center_deg, uint16_t out[S5_SCAN_COUNT])
 {
     int center = (int)center_deg;
     int i;
-    if (!out) return;
-    if (center < 30) center = 30;
-    if (center > 150) center = 150;
+    if (!out)
+    {
+        return;
+    }
+    if (center < 30)
+    {
+        center = 30;
+    }
+    if (center > 150)
+    {
+        center = 150;
+    }
     for (i = 0; i < S5_SCAN_COUNT; ++i)
         out[i] = (uint16_t)(center + (i - 2) * 10);
 }
@@ -57,7 +66,10 @@ static S5Command change(S5Controller *c, S5State next, S5Command action)
 }
 void s5_controller_init(S5Controller *c)
 {
-    if (!c) return;
+    if (!c)
+    {
+        return;
+    }
     *c = (S5Controller){0};
     c->state = S5_FOLLOW;
 }
@@ -74,14 +86,26 @@ S5Side s5_choose_side(const S5Scan *scan)
 {
     float left, right;
     bool l, r;
-    if (!scan) return S5_SIDE_NONE;
+    if (!scan)
+    {
+        return S5_SIDE_NONE;
+    }
     /* Both rays on the chosen side must be measured and clear.
        Invalid readings NEVER count as open space. */
     l = safe_point(&scan->points[0]) && safe_point(&scan->points[1]);
     r = safe_point(&scan->points[3]) && safe_point(&scan->points[4]);
-    if (!l && !r) return S5_SIDE_NONE;
-    if (l && !r) return S5_SIDE_LEFT;
-    if (r && !l) return S5_SIDE_RIGHT;
+    if (!l && !r)
+    {
+        return S5_SIDE_NONE;
+    }
+    if (l && !r)
+    {
+        return S5_SIDE_LEFT;
+    }
+    if (r && !l)
+    {
+        return S5_SIDE_RIGHT;
+    }
     left = scan->points[0].distance_cm < scan->points[1].distance_cm ?
            scan->points[0].distance_cm : scan->points[1].distance_cm;
     right = scan->points[3].distance_cm < scan->points[4].distance_cm ?
@@ -115,15 +139,24 @@ S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side)
                 s5_cos_deg((float)v->angle_deg - 90.0f);
         }
         if (v->distance_cm < S5_CLEAR_CM) {
-            if (first < 0) first = i;
+            if (first < 0)
+            {
+                first = i;
+            }
             last = i;
         }
     }
     /* Reject zero/one hit, unbracketed obstacles, or multiple disconnected
        clusters. All cases need a wider/finer scan, not an invented width. */
-    if (first < 1 || last >= S5_SCAN_COUNT-1 || last-first < 1) return p;
+    if (first < 1 || last >= S5_SCAN_COUNT-1 || last-first < 1)
+    {
+        return p;
+    }
     for (i = first; i <= last; ++i)
-        if (fine->points[i].distance_cm >= S5_CLEAR_CM) return p;
+        if (fine->points[i].distance_cm >= S5_CLEAR_CM)
+        {
+            return p;
+        }
     left_angle = (uint16_t)((fine->points[first-1].angle_deg +
                              fine->points[first].angle_deg) / 2u);
     right_angle = (uint16_t)((fine->points[last].angle_deg +
@@ -134,7 +167,10 @@ S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side)
     right_x = fine->points[last].distance_cm *
               s5_sin_deg((float)right_angle - 90.0f);
     p.estimated_width_cm = s5_abs(right_x - left_x);
-    if (p.estimated_width_cm < 0.01f) return p;
+    if (p.estimated_width_cm < 0.01f)
+    {
+        return p;
+    }
     p.left_boundary_deg = left_angle;
     p.right_boundary_deg = right_angle;
     p.center_x_cm = p.nearest_cm *
@@ -152,7 +188,10 @@ S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side)
 static float side_clearance(const S5Scan *scan, S5Side side)
 {
     int a = side == S5_SIDE_LEFT ? 0 : 3;
-    if (!scan || side == S5_SIDE_NONE) return 0.0f;
+    if (!scan || side == S5_SIDE_NONE)
+    {
+        return 0.0f;
+    }
     if (!safe_point(&scan->points[a]) || !safe_point(&scan->points[a+1]))
         return 0.0f;
     return s5_min(scan->points[a].distance_cm, scan->points[a+1].distance_cm);
@@ -163,8 +202,14 @@ static bool side_has_room(const S5Scan *scan, S5Side side, float required)
 }
 S5Command s5_controller_step(S5Controller *c, const S5Input *in)
 {
-    if (!c || !in) return S5_CMD_HALT;
-    if (c->ticks_in_state < UINT16_MAX) c->ticks_in_state++;
+    if (!c || !in)
+    {
+        return S5_CMD_HALT;
+    }
+    if (c->ticks_in_state < UINT16_MAX)
+    {
+        c->ticks_in_state++;
+    }
     switch (c->state) {
     case S5_FOLLOW:
         if (!in->front_valid || in->front_cm <= 0.0f ||
@@ -178,7 +223,10 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
             return change(c, S5_WAIT_STOP, S5_CMD_STOP);
         return S5_CMD_NONE;
     case S5_WAIT_STOP:
-        if (in->stopped) return change(c, S5_COARSE, S5_CMD_SCAN_COARSE);
+        if (in->stopped)
+        {
+            return change(c, S5_COARSE, S5_CMD_SCAN_COARSE);
+        }
         if (c->ticks_in_state >= S5_WAIT_LIMIT)
             return fail(c, S5_ERR_STOP_TIMEOUT);
         return S5_CMD_STOP;
@@ -201,7 +249,10 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
     case S5_FINE:
         if (in->fine_ready) {
             c->profile = s5_estimate_profile(&in->fine, c->side);
-            if (!c->profile.valid) return fail(c, S5_ERR_FINE_SCAN);
+            if (!c->profile.valid)
+            {
+                return fail(c, S5_ERR_FINE_SCAN);
+            }
             /* Both coarse and fine scans must be fresh and valid. */
             c->profile.left_clearance_cm = side_clearance(&c->last_coarse, S5_SIDE_LEFT);
             c->profile.right_clearance_cm = side_clearance(&c->last_coarse, S5_SIDE_RIGHT);
@@ -232,7 +283,10 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
             return fail(c, S5_ERR_MOTION_TIMEOUT);
         return S5_CMD_NONE;
     case S5_RECOVER:
-        if (in->line_found) return change(c, S5_DONE, S5_CMD_RESUME);
+        if (in->line_found)
+        {
+            return change(c, S5_DONE, S5_CMD_RESUME);
+        }
         if (c->ticks_in_state >= S5_RECOVERY_LIMIT)
             return fail(c, S5_ERR_LINE_TIMEOUT);
         return S5_CMD_NONE;
