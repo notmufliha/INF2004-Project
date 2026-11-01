@@ -4,6 +4,7 @@
 #include "testodom_main.h"
 #include "imu_odom.h"
 #include "../../../app_program/subsystem2/encoder_control.h"
+#include "../../../app_program/subsystem2/motion_command.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -13,6 +14,7 @@ static uint32_t g_error_calls;
 static uint32_t g_count_calls;
 static bool     gb_error_race;
 static ER       g_clock_error;
+static bool     gb_context_ready;
 
 /** @brief Execute the actual acquisition adapter without a board. */
 int
@@ -30,6 +32,12 @@ main (void)
     data.timestamp_ms = 100U;
     imu_odom_capture(&data);
     assert(data.b_odometry_valid);
+    assert(!data.motion.b_valid);
+    gb_context_ready = true;
+    imu_odom_capture(&data);
+    assert(data.motion.b_valid);
+    assert(data.motion.b_stopped);
+    assert((1000 == data.encoder_left) && (2000 == data.encoder_right));
     assert((1000 == data.encoder_left) && (2000 == data.encoder_right));
     assert((2U == data.encoder_left_errors) &&
            (3U == data.encoder_right_errors));
@@ -44,7 +52,7 @@ main (void)
     g_clock_error = E_OBJ;
     imu_odom_capture(&data);
     assert(!data.b_odometry_valid);
-    data.b_valid               = false;
+    data.b_valid = false;
 
     const uint32_t prior_calls = g_count_calls;
 
@@ -85,6 +93,27 @@ encoder_get_invalid_counts (UW * p_left, UW * p_right)
     g_error_calls++;
     *p_left  = ((gb_error_race) && (0U == (g_error_calls % 2U))) ? 3U : 2U;
     *p_right = 3U;
+}
+
+/** @brief An unavailable B2 controller must not suppress raw encoder capture.
+ */
+ER
+motion_get_status (motion_status_snapshot_t * p_status)
+{
+    assert(NULL != p_status);
+
+    if (gb_context_ready)
+    {
+        *p_status                      = (motion_status_snapshot_t){0};
+        p_status->physically_stopped   = true;
+        p_status->sample_time_ms       = g_now_ms;
+        p_status->control_interval_ms  = 10U;
+        p_status->left_encoder_counts  = -123;
+        p_status->right_encoder_counts = -456;
+        return E_OK;
+    }
+
+    return E_OBJ;
 }
 
 /*** end of file ***/

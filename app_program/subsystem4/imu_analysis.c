@@ -9,6 +9,7 @@
 #define IMU_GRAVITY_MS2 (9.81f)
 
 static void reset_sequence (imu_analysis_t * p_analysis);
+static bool stopped_context (const imu_data_t * p_data);
 
 static bool confirmed (imu_analysis_t * p_analysis, bool b_condition);
 
@@ -267,11 +268,24 @@ classify_motion (const imu_analysis_t * p_analysis, const imu_data_t * p_data,
             }
             else
             {
-                /* IMU alone cannot establish that the vehicle is stationary. */
-                p_event->motion_state = IMU_MOTION_UNKNOWN;
+                p_event->motion_state = stopped_context(p_data)
+                                            ? IMU_MOTION_STATIONARY
+                                            : IMU_MOTION_UNKNOWN;
             }
         break;
     }
+}
+
+/** @brief Confirm rest only from fresh, nonfaulted B2 physical-stop feedback.
+ */
+static bool
+stopped_context (const imu_data_t * p_data)
+{
+    return (p_data->motion.b_valid) && (p_data->motion.b_stopped) &&
+           (!p_data->motion.b_fault) && (!p_data->motion.b_turning) &&
+           (!p_data->motion.b_reverse) &&
+           ((p_data->timestamp_ms - p_data->motion.timestamp_ms) <=
+            IMU_MOTION_MAX_AGE_MS);
 }
 
 /*** end of file ***/

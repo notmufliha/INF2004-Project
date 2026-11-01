@@ -19,6 +19,7 @@ static bool wheel_step (const imu_height_t * p_state, const imu_data_t * p_data,
 static void integrate_step (imu_height_t * p_state, const imu_data_t * p_data,
                             float32_t left_cm, float32_t right_cm);
 static void finish_height (imu_height_t * p_state, imu_event_t * p_event);
+static bool motion_allows_height (const imu_data_t * p_data);
 
 /** @brief Supply conservative consistency limits without assuming geometry. */
 void
@@ -26,8 +27,8 @@ imu_height_default_config (imu_height_config_t * p_config)
 {
     if (NULL != p_config)
     {
-        *p_config = (imu_height_config_t){0.0f,  0.0f, 100.0f, 10.0f,
-                                          45.0f, 3.0f, 1.0f,   25U};
+        *p_config = (imu_height_config_t){0.0f, 0.0f, 100.0f, 10.0f, 45.0f,
+                                          3.0f, 1.0f, 25U,    false};
     }
 }
 
@@ -181,6 +182,11 @@ sample_is_valid (const imu_height_t * p_state, const imu_data_t * p_data)
         return false;
     }
 
+    if ((p_state->config.b_require_motion) && (!motion_allows_height(p_data)))
+    {
+        return false;
+    }
+
     const float32_t norm =
         hypotf(hypotf(p_data->accel_x, p_data->accel_y), p_data->accel_z);
 
@@ -215,6 +221,13 @@ wheel_step (const imu_height_t * p_state, const imu_data_t * p_data,
     const float32_t mean = (*p_left + *p_right) * 0.5f;
     const float32_t limit =
         p_state->config.max_speed_cm_s * ((float32_t)elapsed / 1000.0f);
+
+    if ((p_state->config.b_require_motion) && (p_data->motion.b_stopped) &&
+        (mean > 0.05f))
+    {
+        /* More than encoder quantization contradicts a stopped snapshot. */
+        return false;
+    }
 
     return (isfinite(mean)) && (isfinite(limit)) && (mean <= limit) &&
            (fabsf(*p_left - *p_right) <= fmaxf(0.1f, mean * 0.25f));
@@ -274,6 +287,19 @@ finish_height (imu_height_t * p_state, imu_event_t * p_event)
     p_event->highest_hump_cm = p_state->highest_cm;
     p_event->b_height_valid  = true;
     p_event->b_highest_hump_valid = true;
+}
+
+/** @brief Use paired fresh B2 context without substituting its wheel counts. */
+static bool
+motion_allows_height (const imu_data_t * p_data)
+{
+    const imu_motion_t * p_motion = &p_data->motion;
+
+    return (p_motion->b_valid) && (!p_motion->b_fault) &&
+           (!p_motion->b_reverse) && (!p_motion->b_turning) &&
+           ((p_motion->b_forward) || (p_motion->b_stopped)) &&
+           ((p_data->timestamp_ms - p_motion->timestamp_ms) <=
+            IMU_MOTION_MAX_AGE_MS);
 }
 
 /*** end of file ***/

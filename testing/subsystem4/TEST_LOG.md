@@ -69,6 +69,7 @@ Define a test here before running it. Test IDs never change.
 | S4-H01 | Startup contract and kernel failures | B4 startup | host auto | `startup/run_tests.ps1` | Eight profiles pass task-order, readiness persistence/clear, timeout, mock rejection and error checks |
 | S4-H02 | Height estimates and validity | FR-B4 hump height | host auto | `host/testhigh_main.c` | Analytic 5/10/15 cm profiles, highest retention, filter/classifier integration, invalid traversals and queue gaps |
 | S4-H03 | Real encoder acquisition adapter | B2/B4 pairing | host auto | `startup/testodom_main.c` | Uses B2 geometry and rejects capture races, stale sampling and clock failure |
+| S4-H04 | Read-only B2 snapshots | B2/B4 context | host auto | `startup/testmoti_main.c` | Speed/travel/context, freshness, unavailable feedback, stationary confirmation and independent IMU health |
 | S4-M01 | Height accuracy on the car | Real hump estimate | manual | Traverse known-height humps with calibrated encoders; compare serial and B1 output | Record expected/estimated height and error; acceptance needs the team's agreed tolerance |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
@@ -81,6 +82,7 @@ Add a new row for every run. Never edit or delete old rows.
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S4-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+| 2026-11-01 | S4-H04 and regressions | Working tree | Codex | PASS | [B2 snapshot checks](logs/2026-11-01_b2_snapshots.txt) | B4-only reader, context-gated height and stationary checks; seven host programs, native startup/adapter/reader and eight ARM configurations; physical validation pending |
 | 2026-11-01 | S4-H02/H03 and regressions | Working tree | Codex | PASS | [height verification](logs/2026-11-01_height.txt) | Seven host programs, native startup/adapter tests and eight ARM configurations; full build blocked by B3; physical S4-M01 not run |
 | 2026-11-01 | S4-H01 and desktop regressions | Working tree | Codex | PASS | [startup verification](logs/2026-11-01_startup.txt) | Eight native startup profiles and eight strict ARM B4 configurations; physical/laptop tests not run; full build blocked by B3 assertion |
 | 2026-10-14 | S4-U03 through S4-U09 | `c9dca65` + working changes | Codex | PASS | [host log](logs/2026-10-14_host_imu.txt) | GCC C11 with strict warnings; desktop tests only; hardware and height not validated |

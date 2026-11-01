@@ -568,6 +568,20 @@ motion_name (imu_motion_state_t state)
 static void
 print_readings (const imu_data_t * p_data, const imu_event_t * p_event)
 {
+    if ((p_data->motion.b_valid) &&
+        ((p_data->timestamp_ms - p_data->motion.timestamp_ms) <=
+         IMU_MOTION_MAX_AGE_MS))
+    {
+        /* Captured int32_t speeds fit the verified kernel INT ABI exactly. */
+        tm_printf((UB *)"[B4] B2 speed L=%d R=%d counts/s\n",
+                  (INT)p_data->motion.left_speed_cps,
+                  (INT)p_data->motion.right_speed_cps);
+    }
+    else
+    {
+        tm_printf((UB *)"[B4] B2 motion context=N/A\n");
+    }
+
     tm_printf((UB *)"[B4] Tilt Pitch=%d Roll=%d deg Detected=%s\n",
               console_integer(p_event->pitch_deg),
               console_integer(p_event->roll_deg),

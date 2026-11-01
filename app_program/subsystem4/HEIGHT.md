@@ -1,5 +1,9 @@
 # Real-data hump-height estimator
 
+The B4-only [B2 snapshot reader](B2_SNAPSHOTS.md) now supplies additional movement
+context. Production estimates require fresh forward/stopped, nonfaulted context;
+the paired raw encoder counts remain the distance source.
+
 The sampling task reads B2 encoder counts alongside the real GY-511 sample.
 `imu_odom.c` uses the wheel diameter and separate left/right counts per revolution
 from `subsystem2/encoder_control.h`; it does not invent wheel motion or maintain
@@ -61,11 +65,11 @@ B1's single validity flag still applies to the whole event.
 The scripted mock supplies no encoder metadata and continues to report height
 as unavailable. Synthetic distances exist only in the desktop test fixtures.
 
-Native reading/event sizes are now 80/52 bytes on the checked desktop/ARM layout.
-Kernel queue storage is sized from sizeof, with a 96-byte compile-time bound.
-The eight-reading queue grows by 192 bytes; the optional 32-event test tap grows
-by 128 bytes. This excludes task-stack/context growth and is not a total RAM
-measurement. The height context is 88 bytes in the desktop layout.
+With B2 context, native reading/event sizes are 116/52 bytes. Kernel queues use
+sizeof with a 128-byte compile-time bound. B2 context adds 288 queue bytes beyond
+the original 80-byte height-reading payload. This excludes stack/context growth
+and is not a total RAM measurement. Historical height-only sizes are preserved
+in the earlier test record; see B2_SNAPSHOTS.md for the current integration.
 
 ## Verification
 

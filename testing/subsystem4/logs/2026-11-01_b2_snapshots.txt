@@ -1,0 +1,23 @@
+B4-only B2 snapshot integration -- 2026-11-01, working tree
+
+PASS: B4 style scan and seven checker regressions.
+PASS: all seven existing desktop test programs, including new context-gated
+      height rejection, preserved maximum and recovery tests.
+PASS: eight native startup profiles and acquisition-adapter tests.
+PASS: real B4 snapshot reader against B2's public header and read-only stub:
+      command identity, measured speeds, signed travel and units;
+      forward/reverse/turn/stopped/fault mapping;
+      unavailable API, clock failure, stale/future/invalid data, wrap;
+      stale stop feedback cannot confirm stationary;
+      missing or faulted B2 context does not become an IMU fault.
+      No B2 command or fault-writing API is linked into this test.
+PASS: all eight strict ARM C99 B4 configuration checks.
+PASS: actual B4 ARM object compilation with conversion warnings as errors.
+PASS: ARM layout assertions: motion=36, reading=116, event=52, height=92 bytes.
+
+Only app_program/subsystem4 and testing/subsystem4 source/tests/docs changed.
+B2 and Vehicle Controller code were not modified.
+BLOCKED: full UART/no-WiFi TEST=1 firmware still fails at the existing B3_STATE
+size assertion in app_program/subsystem3/b3_line_barcode.h:52.
+Physical timing, encoder/speed comparisons and end-to-end hardware execution
+were not performed. No firmware was flashed.

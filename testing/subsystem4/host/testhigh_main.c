@@ -17,6 +17,7 @@
 static imu_height_t g_height;
 static imu_data_t   g_data;
 static imu_event_t  g_event;
+static bool         gb_require_motion;
 
 static void reset (void);
 static void prepare_reading (float32_t pitch, int32_t counts);
@@ -26,6 +27,7 @@ static void profile (uint32_t steps);
 static void test_rejections (void);
 static void test_pipeline (void);
 static void test_guards (void);
+static void test_motion_context (void);
 
 /** @brief Check analytic heights, session maximum and failure recovery. */
 int
@@ -52,6 +54,7 @@ main (void)
     test_rejections();
     test_pipeline();
     test_guards();
+    test_motion_context();
     return 0;
 }
 
@@ -65,6 +68,7 @@ reset (void)
     assert(!imu_height_init(&g_height, &config));
     config.left_cm_per_count  = 0.01f;
     config.right_cm_per_count = 0.01f;
+    config.b_require_motion   = gb_require_motion;
     assert(imu_height_init(&g_height, &config));
     g_data                  = (imu_data_t){0};
     g_data.b_valid          = true;
@@ -79,6 +83,16 @@ prepare_reading (float32_t pitch, int32_t counts)
 {
     g_data.timestamp_ms += 10U;
     g_data.sample_sequence++;
+
+    if (gb_require_motion)
+    {
+        g_data.motion              = (imu_motion_t){0};
+        g_data.motion.timestamp_ms = g_data.timestamp_ms;
+        g_data.motion.b_valid      = true;
+        g_data.motion.b_forward    = counts > 0;
+        g_data.motion.b_stopped    = 0 == counts;
+    }
+
     g_data.encoder_left += counts;
     g_data.encoder_right += counts;
     g_data.pitch_deg = pitch;
@@ -283,6 +297,63 @@ test_guards (void)
     puts("PASS: impact, nonfinite/null guards and timestamp wrap");
     printf("INFO: reading=%zu event=%zu height-context=%zu bytes\n",
            sizeof(imu_data_t), sizeof(imu_event_t), sizeof(imu_height_t));
+}
+
+/** @brief Reject unsafe/unavailable B2 context without losing session maxima.
+ */
+static void
+test_motion_context (void)
+{
+    const uint32_t scenarios = 6U;
+
+    gb_require_motion = true;
+
+    for (uint32_t scenario = 0U; scenario < scenarios; ++scenario)
+    {
+        reset();
+        profile(TEST_ASCENT_STEPS);
+        assert(g_event.b_height_valid);
+        feed(30.0f, 100, true, false);
+        prepare_reading(30.0f, 100);
+
+        switch (scenario)
+        {
+            case 0U:
+                g_data.motion.b_valid = false;
+            break;
+            case 1U:
+                g_data.motion.timestamp_ms -= IMU_MOTION_MAX_AGE_MS + 1U;
+            break;
+            case 2U:
+                g_data.motion.b_reverse = true;
+                g_data.motion.b_forward = false;
+            break;
+            case 3U:
+                g_data.motion.b_turning = true;
+                g_data.motion.b_forward = false;
+            break;
+            case 4U:
+                g_data.motion.b_fault = true;
+            break;
+            default:
+                g_data.motion.b_forward = false;
+                g_data.motion.b_stopped = true;
+            break;
+        }
+
+        g_event.b_hump_detected = true;
+        imu_height_process(&g_height, &g_data, &g_event);
+        feed(-30.0f, 100, true, false);
+        feed(0.0f, 100, true, true);
+        assert(!g_event.b_height_valid);
+        assert(g_event.b_highest_hump_valid);
+        assert(fabsf(g_event.highest_hump_cm - 10.0f) < 0.001f);
+        profile(TEST_SHORT_STEPS);
+        assert(g_event.b_height_valid);
+    }
+
+    gb_require_motion = false;
+    puts("PASS: B2 freshness/direction/fault gating and height recovery");
 }
 
 /*** end of file ***/

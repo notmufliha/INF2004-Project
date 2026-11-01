@@ -1,5 +1,12 @@
 # B4 BARR-C:2018 audit
 
+2026-11-01 snapshot update: the B4-owned `imu_motion` module consumes the existing
+B2 read API. Its public header exposes only B4 fixed-width data and bool flags;
+kernel/B2 enums stay inside the adapter with documented validation casts.
+The new production code passes the same BARR-C checks and all eight ARM C99
+configurations. Reading/event/motion/height context layouts are 116/52/36/92
+bytes in the checked ARM layout. Historical milestone sizes below are retained.
+
 2026-11-01 height update: `imu_height` is a pure C99 estimator and `imu_odom`
 adapts the existing kernel/B2 interfaces. New state uses fixed-width counts,
 Boolean prefixes, private static helpers and finite/range-checked calculations.
