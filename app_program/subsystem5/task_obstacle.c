@@ -1,4 +1,3 @@
-#include <stddef.h>
 #include "subsystem5.h"
 #include "../robot_config.h"
 #include "../subsystem1/subsystem1.h"   /* B1 telemetry + shared fault mask */
