@@ -12,14 +12,16 @@ $compilerArguments = @(
     "-I$(Join-Path $projectRoot 'kernel/knlinc')", '-fsyntax-only'
 )
 
-foreach ($mockMode in @(0, 1)) {
-    foreach ($testMode in @(0, 1)) {
-        foreach ($sourceFile in (Get-ChildItem $sourceDirectory -Filter '*.c')) {
-            & $Compiler @compilerArguments "-DAPP_TEST=$testMode" "-DS4_IMU_USE_MOCK=$mockMode" $sourceFile.FullName
-            if ($LASTEXITCODE -ne 0) {
-                throw "ARM C99 check failed: $($sourceFile.Name), mock=$mockMode, test=$testMode"
+foreach ($robotMode in @(0, 1)) {
+    foreach ($mockMode in @(0, 1)) {
+        foreach ($testMode in @(0, 1)) {
+            foreach ($sourceFile in (Get-ChildItem $sourceDirectory -Filter '*.c')) {
+                & $Compiler @compilerArguments "-DROBOT_MODE=$robotMode" "-DAPP_TEST=$testMode" "-DS4_IMU_USE_MOCK=$mockMode" $sourceFile.FullName
+                if ($LASTEXITCODE -ne 0) {
+                    throw "ARM C99 check failed: $($sourceFile.Name), robot=$robotMode, mock=$mockMode, test=$testMode"
+                }
             }
+            Write-Output "PASS: ARM C99 B4 robot=$robotMode mock=$mockMode test=$testMode"
         }
-        Write-Output "PASS: ARM C99 B4 mock=$mockMode test=$testMode"
     }
 }

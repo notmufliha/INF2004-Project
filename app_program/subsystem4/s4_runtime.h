@@ -5,6 +5,7 @@
 #define S4_RUNTIME_H
 
 #include "../app.h"
+#include "../robot_config.h"
 
 /* Default: real GY-511. Set to 1 explicitly for the scripted mock demo. */
 #ifndef S4_IMU_USE_MOCK
@@ -32,6 +33,7 @@ extern volatile ID gh_imu_test_events;
 #define S4_ALARM_MS 2000
 #define S4_LED_TOGGLE_REPORTS 6U
 #define FLG_ALARM 0x0001U /* Set by the private alarm callback. */
+#define S4_IMU_READY_FLAG 0x0004U /* Fresh, accepted analysis is available. */
 
 /* Private to subsystem 4. */
 extern volatile ID gh_monitor_alarm;

@@ -24,6 +24,8 @@ extern volatile ID gh_events;
 
 ER subsystem4_init (void);
 ER subsystem4_start (void);
+/* A positive timeout bounds the wait for calibrated, accepted real readings. */
+ER subsystem4_wait_ready (TMO timeout_ms);
 
 #endif /* SUBSYSTEM4_H. */
 

@@ -1,0 +1,20 @@
+B4 startup/telemetry milestone -- 2026-11-01, working tree
+
+PASS: check_barr_style.py for production B4 and existing desktop C tests.
+PASS: startup/run_tests.ps1 -- eight robot/demo, test/normal, real/mock profiles.
+      Executes production subsystem4.c against a minimal native kernel stub.
+      Verifies task order, demo resource isolation, readiness persistence/clear,
+      bounded waits, mock rejection and injected kernel/task errors.
+PASS: host/run_tests.ps1 -- all six existing desktop regression programs.
+PASS: check_arm.ps1 -- strict C99 checks in all eight B4 configurations.
+PASS: ARM syntax checks of app_main.c for real/demo startup.
+PASS: actual ARM object compilation of app_main.c, subsystem4.c, task_imu.c,
+      task_monitor.c and s4_test.c (UART/no-WiFi TEST=1; B4 strict C99).
+
+BLOCKED: full UART/no-WiFi test firmware build fails in unrelated B3 code:
+app_program/subsystem3/b3_line_barcode.h:52:
+static assertion failed: B3_STATE must occupy eight bytes on the RP2040 toolchain.
+
+NOT RUN: physical Pico startup/calibration timeout, laptop telemetry, real
+sensor disconnect/reconnect and S4-U17/S4-U18 target execution.
+Height estimation remains deferred by request. No firmware was flashed.

@@ -7,9 +7,37 @@ on fault/recovery, and reports completed humps through `comm_report_hump()`.
 Height stays explicitly invalid until a height estimator is implemented.
 Telemetry conversions clamp to the signed 16-bit B1 range before narrowing.
 
-The incoming `ROBOT_MODE=1` startup currently starts B1, B2 and B5 only; it does
-not start B4. B4 remains part of the `ROBOT_MODE=0` teaching/demo startup.
-Resolving this merge does not enable additional hardware tasks automatically.
+With `ROBOT_MODE=1`, startup initializes B1 and B2, then starts B4 before starting
+motor tasks. Keep the car level and still. B4's normal calibration and recovery
+must produce an accepted reading within `ROBOT_IMU_STARTUP_TIMEOUT_MS` (10 seconds
+by default). Timeout or B4 startup failure enters the existing disabled-robot
+failure path. Mock input cannot satisfy the real-robot readiness gate.
+
+Real mode creates only the sampling/analysis tasks and their queues/ready flag.
+It does not create the teaching summary buffer, alarm or legacy monitor, so B4
+does not access uninitialized B3 statistics or pause B1's LED. `ROBOT_MODE=0`
+retains those demo resources. The monitor clears only its own flag bits.
+
+Readiness is a startup gate, not a motor safety controller. A later sensor fault
+clears readiness and updates B1's shared fault mask; it does not directly stop
+the motors. Runtime fault-to-motion policy remains with the vehicle controller.
+
+Run the native startup contract tests with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File testing/subsystem4/startup/run_tests.ps1
+```
+
+These execute the production startup module against a kernel stub in eight
+robot/demo, real/mock and test/normal combinations. They exercise readiness,
+timeouts, simulated-input rejection, task order and injected kernel failures.
+The stub preserves external kernel/task ABI names; it is not firmware code.
+
+For the end-to-end hardware check, boot level/still and confirm the waiting
+message is followed by calibration/recovery and the robot-started message.
+Verify laptop pitch/motion against serial output, then verify IMU fault/recovery
+with the drive disabled. Completed humps must still show height as unavailable.
+These physical/laptop checks have not been performed by the desktop tests.
 
 See [CODING_STANDARD.md](CODING_STANDARD.md) for B4's BARR-C cleanup scope,
 rule-by-rule audit, automated checks, formatter profile and platform rationale.
@@ -33,7 +61,7 @@ analysis task (priority 19). An eight-reading message buffer copies readings
 between them. Sampling uses actual RTOS timestamps and drops the newest reading
 if the queue is full, without blocking. Gaps over the analysis limit reset the
 terrain sequence. Delays below that limit still affect confirmation latency.
-The legacy monitor is retained at priority 19 for Subsystem 3's example interface.
+The legacy monitor runs at priority 19 only in the teaching/demo startup.
 `imu_processing.c` validates and filters each received reading before analysis.
 Real IMU acquisition is enabled by default; Vehicle Controller and motor
 interfaces are not connected yet.
