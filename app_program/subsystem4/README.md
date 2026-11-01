@@ -1,12 +1,15 @@
 # Buddy 4: GY-511 hardware input and mock tests
 
+See [CODING_STANDARD.md](CODING_STANDARD.md) for B4's BARR-C cleanup scope,
+rule-by-rule audit, automated checks, formatter profile and platform rationale.
+
 **Firmware now defaults to the real GY-511 input.** See [HARDWARE.md](HARDWARE.md)
 for wiring, startup calibration, serial output and the first hardware test.
 There is no automatic fallback to simulated data. The driver targets LSM303DLHC
 and checks the magnetic H43 ID plus configuration readback before use.
 
 The mock demo described below is available only by setting
-`S4_IMU_USE_MOCK` to `1` in `subsystem4.h`. With the default `0`, TEST=1 runs
+`S4_IMU_USE_MOCK` to `1` in `s4_runtime.h`. With the default `0`, TEST=1 runs
 S4-U16 (real calibrated readings) instead of mock-only S4-U11/S4-U14.
 Height remains unavailable. Heading is an uncalibrated magnetic estimate by
 default; turn rate remains unavailable until magnetic calibration is configured.
@@ -36,7 +39,7 @@ make TEST=1 -j8
 ```
 
 Flash the matching USB/WiFi `.uf2` using BOOTSEL as described in the root README,
-then open the USB serial port at 115200 baud. Watch for `IMU MOCK:` lines:
+then open the USB serial port at 115200 baud. In mock mode, watch for `[B4] Motion=` lines:
 unknown/quiet, accelerating, turning, climbing, peak, descending, hump completed,
 and suspected-impact. The cycle repeats every eight seconds. Height is explicitly
 reported as unavailable. A long impact interval is intentional for this demo.
@@ -97,14 +100,16 @@ imu_data_t data;
 imu_event_t event;
 
 imu_analysis_default_config(&config);
-if (!imu_analysis_init(&analysis, &config)) {
+if (!imu_analysis_init(&analysis, &config))
+{
     /* Report configuration failure. */
 }
 imu_mock_init();
 /* Repeat with successive input readings. */
-if (imu_mock_read(&data) &&
-    imu_analysis_process(&analysis, &data, &event)) {
-    /* Consume the valid snapshot; hump_completed is a one-reading pulse. */
+if ((imu_mock_read(&data)) &&
+    (imu_analysis_process(&analysis, &data, &event)))
+{
+    /* Consume the b_valid snapshot; b_hump_completed is a one-reading pulse. */
 }
 ```
 
@@ -114,8 +119,8 @@ if (imu_mock_read(&data) &&
   Slope entry is 8 degrees; level exit is 3 degrees. All defaults are provisional.
 - Hump sequence: level, climbing, peak, descending, level. A climb may transition
   directly to descending if no level peak samples are captured.
-- `hump_detected` identifies an active or just-completed sequence;
-  `hump_completed` is true only on the reading completing the traversal.
+- `b_hump_detected` identifies an active or just-completed sequence;
+  `b_hump_completed` is true only on the reading completing the traversal.
 - Impact takes precedence and cancels an in-progress hump. Invalid data, duplicate
   or backward timestamps, gaps over 100 ms, and a 10-second hump timeout also
   break the sequence. Unsigned timestamps support normal 32-bit wraparound.
@@ -131,7 +136,7 @@ if (imu_mock_read(&data) &&
   provide calibrated readings. Gravity compensation and
   real vibration/impact trials remain necessary; these tests do not establish
   collision-detection reliability.
-- Height and highest-height fields are zero with `height_valid=false`. No height
+- Height and highest-height fields are zero with `b_height_valid=false`. No height
   in centimetres is inferred from pitch. Add a validated estimator before using
   these fields in telemetry or claiming the highest-hump requirement is met.
 

@@ -13,7 +13,7 @@ Subsystem 4 every five samples.
 | Startup | `subsystem3_start()` calls `app_start_task()`, which performs `tk_cre_tsk()` then `tk_sta_tsk()` |
 | IF-01 mailbox | `mbx_samples`, created and owned by S3; carries `SAMPLE_MSG *` from S2 |
 | IF-02 return path | S3 calls `tk_rel_mpf(mpf_samples, msg)` and `tk_sig_sem(sem_slots, 1)`; both objects are owned by S2 |
-| IF-03 report | S3 sends copied text to S4's `mbf_summary`, then sets `FLG_BATCH` in `flg_events` |
+| IF-03 report | S3 sends copied text to S4's `gh_summary`, then sets `FLG_BATCH` in `gh_events` |
 | IF-04 statistics | `app_stats` is protected by S3's `mtx_stats`; S4 must hold the mutex to read it |
 
 `APP_STATS` contains the received count, minimum, maximum, and signed sum.

@@ -1,3 +1,6 @@
+/** @file imu_analysis.c
+ * @brief Buddy 4 imu analysis module.
+ */
 #include "imu_analysis.h"
 
 #include <math.h>
@@ -5,199 +8,271 @@
 
 #define IMU_GRAVITY_MS2 (9.81f)
 
-static void reset_sequence(imu_analysis_t *analysis)
-{
-    analysis->terrain = IMU_TERRAIN_LEVEL;
-    analysis->confirmation_count = 0U;
-}
+static void reset_sequence (imu_analysis_t * p_analysis);
 
-void imu_analysis_default_config(imu_analysis_config_t *config)
+static bool confirmed (imu_analysis_t * p_analysis, bool b_condition);
+
+static void update_terrain (imu_analysis_t *   p_analysis,
+                            const imu_data_t * p_data, imu_event_t * p_event);
+
+static void classify_motion (const imu_analysis_t * p_analysis,
+                             const imu_data_t * p_data, imu_event_t * p_event,
+                             float32_t magnitude);
+
+/** @brief Supply provisional motion and terrain thresholds. */
+void
+imu_analysis_default_config (imu_analysis_config_t * p_config)
 {
-    if (config != NULL)
+    if (p_config != NULL)
     {
-        *config = (imu_analysis_config_t){8.0f, 3.0f, 8.0f, 1.0f,
-                                        15.0f, 6.0f, 3U, 100U, 10000U};
+        *p_config = (imu_analysis_config_t){8.0f, 3.0f, 8.0f, 1.0f,  15.0f,
+                                            6.0f, 3U,   100U, 10000U};
     }
 }
 
-bool imu_analysis_init(imu_analysis_t *analysis,
-                       const imu_analysis_config_t *config)
+/** @brief Validate thresholds and reset the terrain context. */
+bool
+imu_analysis_init (imu_analysis_t *              p_analysis,
+                   const imu_analysis_config_t * p_config)
 {
-    if ((analysis == NULL) || (config == NULL) ||
-        !isfinite(config->slope_enter_deg) ||
-        !isfinite(config->level_exit_deg) || !isfinite(config->tilt_deg) ||
-        !isfinite(config->acceleration_ms2) ||
-        !isfinite(config->turn_rate_dps) || !isfinite(config->impact_ms2) ||
-        (config->level_exit_deg < 0.0f) ||
-        (config->slope_enter_deg <= config->level_exit_deg) ||
-        (config->tilt_deg <= 0.0f) || (config->acceleration_ms2 <= 0.0f) ||
-        (config->turn_rate_dps <= 0.0f) ||
-        (config->impact_ms2 <= config->acceleration_ms2) ||
-        (config->confirmation_samples == 0U) || (config->max_gap_ms == 0U) ||
-        (config->hump_timeout_ms <= config->max_gap_ms) ||
-        (config->hump_timeout_ms >= UINT32_MAX / 2U))
+    if ((NULL == p_analysis) || (NULL == p_config) ||
+        (!isfinite(p_config->slope_enter_deg)) ||
+        (!isfinite(p_config->level_exit_deg)) ||
+        (!isfinite(p_config->tilt_deg)) ||
+        (!isfinite(p_config->acceleration_ms2)) ||
+        (!isfinite(p_config->turn_rate_dps)) ||
+        (!isfinite(p_config->impact_ms2)) ||
+        (p_config->level_exit_deg < 0.0f) ||
+        (p_config->slope_enter_deg <= p_config->level_exit_deg) ||
+        (p_config->tilt_deg <= 0.0f) || (p_config->acceleration_ms2 <= 0.0f) ||
+        (p_config->turn_rate_dps <= 0.0f) ||
+        (p_config->impact_ms2 <= p_config->acceleration_ms2) ||
+        (0U == p_config->confirmation_samples) ||
+        (0U == p_config->max_gap_ms) ||
+        (p_config->hump_timeout_ms <= p_config->max_gap_ms) ||
+        (p_config->hump_timeout_ms >= UINT32_MAX / 2U))
     {
         return false;
     }
-    *analysis = (imu_analysis_t){0};
-    analysis->config = *config;
+
+    *p_analysis        = (imu_analysis_t){0};
+    p_analysis->config = *p_config;
     return true;
 }
 
-static bool confirmed(imu_analysis_t *analysis, bool condition)
+/** @brief Validate a reading and publish motion and terrain status. */
+bool
+imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
+                      imu_event_t * p_event)
 {
-    if (!condition)
-    {
-        analysis->confirmation_count = 0U;
-        return false;
-    }
-    analysis->confirmation_count++;
-    if (analysis->confirmation_count >= analysis->config.confirmation_samples)
-    {
-        analysis->confirmation_count = 0U;
-        return true;
-    }
-    return false;
-}
+    uint32_t  elapsed;
+    float32_t magnitude;
 
-bool imu_analysis_process(imu_analysis_t *analysis, const imu_data_t *data,
-                          imu_event_t *event)
-{
-    uint32_t elapsed;
-    float magnitude;
-    bool level;
-    bool descending;
-
-    if (event != NULL)
+    if (p_event != NULL)
     {
-        *event = (imu_event_t){0};
-        event->motion_state = IMU_MOTION_UNKNOWN;
+        *p_event              = (imu_event_t){0};
+        p_event->motion_state = IMU_MOTION_UNKNOWN;
     }
-    if ((analysis == NULL) || (event == NULL) || (data == NULL) ||
-        !data->valid || !isfinite(data->accel_x) ||
-        !isfinite(data->accel_y) || !isfinite(data->accel_z) ||
-        !isfinite(data->pitch_deg) || !isfinite(data->roll_deg) ||
-        !isfinite(data->turn_rate_dps))
+
+    if ((NULL == p_analysis) || (NULL == p_event) || (NULL == p_data) ||
+        (!p_data->b_valid) || (!isfinite(p_data->accel_x)) ||
+        (!isfinite(p_data->accel_y)) || (!isfinite(p_data->accel_z)) ||
+        (!isfinite(p_data->pitch_deg)) || (!isfinite(p_data->roll_deg)) ||
+        (!isfinite(p_data->turn_rate_dps)))
     {
-        if (analysis != NULL)
+        if (p_analysis != NULL)
         {
-            reset_sequence(analysis);
-            analysis->has_timestamp = false;
+            reset_sequence(p_analysis);
+            p_analysis->b_has_timestamp = false;
         }
+
         return false;
     }
-    magnitude = hypotf(hypotf(data->accel_x, data->accel_y), data->accel_z);
+
+    magnitude =
+        hypotf(hypotf(p_data->accel_x, p_data->accel_y), p_data->accel_z);
+
     if (!isfinite(magnitude))
     {
-        reset_sequence(analysis);
-        analysis->has_timestamp = false;
+        reset_sequence(p_analysis);
+        p_analysis->b_has_timestamp = false;
         return false;
     }
-    if (analysis->has_timestamp)
+
+    if (p_analysis->b_has_timestamp)
     {
-        elapsed = data->timestamp_ms - analysis->last_timestamp_ms;
-        if ((elapsed == 0U) || (elapsed > analysis->config.max_gap_ms))
+        elapsed = p_data->timestamp_ms - p_analysis->last_timestamp_ms;
+
+        if ((0U == elapsed) || (elapsed > p_analysis->config.max_gap_ms))
         {
-            reset_sequence(analysis);
-            analysis->has_timestamp = false;
+            reset_sequence(p_analysis);
+            p_analysis->b_has_timestamp = false;
             return false;
         }
     }
-    analysis->last_timestamp_ms = data->timestamp_ms;
-    analysis->has_timestamp = true;
-    event->timestamp_ms = data->timestamp_ms;
-    event->pitch_deg = data->pitch_deg;
-    event->roll_deg = data->roll_deg;
-    event->turn_rate_dps = data->turn_rate_dps;
-    event->turn_rate_valid = data->turn_rate_valid;
-    event->heading_deg = data->heading_deg;
-    event->heading_valid = data->heading_valid;
-    event->heading_calibrated = data->heading_calibrated;
-    event->valid = true;
-    event->tilt_detected = (fabsf(data->pitch_deg) >= analysis->config.tilt_deg) ||
-                          (fabsf(data->roll_deg) >= analysis->config.tilt_deg);
+
+    p_analysis->last_timestamp_ms = p_data->timestamp_ms;
+    p_analysis->b_has_timestamp   = true;
+    p_event->timestamp_ms         = p_data->timestamp_ms;
+    p_event->pitch_deg            = p_data->pitch_deg;
+    p_event->roll_deg             = p_data->roll_deg;
+    p_event->turn_rate_dps        = p_data->turn_rate_dps;
+    p_event->b_turn_rate_valid    = p_data->b_turn_rate_valid;
+    p_event->heading_deg          = p_data->heading_deg;
+    p_event->b_heading_valid      = p_data->b_heading_valid;
+    p_event->b_heading_calibrated = p_data->b_heading_calibrated;
+    p_event->b_valid              = true;
+    p_event->b_tilt_detected =
+        (fabsf(p_data->pitch_deg) >= p_analysis->config.tilt_deg) ||
+        (fabsf(p_data->roll_deg) >= p_analysis->config.tilt_deg);
     /* Compare magnitude with gravity: a stationary tilted sensor is not impact.
      * This is a provisional detector, not gravity-compensated acceleration.
      */
-    event->sudden_impact = fabsf(magnitude - IMU_GRAVITY_MS2) >=
-                          analysis->config.impact_ms2;
-    if (event->sudden_impact)
+    p_event->b_sudden_impact =
+        fabsf(magnitude - IMU_GRAVITY_MS2) >= p_analysis->config.impact_ms2;
+
+    if (p_event->b_sudden_impact)
     {
-        reset_sequence(analysis);
-        event->motion_state = IMU_MOTION_SUDDEN_IMPACT;
+        reset_sequence(p_analysis);
+        p_event->motion_state = IMU_MOTION_SUDDEN_IMPACT;
         return true;
     }
-    if ((analysis->terrain != IMU_TERRAIN_LEVEL) &&
-        (data->timestamp_ms - analysis->hump_start_ms >=
-         analysis->config.hump_timeout_ms))
+
+    update_terrain(p_analysis, p_data, p_event);
+    classify_motion(p_analysis, p_data, p_event, magnitude);
+    return true;
+}
+
+/** @brief Discard an incomplete hump traversal. */
+static void
+reset_sequence (imu_analysis_t * p_analysis)
+{
+    p_analysis->terrain            = IMU_TERRAIN_LEVEL;
+    p_analysis->confirmation_count = 0U;
+}
+
+/** @brief Require consecutive qualifying readings before a transition. */
+static bool
+confirmed (imu_analysis_t * p_analysis, bool b_condition)
+{
+    if (!b_condition)
     {
-        reset_sequence(analysis);
+        p_analysis->confirmation_count = 0U;
+        return false;
     }
-    level = fabsf(data->pitch_deg) <= analysis->config.level_exit_deg;
-    descending = data->pitch_deg <= -analysis->config.slope_enter_deg;
-    switch (analysis->terrain)
+
+    p_analysis->confirmation_count++;
+
+    if (p_analysis->confirmation_count >=
+        p_analysis->config.confirmation_samples)
+    {
+        p_analysis->confirmation_count = 0U;
+        return true;
+    }
+
+    return false;
+}
+
+/** @brief Advance or time out the climb, peak and descent sequence. */
+static void
+update_terrain (imu_analysis_t * p_analysis, const imu_data_t * p_data,
+                imu_event_t * p_event)
+{
+    if ((p_analysis->terrain != IMU_TERRAIN_LEVEL) &&
+        (p_data->timestamp_ms - p_analysis->hump_start_ms >=
+         p_analysis->config.hump_timeout_ms))
+    {
+        reset_sequence(p_analysis);
+    }
+
+    bool b_level =
+        fabsf(p_data->pitch_deg) <= p_analysis->config.level_exit_deg;
+    bool b_descending =
+        p_data->pitch_deg <= -p_analysis->config.slope_enter_deg;
+
+    switch (p_analysis->terrain)
     {
         case IMU_TERRAIN_LEVEL:
-            if (confirmed(analysis, data->pitch_deg >= analysis->config.slope_enter_deg))
+
+            if (confirmed(p_analysis, p_data->pitch_deg >=
+                                          p_analysis->config.slope_enter_deg))
             {
-                analysis->terrain = IMU_TERRAIN_CLIMBING;
-                analysis->hump_start_ms = data->timestamp_ms;
+                p_analysis->terrain       = IMU_TERRAIN_CLIMBING;
+                p_analysis->hump_start_ms = p_data->timestamp_ms;
             }
-            break;
+        break;
         case IMU_TERRAIN_CLIMBING:
-            if (confirmed(analysis, level || descending))
+
+            if (confirmed(p_analysis, b_level || b_descending))
             {
-                analysis->terrain = descending ? IMU_TERRAIN_DESCENDING : IMU_TERRAIN_PEAK;
+                p_analysis->terrain =
+                    b_descending ? IMU_TERRAIN_DESCENDING : IMU_TERRAIN_PEAK;
             }
-            break;
+        break;
         case IMU_TERRAIN_PEAK:
-            if (confirmed(analysis, descending))
+
+            if (confirmed(p_analysis, b_descending))
             {
-                analysis->terrain = IMU_TERRAIN_DESCENDING;
+                p_analysis->terrain = IMU_TERRAIN_DESCENDING;
             }
-            break;
+        break;
         case IMU_TERRAIN_DESCENDING:
-            if (confirmed(analysis, level))
+
+            if (confirmed(p_analysis, b_level))
             {
-                reset_sequence(analysis);
-                event->hump_completed = true;
+                reset_sequence(p_analysis);
+                p_event->b_hump_completed = true;
             }
-            break;
+        break;
         default:
-            reset_sequence(analysis);
-            break;
+            reset_sequence(p_analysis);
+        break;
     }
-    event->hump_detected = (analysis->terrain != IMU_TERRAIN_LEVEL) ||
-                          event->hump_completed;
-    switch (analysis->terrain)
+
+    p_event->b_hump_detected = (p_analysis->terrain != IMU_TERRAIN_LEVEL) ||
+                               (p_event->b_hump_completed);
+}
+
+/** @brief Choose the motion state from terrain and dynamic thresholds. */
+static void
+classify_motion (const imu_analysis_t * p_analysis, const imu_data_t * p_data,
+                 imu_event_t * p_event, float32_t magnitude)
+{
+    switch (p_analysis->terrain)
     {
         case IMU_TERRAIN_CLIMBING:
-            event->motion_state = IMU_MOTION_CLIMBING_HUMP;
-            break;
+            p_event->motion_state = IMU_MOTION_CLIMBING_HUMP;
+        break;
         case IMU_TERRAIN_PEAK:
-            event->motion_state = IMU_MOTION_HUMP_PEAK;
-            break;
+            p_event->motion_state = IMU_MOTION_HUMP_PEAK;
+        break;
         case IMU_TERRAIN_DESCENDING:
-            event->motion_state = IMU_MOTION_DESCENDING_HUMP;
-            break;
+            p_event->motion_state = IMU_MOTION_DESCENDING_HUMP;
+        break;
         default:
-            if (data->turn_rate_valid &&
-                fabsf(data->turn_rate_dps) >= analysis->config.turn_rate_dps)
+
+            if ((p_data->b_turn_rate_valid) &&
+                (fabsf(p_data->turn_rate_dps) >=
+                 p_analysis->config.turn_rate_dps))
             {
-                event->motion_state = IMU_MOTION_TURNING;
+                p_event->motion_state = IMU_MOTION_TURNING;
             }
-            else if (fabsf(magnitude - IMU_GRAVITY_MS2) >= analysis->config.acceleration_ms2 ||
-                     (!event->tilt_detected &&
-                      hypotf(data->accel_x, data->accel_y) >= analysis->config.acceleration_ms2))
+            else if ((fabsf(magnitude - IMU_GRAVITY_MS2) >=
+                      p_analysis->config.acceleration_ms2) ||
+                     (((!p_event->b_tilt_detected) &&
+                       (hypotf(p_data->accel_x, p_data->accel_y) >=
+                        p_analysis->config.acceleration_ms2))))
             {
-                event->motion_state = IMU_MOTION_ACCELERATING;
+                p_event->motion_state = IMU_MOTION_ACCELERATING;
             }
             else
             {
                 /* IMU alone cannot establish that the vehicle is stationary. */
-                event->motion_state = IMU_MOTION_UNKNOWN;
+                p_event->motion_state = IMU_MOTION_UNKNOWN;
             }
-            break;
+        break;
     }
-    return true;
 }
+
+/*** end of file ***/
+
