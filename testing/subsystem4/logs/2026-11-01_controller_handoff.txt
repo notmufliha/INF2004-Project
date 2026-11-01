@@ -1,0 +1,21 @@
+B4 controller handoff verification (2026-11-01)
+
+PASS: check_barr_style.py selected rules and seven checker regressions.
+PASS: host/run_tests.ps1, all seven existing host programs.
+PASS: startup/run_tests.ps1, eight startup profiles, odometry and B2 context.
+PASS: production controller interface against a bounded native queue:
+      initial readiness/unavailability, edge suppression, tilt onset/clearing,
+      invalid data without false clearing, hump entry/abort/completion,
+      heartbeat and timestamp wrap, queue saturation, fault/recovery retention,
+      impact, retained completion height, send failures and receive guards.
+PASS: check_arm.ps1, strict C99/conversion checks across eight configurations.
+PASS: actual ARM object compilation of imu_notice, imu_vc, subsystem4, task_imu
+      using make CONSOLE=uart WIFI=none TEST=1 E2U=.
+
+FULL FIRMWARE BUILD BLOCKED: subsystem3/b3_line_barcode.h:52 B3_STATE size
+assertion fails. B3 was not changed. Full link and UF2 were not verified.
+NOT RUN: Pico hardware, controller consumption, scheduler timing or motor policy.
+
+Measured payload: 88 bytes. Eight aligned kernel slots: 736 bytes, plus
+kernel control blocks, fixed producer tracker and stack copies.
+Scope: only app_program/subsystem4 and testing/subsystem4.

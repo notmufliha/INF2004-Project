@@ -11,6 +11,7 @@
 #include "imu_analysis.h"
 #include "imu_processing.h"
 #include "imu_odom.h"
+#include "imu_vc.h"
 #include "../subsystem1/subsystem1.h"
 #if S4_IMU_USE_MOCK
 #include "imu_demo.h"
@@ -242,6 +243,17 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
         bool b_analysed = imu_analysis_process(&analysis, &processed, &event);
 
         imu_height_process(&height, &data, &event);
+
+        event.timestamp_ms       = data.timestamp_ms;
+        event.b_sensor_fault     = health.b_fault_active;
+        event.b_sensor_recovered = health.b_recovered;
+
+        ER notice_error          = imu_vc_publish(&event);
+
+        if ((notice_error < E_OK) && (E_TMOUT != notice_error))
+        {
+            CHECK(notice_error, "B4 controller notice");
+        }
 
         if ((!b_analysed) || (!b_usable))
         {

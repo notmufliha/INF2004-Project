@@ -4,6 +4,9 @@ $sourceDirectory = Join-Path $projectRoot 'app_program/subsystem4'
 $testExecutable = Join-Path $PSScriptRoot 'testboot_main.exe'
 $testSources = @(
     (Join-Path $sourceDirectory 'subsystem4.c'),
+    (Join-Path $sourceDirectory 'imu_vc.c'),
+    (Join-Path $sourceDirectory 'imu_notice.c'),
+    (Join-Path $PSScriptRoot 'queue_stub.c'),
     (Join-Path $PSScriptRoot 'testboot_main.c')
 )
 
@@ -44,3 +47,14 @@ $motionSources = @(
 if ($LASTEXITCODE -ne 0) { throw 'B2 snapshot reader compilation failed' }
 & $motionExecutable
 if ($LASTEXITCODE -ne 0) { throw 'B2 snapshot reader test failed' }
+
+$controllerExecutable = Join-Path $PSScriptRoot 'testvc_main.exe'
+$controllerSources = @(
+    (Join-Path $sourceDirectory 'imu_notice.c'),
+    (Join-Path $sourceDirectory 'imu_vc.c'),
+    (Join-Path $PSScriptRoot 'testvc_main.c')
+)
+& gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'boot_stub.h') @controllerSources -o $controllerExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Controller handoff compilation failed' }
+& $controllerExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Controller handoff test failed' }

@@ -10,6 +10,7 @@
 #include "subsystem4.h"
 #include "s4_runtime.h"
 #include "imu.h"
+#include "imu_vc.h"
 #include "task_imu.h"
 #if !ROBOT_MODE
 #include "task_monitor.h"
@@ -70,6 +71,13 @@ subsystem4_init (void)
     if (gh_events < E_OK)
     {
         return gh_events;
+    }
+
+    ER error = imu_vc_init();
+
+    if (error < E_OK)
+    {
+        return error;
     }
 
 #if ROBOT_MODE
