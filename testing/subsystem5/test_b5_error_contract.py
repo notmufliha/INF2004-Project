@@ -43,4 +43,16 @@ assert len([k for k in values['ERROR_NAMES'] if k[0] == 5]) == 9
 for number in range(1, 10):
     assert values['ERROR_NAMES'][(5, number)].startswith('B5 ')
 assert values['FAULT_BITS'][0x08] == 'NO_ECHO'
+# Exactly one B1 obstacle event per scan; the one adapter must validate values.
+assert len(re.findall(r'\bcomm_report_obstacle\s*\(', source)) == 1
+assert 's5_report_profile(&profile, side);' in source
+assert 's5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM)' in source
+assert source.count('(UH)(cm + 0.5f)') == 1  # rounding occurs only in validated helper
+# The header and B5 enum must keep their existing wire numbers.
+logic = (ROOT / 'app_program/subsystem5/s5_logic.h').read_text()
+enum = re.search(r'typedef enum \{\s*(S5_ERR_NONE.*?)\} S5Error;', logic, re.S)
+assert enum is not None
+names = [x.strip() for x in enum.group(1).split(',')]
+assert len(names) == 10 and names[0] == 'S5_ERR_NONE'
+
 print('[HOST TEST] B5 shared fault/error-code and decoder mapping: PASS')
