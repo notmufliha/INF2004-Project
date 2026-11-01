@@ -1,0 +1,13 @@
+Date: 2026-10-28 (Asia/Singapore)
+Source: working tree after baa87b0, B2/B1 compatibility changes.
+
+PASS: 1158 subsystem 2 host assertions.
+PASS: B1 legacy compatibility and B2 faults.
+PASS: B1 binary counts/s and B2 faults.
+PASS: B2 adapter ARM syntax against actual origin/b1-wifi-mqtt public header.
+PASS: all application ARM syntax, -Wall -Wextra -Werror, TEST=1, SMP=0/1.
+PASS: subsystem2 automated BARR-C subset checks.
+PASS: Python decoder B2 error names and 14-bit speed / 24-bit encoder layouts.
+
+No physical encoder fault injection, binary MQTT transport, full firmware
+link/UF2 generation or hardware timing verification was performed.

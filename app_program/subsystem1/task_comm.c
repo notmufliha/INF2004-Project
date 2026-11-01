@@ -17,12 +17,13 @@
  *
  *	  every loop (<= 50 ms):
  *	    - work out the link state, report changes        (FR-B1-1/2/7)
+ *	    - keep FAULT_WIFI_LOSS in the shared fault mask in step
  *	    - validate received commands, forward/ack them    (FR-B1-5, NFR-B1-5)
- *	    - turn queued events into JSON                    (FR-B1-4)
- *	  every COMM_TELEM_PERIOD_MS while CONNECTED:
- *	    - publish the telemetry snapshot                  (FR-B1-3)
+ *	    - pack queued events into binary frames           (FR-B1-4)
+ *	  every telemetry period while CONNECTED:
+ *	    - publish the telemetry snapshot (28 bytes)       (FR-B1-3)
  *	  every COMM_HEARTBEAT_MS while CONNECTED:
- *	    - publish a heartbeat/status message              (FR-B1-6)
+ *	    - publish a heartbeat/status frame (23 bytes)     (FR-B1-6)
  *
  *	Telemetry is PAUSED while not connected (it would only be stale when
  *	it finally arrived).  Events are still queued, up to the size of
@@ -30,7 +31,7 @@
  *	a network fault only affects telemetry and remote commands (NFR-B1-1).
  *
  *	APIs shown: tk_wai_flg (with timeout), tk_rcv_mbf/tk_snd_mbf TMO_POL,
- *	            tk_loc_mtx/tk_unl_mtx
+ *	            tk_set_flg/tk_clr_flg (fault mask)
  */
 
 #include "s1_private.h"
@@ -40,16 +41,25 @@
 #define S1_CYW43_LINK_UP	3	/* CYW43_LINK_UP in cyw43.h */
 #endif
 
+#if S1_POLL_B2_ENCODERS
+#include "../subsystem2/encoder_control.h"	/* encoder_get_counts() */
+#endif
+
 #define COMM_LOOP_MS		50	/* longest sleep between checks */
 
-LOCAL UW	telem_period_ms = COMM_TELEM_PERIOD_MS;
-LOCAL UW	telem_seq;
-LOCAL UW	event_seq;
-LOCAL UW	hb_seq;
+LOCAL UB	telem_period_ds = COMM_TELEM_PERIOD_DS;	/* 7 bits used */
+LOCAL UH	telem_seq;
+LOCAL UB	event_seq;
+LOCAL UH	hb_seq;
 LOCAL BOOL	ever_connected;
 LOCAL UW	wifi_down_since;	/* 0 = WiFi is up */
 
-LOCAL UB	json_out[COMM_PAYLOAD_MAX + 1];	/* this task only */
+LOCAL UB	frame[COMM_PAYLOAD_MAX];	/* this task only */
+
+LOCAL UW time_ds(UW now_ms)
+{
+	return (now_ms / 100U) & 0xFFFFFU;	/* 20 bits */
+}
 
 /* ---------------------------------------------------------------------
  *  Link state (statechart)
@@ -97,233 +107,179 @@ LOCAL COMM_STATE compute_state(UW now)
 #endif
 }
 
+/* WiFi-loss bit of the shared fault mask: set once a link we had is
+ * lost (or we gave up), cleared when connected again. */
+LOCAL void update_wifi_fault(COMM_STATE st)
+{
+	if (st == COMM_CONNECTED) {
+		fault_clear(FAULT_WIFI_LOSS);
+	} else if ((st == COMM_OFFLINE) ||
+		   (ever_connected && (st == COMM_RECONNECTING))) {
+		fault_raise(FAULT_WIFI_LOSS);
+	}
+}
+
 /* ---------------------------------------------------------------------
- *  Message builders
+ *  B2 encoders (S1_POLL_B2_ENCODERS): speed = change in count over the
+ *  telemetry period, in counts/s like B2's own speed task.
+ * --------------------------------------------------------------------- */
+#if S1_POLL_B2_ENCODERS
+LOCAL void poll_encoders(UW now)
+{
+	static INT	prev_l, prev_r;
+	static UW	prev_t;
+	static BOOL	have_prev;
+	INT		l, r;
+	W		sl = 0, sr = 0;
+	UW		dt = now - prev_t;
+
+	encoder_get_counts(&l, &r);	/* consistent pair, ISR-safe snapshot */
+	if (have_prev && (dt > 0U)) {
+		sl = ((W)(l - prev_l) * 1000) / (W)dt;
+		sr = ((W)(r - prev_r) * 1000) / (W)dt;
+	}
+	prev_l = l;
+	prev_r = r;
+	prev_t = now;
+	have_prev = TRUE;
+	comm_set_motion(sl, sr, l, r);
+}
+#endif
+
+/* ---------------------------------------------------------------------
+ *  Frame builders
  * --------------------------------------------------------------------- */
 
-/* Finish a JSON message and queue it.  Oversize messages are dropped
- * (and counted) rather than published half-written. */
-LOCAL void send_json(JSON_BUF *jb, COMM_TOPIC_ID topic)
+/* Queue one packed frame.  A packing overflow cannot happen with the
+ * fixed layouts, but is still dropped and counted rather than sent. */
+LOCAL void send_frame(INT len, COMM_TOPIC_ID topic)
 {
-	INT len = json_end(jb);
-
 	if (len < 0) {
 		s1_stats.tx_dropped++;
-		tm_printf((UB*)"s1: message too long for topic %d, dropped\n",
+		tm_printf((UB*)"s1: frame too long for topic %d, dropped\n",
 			  (INT)topic);
 		return;
 	}
 	if (s1_comm_state == COMM_DISABLED) {
 		return;			/* nobody would ever send it */
 	}
-	(void)s1_tx_enqueue(topic, FALSE, json_out, len);
+	(void)s1_tx_enqueue(topic, FALSE, frame, len);
 }
 
 LOCAL void publish_status(UW now)
 {
-	JSON_BUF	jb;
-	COMM_STATS	st;
-	UB		ip[16];
-	UW		ip_raw = 0U;
+	STATUS_INFO	s;
 
 #if TM_MQTT
 	T_CYW43_UTK_STATUS ws;
 	cyw43_utk_get_status(&ws);
-	ip_raw = ws.ip_addr;
+	s.ip = ws.ip_addr;
+#else
+	s.ip = 0U;
 #endif
-	/* lwIP keeps the address in network order: first octet lowest */
-	tm_sprintf(ip, (const UB*)"%d.%d.%d.%d",
-		   (INT)(ip_raw & 0xffU), (INT)((ip_raw >> 8) & 0xffU),
-		   (INT)((ip_raw >> 16) & 0xffU), (INT)((ip_raw >> 24) & 0xffU));
-
-	comm_get_stats(&st);
+	comm_get_stats(&s.st);
 	hb_seq++;
+	s.link     = s1_comm_state;
+	s.demo     = S1_STANDALONE_DEMO ? TRUE : FALSE;
+	s.seq      = hb_seq;
+	s.time_ds  = time_ds(now);
+	s.telem_ds = telem_period_ds;
+	s.faults   = fault_get();
 
-	json_begin(&jb, json_out, (INT)sizeof(json_out));
-	json_bool(&jb, "online", TRUE);
-	json_uint(&jb, "seq", hb_seq);
-	json_uint(&jb, "up", now);
-	json_str(&jb, "link", comm_state_name((COMM_STATE)s1_comm_state));
-	json_str(&jb, "ip", (const char *)ip);
-	json_uint(&jb, "telem_ms", telem_period_ms);
-	json_uint(&jb, "tx", st.tx_queued);
-	json_uint(&jb, "drop", st.tx_dropped);
-	json_uint(&jb, "evdrop", st.evt_dropped);
-	json_uint(&jb, "rx", st.rx_ok);
-	json_uint(&jb, "rej", st.rx_rejected);
-	json_uint(&jb, "reconn", st.reconnects);
-	json_bool(&jb, "demo", S1_STANDALONE_DEMO ? TRUE : FALSE);
-	send_json(&jb, COMM_TOPIC_STATUS);
+	send_frame(pack_status(frame, (INT)sizeof(frame), &s),
+		   COMM_TOPIC_STATUS);
 
-	tm_printf((UB*)"s1: heartbeat #%u  link=%s  tx=%u drop=%u rx=%u rej=%u\n",
-		  hb_seq, comm_state_name((COMM_STATE)s1_comm_state),
-		  st.tx_queued, st.tx_dropped, st.rx_ok, st.rx_rejected);
+	tm_printf((UB*)"s1: heartbeat #%d  link=%s  faults=0x%02x  tx=%d "
+		  "drop=%d rx=%d rej=%d\n",
+		  (INT)hb_seq, comm_state_name((COMM_STATE)s1_comm_state),
+		  (INT)s.faults, (INT)s.st.tx_queued, (INT)s.st.tx_dropped,
+		  (INT)s.st.rx_ok, (INT)s.st.rx_rejected);
 }
 
 LOCAL void publish_telemetry(UW now)
 {
-	JSON_BUF	jb;
-	COMM_TELEMETRY	t;
-	UB		bc[2];
+	COMM_TELEMETRY t;
 
+#if S1_POLL_B2_ENCODERS
+	poll_encoders(now);
+#endif
 	comm_get_telemetry(&t);		/* consistent copy, under the mutex */
 	telem_seq++;
-	bc[0] = (t.last_barcode != 0U) ? t.last_barcode : (UB)'-';
-	bc[1] = '\0';
-
-	json_begin(&jb, json_out, (INT)sizeof(json_out));
-	json_uint(&jb, "seq", telem_seq);
-	json_uint(&jb, "t", now);
-	json_str(&jb, "state", robot_state_name((ROBOT_STATE)t.robot_state));
-	json_pair(&jb, "spd", t.speed_l, t.speed_r);		/* mm/s */
-	json_pair(&jb, "enc", t.enc_l, t.enc_r);		/* counts */
-	json_int(&jb, "dist", t.distance_mm);			/* mm */
-
-	json_obj_open(&jb, "line");
-	json_int(&jb, "l", t.ir_left);
-	json_int(&jb, "c", t.ir_centre);
-	json_int(&jb, "r", t.ir_right);
-	json_bool(&jb, "det", (t.line_flags & LINE_F_DETECTED) != 0U);
-	json_bool(&jb, "lost", (t.line_flags & LINE_F_LOST) != 0U);
-	json_bool(&jb, "jct", (t.line_flags & LINE_F_JUNCTION) != 0U);
-	json_obj_close(&jb);
-
-	json_obj_open(&jb, "imu");
-	json_str(&jb, "ev", imu_event_name((IMU_EVENT)t.imu_event));
-	json_int(&jb, "pitch", t.pitch_ddeg);			/* 0.1 deg */
-	json_obj_close(&jb);
-
-	json_obj_open(&jb, "hump");
-	json_int(&jb, "last", t.hump_last_mm);
-	json_int(&jb, "peak", t.hump_peak_mm);
-	json_obj_close(&jb);
-
-	json_obj_open(&jb, "bc");
-	json_str(&jb, "code", (const char *)bc);
-	json_str(&jb, "nav", nav_cmd_name((NAV_CMD)t.last_nav));
-	json_obj_close(&jb);
-
-	json_obj_open(&jb, "obs");
-	json_int(&jb, "d", t.obs_dist_mm);
-	json_int(&jb, "w", t.obs_width_mm);
-	json_int(&jb, "lc", t.obs_left_mm);
-	json_int(&jb, "rc", t.obs_right_mm);
-	json_obj_close(&jb);
-
-	send_json(&jb, COMM_TOPIC_TELEMETRY);
+	send_frame(pack_telemetry(frame, (INT)sizeof(frame), telem_seq,
+				  time_ds(now), fault_get(), &t),
+		   COMM_TOPIC_TELEMETRY);
 }
 
 LOCAL void publish_event(const COMM_EVENT *ev)
 {
-	JSON_BUF	jb;
-	UB		code[2];
-
 	event_seq++;
-	json_begin(&jb, json_out, (INT)sizeof(json_out));
-	json_uint(&jb, "seq", event_seq);
-	json_uint(&jb, "t", ev->time_ms);
 
 	switch (ev->type) {
 	case EVT_BARCODE:
-		code[0] = ev->code;
-		code[1] = '\0';
-		json_str(&jb, "type", "barcode");
-		json_str(&jb, "code", (const char *)code);
-		json_str(&jb, "nav", nav_cmd_name((NAV_CMD)ev->nav));
 		tm_printf((UB*)"s1: EVENT barcode '%c' -> %s\n",
-			  (INT)ev->code, nav_cmd_name((NAV_CMD)ev->nav));
+			  (INT)(COMM_BARCODE_FIRST - 1 + ev->a),
+			  nav_cmd_name((NAV_CMD)ev->e));
 		break;
-
 	case EVT_HUMP:
-		json_str(&jb, "type", "hump");
-		json_int(&jb, "height", ev->v[0]);
-		json_int(&jb, "peak", ev->v[1]);
-		tm_printf((UB*)"s1: EVENT hump %d mm (peak %d mm)\n",
-			  (INT)ev->v[0], (INT)ev->v[1]);
+		tm_printf((UB*)"s1: EVENT hump %d mm (peak %d mm, valid %d)\n",
+			  (INT)ev->a, (INT)ev->b, (INT)ev->flag);
 		break;
-
 	case EVT_OBSTACLE:
-		json_str(&jb, "type", "obstacle");
-		json_int(&jb, "d", ev->v[0]);
-		json_int(&jb, "w", ev->v[1]);
-		json_int(&jb, "lc", ev->v[2]);
-		json_int(&jb, "rc", ev->v[3]);
-		json_str(&jb, "action", avoid_action_name((AVOID_ACTION)ev->code));
-		tm_printf((UB*)"s1: EVENT obstacle at %d mm, width %d -> %s\n",
-			  (INT)ev->v[0], (INT)ev->v[1],
-			  avoid_action_name((AVOID_ACTION)ev->code));
+		tm_printf((UB*)"s1: EVENT obstacle at %d cm, width %d -> %s\n",
+			  (INT)ev->a, (INT)ev->b,
+			  avoid_action_name((AVOID_ACTION)ev->e));
 		break;
-
-	case EVT_ERROR:
-		json_str(&jb, "type", "error");
-		json_int(&jb, "sub", ev->code);
-		json_int(&jb, "code", ev->v[0]);
-		json_str(&jb, "text", ev->text);
-		tm_printf((UB*)"s1: EVENT error S%d code %d \"%s\"\n",
-			  (INT)ev->code, (INT)ev->v[0], ev->text);
-		break;
-
 	default:
-		return;			/* unknown type: ignore */
+		tm_printf((UB*)"s1: EVENT error 0x%02x (S%d #%d) detail %d\n",
+			  (INT)ev->a, (INT)ERR_SUBSYS(ev->a),
+			  (INT)ERR_NUMBER(ev->a), (INT)ev->b);
+		break;
 	}
-	send_json(&jb, COMM_TOPIC_EVENT);
+	send_frame(pack_event(frame, (INT)sizeof(frame), event_seq, ev),
+		   COMM_TOPIC_EVENT);
 }
 
 /* ---------------------------------------------------------------------
  *  Commands
  * --------------------------------------------------------------------- */
 
-LOCAL void send_ack(const UB *echo, UW seq, BOOL ok, const char *detail)
+LOCAL void send_ack(const PARSED_CMD *pc, CMD_RESULT r)
 {
-	JSON_BUF jb;
-
-	json_begin(&jb, json_out, (INT)sizeof(json_out));
-	json_str(&jb, "cmd", (const char *)echo);
-	json_uint(&jb, "seq", seq);
-	json_bool(&jb, "ok", ok);
-	json_str(&jb, ok ? "result" : "reason", detail);
-	send_json(&jb, COMM_TOPIC_ACK);
+	send_frame(pack_ack(frame, (INT)sizeof(frame), pc->seq, pc->id,
+			    (UB)r),
+		   COMM_TOPIC_ACK);
 }
 
-LOCAL void handle_command(UB *text, INT len, UW now)
+LOCAL void handle_command(const UB *data, INT len, UW now)
 {
 	PARSED_CMD	pc;
 	CMD_RESULT	r;
-	INT		i;
 
-	/* Make a printable, NUL-terminated copy for logs and the ack */
-	for (i = 0; i < len; i++) {
-		if ((text[i] < 0x20U) || (text[i] > 0x7eU)) {
-			text[i] = (UB)'?';
-		}
-	}
-	text[len] = '\0';
-
-	r = comm_cmd_parse(text, len, &pc);
+	r = comm_cmd_decode(data, len, &pc);
 	if (r != CMD_OK) {
 		s1_stats.rx_rejected++;
-		tm_printf((UB*)"s1: REJECTED command \"%s\": %s\n",
-			  text, cmd_result_text(r));
-		send_ack(text, pc.cmd.seq, FALSE, cmd_result_text(r));
+		tm_printf((UB*)"s1: REJECTED command (%d bytes, id %d, #%d): %s\n",
+			  len, (INT)pc.id, (INT)pc.seq, cmd_result_text(r));
+		send_ack(&pc, r);
 		return;
 	}
 
 	s1_stats.rx_ok++;
-	switch (pc.local) {
-	case LOCAL_PING:
-		send_ack(text, pc.cmd.seq, TRUE, "pong");
+	switch (pc.id) {
+	case WCMD_PING:
+		send_ack(&pc, CMD_OK_PONG);
 		break;
 
-	case LOCAL_STATUS:
-		send_ack(text, pc.cmd.seq, TRUE, "status sent");
+	case WCMD_STATUS:
+		send_ack(&pc, CMD_OK_STATUS);
 		publish_status(now);
 		break;
 
-	case LOCAL_TELEM:
-		telem_period_ms = (UW)pc.local_arg;
-		tm_printf((UB*)"s1: telemetry period now %u ms\n",
-			  telem_period_ms);
-		send_ack(text, pc.cmd.seq, TRUE, "telemetry period set");
+	case WCMD_TELEM:
+		telem_period_ds = pc.arg;
+		tm_printf((UB*)"s1: telemetry period now %d ms\n",
+			  (INT)telem_period_ds * 100);
+		send_ack(&pc, CMD_OK_TELEM);
 		break;
 
 	default:
@@ -331,16 +287,16 @@ LOCAL void handle_command(UB *text, INT len, UW now)
 		 * full we say so in the ack rather than wait. */
 		if (tk_snd_mbf(mbf_remote_cmd, &pc.cmd, (INT)sizeof(pc.cmd),
 			       TMO_POL) == E_OK) {
-			tm_printf((UB*)"s1: command %s (arg %d, #%u) -> controller\n",
+			tm_printf((UB*)"s1: command %s (arg %d, #%d) -> controller\n",
 				  remote_cmd_name((REMOTE_CMD_TYPE)pc.cmd.type),
-				  (INT)pc.cmd.arg, pc.cmd.seq);
-			send_ack(text, pc.cmd.seq, TRUE, "forwarded");
+				  (INT)pc.cmd.arg, (INT)pc.cmd.seq);
+			send_ack(&pc, CMD_OK);
 		} else {
 			s1_stats.fwd_failed++;
 			tm_printf((UB*)"s1: command %s NOT delivered: "
 				  "controller queue full\n",
 				  remote_cmd_name((REMOTE_CMD_TYPE)pc.cmd.type));
-			send_ack(text, pc.cmd.seq, FALSE, "controller busy");
+			send_ack(&pc, CMD_ERR_BUSY);
 		}
 		break;
 	}
@@ -348,7 +304,7 @@ LOCAL void handle_command(UB *text, INT len, UW now)
 
 LOCAL void drain_commands(UW now)
 {
-	UB	buf[COMM_CMD_MAX + 2];	/* +1 over-long marker, +1 NUL */
+	UB	buf[COMM_CMD_MAX + 1];	/* +1 over-long marker */
 	INT	n;
 
 	while ((n = tk_rcv_mbf(mbf_rx, buf, TMO_POL)) > 0) {
@@ -401,8 +357,6 @@ EXPORT void comm_task(INT stacd, void *exinf)
 		/* 1. Link state machine */
 		next = compute_state(now);
 		if (next != state) {
-			tm_printf((UB*)"s1: link %s -> %s\n",
-				  comm_state_name(state), comm_state_name(next));
 			if (next == COMM_CONNECTED) {
 				if (ever_connected) {
 					s1_stats.reconnects++;
@@ -411,8 +365,12 @@ EXPORT void comm_task(INT stacd, void *exinf)
 				last_telem = now;
 				last_hb    = now;
 			}
+			s1_comm_state = (UB)next;
+			update_wifi_fault(next);
+			tm_printf((UB*)"s1: link %s -> %s  faults=0x%02x\n",
+				  comm_state_name(state), comm_state_name(next),
+				  (INT)fault_get());
 			state = next;
-			s1_comm_state = (INT)next;
 			if (next == COMM_CONNECTED) {
 				publish_status(now);	/* "I'm back" */
 			}
@@ -424,7 +382,7 @@ EXPORT void comm_task(INT stacd, void *exinf)
 
 		/* 3. Periodic messages, only while connected */
 		if (state == COMM_CONNECTED) {
-			if ((now - last_telem) >= telem_period_ms) {
+			if ((now - last_telem) >= ((UW)telem_period_ds * 100U)) {
 				last_telem = now;
 				publish_telemetry(now);
 			}

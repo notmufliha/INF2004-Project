@@ -15,7 +15,8 @@
  *	It uses ONLY the public interface in subsystem1.h, exactly as the
  *	real subsystems will, so it doubles as a usage example for them.
  *
- *	Set S1_STANDALONE_DEMO to 0 in subsystem1.h before integration,
+ *	Off by default now that the real subsystems are connected: build
+ *	with S1_STANDALONE_DEMO=1 only for a bench test without them,
  *	otherwise this task would steal the Vehicle Controller's commands.
  */
 
@@ -24,8 +25,7 @@
 #if S1_STANDALONE_DEMO
 
 #define DEMO_STEP_MS		100
-#define DEMO_FULL_SPEED		200	/* mm/s at SPEED 100 */
-#define DEMO_COUNTS_PER_MM	2	/* fake encoder resolution */
+#define DEMO_FULL_SPEED		5000	/* counts/s at SPEED 100 (B2's max) */
 #define DEMO_BARCODE_MS		8000
 #define DEMO_HUMP_MS		13000
 #define DEMO_OBSTACLE_MS	21000
@@ -47,27 +47,27 @@ EXPORT void demo_task(INT stacd, void *exinf)
 	BOOL		running   = TRUE;
 	ROBOT_STATE	state     = ROBOT_LINE_FOLLOW;
 	W		speed_pct = 50;
-	W		dist_mm   = 0;
+	W		enc       = 0;
 	H		peak_mm   = 0;
 	UW		t         = 0U;
 	UB		barcode   = 'A';
 
 	(void)stacd; (void)exinf;
 
-	tm_printf((UB*)"s1-demo: fake robot running.  Set S1_STANDALONE_DEMO "
-		  "to 0 before integration!\n");
+	tm_printf((UB*)"s1-demo: fake robot running.  Build without "
+		  "S1_STANDALONE_DEMO=1 to use the real subsystems!\n");
 
 	while (1) {
-		H spd;
+		W spd;
 
 		tk_dly_tsk(DEMO_STEP_MS);
 		t += DEMO_STEP_MS;
 
 		/* ---- act as the Vehicle Controller ---------------------- */
 		while (tk_rcv_mbf(mbf_remote_cmd, &cmd, TMO_POL) > 0) {
-			tm_printf((UB*)"s1-demo: controller got %s arg=%d seq=%u\n",
+			tm_printf((UB*)"s1-demo: controller got %s arg=%d seq=%d\n",
 				  remote_cmd_name((REMOTE_CMD_TYPE)cmd.type),
-				  (INT)cmd.arg, cmd.seq);
+				  (INT)cmd.arg, (INT)cmd.seq);
 			switch (cmd.type) {
 			case RCMD_START:
 			case RCMD_RESUME:
@@ -84,7 +84,7 @@ EXPORT void demo_task(INT stacd, void *exinf)
 				state   = ROBOT_IDLE;
 				break;
 			case RCMD_SPEED:
-				speed_pct = cmd.arg;
+				speed_pct = (W)cmd.arg;
 				break;
 			case RCMD_RESET_PEAK:
 				peak_mm = 0;
@@ -94,13 +94,10 @@ EXPORT void demo_task(INT stacd, void *exinf)
 			}
 		}
 
-		/* ---- act as B2 (motion) --------------------------------- */
-		spd = running ? (H)((speed_pct * DEMO_FULL_SPEED) / 100) : 0;
-		dist_mm += ((W)spd * DEMO_STEP_MS) / 1000;
-		comm_set_motion(spd, (H)(spd - (H)(demo_rand() % 4U)),
-				dist_mm * DEMO_COUNTS_PER_MM,
-				dist_mm * DEMO_COUNTS_PER_MM - 3,
-				dist_mm);
+		/* ---- act as B2 (motion, encoder counts/s) --------------- */
+		spd = running ? (speed_pct * DEMO_FULL_SPEED) / 100 : 0;
+		enc += (spd * DEMO_STEP_MS) / 1000;
+		comm_set_motion(spd, spd - (W)(demo_rand() % 40U), enc, enc - 3);
 		comm_set_robot_state(state);
 
 		/* ---- act as B3 (line sensors) --------------------------- */
@@ -108,9 +105,12 @@ EXPORT void demo_task(INT stacd, void *exinf)
 			      (UH)(2300U + (demo_rand() % 400U)),
 			      0U, LINE_F_DETECTED);
 
-		/* ---- act as B4 (IMU) ------------------------------------ */
-		comm_set_imu(running ? IMU_EV_MOVING : IMU_EV_STATIONARY,
-			     (H)((W)(demo_rand() % 21U) - 10), peak_mm);
+		/* ---- act as B4 (IMU): 0 STATIONARY, 1 ACCELERATING ------ */
+		comm_set_imu(running ? 1U : 0U,
+			     (H)((W)(demo_rand() % 21U) - 10));
+
+		/* ---- act as B5 (front ultrasonic, cm) ------------------- */
+		comm_set_obstacle_dist((UH)(60U + (demo_rand() % 100U)));
 
 		if (!running) {
 			continue;	/* no new events while stopped */
@@ -127,10 +127,10 @@ EXPORT void demo_task(INT stacd, void *exinf)
 			if (h > peak_mm) {
 				peak_mm = h;
 			}
-			(void)comm_report_hump(h, peak_mm);
+			(void)comm_report_hump(TRUE, h, peak_mm);
 		}
 		if ((t % DEMO_OBSTACLE_MS) == 0U) {
-			(void)comm_report_obstacle(250, 120, 300, 90, AVOID_LEFT);
+			(void)comm_report_obstacle(25, 12, 30, 9, AVOID_LEFT);
 		}
 	}
 }

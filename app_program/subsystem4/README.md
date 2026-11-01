@@ -1,5 +1,16 @@
 # Buddy 4: GY-511 hardware input and mock tests
 
+## B1 integration after the merge
+
+B4 reports motion and pitch through `comm_set_imu()`, raises/clears `FAULT_IMU`
+on fault/recovery, and reports completed humps through `comm_report_hump()`.
+Height stays explicitly invalid until a height estimator is implemented.
+Telemetry conversions clamp to the signed 16-bit B1 range before narrowing.
+
+The incoming `ROBOT_MODE=1` startup currently starts B1, B2 and B5 only; it does
+not start B4. B4 remains part of the `ROBOT_MODE=0` teaching/demo startup.
+Resolving this merge does not enable additional hardware tasks automatically.
+
 See [CODING_STANDARD.md](CODING_STANDARD.md) for B4's BARR-C cleanup scope,
 rule-by-rule audit, automated checks, formatter profile and platform rationale.
 

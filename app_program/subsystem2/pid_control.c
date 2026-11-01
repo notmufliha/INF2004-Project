@@ -1,448 +1,577 @@
-
-/*
- * Buddy 2 - PI Motor Speed Controller
- * RP2040 + micro T-Kernel 3.0
- *
- * Nominal control period: 10 ms (cyclic handler)
- * Speed estimation: 10-sample rolling window
- * Target speed: 3000 encoder counts/s
- *
- * Experimental test: wheels off the ground.
+/** @file pid_control.c
+ * @brief Encoder-based motion execution. Only this task applies motor PWM.
  */
-
-#include "../app.h"
+#include <stdbool.h>
+#include <stdint.h>
 #include "pid_control.h"
-#include "motor_control.h"
 #include "encoder_control.h"
-#include "subsystem2.h"
+#include "motion_command.h"
+#include "motion_profile.h"
+#include "b2_motor.h"
+#include "b2_integration.h"
 
-#define PID_TARGET_CPS    3000
-#define PID_BASE_PWM      20
-#define PID_MAX_PWM       35
-#define PID_MIN_PWM       0
+#define PID_PERIOD_MS 10
+#define PID_MAX_INTERVAL_MS 20
+#define PID_WATCHDOG_MS 100
+#define PID_MAX_MOTION_MS 60000
+#define PID_STALL_MS 500
+#define PID_SLOW_STALL_MS 5000
+#define PID_SETTLE_MS 100
+#define PID_SETTLE_TIMEOUT_MS 1500
+#define PID_WINDOW_SIZE 10
+#define PID_BASE_PWM 20.0f
+#define PID_MAX_PWM 35
+#define PID_KP 0.002f
+#define PID_KI 0.005f
+#define PID_I_LIMIT 10.0f
+#define PID_PI 3.14159265f
+/* Preliminary noise/edge-loss limit over a 100 ms observation window. */
+#define PID_ENCODER_INVALID_LIMIT 8u
 
-#define PID_KP            0.002f
-#define PID_KI            0.005f
-#define PID_I_LIMIT       10.0f
-
-#define PID_PERIOD_MS     10
-#define PID_WINDOW_SIZE   10
-#define PID_TEST_MS       5000
-#define PID_TEST_STEPS    (PID_TEST_MS / PID_PERIOD_MS)
-
-/* Shared task ID used by the cyclic handler. */
-ID tid_pid = 0;
-
-/*
- * Cyclic handler.
- * Runs in timer interrupt context.
- * Keep it short and non-blocking.
- */
-EXPORT void pid_cyclic_handler(void *exinf)
+typedef struct
 {
-    (void)exinf;
+    motion_command_t command;
+    motion_status_t status;
+    motion_fault_t fault;
+    INT left_now;
+    INT right_now;
+    INT left_previous;
+    INT right_previous;
+    INT left_start;
+    INT right_start;
+    INT left_history[PID_WINDOW_SIZE + 1];
+    INT right_history[PID_WINDOW_SIZE + 1];
+    int64_t time_history[PID_WINDOW_SIZE + 1];
+    UINT sample_count;
+    UINT history_index;
+    int64_t now_ms;
+    int64_t previous_ms;
+    int64_t started_ms;
+    int64_t refreshed_ms;
+    int64_t left_progress_ms;
+    int64_t right_progress_ms;
+    int64_t quiet_since_ms;
+    int64_t settling_since_ms;
+    int64_t duration_ms;
+    float left_mm;
+    float right_mm;
+    float total_mm;
+    float left_speed_cps;
+    float right_speed_cps;
+    float left_integral;
+    float right_integral;
+    INT left_sign;
+    INT right_sign;
+    bool settling;
+    bool stopped;
+    uint32_t generation;
+    uint32_t control_interval_ms;
+    uint32_t maximum_interval_ms;
+    UW left_invalid_start;
+    UW right_invalid_start;
+    int64_t encoder_window_ms;
+} pid_state_t;
 
-    if (tid_pid > 0) {
-        (void)tk_wup_tsk(tid_pid);
+ID gh_pid_task = 0;
+
+static float pid_mm_per_count(bool left)
+{
+    return PID_PI * ENC_WHEEL_DIAMETER_CM * 10.0f /
+        (left ? ENC_LEFT_COUNTS_PER_REV : ENC_RIGHT_COUNTS_PER_REV);
+}
+
+static float pid_abs(float value)
+{
+    return (value < 0.0f) ? -value : value;
+}
+
+static bool pid_movement(const pid_state_t *state)
+{
+    return state->command.type != MOTION_CMD_STOP &&
+        state->status == MOTION_STATUS_RUNNING;
+}
+
+static void pid_publish(const pid_state_t *state)
+{
+    motion_status_snapshot_t snapshot = {0};
+    snapshot.command_type = state->command.type;
+    snapshot.command_id = state->command.command_id;
+    snapshot.status = state->status;
+    snapshot.fault = state->fault;
+    snapshot.direction = state->command.direction;
+    snapshot.turn_direction = state->command.turn_direction;
+    snapshot.left_encoder_counts = state->left_now;
+    snapshot.right_encoder_counts = state->right_now;
+    snapshot.left_speed_cps = (INT)state->left_speed_cps;
+    snapshot.right_speed_cps = (INT)state->right_speed_cps;
+    snapshot.left_distance_mm = state->left_mm;
+    snapshot.right_distance_mm = state->right_mm;
+    snapshot.total_distance_mm = state->total_mm;
+    snapshot.physically_stopped = state->stopped;
+    snapshot.sample_time_ms = (uint32_t)state->now_ms;
+    snapshot.control_interval_ms = state->control_interval_ms;
+    snapshot.maximum_interval_ms = state->maximum_interval_ms;
+    snapshot.safety_generation = b2_safety_stop_generation();
+    (void)motion_update_status(&snapshot);
+}
+
+static void pid_reset_pi(pid_state_t *state)
+{
+    state->left_integral = 0.0f;
+    state->right_integral = 0.0f;
+    state->sample_count = 0u;
+    state->history_index = 0u;
+}
+
+static void pid_finish(pid_state_t *state, motion_status_t status,
+    motion_fault_t fault)
+{
+    b2_safety_force_stop();
+    state->status = status;
+    state->fault = fault;
+    b2_integration_fault(fault);
+    state->settling = false;
+    pid_reset_pi(state);
+    pid_publish(state);
+}
+
+/* Snapshot counters once per cycle. Widen before subtraction. */
+static ER pid_sample(pid_state_t *state)
+{
+    SYSTIM time;
+    int64_t left_delta;
+    int64_t right_delta;
+    int64_t interval;
+    if (tk_get_tim(&time) != E_OK)
+    {
+        return E_SYS;
+    }
+    state->now_ms = (int64_t)time.hi * INT64_C(4294967296) + time.lo;
+    interval = state->now_ms - state->previous_ms;
+    state->control_interval_ms = interval > 0 ? (uint32_t)interval : 0u;
+    if (state->control_interval_ms > state->maximum_interval_ms)
+    {
+        state->maximum_interval_ms = state->control_interval_ms;
+    }
+    if (interval <= 0 || interval > PID_MAX_INTERVAL_MS)
+    {
+        return E_SYS;
+    }
+    encoder_get_counts(&state->left_now, &state->right_now);
+    left_delta = (int64_t)state->left_now - state->left_previous;
+    right_delta = (int64_t)state->right_now - state->right_previous;
+    state->total_mm += (pid_abs((float)left_delta *
+        pid_mm_per_count(true)) + pid_abs((float)right_delta *
+        pid_mm_per_count(false))) * 0.5f;
+    state->left_speed_cps = (float)left_delta * 1000.0f / interval;
+    state->right_speed_cps = (float)right_delta * 1000.0f / interval;
+    if (left_delta != 0 || right_delta != 0)
+    {
+        state->quiet_since_ms = state->now_ms;
+    }
+    state->stopped = b2_motor_is_stopped() &&
+        state->now_ms - state->quiet_since_ms >= PID_SETTLE_MS;
+    state->left_mm = (float)((int64_t)state->left_now -
+        state->left_start) * pid_mm_per_count(true);
+    state->right_mm = (float)((int64_t)state->right_now -
+        state->right_start) * pid_mm_per_count(false);
+    return E_OK;
+}
+
+static void pid_set_directions(pid_state_t *state)
+{
+    state->left_sign = state->command.direction == MOTION_DIR_REVERSE
+        ? -1 : 1;
+    state->right_sign = state->left_sign;
+    if (state->command.type == MOTION_CMD_TURN)
+    {
+        state->left_sign = state->command.turn_direction ==
+            MOTION_TURN_LEFT ? -1 : 1;
+        state->right_sign = -state->left_sign;
     }
 }
 
-/* Limit motor PWM to the permitted test range. */
-static INT clamp_pwm(INT pwm)
+static float pid_turn_track(const motion_command_t *command)
 {
-    if (pwm > PID_MAX_PWM) {
+    float scale = command->turn_direction == MOTION_TURN_LEFT ?
+        ENC_TURN_LEFT_SCALE : ENC_TURN_RIGHT_SCALE;
+    return ENC_WHEEL_TRACK_CM * scale;
+}
+
+static int64_t pid_deadline(const motion_command_t *command)
+{
+    float counts = (float)command->target_distance_counts;
+    float milliseconds;
+    if (command->timeout_ms != 0u)
+    {
+        return command->timeout_ms;
+    }
+    if (command->type == MOTION_CMD_TURN)
+    {
+        counts = pid_turn_track(command) * command->target_angle_deg *
+            ENC_LEFT_COUNTS_PER_REV / (360.0f * ENC_WHEEL_DIAMETER_CM);
+    }
+    if (command->target_speed_cps <= 0)
+    {
+        return PID_MAX_MOTION_MS;
+    }
+    milliseconds = counts * 2000.0f / command->target_speed_cps + 2000.0f;
+    if (milliseconds > PID_MAX_MOTION_MS)
+    {
+        return PID_MAX_MOTION_MS;
+    }
+    return (int64_t)milliseconds;
+}
+
+static void pid_begin(pid_state_t *state, const motion_command_t *command)
+{
+    if (state->status == MOTION_STATUS_RUNNING)
+    {
+        pid_finish(state, MOTION_STATUS_CANCELLED, MOTION_FAULT_NONE);
+    }
+    b2_safety_force_stop();
+    state->command = *command;
+    state->generation = command->safety_generation;
+    state->status = MOTION_STATUS_RUNNING;
+    state->fault = MOTION_FAULT_NONE;
+    state->left_start = state->left_now;
+    state->right_start = state->right_now;
+    encoder_get_invalid_counts(&state->left_invalid_start,
+        &state->right_invalid_start);
+    state->encoder_window_ms = state->now_ms;
+    state->left_mm = 0.0f;
+    state->right_mm = 0.0f;
+    state->started_ms = state->now_ms;
+    state->duration_ms = pid_deadline(command);
+    state->refreshed_ms = state->now_ms;
+    state->left_progress_ms = state->now_ms;
+    state->right_progress_ms = state->now_ms;
+    state->settling = command->type == MOTION_CMD_STOP;
+    state->settling_since_ms = state->now_ms;
+    pid_set_directions(state);
+    pid_reset_pi(state);
+}
+
+static void pid_accept(pid_state_t *state)
+{
+    motion_command_t command;
+    ER error = motion_receive_command(&command);
+    bool refresh;
+    if (error == E_TMOUT)
+    {
+        return;
+    }
+    if (error != E_OK)
+    {
+        pid_finish(state, MOTION_STATUS_FAULT, MOTION_FAULT_COMMAND);
+        return;
+    }
+    if (command.type != MOTION_CMD_STOP &&
+        (command.safety_generation != b2_safety_stop_generation() ||
+         !b2_safety_motion_allowed()))
+    {
+        pid_begin(state, &command);
+        pid_finish(state, MOTION_STATUS_CANCELLED, MOTION_FAULT_SAFETY);
+        return;
+    }
+    refresh = command.type == MOTION_CMD_DRIVE &&
+        state->command.type == MOTION_CMD_DRIVE &&
+        state->status == MOTION_STATUS_RUNNING &&
+        command.direction == state->command.direction;
+    if (!refresh)
+    {
+        pid_begin(state, &command);
+        return;
+    }
+    /* Refresh replaces an ID but retains feedback history for smooth control.
+     * Reset straight-motion origin after an intentional steering change.
+     */
+    state->status = MOTION_STATUS_CANCELLED;
+    pid_publish(state);
+    if (command.steering_permille != state->command.steering_permille)
+    {
+        state->left_start = state->left_now;
+        state->right_start = state->right_now;
+        state->left_mm = 0.0f;
+        state->right_mm = 0.0f;
+    }
+    state->command = command;
+    state->status = MOTION_STATUS_RUNNING;
+    state->refreshed_ms = state->now_ms;
+}
+
+static void pid_guard(pid_state_t *state)
+{
+    bool interrupted = b2_safety_stop_requested() ||
+        (pid_movement(state) &&
+         (state->generation != b2_safety_stop_generation() ||
+          !b2_safety_motion_allowed()));
+    if (interrupted)
+    {
+        b2_safety_acknowledge_stop();
+        if (pid_movement(state))
+        {
+            pid_finish(state, MOTION_STATUS_CANCELLED,
+                MOTION_FAULT_SAFETY);
+        }
+    }
+    if (!pid_movement(state))
+    {
+        return;
+    }
+    if (state->command.type == MOTION_CMD_DRIVE &&
+        state->now_ms - state->refreshed_ms >= PID_WATCHDOG_MS)
+    {
+        pid_finish(state, MOTION_STATUS_TIMEOUT, MOTION_FAULT_WATCHDOG);
+    }
+    else if (state->command.type != MOTION_CMD_DRIVE &&
+        state->now_ms - state->started_ms >= state->duration_ms)
+    {
+        pid_finish(state, MOTION_STATUS_TIMEOUT, MOTION_FAULT_DURATION);
+    }
+}
+
+static INT pid_wheel_pwm(float target_cps, float measured_cps,
+    float *integral, float dt)
+{
+    float error;
+    float output;
+    float candidate;
+    if (target_cps <= 0.0f)
+    {
+        *integral = 0.0f;
+        return 0;
+    }
+    error = target_cps - measured_cps;
+    candidate = *integral + PID_KI * error * dt;
+    if (candidate > PID_I_LIMIT)
+    {
+        candidate = PID_I_LIMIT;
+    }
+    if (candidate < -PID_I_LIMIT)
+    {
+        candidate = -PID_I_LIMIT;
+    }
+    output = PID_BASE_PWM + PID_KP * error + candidate;
+    /* Conditional integration prevents winding further into saturation. */
+    if (!((output > PID_MAX_PWM && error > 0.0f) ||
+          (output < 0.0f && error < 0.0f)))
+    {
+        *integral = candidate;
+    }
+    output = PID_BASE_PWM + PID_KP * error + *integral;
+    if (output > PID_MAX_PWM)
+    {
         return PID_MAX_PWM;
     }
+    return output > 0.0f ? (INT)(output + 0.5f) : 0;
+}
 
-    if (pwm < PID_MIN_PWM) {
-        return PID_MIN_PWM;
+static motion_profile_t pid_profile(pid_state_t *state)
+{
+    float target = 0.0f;
+    float speed = state->command.target_speed_cps * pid_mm_per_count(true);
+    bool bounded = state->command.type != MOTION_CMD_DRIVE;
+    if (state->command.type == MOTION_CMD_MOVE)
+    {
+        target = state->command.target_distance_counts *
+            pid_mm_per_count(true);
     }
+    else if (state->command.type == MOTION_CMD_TURN)
+    {
+        target = PID_PI * pid_turn_track(&state->command) * 10.0f *
+            state->command.target_angle_deg / 360.0f;
+    }
+    return motion_profile_targets(speed,
+        state->command.steering_permille / 1000.0f,
+        state->left_mm * state->left_sign,
+        state->right_mm * state->right_sign, target, bounded, true);
+}
 
-    return pwm;
+static bool pid_stalled(pid_state_t *state, motion_profile_t profile)
+{
+    int64_t left_limit = profile.left_speed >= 5.0f ?
+        PID_STALL_MS : PID_SLOW_STALL_MS;
+    int64_t right_limit = profile.right_speed >= 5.0f ?
+        PID_STALL_MS : PID_SLOW_STALL_MS;
+    if (((int64_t)state->left_now - state->left_previous) *
+        state->left_sign > 0 || profile.left_speed <= 0.0f)
+    {
+        state->left_progress_ms = state->now_ms;
+    }
+    if (((int64_t)state->right_now - state->right_previous) *
+        state->right_sign > 0 || profile.right_speed <= 0.0f)
+    {
+        state->right_progress_ms = state->now_ms;
+    }
+    return state->now_ms - state->left_progress_ms >= left_limit ||
+        state->now_ms - state->right_progress_ms >= right_limit;
+}
+
+static void pid_apply(pid_state_t *state, motion_profile_t profile)
+{
+    UINT slot = state->history_index;
+    float left_cps = state->left_speed_cps;
+    float right_cps = state->right_speed_cps;
+    float dt = (float)(state->now_ms - state->previous_ms) / 1000.0f;
+    INT left_pwm;
+    INT right_pwm;
+    if (state->sample_count >= PID_WINDOW_SIZE)
+    {
+        UINT old = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
+        float elapsed = (float)(state->now_ms - state->time_history[old]);
+        left_cps = (float)((int64_t)state->left_now -
+            state->left_history[old]) * 1000.0f / elapsed;
+        right_cps = (float)((int64_t)state->right_now -
+            state->right_history[old]) * 1000.0f / elapsed;
+    }
+    left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
+        left_cps * state->left_sign, &state->left_integral, dt);
+    right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
+        right_cps * state->right_sign, &state->right_integral, dt);
+    state->left_history[slot] = state->left_now;
+    state->right_history[slot] = state->right_now;
+    state->time_history[slot] = state->now_ms;
+    state->history_index = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
+    if (state->sample_count < PID_WINDOW_SIZE)
+    {
+        state->sample_count++;
+    }
+    b2_safety_apply_pwm(state->left_sign * left_pwm,
+        state->right_sign * right_pwm, state->generation);
+    if (left_pwm != 0 || right_pwm != 0)
+    {
+        state->stopped = false;
+        state->quiet_since_ms = state->now_ms;
+    }
+}
+
+static bool pid_encoder_invalid(pid_state_t *state)
+{
+    UW left;
+    UW right;
+    bool invalid;
+    encoder_get_invalid_counts(&left, &right);
+    invalid = (UW)(left - state->left_invalid_start) >=
+        PID_ENCODER_INVALID_LIMIT ||
+        (UW)(right - state->right_invalid_start) >=
+        PID_ENCODER_INVALID_LIMIT;
+    if (state->now_ms - state->encoder_window_ms >= 100)
+    {
+        state->left_invalid_start = left;
+        state->right_invalid_start = right;
+        state->encoder_window_ms = state->now_ms;
+    }
+    return invalid;
+}
+
+static void pid_execute(pid_state_t *state)
+{
+    motion_profile_t profile;
+    if (state->settling)
+    {
+        b2_safety_force_stop();
+        if (state->stopped)
+        {
+            pid_finish(state, MOTION_STATUS_COMPLETED, MOTION_FAULT_NONE);
+        }
+        else if (state->now_ms - state->settling_since_ms >=
+            PID_SETTLE_TIMEOUT_MS)
+        {
+            pid_finish(state, MOTION_STATUS_FAULT, MOTION_FAULT_STOPPING);
+        }
+        return;
+    }
+    if (!pid_movement(state))
+    {
+        return;
+    }
+    if (pid_encoder_invalid(state))
+    {
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
+        pid_finish(state, MOTION_STATUS_FAULT, MOTION_FAULT_ENCODER);
+        return;
+    }
+    profile = pid_profile(state);
+    if (profile.left_reached && profile.right_reached)
+    {
+        b2_safety_force_stop();
+        state->settling = true;
+        state->settling_since_ms = state->now_ms;
+        return;
+    }
+    if (pid_stalled(state, profile))
+    {
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
+        pid_finish(state, MOTION_STATUS_FAULT, MOTION_FAULT_STALL);
+        return;
+    }
+    pid_apply(state, profile);
 }
 
 void pid_init(void)
 {
-    tm_printf((UB*)"[B2] PI controller initialized\n");
+    b2_safety_force_stop();
 }
 
-/* Convert micro T-Kernel system time to milliseconds. */
-static long long pid_time_ms(const SYSTIM *time)
+void pid_cyclic_handler(void *p_exinf)
 {
-    return ((long long)time->hi * 4294967296LL) +
-           (unsigned long long)time->lo;
-}
-
-/*
- * Read current encoder counts and system time.
- * This is used after each cyclic activation.
- */
-static ER pid_read_sample(INT *left,
-                          INT *right,
-                          long long *time_ms)
-{
-    SYSTIM now;
-    ER err;
-
-    encoder_get_counts(left, right);
-
-    err = tk_get_tim(&now);
-
-    if (err != E_OK) {
-        return err;
+    (void)p_exinf;
+    if (gh_pid_task > 0)
+    {
+        (void)tk_wup_tsk(gh_pid_task);
     }
+}
 
-    *time_ms = pid_time_ms(&now);
-
+static ER pid_initialize_state(pid_state_t *state)
+{
+    SYSTIM time;
+    if (tk_get_tim(&time) != E_OK)
+    {
+        return E_SYS;
+    }
+    state->previous_ms = (int64_t)time.hi * INT64_C(4294967296) + time.lo;
+    state->quiet_since_ms = state->previous_ms;
+    encoder_get_counts(&state->left_now, &state->right_now);
+    state->left_previous = state->left_now;
+    state->right_previous = state->right_now;
+    state->left_start = state->left_now;
+    state->right_start = state->right_now;
     return E_OK;
 }
 
-/*
- * Wait for a cyclic activation.
- *
- * Clear stale wake-ups first so that an old
- * queued activation cannot immediately release
- * the task.
- */
-static ER pid_wait_activation(void)
+void pid_control_task(INT stacd, void *p_exinf)
 {
-    (void)tk_can_wup(TSK_SELF);
-
-    return tk_slp_tsk(TMO_FEVR);
-}
-
-/*
- * Temporary PI control test.
- */
-void pid_test_task(INT stacd, void *exinf)
-{
-    INT left_history[PID_WINDOW_SIZE + 1] = {0};
-    INT right_history[PID_WINDOW_SIZE + 1] = {0};
-
-    long long time_history[PID_WINDOW_SIZE + 1] = {0};
-
-    INT left_now = 0;
-    INT right_now = 0;
-
-    INT left_speed = 0;
-    INT right_speed = 0;
-
-    INT left_pwm = PID_BASE_PWM;
-    INT right_pwm = PID_BASE_PWM;
-
-    float left_integral = 0.0f;
-    float right_integral = 0.0f;
-
-    float left_error;
-    float right_error;
-
-    float left_output;
-    float right_output;
-
-    long long current_ms = 0;
-    long long elapsed_ms;
-    long long loop_dt_ms;
-
-    long long loop_min_ms = 999999;
-    long long loop_max_ms = 0;
-    long long loop_total_ms = 0;
-
-    INT loop_samples = 0;
-    INT loop_overruns = 0;
-    INT loop_invalid = 0;
-
-    INT iteration;
-    INT index;
-    INT old_index;
-    INT previous_index;
-
-    ER err;
-
+    pid_state_t state = {0};
+    ER error;
     (void)stacd;
-    (void)exinf;
-
-    /*
-     * Allow time to prepare the robot.
-     * The cyclic handler is already running,
-     * but accumulated wake-ups will be cleared.
-     */
-    tk_dly_tsk(3000);
-
-    tm_printf((UB*)"[B2] 10 ms cyclic PI test starting\n");
-
-    /*
-     * Synchronize the initial measurement with
-     * a fresh cyclic activation.
-     */
-    err = pid_wait_activation();
-
-    if (err != E_OK) {
-        tm_printf((UB*)"[B2] Initial activation failed\n");
-        goto test_end;
-    }
-
-    err = pid_read_sample(
-        &left_now,
-        &right_now,
-        &current_ms
-    );
-
-    if (err != E_OK) {
-        tm_printf((UB*)"[B2] Initial sample failed\n");
-        goto test_end;
-    }
-
-    left_history[0] = left_now;
-    right_history[0] = right_now;
-    time_history[0] = current_ms;
-
-    motor_left_set(PID_BASE_PWM);
-    motor_right_set(PID_BASE_PWM);
-
-    /*
-     * Main cyclic PI control loop.
-     */
-    for (iteration = 1;
-         iteration <= PID_TEST_STEPS;
-         iteration++) {
-
-        err = pid_wait_activation();
-
-        if (err != E_OK) {
-            tm_printf((UB*)"[B2] PI activation failed\n");
+    (void)p_exinf;
+    error = pid_initialize_state(&state);
+    while (error == E_OK)
+    {
+        (void)tk_can_wup(TSK_SELF);
+        error = tk_slp_tsk(TMO_FEVR);
+        if (error != E_OK || pid_sample(&state) != E_OK)
+        {
             break;
         }
-
-        err = pid_read_sample(
-            &left_now,
-            &right_now,
-            &current_ms
-        );
-
-        if (err != E_OK) {
-            tm_printf((UB*)"[B2] Sample read failed\n");
-            break;
-        }
-
-        previous_index =
-            (iteration - 1) % (PID_WINDOW_SIZE + 1);
-
-        loop_dt_ms =
-            current_ms - time_history[previous_index];
-
-        /*
-         * Record and report invalid intervals.
-         * Never divide by zero or run the PI
-         * controller with invalid timing.
-         */
-        if (loop_dt_ms <= 0) {
-
-            loop_invalid++;
-
-            tm_printf(
-                (UB*)"[B2] Invalid interval dt=%d current=%d previous=%d\n",
-                (INT)loop_dt_ms,
-                (INT)current_ms,
-                (INT)time_history[previous_index]
-            );
-
-            break;
-        }
-
-        if (loop_dt_ms < loop_min_ms) {
-            loop_min_ms = loop_dt_ms;
-        }
-
-        if (loop_dt_ms > loop_max_ms) {
-            loop_max_ms = loop_dt_ms;
-        }
-
-        loop_total_ms += loop_dt_ms;
-        loop_samples++;
-
-        if (loop_dt_ms > PID_PERIOD_MS) {
-            loop_overruns++;
-        }
-
-        /*
-         * Store the current encoder sample.
-         */
-        index =
-            iteration % (PID_WINDOW_SIZE + 1);
-
-        left_history[index] = left_now;
-        right_history[index] = right_now;
-        time_history[index] = current_ms;
-
-        /*
-         * Calculate speed after collecting
-         * the first 10 intervals.
-         */
-        if (iteration >= PID_WINDOW_SIZE) {
-
-            old_index =
-                (iteration - PID_WINDOW_SIZE)
-                % (PID_WINDOW_SIZE + 1);
-
-            elapsed_ms =
-                current_ms - time_history[old_index];
-
-            if (elapsed_ms <= 0) {
-                tm_printf((UB*)"[B2] Invalid speed window\n");
-                break;
-            }
-
-            left_speed =
-                (INT)(
-                    ((long long)
-                    (left_now - left_history[old_index])
-                    * 1000LL) / elapsed_ms
-                );
-
-            right_speed =
-                (INT)(
-                    ((long long)
-                    (right_now - right_history[old_index])
-                    * 1000LL) / elapsed_ms
-                );
-
-            /*
-             * Calculate speed errors.
-             */
-            left_error =
-                (float)(PID_TARGET_CPS - left_speed);
-
-            right_error =
-                (float)(PID_TARGET_CPS - right_speed);
-
-            /*
-             * PI integral update using actual
-             * measured loop interval.
-             */
-            {
-                float dt =
-                    (float)loop_dt_ms / 1000.0f;
-
-                if (dt <= 0.0f || dt > 0.1f) {
-                    tm_printf((UB*)"[B2] PI timing out of range\n");
-                    break;
-                }
-
-                left_integral +=
-                    PID_KI * left_error * dt;
-
-                right_integral +=
-                    PID_KI * right_error * dt;
-            }
-
-            /*
-             * Integral anti-windup limits.
-             */
-            if (left_integral > PID_I_LIMIT)
-                left_integral = PID_I_LIMIT;
-
-            if (left_integral < -PID_I_LIMIT)
-                left_integral = -PID_I_LIMIT;
-
-            if (right_integral > PID_I_LIMIT)
-                right_integral = PID_I_LIMIT;
-
-            if (right_integral < -PID_I_LIMIT)
-                right_integral = -PID_I_LIMIT;
-
-            /*
-             * Calculate PI output.
-             */
-            left_output =
-                PID_BASE_PWM +
-                PID_KP * left_error +
-                left_integral;
-
-            right_output =
-                PID_BASE_PWM +
-                PID_KP * right_error +
-                right_integral;
-
-            /*
-             * Clamp PWM outputs.
-             */
-            left_pwm =
-                clamp_pwm((INT)(left_output + 0.5f));
-
-            right_pwm =
-                clamp_pwm((INT)(right_output + 0.5f));
-
-            /*
-             * Update both motors.
-             */
-            motor_left_set(left_pwm);
-            motor_right_set(right_pwm);
-        }
-
-        /*
-         * Print approximately every 500 ms,
-         * assuming 10 ms activations.
-         */
-        if ((iteration % 50) == 0) {
-
-            tm_printf(
-                (UB*)"[B2] Cyclic PI L=%d R=%d PWM_L=%d PWM_R=%d\n",
-                left_speed,
-                right_speed,
-                left_pwm,
-                right_pwm
-            );
-        }
+        pid_guard(&state);
+        pid_accept(&state);
+        pid_guard(&state);
+        pid_execute(&state);
+        pid_publish(&state);
+        state.left_previous = state.left_now;
+        state.right_previous = state.right_now;
+        state.previous_ms = state.now_ms;
     }
-
-test_end:
-
-    /*
-     * Safety: stop motors and cyclic wake-ups.
-     */
-    motor_stop();
-
-    (void)subsystem2_stop_pid_cyclic();
-
-    tm_printf(
-        (UB*)"[B2] Cyclic PI test completed - motors stopped\n"
-    );
-
-    /*
-     * Print control-loop timing statistics.
-     */
-    if (loop_samples > 0) {
-
-        long long avg_x100 =
-            (loop_total_ms * 100LL) / loop_samples;
-
-        tm_printf(
-            (UB*)"[B2] Timing min=%d max=%d avg=%d.%02d ms\n",
-            (INT)loop_min_ms,
-            (INT)loop_max_ms,
-            (INT)(avg_x100 / 100),
-            (INT)(avg_x100 % 100)
-        );
-
-        tm_printf(
-            (UB*)"[B2] Timing samples=%d over10ms=%d invalid=%d\n",
-            loop_samples,
-            loop_overruns,
-            loop_invalid
-        );
-    } else {
-
-        tm_printf(
-            (UB*)"[B2] No valid timing samples; invalid=%d\n",
-            loop_invalid
-        );
-    }
-
-    /*
-     * Temporary task-return workaround.
-     * Motors remain stopped.
-     */
-    while (1) {
+    b2_request_stop();
+    b2_safety_acknowledge_stop();
+    pid_finish(&state, MOTION_STATUS_FAULT, MOTION_FAULT_TIMING);
+    tm_printf((UB *)"[B2] Controller fault; stopped until restart\n");
+    for (;;)
+    {
         tk_dly_tsk(1000);
     }
 }

@@ -6,7 +6,7 @@
 
 EXPORT void consumer_task(INT stacd, void *exinf)
 {
-	SAMPLE_MSG *msg;
+	subsystem2_sample_msg_t *msg;
 	UB text[S4_SUMMARY_MAX];
 	INT len;
 	UW count;
@@ -26,8 +26,8 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 		er = tk_loc_mtx(mtx_stats, TMO_FEVR);
 		if (er < E_OK) {
 			CHECK(er, "tk_loc_mtx");
-			(void)tk_rel_mpf(mpf_samples, msg);
-			(void)tk_sig_sem(sem_slots, 1);
+			(void)tk_rel_mpf(gh_mpf_samples, msg);
+			(void)tk_sig_sem(gh_sem_slots, 1);
 			continue;
 		}
 		s3_update_stats(&app_stats, msg->value);
@@ -50,9 +50,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 		}
 
 		/* Always return both resources so S2 cannot deadlock at pool capacity. */
-		er = tk_rel_mpf(mpf_samples, msg);
+		er = tk_rel_mpf(gh_mpf_samples, msg);
 		if (er < E_OK) CHECK(er, "tk_rel_mpf");
-		er = tk_sig_sem(sem_slots, 1);
+		er = tk_sig_sem(gh_sem_slots, 1);
 		if (er < E_OK) CHECK(er, "tk_sig_sem");
 	}
 }
