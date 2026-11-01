@@ -1,0 +1,15 @@
+/** @file module.h
+ * @brief Describe the module's public responsibility here.
+ */
+#ifndef MODULE_H
+#define MODULE_H
+
+#include <stdint.h>
+
+/** @brief Describe the public operation and its units and error result. */
+int32_t module_read (void);
+
+#endif /* MODULE_H */
+
+/*** end of file ***/
+

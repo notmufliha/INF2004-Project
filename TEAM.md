@@ -106,7 +106,7 @@ the drivers have no locking to stop it.
 | Peripheral | Owner subsystem | Owning task | Pins |
 |---|---|---|---|
 | UART1 | | | |
-| I2C0 | B4 | imu_sampling_task | GP4 SDA, GP5 SCL; kernel I2C driver enabled, 5 ms transaction-phase timeout |
+| I2C0 | B4 | task_imu_sampling_task | GP4 SDA, GP5 SCL; kernel I2C driver enabled, 5 ms transaction-phase timeout |
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |
@@ -149,7 +149,7 @@ change it only by team agreement. Write down every task you create.
 | 1 | 12–13 | led_task – 12 – any; comm_task – 13 – any; demo_task – 12 – any (only while `S1_STANDALONE_DEMO`=1) |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
 | 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
-| 4 | 18–19 | imu_sampling_task – 18 – any; imu_analysis_task – 19 – any; legacy monitor_task – 19 – any |
+| 4 | 18–19 | task_imu_sampling_task – 18 – any; task_imu_analysis_task – 19 – any; legacy task_monitor_task – 19 – any |
 | 5 | 20–21 | |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
@@ -164,7 +164,7 @@ sends to it or waits on it. Agree on the data format before coding.
 |---|---|---|---|---|---|
 | IF-01 | S2 → S3 | mailbox (owned by S3) | `mbx_samples` | `SAMPLE_MSG` in `subsystem2.h` | *example* |
 | IF-02 | S3 → S2 | semaphore + fixed memory pool (owned by S2) | `sem_slots`, `mpf_samples` | receiver returns the block, then 1 slot | *example* |
-| IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `mbf_summary`, `flg_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
+| IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `gh_summary`, `gh_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
 | IF-04 | S4 → S3 | shared data under a mutex (owned by S3) | `app_stats`, `mtx_stats` | `APP_STATS`, read only while locked | *example* |
 | IF-05 | S4 → S1 | task control | `tid_led` | `tk_sus_tsk` / `tk_rsm_tsk` / `tk_chg_pri` | *example* |
 | IF-S1-TLM | any → S1 | shared snapshot under mutex (owned by S1) | `mtx_telem` via `comm_set_xxx()` | `COMM_TELEMETRY` in `subsystem1.h` | *proposed* |

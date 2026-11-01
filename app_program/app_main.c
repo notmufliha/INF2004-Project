@@ -28,7 +28,7 @@
  *	  IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
  *	  IF-02  S3 -> S2  semaphore sem_slots + memory pool mpf_samples
  *	                   (owned by S2: S3 hands slots and blocks back)
- *	  IF-03  S3 -> S4  message buffer mbf_summary + event flag flg_events
+ *	  IF-03  S3 -> S4  message buffer gh_summary + event flag gh_events
  *	                   (owned by S4)
  *	  IF-04  S4 -> S3  reads app_stats under mutex mtx_stats (owned by S3)
  *	  IF-05  S4 -> S1  suspends/resumes the LED task tid_led (owned by S1)
@@ -132,7 +132,7 @@ EXPORT INT usermain(void)
 	subsystem1_test();
 	subsystem2_test();
 	subsystem3_test();
-	subsystem4_test();
+	s4_test_run();
 	subsystem5_test();
 	tm_printf((UB*)"[TEST] === test run end ===\n");
 #endif

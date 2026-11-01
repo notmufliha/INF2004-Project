@@ -1,116 +1,264 @@
+/** @file imu_processing.c
+ * @brief Buddy 4 imu processing module.
+ */
 #include "imu_processing.h"
 #include <math.h>
 #include <stddef.h>
 
-void imu_processing_default_config(imu_processing_config_t *config)
+static float32_t smooth_angle (float32_t old, float32_t next, float32_t alpha);
+
+static bool reading_is_valid (const imu_data_t * p_input, uint32_t now_ms);
+
+static bool check_timing (imu_processing_t * p_state, uint32_t now_ms,
+                          bool * pb_valid);
+
+static void record_failure (imu_processing_t *        p_state,
+                            imu_processing_health_t * p_health);
+
+static bool filter_reading (imu_processing_t * p_state,
+                            const imu_data_t * p_input, imu_data_t * p_output);
+
+/** @brief Supply filter, fault and recovery defaults. */
+void
+imu_processing_default_config (imu_processing_config_t * p_config)
 {
-    if (config != NULL) {
-        *config = (imu_processing_config_t){0.25f, 3U, 5U, 100U};
+    if (p_config != NULL)
+    {
+        *p_config = (imu_processing_config_t){0.25f, 3U, 5U, 100U};
     }
 }
 
-bool imu_processing_init(imu_processing_t *state,
-                         const imu_processing_config_t *config)
+/** @brief Validate configuration and reset filter history. */
+bool
+imu_processing_init (imu_processing_t *              p_state,
+                     const imu_processing_config_t * p_config)
 {
-    if (state == NULL || config == NULL ||
-        !isfinite(config->smoothing_alpha) || config->smoothing_alpha <= 0.0f ||
-        config->smoothing_alpha > 1.0f || config->failure_samples == 0U ||
-        config->recovery_samples == 0U || config->max_gap_ms == 0U ||
-        config->max_gap_ms >= UINT32_MAX / 2U) {
+    if ((NULL == p_state) || (NULL == p_config) ||
+        (!isfinite(p_config->smoothing_alpha)) ||
+        (p_config->smoothing_alpha <= 0.0f) ||
+        (p_config->smoothing_alpha > 1.0f) ||
+        (0U == p_config->failure_samples) ||
+        (0U == p_config->recovery_samples) || (0U == p_config->max_gap_ms) ||
+        (p_config->max_gap_ms >= UINT32_MAX / 2U))
+    {
         return false;
     }
-    *state = (imu_processing_t){0};
-    state->config = *config;
+
+    *p_state        = (imu_processing_t){0};
+    p_state->config = *p_config;
     return true;
 }
 
-static float smooth_angle(float old, float next, float alpha)
+/** @brief Validate timing, track health and filter a fresh reading. */
+bool
+imu_processing_process (imu_processing_t * p_state, const imu_data_t * p_input,
+                        uint32_t now_ms, imu_data_t * p_output,
+                        imu_processing_health_t * p_health)
+{
+    if (p_output != NULL)
+    {
+        *p_output              = (imu_data_t){0};
+        p_output->timestamp_ms = now_ms;
+    }
+
+    if (p_health != NULL)
+    {
+        *p_health = (imu_processing_health_t){0};
+    }
+
+    if ((NULL == p_state) || (NULL == p_output) || (NULL == p_health))
+    {
+        return false;
+    }
+
+    bool b_valid        = reading_is_valid(p_input, now_ms);
+    bool b_timing_fault = check_timing(p_state, now_ms, &b_valid);
+
+    if (b_timing_fault)
+    {
+        if (!p_state->b_fault_active)
+        {
+            p_health->b_fault_started = true;
+        }
+
+        p_state->b_fault_active = true;
+        p_state->b_seeded       = false;
+        p_state->recovery       = 0U;
+    }
+
+    if (!b_valid)
+    {
+        record_failure(p_state, p_health);
+        return false;
+    }
+
+    p_state->last_good_ms     = now_ms;
+    p_state->b_have_good_time = true;
+    p_state->failures         = 0U;
+
+    if (p_state->b_fault_active)
+    {
+        p_state->recovery++;
+
+        if (p_state->recovery < p_state->config.recovery_samples)
+        {
+            p_health->b_fault_active = true;
+            return false;
+        }
+
+        p_state->b_fault_active = false;
+        p_state->recovery       = 0U;
+        p_health->b_recovered   = true;
+    }
+
+    if (!filter_reading(p_state, p_input, p_output))
+    {
+        record_failure(p_state, p_health);
+        *p_output              = (imu_data_t){0};
+        p_output->timestamp_ms = now_ms;
+        return false;
+    }
+
+    return true;
+}
+
+/** @brief Interpolate along the shortest path across the angle boundary. */
+static float32_t
+smooth_angle (float32_t old, float32_t next, float32_t alpha)
 {
     /* Follow the shortest path across the +/-180 degree boundary. */
-    float delta = next - old;
-    if (delta > 180.0f) { delta -= 360.0f; }
-    if (delta < -180.0f) { delta += 360.0f; }
-    float result = old + alpha * delta;
-    if (result > 180.0f) { result -= 360.0f; }
-    if (result < -180.0f) { result += 360.0f; }
+    float32_t delta = next - old;
+
+    if (delta > 180.0f)
+    {
+        delta -= 360.0f;
+    }
+
+    if (delta < -180.0f)
+    {
+        delta += 360.0f;
+    }
+
+    float32_t result = old + (alpha * delta);
+
+    if (result > 180.0f)
+    {
+        result -= 360.0f;
+    }
+
+    if (result < -180.0f)
+    {
+        result += 360.0f;
+    }
+
     return result;
 }
 
-bool imu_processing_process(imu_processing_t *state, const imu_data_t *input,
-                            uint32_t now_ms, imu_data_t *output,
-                            imu_health_t *health)
+/** @brief Check reading freshness, finite values and angle bounds. */
+static bool
+reading_is_valid (const imu_data_t * p_input, uint32_t now_ms)
 {
-    bool valid;
-    bool timing_fault = false;
-    uint32_t elapsed;
-    if (output != NULL) {
-        *output = (imu_data_t){0};
-        output->timestamp_ms = now_ms;
-    }
-    if (health != NULL) { *health = (imu_health_t){0}; }
-    if (state == NULL || output == NULL || health == NULL) { return false; }
+    return (p_input != NULL) && (p_input->b_valid) &&
+           (p_input->timestamp_ms == now_ms) && (isfinite(p_input->accel_x)) &&
+           (isfinite(p_input->accel_y)) && (isfinite(p_input->accel_z)) &&
+           (isfinite(p_input->pitch_deg)) && (isfinite(p_input->roll_deg)) &&
+           (isfinite(p_input->turn_rate_dps)) &&
+           (fabsf(p_input->pitch_deg) <= 180.0f) &&
+           (fabsf(p_input->roll_deg) <= 180.0f);
+}
 
-    valid = input != NULL && input->valid &&
-            input->timestamp_ms == now_ms &&
-            isfinite(input->accel_x) && isfinite(input->accel_y) &&
-            isfinite(input->accel_z) && isfinite(input->pitch_deg) &&
-            isfinite(input->roll_deg) && isfinite(input->turn_rate_dps) &&
-            fabsf(input->pitch_deg) <= 180.0f && fabsf(input->roll_deg) <= 180.0f;
-    if (state->have_good_time) {
-        elapsed = now_ms - state->last_good_ms;
-        if (elapsed == 0U || elapsed >= UINT32_MAX / 2U) {
-            valid = false;
-            timing_fault = true;
+/** @brief Detect duplicate, backward or missing-reading intervals. */
+static bool
+check_timing (imu_processing_t * p_state, uint32_t now_ms, bool * pb_valid)
+{
+    bool     b_timing_fault = false;
+    uint32_t elapsed;
+
+    if (p_state->b_have_good_time)
+    {
+        elapsed = now_ms - p_state->last_good_ms;
+
+        if ((0U == elapsed) || (elapsed >= (UINT32_MAX / 2U)))
+        {
+            *pb_valid      = false;
+            b_timing_fault = true;
             /* Rebase only for subsequent recovery, never use this reading. */
-            state->have_good_time = false;
-        } else if (elapsed > state->config.max_gap_ms) {
-            timing_fault = true;
+            p_state->b_have_good_time = false;
+        }
+        else if (elapsed > p_state->config.max_gap_ms)
+        {
+            b_timing_fault = true;
+        }
+        else
+        {
+            /* The elapsed interval is valid; retain the existing state. */
         }
     }
-    if (timing_fault) {
-        if (!state->fault_active) { health->fault_started = true; }
-        state->fault_active = true;
-        state->seeded = false;
-        state->recovery = 0U;
+
+    return b_timing_fault;
+}
+
+/** @brief Count failures and latch a sensor fault at the threshold. */
+static void
+record_failure (imu_processing_t * p_state, imu_processing_health_t * p_health)
+{
+
+    if (p_state->failures < p_state->config.failure_samples)
+    {
+        p_state->failures++;
     }
-    if (!valid) {
-        if (state->failures < state->config.failure_samples) { state->failures++; }
-        state->seeded = false;
-        state->recovery = 0U;
-        if (state->failures >= state->config.failure_samples) {
-            if (!state->fault_active) { health->fault_started = true; }
-            state->fault_active = true;
+
+    p_state->b_seeded = false;
+    p_state->recovery = 0U;
+
+    if (p_state->failures >= p_state->config.failure_samples)
+    {
+        if (!p_state->b_fault_active)
+        {
+            p_health->b_fault_started = true;
         }
-        health->fault_active = state->fault_active;
+
+        p_state->b_fault_active = true;
+    }
+
+    p_health->b_fault_active = p_state->b_fault_active;
+}
+
+/** @brief Smooth finite angles and rate while retaining acceleration. */
+static bool
+filter_reading (imu_processing_t * p_state, const imu_data_t * p_input,
+                imu_data_t * p_output)
+{
+    *p_output = *p_input;
+    if (p_state->b_seeded)
+    {
+        p_output->pitch_deg =
+            smooth_angle(p_state->previous.pitch_deg, p_input->pitch_deg,
+                         p_state->config.smoothing_alpha);
+        p_output->roll_deg =
+            smooth_angle(p_state->previous.roll_deg, p_input->roll_deg,
+                         p_state->config.smoothing_alpha);
+        /* Convex combination avoids overflow in (next - old). */
+        if ((p_input->b_turn_rate_valid) &&
+            (p_state->previous.b_turn_rate_valid))
+        {
+            p_output->turn_rate_dps =
+                (1.0f - p_state->config.smoothing_alpha) *
+                    p_state->previous.turn_rate_dps +
+                p_state->config.smoothing_alpha * p_input->turn_rate_dps;
+        }
+    }
+
+    if ((!isfinite(p_output->pitch_deg)) || (!isfinite(p_output->roll_deg)) ||
+        (!isfinite(p_output->turn_rate_dps)))
+    {
         return false;
     }
-    state->last_good_ms = now_ms;
-    state->have_good_time = true;
-    state->failures = 0U;
-    if (state->fault_active) {
-        state->recovery++;
-        if (state->recovery < state->config.recovery_samples) {
-            health->fault_active = true;
-            return false;
-        }
-        state->fault_active = false;
-        state->recovery = 0U;
-        health->recovered = true;
-    }
-    *output = *input;
-    if (state->seeded) {
-        output->pitch_deg = smooth_angle(state->previous.pitch_deg, input->pitch_deg,
-                                         state->config.smoothing_alpha);
-        output->roll_deg = smooth_angle(state->previous.roll_deg, input->roll_deg,
-                                        state->config.smoothing_alpha);
-        /* Convex combination avoids overflow in (next - old). */
-        if (input->turn_rate_valid && state->previous.turn_rate_valid) {
-            output->turn_rate_dps = (1.0f - state->config.smoothing_alpha) *
-                                   state->previous.turn_rate_dps +
-                                   state->config.smoothing_alpha * input->turn_rate_dps;
-        }
-    }
-    state->previous = *output;
-    state->seeded = true;
+
+    p_state->previous = *p_output;
+    p_state->b_seeded = true;
     return true;
 }
+
+/*** end of file ***/
+

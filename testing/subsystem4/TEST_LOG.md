@@ -1,5 +1,43 @@
 # Subsystem 4 — test log
 
+BARR-C complete scoped audit (2026-10-28): all 39 numbered sections were
+reviewed for B4, and the earlier shared-name/module-name findings were fixed.
+All six strict C99 host test programs and seven checker regression tests PASS.
+The scanner passes across 38 C/header files and the formatter is stable.
+All four ARM syntax configurations PASS (real/mock and normal/test). Normal
+and test UART/no-WiFi firmware builds compile and link without warnings.
+Evidence: [host](logs/2026-10-28_barr_audit_host.txt),
+[checks](logs/2026-10-28_barr_audit_checks.txt),
+[normal firmware](logs/2026-10-28_barr_audit_arm_normal.txt),
+[test firmware](logs/2026-10-28_barr_audit_arm.txt).
+The [audit checklist](../../app_program/subsystem4/CODING_STANDARD.md) records
+scope and preferred-practice rationale. No new physical Pico test was run.
+
+BARR-C PDF review validation (2026-10-28): all six C99 desktop test programs
+pass, including bounded/non-finite numeric display conversion tests. The selected
+style checker passes. The UART/no-WiFi ARM test firmware compiles and links
+without compiler warnings. See [PDF-review host log](logs/2026-10-28_barr_pdf_host.txt)
+and [PDF-review ARM build log](logs/2026-10-28_barr_pdf_arm.txt).
+This is build/desktop evidence, not a new physical Pico test or certification.
+
+BARR-C cleanup validation (2026-10-28): existing host tests pass after formatting,
+explicit-width type updates and tolerance-based floating-point expectations.
+See [host log](logs/2026-10-28_barr_host.txt) and
+[ARM UART/no-WiFi test-build log](logs/2026-10-28_barr_arm_build.txt).
+Selected style checks pass; real/mock and test/normal B4 ARM syntax checks pass.
+Full coding-standard certification and a fresh on-board run are not claimed.
+
+Further B4 cleanup (2026-10-28): Boolean/pointer/private-global naming, explicit
+numeric conditions, named callbacks and function decomposition were checked.
+All scoped C functions are at most 100 lines. Expanded selected-rule checks,
+existing host regressions and real/mock, normal/test ARM syntax checks pass.
+The UART/no-WiFi test firmware links successfully:
+[cleanup host log](logs/2026-10-28_barr_cleanup_host.txt),
+[cleanup ARM log](logs/2026-10-28_barr_cleanup_arm.txt).
+Reading/event layout assertions remain 56/48 bytes. Hardware execution of this
+refactor is not yet verified. Shared legacy naming exceptions are documented in
+`app_program/subsystem4/CODING_STANDARD.md`.
+
 **Subsystem:** Monitor (example)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem4/`
 
 See `testing/README.md` for how to run tests and record results.
@@ -10,7 +48,7 @@ Define a test here before running it. Test IDs never change.
 
 | ID | What is tested | Requirement / interface | Method | Steps / how | Expected result |
 |---|---|---|---|---|---|
-| S4-U01 | message buffer max line = S4_SUMMARY_MAX | IF-03 | auto | `subsystem4_test.c` | `[TEST] S4-U01 PASS` |
+| S4-U01 | message buffer max line = S4_SUMMARY_MAX | IF-03 | auto | `s4_test.c` | `[TEST] S4-U01 PASS` |
 | S4-U02 | LED pauses and resumes every 6 reports | IF-05 | manual | 1. Flash normal image. 2. Watch LED and console ~20 s. | console shows "LED task paused"/"resumed"; LED stops/starts |
 | S4-U03 | Mock readings and null handling | FR-B4-1, simulated input only | host auto | `host/imu_mock_test.c` | All 8 mock checks pass |
 | S4-U04 | Classification and explicitly unavailable height | FR-B4-5/6/7; height pending | host auto | `host/imu_analysis_test.c` | Acceleration, turn and impact classified; height invalid |
@@ -19,11 +57,11 @@ Define a test here before running it. Test IDs never change.
 | S4-U07 | Invalid input and configuration | B4 fault handling | host auto | same host analysis test | Invalid/NaN/null inputs rejected; interrupted hump discarded |
 | S4-U08 | Sampling gaps and timestamps | NFR-B4-1, host timing validation | host auto | same host analysis test | Wrap accepted; duplicate/backward/gapped readings rejected; hump times out |
 | S4-U09 | Tilted gravity and hysteresis | FR-B4-2, NFR-B4-4 | host auto | same host analysis test | Tilted rest does not imply acceleration; intermediate slope retains state |
-| S4-U10 | RTOS reading buffer size | B4 internal sampling interface | target auto | `make TEST=1`, `subsystem4_test.c` | Complete `imu_data_t` messages supported |
+| S4-U10 | RTOS reading buffer size | B4 internal sampling interface | target auto | `make TEST=1`, `s4_test.c` | Complete `imu_data_t` messages supported |
 | S4-U11 | Sampling to analysis task data flow | B4 internal sampling interface | target auto | same target test, wait for a fresh demo completion | Valid hump completion within 9 seconds; height unavailable |
 | S4-U12 | Repeating demo sequence | FR-B4-2/5/6, simulated only | host auto | `host/imu_demo_test.c` | Two hump completions across 16 simulated seconds |
 | S4-U13 | Filtering, spike preservation and fault recovery | NFR-B4-3/4, B4 fault handling | host auto | `host/imu_processing_test.c` and filtered demo test | Smoothed angles/rate, unchanged impact acceleration, invalid suppression, fault/recovery pulses, timestamp checks |
-| S4-U14 | RTOS fault/recovery notifications | B4 fault handling, mock only | target auto | `make TEST=1`, `subsystem4_test.c` | Outage fault then valid recovery within nine seconds |
+| S4-U14 | RTOS fault/recovery notifications | B4 fault handling, mock only | target auto | `make TEST=1`, `s4_test.c` | Outage fault then valid recovery within nine seconds |
 | S4-U15 | GY-511 driver register protocol and conversions | FR-B4-1/2/7 | host auto | `host/gy511_test.c` | H43/config verified; signed acceleration and X/Z/Y magnetics decoded; tilt and calibration checked; turn rate gated |
 | S4-U16 | Real calibrated data arrival | FR-B4-1, NFR-B4-2 | target auto | Default hardware mode, `make TEST=1`, keep level/still | Valid readings reach analysis after calibration within 10s of test start |
 
