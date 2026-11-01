@@ -47,7 +47,8 @@ bool imu_analysis_init (imu_analysis_t *              p_analysis,
  * Acceleration includes gravity. Pitch is positive when the nose rises.
  * Low acceleration alone cannot distinguish rest from constant-speed travel.
  * NULL, invalid/nonfinite data or bad timing reset the terrain sequence.
- * Height fields remain zero with height_valid=false; zero is not a measurement.
+ * This classifier alone leaves height invalid. The height postprocessor uses
+ * paired raw pitch/encoder readings to populate accepted completion estimates.
  */
 bool imu_analysis_process (imu_analysis_t *   p_analysis,
                            const imu_data_t * p_data, imu_event_t * p_event);

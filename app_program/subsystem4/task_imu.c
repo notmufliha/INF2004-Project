@@ -10,6 +10,7 @@
 #include "s4_runtime.h"
 #include "imu_analysis.h"
 #include "imu_processing.h"
+#include "imu_odom.h"
 #include "../subsystem1/subsystem1.h"
 #if S4_IMU_USE_MOCK
 #include "imu_demo.h"
@@ -41,10 +42,14 @@ typedef struct
 
 /* Only this task owns sensor acquisition and I2C0. */
 
+/* Owned only by the acquisition task; unsigned wrap is intentional. */
+static volatile uint32_t g_sample_sequence;
+
 /* Short integer-only lines match the other buddies' console format. */
 
-static INT console_integer (float32_t value);
-static H telemetry_integer (float32_t value);
+static INT  console_integer (float32_t value);
+static H    telemetry_integer (float32_t value);
+static void report_hump (const imu_event_t * p_event);
 
 #if !S4_IMU_USE_MOCK
 static bool initialise_hardware (imu_hardware_state_t * p_state,
@@ -74,7 +79,7 @@ static void report_event (const imu_data_t *  p_data,
                           const imu_event_t * p_event, bool * pb_have_previous,
                           imu_motion_state_t * p_previous, UW * p_last_report);
 
-static bool publish_reading (const imu_data_t * p_data, bool b_publish,
+static bool publish_reading (imu_data_t * p_data, bool b_publish,
                              UW * p_dropped);
 
 /** @brief Acquire timestamped readings on a deadline without blocking. */
@@ -136,6 +141,9 @@ task_imu_sampling_task (INT stacd, void * p_exinf)
 #endif
             /* Use actual RTOS time, not the mock's synthetic sample count. */
             data.timestamp_ms = now.lo;
+#if !S4_IMU_USE_MOCK
+            imu_odom_capture(&data);
+#endif
 
             if (!publish_reading(&data, b_publish, &dropped))
             {
@@ -188,6 +196,7 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
     imu_processing_config_t processing_config;
     imu_processing_health_t health;
     imu_event_t             event;
+    imu_height_t            height;
     imu_motion_state_t      previous        = IMU_MOTION_UNKNOWN;
     bool                    b_have_previous = false;
     bool                    b_warned        = false;
@@ -200,9 +209,10 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
     imu_analysis_default_config(&config);
     imu_processing_default_config(&processing_config);
 
-    if (!imu_processing_init(&processing, &processing_config))
+    if ((!imu_processing_init(&processing, &processing_config)) ||
+        (!imu_odom_init(&height)))
     {
-        tm_printf((UB *)"[B4] ERROR: processing configuration failed\n");
+        tm_printf((UB *)"[B4] ERROR: processing/geometry configuration\n");
         tk_ext_tsk();
         return;
     }
@@ -229,8 +239,11 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
         report_fault(&health, data.timestamp_ms);
         /* An invalid processed reading resets any incomplete terrain sequence.
          */
-        if ((!imu_analysis_process(&analysis, &processed, &event)) ||
-            (!b_usable))
+        bool b_analysed = imu_analysis_process(&analysis, &processed, &event);
+
+        imu_height_process(&height, &data, &event);
+
+        if ((!b_analysed) || (!b_usable))
         {
             if (!b_warned)
             {
@@ -263,14 +276,43 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
     }
 }
 
+/** @brief Report accepted estimates or explicitly unavailable hump heights. */
+static void
+report_hump (const imu_event_t * p_event)
+{
+    if (p_event->b_height_valid)
+    {
+        tm_printf((UB *)"[B4] Hump estimate=%d Highest=%d mm\n",
+                  console_integer(p_event->hump_peak_cm * 10.0f),
+                  console_integer(p_event->highest_hump_cm * 10.0f));
+    }
+    else if (p_event->b_highest_hump_valid)
+    {
+        tm_printf((UB *)"[B4] Hump estimate=N/A Highest=%d mm\n",
+                  console_integer(p_event->highest_hump_cm * 10.0f));
+    }
+    else
+    {
+        tm_printf((UB *)"[B4] Hump estimate=N/A Highest=N/A\n");
+    }
+
+    /* Retain B1's validity flag and discard the best-effort queue result. */
+    (void)comm_report_hump(p_event->b_height_valid ? TRUE : FALSE,
+                           telemetry_integer(p_event->hump_peak_cm * 10.0f),
+                           telemetry_integer(p_event->highest_hump_cm * 10.0f));
+}
+
 /** @brief Publish without blocking; count dropped readings on a full queue. */
 static bool
-publish_reading (const imu_data_t * p_data, bool b_publish, UW * p_dropped)
+publish_reading (imu_data_t * p_data, bool b_publish, UW * p_dropped)
 {
     ER error_code = E_OK;
 
+    ++g_sample_sequence;
+
     if (b_publish)
     {
+        p_data->sample_sequence = g_sample_sequence;
         error_code =
             tk_snd_mbf(gh_imu_data_buffer, p_data, sizeof(*p_data), TMO_POL);
     }
@@ -665,13 +707,7 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
 
         if (p_event->b_hump_completed)
         {
-            tm_printf((UB *)"[B4] Hump completed: height=N/A\n");
-            /* Unavailable heights remain explicitly invalid in B1. Discard
-             * the best-effort queue result to avoid retrying in analysis. */
-            (void)comm_report_hump(
-                p_event->b_height_valid ? TRUE : FALSE,
-                telemetry_integer(p_event->hump_peak_cm * 10.0f),
-                telemetry_integer(p_event->highest_hump_cm * 10.0f));
+            report_hump(p_event);
         }
 
         /* Motion values are the shared 0..7 enum; the byte cast is exact. */
