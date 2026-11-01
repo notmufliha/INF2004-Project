@@ -37,7 +37,7 @@ typedef enum {
  * @brief Packed current readings and most recently decoded navigation data.
  *
  * The packed attribute is supported by the RP2040 GNU C toolchain used by
- * this project. Its bit-fields occupy two 32-bit allocation units (8 bytes);
+ * this project. Its packed 34-bit payload occupies 5 bytes on this toolchain;
  * allocation order is compiler-specific, so this is not a wire-format type.
  */
 typedef struct __attribute__((__packed__)) {
@@ -49,8 +49,8 @@ typedef struct __attribute__((__packed__)) {
 	unsigned int last_nav_command : 3;
 } B3_STATE;
 
-_Static_assert(sizeof(B3_STATE) == 8U,
-	       "B3_STATE must occupy eight bytes on the RP2040 toolchain");
+_Static_assert(sizeof(B3_STATE) == 5U,
+	       "B3_STATE must occupy five bytes on the RP2040 toolchain");
 
 /* Message buffer owned by B3; each message is one B3_NAV_COMMAND byte. */
 IMPORT ID mbf_nav_cmd;
