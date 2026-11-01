@@ -81,11 +81,11 @@ task_monitor_task (INT stacd, void * p_exinf)
     for (;;)
     {
         /* 1. Arm the one-shot alarm, then wait for EITHER bit.
-              TWF_ORW = wake on any of the bits, TWF_CLR = clear them
-              on wake-up.  The extra timeout is just a safety net. */
+              TWF_ORW wakes on either bit; TWF_BITCLR preserves IMU readiness.
+              The extra timeout is just a safety net. */
         tk_sta_alm(gh_monitor_alarm, S4_ALARM_MS);
         error_code = tk_wai_flg(gh_events, FLG_ALARM | FLG_BATCH,
-                                TWF_ORW | TWF_CLR, &flgptn, S4_ALARM_MS * 2);
+                                TWF_ORW | TWF_BITCLR, &flgptn, S4_ALARM_MS * 2);
         tk_stp_alm(gh_monitor_alarm); /* cancel it if a batch came first. */
 
         if (E_TMOUT == error_code)

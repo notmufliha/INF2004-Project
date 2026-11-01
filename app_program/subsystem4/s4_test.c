@@ -5,7 +5,9 @@
 #include "subsystem4.h"
 #include "s4_runtime.h"
 #include "imu.h"
+#if !ROBOT_MODE
 #include "task_monitor.h"
+#endif
 #include "../test_report.h"
 
 #define TEST_MOCK_WAIT_MS 9000U
@@ -26,6 +28,7 @@ s4_test_run (void)
     T_RMBF buffer;
 
     TEST_INIT();
+#if !ROBOT_MODE
     TEST_CHECK("S4-U01",
                (E_OK == tk_ref_mbf(gh_summary, &buffer)) &&
                    (S4_SUMMARY_MAX == buffer.maxmsz),
@@ -36,6 +39,12 @@ s4_test_run (void)
     tk_dly_tsk(3500);
     TEST_CHECK("INT-02", task_monitor_line_count() >= before + 2U,
                "summary lines flow from subsystem 3 to subsystem 4");
+#else
+    TEST_CHECK("S4-U17", E_OK == subsystem4_wait_ready(100),
+               "real robot startup observes accepted IMU readings");
+    TEST_CHECK("S4-U18", (0 == gh_summary) && (0 == gh_monitor_alarm),
+               "real robot has no teaching monitor objects");
+#endif
     /* Fixed reading size is less than INT_MAX in the verified kernel ABI. */
     TEST_CHECK("S4-U10",
                (E_OK == tk_ref_mbf(gh_imu_data_buffer, &buffer)) &&

@@ -64,6 +64,9 @@ Define a test here before running it. Test IDs never change.
 | S4-U14 | RTOS fault/recovery notifications | B4 fault handling, mock only | target auto | `make TEST=1`, `s4_test.c` | Outage fault then valid recovery within nine seconds |
 | S4-U15 | GY-511 driver register protocol and conversions | FR-B4-1/2/7 | host auto | `host/gy511_test.c` | H43/config verified; signed acceleration and X/Z/Y magnetics decoded; tilt and calibration checked; turn rate gated |
 | S4-U16 | Real calibrated data arrival | FR-B4-1, NFR-B4-2 | target auto | Default hardware mode, `make TEST=1`, keep level/still | Valid readings reach analysis after calibration within 10s of test start |
+| S4-U17 | Real startup readiness | B4 startup | target auto | Real mode, `make TEST=1`, `s4_test.c` | Accepted readings set readiness; native contract also tests timeout and mock rejection |
+| S4-U18 | Real/demo isolation | B4 integration | target auto | Real mode, `make TEST=1`, `s4_test.c` | No teaching summary buffer or monitor alarm in real mode |
+| S4-H01 | Startup contract and kernel failures | B4 startup | host auto | `startup/run_tests.ps1` | Eight profiles pass task-order, readiness persistence/clear, timeout, mock rejection and error checks |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
 **manual** = a person observes the result (LED, scope, meter, phone app…).
@@ -75,6 +78,7 @@ Add a new row for every run. Never edit or delete old rows.
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S4-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+| 2026-11-01 | S4-H01 and desktop regressions | Working tree | Codex | PASS | [startup verification](logs/2026-11-01_startup.txt) | Eight native startup profiles and eight strict ARM B4 configurations; physical/laptop tests not run; full build blocked by B3 assertion |
 | 2026-10-14 | S4-U03 through S4-U09 | `c9dca65` + working changes | Codex | PASS | [host log](logs/2026-10-14_host_imu.txt) | GCC C11 with strict warnings; desktop tests only; hardware and height not validated |
 | 2026-10-14 | S4-U03 through S4-U09, S4-U12 | Working changes, RTOS demo | Codex | PASS | [demo host log](logs/2026-10-14_host_imu_demo.txt) | Strict desktop compilation; real RTOS execution not tested |
 | 2026-10-14 | S4-U10, S4-U11 | Working changes, RTOS demo | Codex | NOT RUN | [test firmware build](logs/2026-10-14_uart_test_build.txt) | ARM UART/no-WiFi test image compiles and links; requires Pico execution |

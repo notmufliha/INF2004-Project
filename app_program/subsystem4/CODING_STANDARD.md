@@ -1,5 +1,11 @@
 # B4 BARR-C:2018 audit
 
+2026-11-01 startup update: production B4 uses C99 checks in eight robot/demo,
+real/mock and test/normal configurations. Readiness uses bounded kernel waits,
+unsigned masks and checked results. Native startup tests execute `subsystem4.c`
+with a stub kernel. Stub symbols/types reproduce the external kernel/task ABI;
+they are not production application interfaces or part of the C style scan.
+
 Reviewed against the user's `barr_c_coding_standard_2018.pdf`, 2018 edition,
 on 2026-10-28. PDF SHA-256:
 `676CCCFD096C8AE563BB43BFBA4AA6F52537B671B2FE06118869532FB0791963`.

@@ -1,5 +1,12 @@
 # GY-511: first real-data test
 
+In real-robot mode, keep the car level/still at boot: B4 must finish calibration
+and supply accepted readings within 10 seconds before motor tasks start.
+Change the bounded wait with `ROBOT_IMU_STARTUP_TIMEOUT_MS` in `robot_config.h`.
+An unavailable sensor prevents startup; reconnect it and restart the board.
+The legacy monitor is disabled in this mode. Later faults are reported to B1;
+this startup gate is not a runtime motor-stop interlock.
+
 The driver targets the LSM303DLHC on a GY-511. Register configuration, byte order
 and sensitivities follow [ST DS7202 Rev 2](https://www.st.com/resource/en/datasheet/lsm303dlhc.pdf).
 It checks magnetic identification bytes H43 at 7-bit address 0x1e and verifies

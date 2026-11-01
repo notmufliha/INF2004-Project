@@ -56,6 +56,7 @@
 #include "app.h"
 #include "robot_config.h"
 #include "subsystem2/b2_motor.h"
+#include "subsystem4/subsystem4.h"
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -146,9 +147,32 @@ EXPORT INT usermain(void)
     }
 	b2_initialized = TRUE;
 
+    robot_er = subsystem4_init();
+    if (robot_er < E_OK)
+    {
+        CHECK(robot_er, "subsystem4_init");
+        goto robot_startup_failed;
+    }
+
     robot_er = subsystem5_init();
     if (robot_er < E_OK) {
         CHECK(robot_er, "subsystem5_init");
+        goto robot_startup_failed;
+    }
+
+    /* B4 runs while motor tasks are still stopped for level calibration. */
+    robot_er = subsystem4_start();
+    if (robot_er < E_OK)
+    {
+        CHECK(robot_er, "subsystem4_start");
+        goto robot_startup_failed;
+    }
+
+    tm_printf((UB*)"[ROBOT] Waiting for B4: keep the car level/still\n");
+    robot_er = subsystem4_wait_ready(ROBOT_IMU_STARTUP_TIMEOUT_MS);
+    if (robot_er < E_OK)
+    {
+        CHECK(robot_er, "B4 calibrated readings");
         goto robot_startup_failed;
     }
 
@@ -172,9 +196,11 @@ EXPORT INT usermain(void)
         tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
     }
 
-    tm_printf((UB*)"[ROBOT] B2 motor + B5 obstacle + B1 telemetry tasks started\n");
+    tm_printf((UB*)"[ROBOT] B2 motor + B4 IMU + B5 obstacle"
+                  " + B1 telemetry started\n");
 #if APP_TEST
     subsystem2_test();
+    s4_test_run();
 #endif
     goto robot_startup_complete;
 

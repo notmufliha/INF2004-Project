@@ -11,7 +11,9 @@
 #include "s4_runtime.h"
 #include "imu.h"
 #include "task_imu.h"
+#if !ROBOT_MODE
 #include "task_monitor.h"
+#endif
 
 /* Both payloads fit 64 bytes; aligned storage times either queue depth fits SZ.
  */
@@ -19,7 +21,7 @@ typedef uint8_t s4_payload_size_check_t
     [((sizeof(imu_data_t) <= 64U) && (sizeof(imu_event_t) <= 64U)) ? 1 : -1];
 
 volatile ID gh_summary; /* IF-03. */
-volatile ID gh_events;  /* IF-03. */
+volatile ID gh_events;  /* IMU readiness and optional IF-03 demo events. */
 volatile ID gh_monitor_alarm;
 volatile ID gh_imu_data_buffer;
 #if APP_TEST
@@ -27,8 +29,11 @@ volatile ID gh_imu_test_events;
 #endif
 
 static SZ message_storage_bytes (uint32_t payload_bytes);
+#if !ROBOT_MODE
+static ER create_legacy_objects (void);
+#endif
 
-/** @brief Create the B4 queues, event flag and monitor alarm. */
+/** @brief Create IMU resources and optional teaching-demo objects. */
 ER
 subsystem4_init (void)
 {
@@ -66,22 +71,11 @@ subsystem4_init (void)
         return gh_events;
     }
 
-    /* Message buffer: COPIES variable-length data into a kernel ring
-       buffer.  Here it carries short text lines from subsystem 3. */
-    cmbf.mbfatr = TA_TFIFO;
-    cmbf.bufsz  = 4 * S4_SUMMARY_MAX; /* total buffer size, bytes. */
-    cmbf.maxmsz = S4_SUMMARY_MAX;     /* largest single message. */
-    gh_summary  = tk_cre_mbf(&cmbf);
-
-    if (gh_summary < E_OK)
-    {
-        return gh_summary;
-    }
-
-    /* Alarm handler: called ONCE, a given time after tk_sta_alm().
-       The monitor task re-arms it each time round its loop. */
-    gh_monitor_alarm = task_monitor_create_alarm();
-    return (gh_monitor_alarm < E_OK) ? gh_monitor_alarm : E_OK;
+#if ROBOT_MODE
+    return E_OK;
+#else
+    return create_legacy_objects();
+#endif
 }
 
 /** @brief Start receivers before the sampling task begins publishing. */
@@ -105,11 +99,68 @@ subsystem4_start (void)
         return h_imu_task;
     }
 
+#if ROBOT_MODE
+    return E_OK;
+#else
     /* No affinity: the scheduler may run it on either core. */
     ID h_monitor_task = app_start_task(task_monitor_task, S4_PRI_MONITOR, 0,
                                        "task_monitor_task");
     return (h_monitor_task < E_OK) ? h_monitor_task : E_OK;
+#endif
 }
+
+/** @brief Wait for accepted sensor data before authorizing robot startup. */
+ER
+subsystem4_wait_ready (TMO timeout_ms)
+{
+#if ROBOT_MODE && S4_IMU_USE_MOCK
+    /* A simulated sensor must never satisfy the real-robot startup gate. */
+    (void)timeout_ms;
+    return E_PAR;
+#else
+    UINT flags = 0U;
+
+    if (timeout_ms <= 0)
+    {
+        return E_PAR;
+    }
+
+    if (gh_events <= 0)
+    {
+        return E_OBJ;
+    }
+
+    /* Preserve readiness for later observers; faults clear it explicitly. */
+    return tk_wai_flg(gh_events, S4_IMU_READY_FLAG, TWF_ORW,
+                      &flags, timeout_ms);
+#endif
+}
+
+#if !ROBOT_MODE
+/** @brief Create teaching-demo resources only when its producer is enabled. */
+static ER
+create_legacy_objects (void)
+{
+    T_CMBF cmbf = {0};
+
+    /* Message buffer: COPIES variable-length data into a kernel ring
+       buffer.  Here it carries short text lines from subsystem 3. */
+    cmbf.mbfatr = TA_TFIFO;
+    cmbf.bufsz  = 4 * S4_SUMMARY_MAX; /* total buffer size, bytes. */
+    cmbf.maxmsz = S4_SUMMARY_MAX;     /* largest single message. */
+    gh_summary  = tk_cre_mbf(&cmbf);
+
+    if (gh_summary < E_OK)
+    {
+        return gh_summary;
+    }
+
+    /* Alarm handler: called ONCE, a given time after tk_sta_alm().
+       The monitor task re-arms it each time round its loop. */
+    gh_monitor_alarm = task_monitor_create_alarm();
+    return (gh_monitor_alarm < E_OK) ? gh_monitor_alarm : E_OK;
+}
+#endif
 
 /** @brief Compute aligned kernel storage for a bounded B4 payload. */
 static SZ

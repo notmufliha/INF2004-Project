@@ -6,6 +6,7 @@
  * @brief Buddy 4 task imu module.
  */
 #include "task_imu.h"
+#include "subsystem4.h"
 #include "s4_runtime.h"
 #include "imu_analysis.h"
 #include "imu_processing.h"
@@ -249,6 +250,11 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
             {
                 tm_printf((UB *)"[B4] Sensor recovered: readings valid\n");
                 fault_clear(FAULT_IMU);
+            }
+
+            if ((!b_have_previous) || (health.b_recovered))
+            {
+                CHECK(tk_set_flg(gh_events, S4_IMU_READY_FLAG), "IMU ready");
             }
 
             report_event(&data, &event, &b_have_previous, &previous,
@@ -609,7 +615,10 @@ report_fault (const imu_processing_health_t * p_health, uint32_t timestamp_ms)
     if (p_health->b_fault_started)
     {
         tm_printf((UB *)"[B4] Sensor fault/unavailable: readings suppressed\n");
+        CHECK(tk_clr_flg(gh_events, ~S4_IMU_READY_FLAG), "IMU not ready");
         fault_raise(FAULT_IMU);
+        /* Discard the best-effort queue result; the shared fault stays set
+         * even if the error notification cannot be queued. */
         (void)comm_report_error(ERR_S4_IMU_FAULT, 0U);
 #if APP_TEST
         imu_event_t fault = {0};
@@ -657,12 +666,14 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
         if (p_event->b_hump_completed)
         {
             tm_printf((UB *)"[B4] Hump completed: height=N/A\n");
-            /* Unavailable heights remain explicitly invalid in B1. */
+            /* Unavailable heights remain explicitly invalid in B1. Discard
+             * the best-effort queue result to avoid retrying in analysis. */
             (void)comm_report_hump(
                 p_event->b_height_valid ? TRUE : FALSE,
                 telemetry_integer(p_event->hump_peak_cm * 10.0f),
                 telemetry_integer(p_event->highest_hump_cm * 10.0f));
         }
+
         /* Motion values are the shared 0..7 enum; the byte cast is exact. */
         comm_set_imu((UB)p_event->motion_state,
                      telemetry_integer(p_event->pitch_deg * 10.0f));
