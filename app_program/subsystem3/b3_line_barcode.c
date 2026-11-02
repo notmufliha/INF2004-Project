@@ -170,9 +170,12 @@ EXPORT ER b3_start(void)
 	if (g_b3_started != 0U) {
 		return E_OBJ;
 	}
+#if TK_SUPPORT_SMP
+	/* Single-core builds (SMP=0) have no tk_get_prc(): only core 0 runs. */
 	if (tk_get_prc() != 1) {
 		return E_CTX;
 	}
+#endif
 
 	error = gpio_set_pin(B3_BARCODE_PIN, GPIO_MODE_IN);
 	if (error != E_OK) {
