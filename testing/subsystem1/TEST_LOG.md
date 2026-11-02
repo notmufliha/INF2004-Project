@@ -11,14 +11,14 @@ Define a test here before running it. Test IDs never change.
 
 | ID | What is tested | Requirement / interface | Method | Steps / how | Expected result |
 |---|---|---|---|---|---|
-| S1-U01 | LED cyclic handler is running | — | auto | `subsystem1_test.c` | `[TEST] S1-U01 PASS` |
-| S1-U02 | comm_task sleeps between loops (no busy-wait) | NFR-B1-3 | auto | `subsystem1_test.c` | `[TEST] S1-U02 PASS` |
-| S1-U03 | valid 3-byte binary commands accepted and decoded (id, arg, seq) | FR-B1-5 | auto | `subsystem1_test.c` | `[TEST] S1-U03 PASS` |
-| S1-U04 | invalid frames rejected: wrong length, version, reserved bits, id, range, extra arg (10 cases) | NFR-B1-5 | auto | `subsystem1_test.c` | `[TEST] S1-U04 PASS` |
-| S1-U05 | binary frames have the documented sizes (28/5-9/23/3 B) and packing never overruns (was: JSON writer bounded) | CR1, robustness | auto | `subsystem1_test.c` | `[TEST] S1-U05 PASS` + size info line |
-| S1-U06 | 40 events posted in < 20 ms, never blocks when full | NFR-B1-2 | auto | `subsystem1_test.c` | `[TEST] S1-U06 PASS` |
-| S1-U07 | packed telemetry setters/getter consistent, out-of-range values saturated, encoder low 24 bits | IF-S1-TLM, CR1 | auto | `subsystem1_test.c` | `[TEST] S1-U07 PASS` |
-| S1-U08 | received binary frames validated (1 ok, 1 rejected) | FR-B1-5, NFR-B1-5 | auto | `subsystem1_test.c` | `[TEST] S1-U08 PASS` |
+| S1-U01 | LED cyclic handler is running | — | auto | `s1_test.c` | `[TEST] S1-U01 PASS` |
+| S1-U02 | comm_task sleeps between loops (no busy-wait) | NFR-B1-3 | auto | `s1_test.c` | `[TEST] S1-U02 PASS` |
+| S1-U03 | valid 3-byte binary commands accepted and decoded (id, arg, seq) | FR-B1-5 | auto | `s1_test.c` | `[TEST] S1-U03 PASS` |
+| S1-U04 | invalid frames rejected: wrong length, version, reserved bits, id, range, extra arg (10 cases) | NFR-B1-5 | auto | `s1_test.c` | `[TEST] S1-U04 PASS` |
+| S1-U05 | binary frames have the documented sizes (28/5-9/23/3 B) and packing never overruns (was: JSON writer bounded) | CR1, robustness | auto | `s1_test.c` | `[TEST] S1-U05 PASS` + size info line |
+| S1-U06 | 40 events posted in < 20 ms, never blocks when full | NFR-B1-2 | auto | `s1_test.c` | `[TEST] S1-U06 PASS` |
+| S1-U07 | packed telemetry setters/getter consistent, out-of-range values saturated, encoder low 24 bits | IF-S1-TLM, CR1 | auto | `s1_test.c` | `[TEST] S1-U07 PASS` |
+| S1-U08 | received binary frames validated (1 ok, 1 rejected) | FR-B1-5, NFR-B1-5 | auto | `s1_test.c` | `[TEST] S1-U08 PASS` |
 | S1-U09 | WiFi + MQTT connect within 30 s | FR-B1-1, FR-B1-2 | auto (needs AP + broker) | `make NET=lwip MQTT=1 TEST=1` | `[TEST] S1-U09 PASS` |
 | S1-U10 | telemetry published for 3 s with no drops | FR-B1-3 | auto (needs AP + broker) | `make NET=lwip MQTT=1 TEST=1` | `[TEST] S1-U10 PASS` |
 | S1-U11 | telemetry visible on laptop at 2 Hz | FR-B1-3 | manual | 1. Flash `..._lwip_mqtt.uf2`. 2. `python tools/mqtt_monitor.py` | `telemetry` line every 0.5 s, `#seq` +1 each |
@@ -30,10 +30,17 @@ Define a test here before running it. Test IDs never change.
 | S1-U17 | WiFi loss → reconnect, robot unaffected | FR-B1-7, NFR-B1-1 | manual | switch hotspot off 20 s, on again | LED fast blink, `demo_task` keeps running, reconnects |
 | S1-U18 | Last Will "offline" | FR-B1-6 | manual | unplug the Pico while `mqtt_monitor.py` runs | within ~15 s `status (retained) OFFLINE (last will)` (byte `0x20`) |
 | S1-U19 | 10-minute soak, count lost frames | Assumption A1 | manual | `python3 tools/mqtt_monitor.py --quiet-telemetry --log logs/<date>_soak.jsonl`, 10 min, Ctrl-C | summary: telemetry missing ≈ 0 %, events/acks 0 missing |
-| S1-U20 | shared fault bitmask: 1000 rounds of set/clear on two bits, the other bit never disturbed | CR1 (safe shared packed data) | auto | `subsystem1_test.c` | `[TEST] S1-U20 PASS` |
+| S1-U20 | shared fault bitmask: 1000 rounds of set/clear on two bits, the other bit never disturbed | CR1 (safe shared packed data) | auto | `s1_test.c` | `[TEST] S1-U20 PASS` |
 | S1-U21 | WiFi-loss bit in the shared fault mask | CR1, FR-B1-7 | manual | USB console open; switch the hotspot off 20 s, then on | console `s1: link CONNECTED -> RECONNECTING  faults=0x10`, then `... -> CONNECTED  faults=0x00` |
 | S1-U22 | real B4/B5 data reaches the laptop | integration | manual | robot build with `NET=lwip MQTT=1`; tilt the car, put a hand 20 cm in front of the ultrasonic sensor | telemetry `imu=` and `pitch=` change; `obs=20cm`; an `OBSTACLE` event after the scan; `NO_ECHO` fault when the sensor is unplugged |
 | S1-H01 | Pico packer and laptop decoder agree bit for bit (18 frames at min/max/invalid values, 24 command frames, 24-bit unwrap) | CR1, R2 (decoder mismatch) | auto (host) | `sh testing/subsystem1/host/run_host_tests.sh` | `ALL HOST TESTS PASSED` |
+| S1-U23 | LED pattern per link state at tick boundaries (0/1/2/7/8, out-of-range state) | FR-B1-8 | auto | `s1_test.c` | `[TEST] S1-U23 PASS` |
+| S1-H02 | WiFi re-join after 5 s for DOWN/FAIL/NONET/BADAUTH/unknown (4999 no, 5000 yes) | NFR-B1-6 | auto (host) | `run_host_tests.sh` | `s1_link: 47 checks, 0 failed` |
+| S1-H03 | UP never re-joins; JOIN/NOIP reset only at 20 s (19999 no, 20000 yes) | NFR-B1-6 | auto (host) | `run_host_tests.sh` | as H02 |
+| S1-H04 | MQTT backoff 1,2,4,8,16,16 s then 60 s OFFLINE, no overflow | FR-B1-7 | auto (host) | `run_host_tests.sh` | as H02 |
+| S1-H05 | DNS failure falls back to the last working address | NFR-B1-7 | auto (host) | `run_host_tests.sh` | as H02 |
+| S1-H06 | dashboard JavaScript decoder agrees with the C packer (18 frames), rejects bad commands | NFR-B1-4 | auto (host, node) | `run_host_tests.sh` | `S1-H06 dashboard decoder: 18 frames, 0 failures` |
+| S1-I01..I05, S1-S01..S06 | integration and system tests | see `REQUIREMENTS_TRACE.md` section 3 | manual | dashboard + console | as listed there |
 | S1-M01 | RAM before/after the change | CR1 Week 13 | manual | see `DATA_REPRESENTATION.md` section 3 | `.bss` lower by ~1.6 KB, kernel buffers by 3,232 B |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
@@ -48,3 +55,5 @@ Add a new row for every run. Never edit or delete old rows.
 | YYYY-MM-DD | S1-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
 | 2026-10-28 | S1-H01 | PR #7 | B1 | PASS | `logs/2026-10-28_host_S1-H01.txt` | 18 frames + 24 command frames + unwrap; run on the laptop, no Pico |
 | 2026-10-28 | S1-M01 | PR #7 | B1 | DONE | `logs/before_ram_main.txt`, `logs/after_ram.txt` | data+bss 81,012 -> 79,452 B (-1,560); B1 symbols 1,778 -> 192 B. Build only, not run |
+| 2026-11-02 | S1-H01..H06 | `648c8c1` + dashboard | B1 | PASS | `logs/2026-11-02_host_S1-H01-H06.txt` | after the BARR-C rewrite and reconnect fix; laptop only, no Pico. BARR-C scanner PASS in the same log |
+| 2026-11-02 | build | `648c8c1` | B1 | PASS | - | `NET=lwip MQTT=1 SMP=0` and `TEST=1` link with 0 warnings; B1 built with C99 -Wconversion -Werror. Not flashed |

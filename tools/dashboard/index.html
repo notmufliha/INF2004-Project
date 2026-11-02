@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Car Dashboard</title>
+<!-- MQTT over WebSockets (Mosquitto listener 9001, see README.md) -->
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="s1_wire.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3f0; --surface: #fcfcfb; --surface-2: #f0efec; --border: #dddcd6;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974; --grid: #e6e5e0;
+  --series-1: #2a78d6; --series-2: #eb6834;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --accent: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface: #1a1a19; --surface-2: #232321; --border: #33332f;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2b2b28;
+    --series-1: #3987e5; --series-2: #d95926; --accent: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110; --surface: #1a1a19; --surface-2: #232321; --border: #33332f;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2b2b28;
+  --series-1: #3987e5; --series-2: #d95926; --accent: #3987e5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+h1 { font-size: 17px; margin: 0 8px 0 0; }
+input, select, button { font: inherit; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+input[type=text] { width: 200px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.danger { background: var(--critical); color: #fff; border-color: var(--critical); font-weight: 600; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+main { display: grid; gap: 12px; padding: 12px 16px 24px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; min-width: 0; }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-2); margin: 0 0 10px; }
+.wide { grid-column: 1 / -1; }
+.tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.tile .k { font-size: 12px; color: var(--text-2); }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--muted); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+.kv dt { color: var(--text-2); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px;
+  border-radius: 999px; border: 1px solid var(--border); font-size: 12px; font-weight: 600; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 2px 8px; border-radius: 6px; font-size: 12px; border: 1px solid var(--border);
+  color: var(--muted); }
+.chip.on { color: var(--text); border-color: var(--critical); }
+.chip.on::before { content: "⚠ "; color: var(--critical); }
+.bar { height: 10px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--series-1); border-radius: 4px; }
+.log { max-height: 240px; overflow: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; }
+.log div { border-bottom: 1px solid var(--grid); padding: 2px 0; }
+.log .t { color: var(--muted); margin-right: 6px; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
+svg.chart { width: 100%; height: 150px; display: block; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 2px;
+  vertical-align: middle; margin-right: 5px; background: var(--c); }
+.tip { position: fixed; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; display: none; z-index: 5;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15); font-variant-numeric: tabular-nums; }
+.note { font-size: 12px; color: var(--muted); }
+@media (max-width: 520px) { input[type=text] { width: 100%; } header { padding: 10px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Robot Car Dashboard</h1>
+  <input id="url" type="text" value="ws://localhost:9001" aria-label="Broker WebSocket URL">
+  <input id="prefix" type="text" value="inf2004/g25/car" aria-label="Topic prefix">
+  <button id="connect" class="primary">Connect</button>
+  <button id="demo">Demo data</button>
+  <span id="conn" class="badge"><span class="dot"></span><span>not connected</span></span>
+  <span id="car" class="badge"><span class="dot"></span><span>car: unknown</span></span>
+  <button id="theme" title="Toggle light/dark">◐</button>
+</header>
+<main>
+  <section class="card wide">
+    <div class="tiles">
+      <div class="tile"><div class="k">Robot state</div><div class="v" id="t-state">–</div><div class="s" id="t-mode">from telemetry</div></div>
+      <div class="tile"><div class="k">Link (car's view)</div><div class="v" id="t-link">–</div><div class="s" id="t-ip">ip –</div></div>
+      <div class="tile"><div class="k">Telemetry</div><div class="v" id="t-age">–</div><div class="s" id="t-rate">period –</div></div>
+      <div class="tile"><div class="k">Missing frames</div><div class="v" id="t-gap">0</div><div class="s">telemetry seq gaps</div></div>
+      <div class="tile"><div class="k">Faults</div><div class="chips" id="faults"></div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Motion (B2)</h2>
+    <div class="legend"><span style="--c:var(--series-1)">Left wheel</span><span style="--c:var(--series-2)">Right wheel</span><span>counts/s, last 60 s</span></div>
+    <svg class="chart" id="speed-chart" role="img" aria-label="Wheel speeds, last 60 seconds"></svg>
+    <dl class="kv">
+      <dt>Speed L / R</dt><dd id="m-speed">–</dd>
+      <dt>Encoders L / R</dt><dd id="m-enc">–</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Line &amp; barcode (B3)</h2>
+    <dl class="kv">
+      <dt>IR left</dt><dd><div class="bar"><i id="ir-l" style="width:0"></i></div><span id="ir-l-v">–</span></dd>
+      <dt>IR centre</dt><dd><div class="bar"><i id="ir-c" style="width:0"></i></div><span id="ir-c-v">–</span></dd>
+      <dt>IR right</dt><dd id="ir-r">–</dd>
+      <dt>Line flags</dt><dd id="line">–</dd>
+      <dt>Last barcode</dt><dd id="barcode">–</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>IMU &amp; hump (B4)</h2>
+    <dl class="kv">
+      <dt>Motion</dt><dd id="imu">–</dd>
+      <dt>Pitch</dt><dd id="pitch">–</dd>
+      <dt>Hump last / peak</dt><dd id="hump">–</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Obstacle (B5)</h2>
+    <div class="legend"><span style="--c:var(--series-1)">Front distance, cm, last 60 s</span></div>
+    <svg class="chart" id="dist-chart" role="img" aria-label="Front obstacle distance, last 60 seconds"></svg>
+    <dl class="kv">
+      <dt>Front</dt><dd id="o-d">–</dd>
+      <dt>Width</dt><dd id="o-w">–</dd>
+      <dt>Clearance L / R</dt><dd id="o-lr">–</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Link health (B1 heartbeat)</h2>
+    <dl class="kv">
+      <dt>Frames queued</dt><dd id="h-tx">–</dd>
+      <dt>Dropped (tx / events)</dt><dd id="h-drop">–</dd>
+      <dt>Commands ok / rejected</dt><dd id="h-rx">–</dd>
+      <dt>Reconnects</dt><dd id="h-rc">–</dd>
+      <dt>Last heartbeat</dt><dd id="h-age">–</dd>
+    </dl>
+    <p class="note">Counters are 16-bit and wrap; compare two heartbeats.</p>
+  </section>
+
+  <section class="card">
+    <h2>Commands</h2>
+    <div class="btnrow">
+      <button data-cmd="START" class="primary">Start</button>
+      <button data-cmd="PAUSE">Pause</button>
+      <button data-cmd="RESUME">Resume</button>
+      <button data-cmd="STOP">Stop</button>
+      <button data-cmd="ESTOP" class="danger">E-STOP</button>
+    </div>
+    <div class="btnrow">
+      <label>Speed <input id="speed" type="range" min="0" max="100" value="20"></label>
+      <span id="speed-v">20%</span><button id="send-speed">Set</button>
+    </div>
+    <div class="btnrow">
+      <select id="mode" aria-label="Run mode"><option>AUTO</option><option>LINE</option><option>TEST</option></select>
+      <button id="send-mode">Set mode</button>
+      <button data-cmd="RESET_PEAK">Reset peak</button>
+      <button data-cmd="PING">Ping</button>
+      <button data-cmd="STATUS">Status</button>
+    </div>
+    <div class="btnrow">
+      <input id="raw" type="text" placeholder="e.g. TELEM 300" aria-label="Command text">
+      <button id="send-raw">Send</button>
+    </div>
+    <div class="log" id="acks"></div>
+  </section>
+
+  <section class="card wide">
+    <h2>Events</h2>
+    <div class="log" id="events"></div>
+  </section>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+"use strict";
+const W = window.S1Wire;
+const $ = (id) => document.getElementById(id);
+const HISTORY_S = 60;
+const state = { client: null, demo: null, seq: 0, lastTelem: null, lastTelemAt: 0,
+  lastHbAt: 0, telemMs: 500, gaps: 0, encL: new W.Unwrap24(), encR: new W.Unwrap24(),
+  speed: [], dist: [], pendingAck: {} };
+
+/* ---------- theme ---------- */
+$("theme").onclick = () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark";
+  try { localStorage.setItem("s1-theme", document.documentElement.dataset.theme); } catch (e) {}
+  redraw();
+};
+try { const t = localStorage.getItem("s1-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+try { const u = localStorage.getItem("s1-url"); if (u) $("url").value = u; } catch (e) {}
+
+/* ---------- small helpers ---------- */
+const now = () => Date.now();
+const fmtCm = (v) => (v === null ? "no echo" : `${v} cm`);
+function badge(el, text, color) {
+  el.querySelector(".dot").style.background = color;
+  el.lastElementChild.textContent = text;
+}
+function log(el, text) {
+  const d = document.createElement("div");
+  const t = document.createElement("span");
+  t.className = "t"; t.textContent = new Date().toLocaleTimeString();
+  d.append(t, document.createTextNode(text));
+  el.prepend(d);
+  while (el.childElementCount > 200) el.lastElementChild.remove();
+}
+function renderFaults(mask) {
+  const box = $("faults"); box.textContent = "";
+  for (const [bit, name] of W.FAULT_BITS) {
+    const c = document.createElement("span");
+    c.className = "chip" + (mask & bit ? " on" : "");
+    c.textContent = name; c.title = mask & bit ? "active" : "clear";
+    box.append(c);
+  }
+}
+renderFaults(0);
+
+/* ---------- charts: one axis, thin lines, crosshair tooltip ---------- */
+function drawChart(svg, series, unit) {
+  const css = getComputedStyle(document.documentElement);
+  const w = svg.clientWidth || 300, h = svg.clientHeight || 150;
+  const pad = { l: 44, r: 8, t: 8, b: 20 };
+  const t1 = now() / 1000, t0 = t1 - HISTORY_S;
+  let lo = Infinity, hi = -Infinity;
+  for (const s of series) for (const p of s.data) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  lo = Math.min(lo, 0); if (hi - lo < 1) hi = lo + 1;
+  { // tidy axis: 3 steps of 1, 2, 2.5 or 5 x 10^n
+    const raw = (hi - lo) / 3, mag = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+    lo = Math.floor(lo / step) * step; hi = lo + 3 * step;
+  }
+  const x = (t) => pad.l + ((t - t0) / HISTORY_S) * (w - pad.l - pad.r);
+  const y = (v) => h - pad.b - ((v - lo) / (hi - lo)) * (h - pad.t - pad.b);
+  let out = "";
+  for (let i = 0; i <= 3; i++) {
+    const v = lo + ((hi - lo) * i) / 3, yy = y(v).toFixed(1);
+    out += `<line x1="${pad.l}" x2="${w - pad.r}" y1="${yy}" y2="${yy}" stroke="${css.getPropertyValue("--grid")}" />`;
+    out += `<text x="${pad.l - 6}" y="${yy}" dy="4" text-anchor="end" font-size="11" fill="${css.getPropertyValue("--muted")}">${Math.round(v)}</text>`;
+  }
+  out += `<text x="${pad.l}" y="${h - 4}" font-size="11" fill="${css.getPropertyValue("--muted")}">-60 s</text>`;
+  out += `<text x="${w - pad.r}" y="${h - 4}" text-anchor="end" font-size="11" fill="${css.getPropertyValue("--muted")}">now</text>`;
+  for (const s of series) {
+    const pts = s.data.filter((p) => p.t >= t0).map((p) => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`);
+    if (pts.length > 1) out += `<polyline fill="none" stroke="${css.getPropertyValue(s.color)}" stroke-width="2" stroke-linejoin="round" points="${pts.join(" ")}" />`;
+  }
+  out += `<line class="xh" y1="${pad.t}" y2="${h - pad.b}" stroke="${css.getPropertyValue("--muted")}" visibility="hidden" />`;
+  out += `<rect x="${pad.l}" y="0" width="${w - pad.l - pad.r}" height="${h}" fill="transparent" />`;
+  svg.innerHTML = out;
+  svg.onmousemove = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const t = t0 + ((ev.clientX - r.left - pad.l) / (w - pad.l - pad.r)) * HISTORY_S;
+    const lines = [];
+    for (const s of series) {
+      let best = null;
+      for (const p of s.data) if (!best || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+      if (best && Math.abs(best.t - t) < 2) lines.push(`${s.name}: ${best.v} ${unit}`);
+    }
+    const xh = svg.querySelector(".xh");
+    if (!lines.length) { xh.setAttribute("visibility", "hidden"); $("tip").style.display = "none"; return; }
+    xh.setAttribute("x1", x(t)); xh.setAttribute("x2", x(t)); xh.setAttribute("visibility", "visible");
+    const tip = $("tip");
+    tip.textContent = `${(t - t1).toFixed(1)} s · ` + lines.join(" · ");
+    tip.style.display = "block";
+    tip.style.left = Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8) + "px";
+    tip.style.top = ev.clientY + 12 + "px";
+  };
+  svg.onmouseleave = () => { $("tip").style.display = "none"; svg.querySelector(".xh").setAttribute("visibility", "hidden"); };
+}
+function redraw() {
+  const t0 = now() / 1000 - HISTORY_S;
+  state.speed = state.speed.filter((p) => p.t >= t0);
+  state.dist = state.dist.filter((p) => p.t >= t0);
+  drawChart($("speed-chart"), [
+    { name: "Left", color: "--series-1", data: state.speed.map((p) => ({ t: p.t, v: p.l })) },
+    { name: "Right", color: "--series-2", data: state.speed.map((p) => ({ t: p.t, v: p.r })) }], "c/s");
+  drawChart($("dist-chart"), [
+    { name: "Front", color: "--series-1", data: state.dist }], "cm");
+}
+addEventListener("resize", redraw);
+
+/* ---------- incoming frames ---------- */
+function onTelemetry(d) {
+  if (state.lastTelem) {
+    const gap = (d.seq - state.lastTelem.seq + 65536) % 65536;
+    if (gap > 1 && gap < 32768) state.gaps += gap - 1;
+  }
+  state.lastTelem = d; state.lastTelemAt = now();
+  const t = now() / 1000;
+  state.speed.push({ t, l: d.spd_l, r: d.spd_r });
+  if (d.obs_d_cm !== null) state.dist.push({ t, v: d.obs_d_cm });
+  $("t-state").textContent = d.state_name;
+  $("t-gap").textContent = state.gaps;
+  renderFaults(d.faults);
+  $("m-speed").textContent = `${d.spd_l} / ${d.spd_r} counts/s`;
+  $("m-enc").textContent = `${state.encL.update(d.enc_l)} / ${state.encR.update(d.enc_r)}`;
+  $("ir-l").style.width = (d.ir_l / 40.95) + "%"; $("ir-l-v").textContent = d.ir_l;
+  $("ir-c").style.width = (d.ir_c / 40.95) + "%"; $("ir-c-v").textContent = d.ir_c;
+  $("ir-r").textContent = d.ir_r ? "on line (1)" : "off (0)";
+  $("line").textContent = d.line_flags.join(" + ") || "none";
+  $("barcode").textContent = d.barcode ? `${d.barcode_name} → ${d.nav_name}` : "none yet";
+  $("imu").textContent = d.motion_name;
+  $("pitch").textContent = `${d.pitch_deg.toFixed(1)}°`;
+  $("hump").textContent = d.hump_valid ? `${d.hump_last_mm} / ${d.hump_peak_mm} mm` : "not measured";
+  $("o-d").textContent = fmtCm(d.obs_d_cm);
+  $("o-w").textContent = d.obs_w_cm === null ? "not measured" : `${d.obs_w_cm} cm`;
+  $("o-lr").textContent = `${fmtCm(d.obs_lc_cm)} / ${fmtCm(d.obs_rc_cm)}`;
+  redraw();
+}
+function onStatus(d) {
+  if (!("link" in d)) { // retained 1-byte online / Last Will
+    badge($("car"), d.online ? "car: online" : "car: OFFLINE (last will)",
+      d.online ? "var(--good)" : "var(--critical)");
+    return;
+  }
+  state.lastHbAt = now(); state.telemMs = d.telem_ms;
+  badge($("car"), d.demo ? "car: online (demo data)" : "car: online", "var(--good)");
+  $("t-link").textContent = d.link_name;
+  $("t-ip").textContent = `ip ${d.ip_str}`;
+  $("t-rate").textContent = `period ${d.telem_ms} ms`;
+  $("h-tx").textContent = d.tx;
+  $("h-drop").textContent = `${d.drop} / ${d.evdrop}`;
+  $("h-rx").textContent = `${d.rx} / ${d.rej}`;
+  $("h-rc").textContent = d.reconn;
+  renderFaults(d.faults);
+}
+function onEvent(d) {
+  let text = `#${d.seq} ${d.type_name.toUpperCase()} `;
+  if (d.type === 0) text += `${d.code_name} → ${d.nav_name}`;
+  else if (d.type === 1) text += d.valid ? `height ${d.height_mm} mm, peak ${d.peak_mm} mm` : "height not measured";
+  else if (d.type === 2) text += `front ${fmtCm(d.d_cm)}, width ${d.w_cm === null ? "?" : d.w_cm + " cm"}, L ${fmtCm(d.lc_cm)}, R ${fmtCm(d.rc_cm)} → ${d.action_name}`;
+  else text += `${d.err_text} (detail ${d.detail})`;
+  log($("events"), text);
+}
+function onAck(d) {
+  const sent = state.pendingAck[d.seq];
+  const rtt = sent ? ` · ${now() - sent} ms` : "";
+  delete state.pendingAck[d.seq];
+  log($("acks"), `#${d.seq} ${d.cmd_name} ${d.ok ? "OK" : "REJECTED"}: ${d.result_text}${rtt}`);
+}
+function handle(kind, bytes) {
+  try {
+    const d = W.decode(kind, bytes);
+    ({ telemetry: onTelemetry, status: onStatus, event: onEvent, "cmd/ack": onAck })[kind](d);
+  } catch (e) {
+    log($("events"), `bad ${kind} frame (${bytes.length} B): ${e.message}`);
+  }
+}
+
+/* ---------- ages, refreshed twice a second ---------- */
+setInterval(() => {
+  if (state.lastTelemAt) {
+    const age = (now() - state.lastTelemAt) / 1000;
+    $("t-age").textContent = age < 1 ? "live" : `${age.toFixed(0)} s old`;
+    $("t-age").style.color = age > (3 * state.telemMs) / 1000 ? "var(--critical)" : "";
+  }
+  if (state.lastHbAt) $("h-age").textContent = `${((now() - state.lastHbAt) / 1000).toFixed(0)} s ago`;
+  redraw();
+}, 500);
+
+/* ---------- commands ---------- */
+function send(text) {
+  let frame;
+  try { frame = W.encodeCommand(text, state.seq); } catch (e) { log($("acks"), `not sent: ${e.message}`); return; }
+  const seq = state.seq; state.seq = (state.seq + 1) & 0xFF;
+  state.pendingAck[seq] = now();
+  if (state.demo) state.demo.command(frame);
+  else if (state.client && state.client.connected) state.client.publish(`${$("prefix").value}/cmd`, frame, { qos: 1 });
+  else { log($("acks"), "not connected"); return; }
+  log($("acks"), `→ #${seq} ${text.toUpperCase()}`);
+}
+document.querySelectorAll("button[data-cmd]").forEach((b) => (b.onclick = () => send(b.dataset.cmd)));
+$("speed").oninput = () => ($("speed-v").textContent = $("speed").value + "%");
+$("send-speed").onclick = () => send(`SPEED ${$("speed").value}`);
+$("send-mode").onclick = () => send(`MODE ${$("mode").value}`);
+$("send-raw").onclick = () => send($("raw").value);
+$("raw").onkeydown = (e) => { if (e.key === "Enter") send($("raw").value); };
+addEventListener("keydown", (e) => { if (e.key === " " && e.target.tagName !== "INPUT") { e.preventDefault(); send("ESTOP"); } });
+
+/* ---------- broker connection ---------- */
+function stopAll() {
+  if (state.client) { state.client.end(true); state.client = null; }
+  if (state.demo) { state.demo.stop(); state.demo = null; }
+}
+$("connect").onclick = () => {
+  stopAll();
+  if (typeof mqtt === "undefined") { badge($("conn"), "mqtt.js failed to load (offline?)", "var(--critical)"); return; }
+  const url = $("url").value.trim(), prefix = $("prefix").value.trim();
+  try { localStorage.setItem("s1-url", url); } catch (e) {}
+  badge($("conn"), "connecting…", "var(--warning)");
+  const c = mqtt.connect(url, { reconnectPeriod: 2000, connectTimeout: 5000 });
+  state.client = c;
+  c.on("connect", () => { badge($("conn"), `broker: ${url}`, "var(--good)"); c.subscribe(`${prefix}/#`); });
+  c.on("reconnect", () => badge($("conn"), "broker: reconnecting…", "var(--warning)"));
+  c.on("close", () => badge($("conn"), "broker: disconnected", "var(--critical)"));
+  c.on("error", (e) => badge($("conn"), `broker error: ${e.message}`, "var(--critical)"));
+  c.on("message", (topic, payload) => {
+    const kind = topic.slice(prefix.length + 1);
+    if (kind !== "cmd") handle(kind, new Uint8Array(payload));
+  });
+};
+
+/* ---------- demo: real binary frames from a fake car ---------- */
+function startDemo() {
+  const car = { running: true, state: 2, speed: 20, enc: 0, seq: 0, hb: 0, ev: 0, t: 0, peak: 0, faults: 0 };
+  const pack = W.pack, V = W.WIRE_VERSION;
+  const emit = (kind, layout, v) => handle(kind, pack(layout, Object.assign({ ver: V }, v)));
+  const event = (type, body) => {
+    car.ev = (car.ev + 1) & 255;
+    const full = W.EVENT_HEADER.concat(W.EVENT_BODY[type]);
+    handle("event", pack(full, Object.assign({ ver: V, type, seq: car.ev, t_ds: car.t }, body)));
+  };
+  emit("status", [["ver", 3], ["online", 1], ["pad", 4]], { online: 1 });
+  const tick = setInterval(() => {
+    car.t += 5;
+    const spd = car.running ? car.speed * 50 : 0;
+    car.enc += spd / 2;
+    const dist = 40 + Math.round(30 * Math.sin(car.t / 40) + Math.random() * 6);
+    emit("telemetry", W.TELEMETRY, { seq: (car.seq = (car.seq + 1) & 65535), t_ds: car.t,
+      state: car.state, faults: car.faults, spd_l: spd + Math.round(Math.random() * 30),
+      spd_r: Math.max(0, spd - Math.round(Math.random() * 30)), enc_l: Math.round(car.enc),
+      enc_r: Math.round(car.enc * 0.99), ir_l: 800 + Math.round(Math.random() * 200),
+      ir_c: 2300 + Math.round(Math.random() * 400), ir_r: 0, line: 1, barcode: 2, nav: 2,
+      motion: car.running ? 1 : 0, pitch_dd: Math.round(Math.random() * 20 - 10),
+      hump_valid: 1, hump_last_mm: 23, hump_peak_mm: car.peak, obs_d_cm: dist,
+      obs_w_cm: 12, obs_lc_cm: 30, obs_rc_cm: 9 });
+    if (car.t % 50 === 0) emit("status", W.STATUS, { online: 1, link: 3, demo: 1,
+      seq: ++car.hb, t_ds: car.t, ip: 0x1701A8C0, telem_ds: 5, faults: car.faults,
+      tx: car.seq + car.hb, drop: 0, evdrop: 0, rx: 3, rej: 1, reconn: 1 });
+    if (car.running && car.t % 80 === 0) event(0, { code: 1 + ((car.t / 80) % 4), nav: 1 + ((car.t / 80) % 4) });
+    if (car.running && car.t % 130 === 0) { car.peak = Math.max(car.peak, 31); event(1, { valid: 1, height_mm: 31, peak_mm: car.peak }); }
+    if (car.running && car.t % 210 === 0) event(2, { d_cm: 25, w_cm: 12, lc_cm: 30, rc_cm: 9, action: 3 });
+  }, 500);
+  return {
+    stop: () => clearInterval(tick),
+    command(frame) { // act as subsystem 1 + the Vehicle Controller
+      const c = W.unpack(W.COMMAND, frame)[0];
+      let result = 0;
+      if (c.cmd === 1 || c.cmd === 5) { car.running = true; car.state = 2; }
+      else if (c.cmd === 2 || c.cmd === 3) { car.running = false; car.state = 8; }
+      else if (c.cmd === 4) { car.running = false; car.state = 1; }
+      else if (c.cmd === 7) car.speed = c.arg;
+      else if (c.cmd === 8) car.peak = 0;
+      else if (c.cmd === 9) result = 1;
+      else if (c.cmd === 10) result = 2;
+      else if (c.cmd === 11) result = 3;
+      setTimeout(() => emit("cmd/ack", W.ACK, { seq: c.seq, cmd: c.cmd, ok: 1, result }), 60);
+    },
+  };
+}
+$("demo").onclick = () => {
+  stopAll();
+  badge($("conn"), "demo data (no broker)", "var(--warning)");
+  state.demo = startDemo();
+};
+redraw();
+</script>
+</body>
+</html>
