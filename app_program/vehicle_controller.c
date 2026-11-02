@@ -4,7 +4,6 @@
 #include "subsystem3/b3_line_barcode.h"
 #include "subsystem4/imu_vc.h"
 #include "subsystem4/subsystem4.h"
-#include <stddef.h>
 
 #if ROBOT_MODE && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || S1_STANDALONE_DEMO)
 #error "The Vehicle Controller requires exclusive command ownership; disable demos/tests"
