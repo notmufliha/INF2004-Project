@@ -30,6 +30,11 @@ volatile ID gh_imu_data_buffer;
 volatile ID gh_imu_test_events;
 #endif
 
+ER subsystem4_reset_peak (void)
+{
+    return (gh_events > 0) ? tk_set_flg(gh_events, S4_RESET_PEAK_FLAG) : E_OBJ;
+}
+
 static SZ message_storage_bytes (uint32_t payload_bytes);
 #if !ROBOT_MODE
 static ER create_legacy_objects (void);

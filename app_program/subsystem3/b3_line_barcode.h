@@ -77,6 +77,8 @@ IMPORT ER b3_start(void);
  * @return E_OK on success, E_PAR for a null pointer, otherwise a kernel error.
  */
 IMPORT ER b3_get_state(B3_STATE *state);
+/* Timestamp is updated only after both ADC reads succeed. E_OBJ until then. */
+IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
 
 /**
  * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.

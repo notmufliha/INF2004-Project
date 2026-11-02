@@ -242,6 +242,16 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
          */
         bool b_analysed = imu_analysis_process(&analysis, &processed, &event);
 
+        {
+            UINT reset_flags = 0U;
+            if (E_OK == tk_wai_flg(gh_events, S4_RESET_PEAK_FLAG,
+                                   TWF_ORW | TWF_BITCLR, &reset_flags, TMO_POL))
+            {
+                height.highest_cm = 0.0f;
+                height.b_highest_valid = false;
+                comm_reset_hump_peak();
+            }
+        }
         imu_height_process(&height, &data, &event);
 
         event.timestamp_ms       = data.timestamp_ms;

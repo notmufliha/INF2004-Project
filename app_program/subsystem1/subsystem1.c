@@ -1,130 +1,189 @@
-/*
- *	subsystem1.c
- *	Subsystem 1 -- WiFi Communication, Command & Telemetry.
- *	Creates the kernel objects (init) and starts the tasks (start).
+/** @file subsystem1.c
+ * @brief Subsystem 1, WiFi Communication, Command & Telemetry: creates
+ * the kernel objects (init) and starts the tasks (start).  The objects
+ * and their users are listed in s1_private.h.
  *
- *	Objects, and who uses them:
- *	  mbf_events      app tasks  -> comm_task     COMM_EVENT (fixed size)
- *	  mbf_tx          comm_task  -> WiFi task     topic + binary frame (variable)
- *	  mbf_rx          WiFi task  -> comm_task     3-byte command (variable)
- *	  mbf_remote_cmd  comm_task  -> Vehicle Ctrl  REMOTE_CMD   (IF-S1-CMD)
- *	  mtx_telem       guards the telemetry snapshot s1_telem
- *	  flg_comm        wakes comm_task as soon as something is queued
- *	  cyc_led         paces the status LED
- *	  flg_faults      the shared fault bitmask (fault_flags.h), created
- *	                  here until the Vehicle Controller takes it over
- *
- *	APIs shown: tk_cre_mbf, tk_cre_mtx (TA_INHERIT), tk_cre_flg,
- *	            tk_cre_cyc, tk_sta_cyc
+ * APIs shown: tk_cre_mbf, tk_cre_mtx (TA_INHERIT), tk_cre_flg,
+ *             tk_cre_cyc, tk_sta_cyc
  */
 
+#include "subsystem1.h"
 #include "s1_private.h"
+#include "s1_comm.h"
+#include "s1_led.h"
+#include "s1_demo.h"
+#include "s1_test.h"
 
-EXPORT ID	tid_led;		/* IF-05 (template example) */
-EXPORT ID	tid_comm;
-EXPORT ID	cyc_led;
-EXPORT ID	mbf_events;
-EXPORT ID	mbf_tx;
-EXPORT ID	mbf_rx;
-EXPORT ID	mbf_remote_cmd;		/* IF-S1-CMD */
-EXPORT ID	mtx_telem;
-EXPORT ID	flg_comm;
-EXPORT ID	flg_faults;		/* shared: fault_flags.h */
+ID tid_led        = 0; /* IF-05 (template example)   */
+ID mbf_remote_cmd = 0; /* I1.3 IF-S1-CMD             */
 
-LOCAL ID make_mbf(SZ bufsz, INT maxmsz)
+ID gh_s1_comm_task = 0;
+ID gh_s1_led_cyc   = 0;
+ID gh_s1_event_mbf = 0;
+ID gh_s1_tx_mbf    = 0;
+ID gh_s1_rx_mbf    = 0;
+ID gh_s1_telem_mtx = 0;
+ID gh_s1_comm_flg  = 0;
+
+static ID make_mbf (uint32_t buf_bytes, uint32_t max_msg_bytes);
+static ER make_sync_objects (void);
+
+/** @brief Create every subsystem 1 kernel object (runs before any task).
+ *
+ * @return E_OK, or the first kernel error.
+ */
+ER
+subsystem1_init (void)
 {
-	T_CMBF cmbf = {0};
+    ER result = E_OK;
 
-	cmbf.mbfatr = TA_TFIFO;
-	cmbf.bufsz  = bufsz;
-	cmbf.maxmsz = maxmsz;
-	return tk_cre_mbf(&cmbf);
+    gh_s1_event_mbf = make_mbf(EVENT_QUEUE_LEN *
+                               ((uint32_t)sizeof(comm_pack_event_t) +
+                                MBF_MSG_OVERHEAD),
+                               (uint32_t)sizeof(comm_pack_event_t));
+    gh_s1_tx_mbf    = make_mbf(TX_BUF_SIZE, TX_RECORD_MAX);
+    gh_s1_rx_mbf    = make_mbf(RX_BUF_SIZE, RX_RECORD_MAX);
+    mbf_remote_cmd  = make_mbf(REMOTE_CMD_QUEUE_LEN *
+                               ((uint32_t)sizeof(comm_remote_cmd_t) +
+                                MBF_MSG_OVERHEAD),
+                               (uint32_t)sizeof(comm_remote_cmd_t));
+
+    if (gh_s1_event_mbf < E_OK)
+    {
+        result = gh_s1_event_mbf;
+    }
+    else if (gh_s1_tx_mbf < E_OK)
+    {
+        result = gh_s1_tx_mbf;
+    }
+    else if (gh_s1_rx_mbf < E_OK)
+    {
+        result = gh_s1_rx_mbf;
+    }
+    else if (mbf_remote_cmd < E_OK)
+    {
+        result = mbf_remote_cmd;
+    }
+    else
+    {
+        result = make_sync_objects();
+    }
+
+    return (result);
 }
 
-EXPORT ER subsystem1_init(void)
+/** @brief Start the comm and LED tasks (and the demo, if built in). */
+ER
+subsystem1_start (void)
 {
-	T_CCYC	ccyc = {0};
-	T_CMTX	cmtx = {0};
-	T_CFLG	cflg = {0};
+    ER result = E_OK;
 
-	mbf_events = make_mbf(EVENT_QUEUE_LEN *
-			      (SZ)(sizeof(COMM_EVENT) + MBF_MSG_OVERHEAD),
-			      (INT)sizeof(COMM_EVENT));
-	if (mbf_events < E_OK) {
-		return mbf_events;
-	}
+    /* Entry points are cast to the kernel's generic FP type; the kernel
+     * calls them with (INT stacd, void *exinf), matching their type. */
+    gh_s1_comm_task = app_start_task((FP)s1_comm_task, S1_PRI_COMM, 0U,
+                                     "comm_task");
+    tid_led         = app_start_task((FP)s1_led_task, S1_PRI_LED, 0U,
+                                     "led_task");
 
-	mbf_tx = make_mbf(TX_BUF_SIZE, TX_RECORD_MAX);
-	if (mbf_tx < E_OK) {
-		return mbf_tx;
-	}
+    if (gh_s1_comm_task < E_OK)
+    {
+        result = gh_s1_comm_task;
+    }
+    else if (tid_led < E_OK)
+    {
+        result = tid_led;
+    }
+    else
+    {
+        result = s1_demo_start();
+    }
 
-	mbf_rx = make_mbf(RX_BUF_SIZE, COMM_CMD_MAX + 1);	/* +1: too long */
-	if (mbf_rx < E_OK) {
-		return mbf_rx;
-	}
+    if (E_OK == result)
+    {
+        result = tk_sta_cyc(gh_s1_led_cyc);
+    }
 
-	mbf_remote_cmd = make_mbf(REMOTE_CMD_QUEUE_LEN *
-				  (SZ)(sizeof(REMOTE_CMD) + MBF_MSG_OVERHEAD),
-				  (INT)sizeof(REMOTE_CMD));
-	if (mbf_remote_cmd < E_OK) {
-		return mbf_remote_cmd;
-	}
-
-	/* TA_INHERIT: if a high-priority sensor task waits for the snapshot
-	   while low-priority comm_task holds it, comm_task is raised so the
-	   wait is as short as possible (no priority inversion). */
-	cmtx.mtxatr = TA_INHERIT;
-	mtx_telem = tk_cre_mtx(&cmtx);
-	if (mtx_telem < E_OK) {
-		return mtx_telem;
-	}
-
-	cflg.flgatr  = TA_TFIFO | TA_WSGL;	/* only comm_task waits */
-	cflg.iflgptn = 0;
-	flg_comm = tk_cre_flg(&cflg);
-	if (flg_comm < E_OK) {
-		return flg_comm;
-	}
-
-	/* Fault bitmask: any task may wait on it (TA_WMUL), all bits clear */
-	cflg.flgatr  = TA_TFIFO | TA_WMUL;
-	cflg.iflgptn = 0;
-	flg_faults = tk_cre_flg(&cflg);
-	if (flg_faults < E_OK) {
-		return flg_faults;
-	}
-
-	ccyc.cycatr = TA_HLNG;
-	ccyc.cychdr = (FP)led_cyclic_handler;
-	ccyc.cyctim = S1_TICK_MS;
-	ccyc.cycphs = S1_TICK_MS;
-	cyc_led = tk_cre_cyc(&ccyc);
-	return (cyc_led < E_OK) ? cyc_led : E_OK;
+    return (result);
 }
 
-EXPORT ER subsystem1_start(void)
+#if APP_TEST
+/** @brief On-target tests (make TEST=1); see s1_test.c. */
+void
+subsystem1_test (void)
 {
-#if S1_STANDALONE_DEMO
-	ID tid_demo;
+    s1_test_run();
+}
 #endif
 
-	tid_comm = app_start_task(comm_task, S1_PRI_COMM, 0, "comm_task");
-	if (tid_comm < E_OK) {
-		return tid_comm;
-	}
+/** @brief Create a FIFO message buffer. */
+static ID
+make_mbf (uint32_t buf_bytes, uint32_t max_msg_bytes)
+{
+    T_CMBF cmbf = {0};
 
-	tid_led = app_start_task(led_task, S1_PRI_LED, 0, "led_task");
-	if (tid_led < E_OK) {
-		return tid_led;
-	}
+    cmbf.mbfatr = TA_TFIFO;
+    /* Sizes are a few hundred bytes at most: they fit SZ and INT. */
+    cmbf.bufsz  = (SZ)buf_bytes;
+    cmbf.maxmsz = (INT)max_msg_bytes;
 
-#if S1_STANDALONE_DEMO
-	tid_demo = app_start_task(demo_task, S1_PRI_DEMO, 0, "demo_task");
-	if (tid_demo < E_OK) {
-		return tid_demo;
-	}
-#endif
-
-	return tk_sta_cyc(cyc_led);
+    return (tk_cre_mbf(&cmbf));
 }
+
+/** @brief Create the mutex, the two event flags and the LED cyclic. */
+static ER
+make_sync_objects (void)
+{
+    T_CMTX cmtx   = {0};
+    T_CFLG cflg   = {0};
+    T_CFLG cfault = {0};
+    T_CCYC ccyc   = {0};
+    ER     result = E_OK;
+
+    /* TA_INHERIT: if a high-priority sensor task waits for the snapshot
+     * while the low-priority comm task holds it, the comm task is
+     * raised, so the wait is as short as possible (no inversion). */
+    cmtx.mtxatr     = TA_INHERIT;
+    gh_s1_telem_mtx = tk_cre_mtx(&cmtx);
+
+    cflg.flgatr    = TA_TFIFO | TA_WSGL; /* only the comm task waits */
+    cflg.iflgptn   = 0U;
+    gh_s1_comm_flg = tk_cre_flg(&cflg);
+
+    /* Fault bitmask: any task may wait on it (TA_WMUL), all clear. */
+    cfault.flgatr  = TA_TFIFO | TA_WMUL;
+    cfault.iflgptn = 0U;
+    flg_faults     = tk_cre_flg(&cfault);
+
+    ccyc.cycatr   = TA_HLNG;
+    /* The kernel calls the handler as void (*)(void *exinf). */
+    ccyc.cychdr   = (FP)s1_led_cyclic_isr;
+    ccyc.cyctim   = S1_TICK_MS;
+    ccyc.cycphs   = S1_TICK_MS;
+    gh_s1_led_cyc = tk_cre_cyc(&ccyc);
+
+    if (gh_s1_telem_mtx < E_OK)
+    {
+        result = gh_s1_telem_mtx;
+    }
+    else if (gh_s1_comm_flg < E_OK)
+    {
+        result = gh_s1_comm_flg;
+    }
+    else if (flg_faults < E_OK)
+    {
+        result = flg_faults;
+    }
+    else if (gh_s1_led_cyc < E_OK)
+    {
+        result = gh_s1_led_cyc;
+    }
+    else
+    {
+        result = E_OK;
+    }
+
+    return (result);
+}
+
+/*** end of file ***/
+
