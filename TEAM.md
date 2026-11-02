@@ -20,7 +20,7 @@ subsystem, ask its owner or open a pull request for them to review.
 | 1 | WiFi Communication, Command & Telemetry (MQTT) | 2502999 | notmufliha | `app_program/subsystem1/` | `testing/subsystem1/` |
 | 2 | *example:* Producer: makes a sample every 300 ms | | | `app_program/subsystem2/` | `testing/subsystem2/` |
 | 3 | *example:* Consumer: collects samples into statistics | | | `app_program/subsystem3/` | `testing/subsystem3/` |
-| 4 | IMU motion/terrain monitoring (mock RTOS demo); legacy example monitor retained | 2503027 | | `app_program/subsystem4/` | `testing/subsystem4/` |
+| 4 | Real IMU monitoring and calibrated startup gate; legacy monitor only in demo mode | 2503027 | | `app_program/subsystem4/` | `testing/subsystem4/` |
 | 5 | | | | `app_program/subsystem5/` | `testing/subsystem5/` |
 
 Shared files (`app_program/app_main.c`, `app_program/app.h`, this file)
@@ -106,7 +106,7 @@ the drivers have no locking to stop it.
 | Peripheral | Owner subsystem | Owning task | Pins |
 |---|---|---|---|
 | UART1 | | | |
-| I2C0 | B4 | imu_sampling_task | GP4 SDA, GP5 SCL; kernel I2C driver enabled, 5 ms transaction-phase timeout |
+| I2C0 | B4 | task_imu_sampling_task | GP4 SDA, GP5 SCL; kernel I2C driver enabled, 5 ms transaction-phase timeout |
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |
@@ -149,7 +149,7 @@ change it only by team agreement. Write down every task you create.
 | 1 | 12–13 | led_task – 12 – any; comm_task – 13 – any; demo_task – 12 – any (only while `S1_STANDALONE_DEMO`=1) |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
 | 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
-| 4 | 18–19 | imu_sampling_task – 18 – any; imu_analysis_task – 19 – any; legacy monitor_task – 19 – any |
+| 4 | 18–19 | task_imu_sampling_task – 18 – any; task_imu_analysis_task – 19 – any; task_monitor_task – 19 – any (ROBOT_MODE=0 only) |
 | 5 | 20–21 | |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
@@ -164,7 +164,7 @@ sends to it or waits on it. Agree on the data format before coding.
 |---|---|---|---|---|---|
 | IF-01 | S2 → S3 | mailbox (owned by S3) | `mbx_samples` | `SAMPLE_MSG` in `subsystem2.h` | *example* |
 | IF-02 | S3 → S2 | semaphore + fixed memory pool (owned by S2) | `sem_slots`, `mpf_samples` | receiver returns the block, then 1 slot | *example* |
-| IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `mbf_summary`, `flg_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
+| IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `gh_summary`, `gh_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
 | IF-04 | S4 → S3 | shared data under a mutex (owned by S3) | `app_stats`, `mtx_stats` | `APP_STATS`, read only while locked | *example* |
 | IF-05 | S4 → S1 | task control | `tid_led` | `tk_sus_tsk` / `tk_rsm_tsk` / `tk_chg_pri` | *example* |
 | IF-S1-TLM | any → S1 | shared snapshot under mutex (owned by S1) | `mtx_telem` via `comm_set_xxx()` | `COMM_TELEMETRY` in `subsystem1.h` | *proposed* |
@@ -183,15 +183,15 @@ limit there. The numbers below are the example's usage.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 2 (+1 demo) | 1 | 1 | 3 | |
+| Task | 32 | 2 (+1 demo) | 1 | 1 | 2 real / 3 demo | |
 | Semaphore | 16 | | 1 | | | |
 | Event flag | 16 | 1 | | | 1 | |
 | Mailbox | 12 | | | 1 | | |
 | Mutex | 12 | 1 | | 1 | | |
-| Message buffer | 12 | 4 | | | 2 (3 with TEST=1) | |
+| Message buffer | 12 | 4 | | | 1 real / 2 demo (+1 with TEST=1) | |
 | Fixed memory pool | 12 | | 1 | | | |
 | Variable memory pool | 12 | | | | | |
 | Cyclic handler | 12 | 1 | | | | |
-| Alarm handler | 12 | | | | 1 | |
+| Alarm handler | 12 | | | | 0 real / 1 demo | |
 
 (The kernel's USB and WiFi service tasks also use a few of these.)

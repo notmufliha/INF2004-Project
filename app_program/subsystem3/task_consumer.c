@@ -41,9 +41,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 			len = tm_sprintf(text, (const UB*)"n=%u last=%d from core %d",
 					 count, msg->value, msg->prc - 1);
 			if (len > 0 && len <= S4_SUMMARY_MAX) {
-				er = tk_snd_mbf(mbf_summary, text, len, TMO_POL);
+				er = tk_snd_mbf(gh_summary, text, len, TMO_POL);
 				if (er == E_OK) {
-					er = tk_set_flg(flg_events, FLG_BATCH);
+					er = tk_set_flg(gh_events, FLG_BATCH);
 					if (er < E_OK) CHECK(er, "tk_set_flg");
 				}
 			}

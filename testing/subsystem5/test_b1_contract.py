@@ -22,6 +22,7 @@ header = r'''
 #include <stddef.h>
 #include <stdio.h>
 #include <math.h>
+#include <float.h>
 typedef uint16_t UH;
 #define COMM_CM_INVALID 0xffffU
 typedef enum { S5_SIDE_NONE, S5_SIDE_LEFT, S5_SIDE_RIGHT } S5Side;

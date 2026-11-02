@@ -1,83 +1,184 @@
-/*
- *	subsystem4.c
- *	Subsystem 4 -- creates IMU demo objects/tasks and legacy monitor.
- *
- *	APIs shown: tk_cre_flg, tk_cre_mbf, tk_cre_alm
+/** @file subsystem4.c
+ * @brief Buddy 4 subsystem4 module.
  */
+/*
+ *  subsystem4.c
+ *  Subsystem 4 -- creates IMU demo objects/tasks and legacy monitor.
+ *
+ *  APIs shown: tk_cre_flg, tk_cre_mbf, tk_cre_alm. */
 
 #include "subsystem4.h"
-
-EXPORT ID	mbf_summary;	/* IF-03 */
-EXPORT ID	flg_events;	/* IF-03 */
-EXPORT ID	alm_monitor;
-EXPORT ID mbf_imu_data;
-#if APP_TEST
-EXPORT ID mbf_imu_test_events;
+#include "s4_runtime.h"
+#include "imu.h"
+#include "imu_vc.h"
+#include "task_imu.h"
+#if !ROBOT_MODE
+#include "task_monitor.h"
 #endif
 
-EXPORT ER subsystem4_init(void)
+/* Both payloads fit 128 bytes; aligned storage times either queue depth fits
+ * SZ.
+ */
+typedef uint8_t s4_payload_size_check_t
+    [((sizeof(imu_data_t) <= 128U) && (sizeof(imu_event_t) <= 128U)) ? 1 : -1];
+
+volatile ID gh_summary; /* IF-03. */
+volatile ID gh_events;  /* IMU readiness and optional IF-03 demo events. */
+volatile ID gh_monitor_alarm;
+volatile ID gh_imu_data_buffer;
+#if APP_TEST
+volatile ID gh_imu_test_events;
+#endif
+
+static SZ message_storage_bytes (uint32_t payload_bytes);
+#if !ROBOT_MODE
+static ER create_legacy_objects (void);
+#endif
+
+/** @brief Create IMU resources and optional teaching-demo objects. */
+ER
+subsystem4_init (void)
 {
-	T_CFLG	cflg = {0};
-	T_CMBF	cmbf = {0};
-	T_CALM	calm = {0};
+    T_CFLG cflg = {0};
+    T_CMBF cmbf = {0};
 
     cmbf.mbfatr = TA_TFIFO;
-    cmbf.bufsz = S4_IMU_QUEUE_DEPTH * S4_MESSAGE_BYTES(imu_data_t);
-    cmbf.maxmsz = sizeof(imu_data_t);
-    mbf_imu_data = tk_cre_mbf(&cmbf);
-    if (mbf_imu_data < E_OK) {
-        return mbf_imu_data;
+    cmbf.bufsz = S4_IMU_QUEUE_DEPTH * message_storage_bytes(sizeof(imu_data_t));
+    cmbf.maxmsz        = sizeof(imu_data_t);
+    gh_imu_data_buffer = tk_cre_mbf(&cmbf);
+
+    if (gh_imu_data_buffer < E_OK)
+    {
+        return gh_imu_data_buffer;
     }
 #if APP_TEST
-    cmbf.bufsz = 32U * S4_MESSAGE_BYTES(imu_event_t);
-    cmbf.maxmsz = sizeof(imu_event_t);
-    mbf_imu_test_events = tk_cre_mbf(&cmbf);
-    if (mbf_imu_test_events < E_OK) {
-        return mbf_imu_test_events;
+    cmbf.bufsz         = 32 * message_storage_bytes(sizeof(imu_event_t));
+    cmbf.maxmsz        = sizeof(imu_event_t);
+    gh_imu_test_events = tk_cre_mbf(&cmbf);
+
+    if (gh_imu_test_events < E_OK)
+    {
+        return gh_imu_test_events;
     }
 #endif
 
-	/* Event flag: a 32-bit pattern of bits.  Tasks wait for a bit (or a
-	   combination of bits) to be set. */
-	cflg.flgatr  = TA_TFIFO | TA_WMUL;	/* allow several waiters */
-	cflg.iflgptn = 0;			/* all bits clear to begin with */
-	flg_events = tk_cre_flg(&cflg);
-	if (flg_events < E_OK) {
-		return flg_events;
-	}
+    /* Event flag: a 32-bit pattern of bits.  Tasks wait for a bit (or a
+       combination of bits) to be set. */
+    cflg.flgatr  = TA_TFIFO | TA_WMUL; /* allow several waiters. */
+    cflg.iflgptn = 0;                  /* all bits clear to begin with. */
+    gh_events    = tk_cre_flg(&cflg);
 
-	/* Message buffer: COPIES variable-length data into a kernel ring
-	   buffer.  Here it carries short text lines from subsystem 3. */
-	cmbf.mbfatr = TA_TFIFO;
-	cmbf.bufsz  = 4 * S4_SUMMARY_MAX;	/* total buffer size, bytes */
-	cmbf.maxmsz = S4_SUMMARY_MAX;		/* largest single message */
-	mbf_summary = tk_cre_mbf(&cmbf);
-	if (mbf_summary < E_OK) {
-		return mbf_summary;
-	}
+    if (gh_events < E_OK)
+    {
+        return gh_events;
+    }
 
-	/* Alarm handler: called ONCE, a given time after tk_sta_alm().
-	   The monitor task re-arms it each time round its loop. */
-	calm.almatr = TA_HLNG;
-	calm.almhdr = (FP)monitor_alarm_handler;
-	alm_monitor = tk_cre_alm(&calm);
-	return (alm_monitor < E_OK) ? alm_monitor : E_OK;
+    ER error = imu_vc_init();
+
+    if (error < E_OK)
+    {
+        return error;
+    }
+
+#if ROBOT_MODE
+    return E_OK;
+#else
+    return create_legacy_objects();
+#endif
 }
 
-EXPORT ER subsystem4_start(void)
+/** @brief Start receivers before the sampling task begins publishing. */
+ER
+subsystem4_start (void)
 {
     /* Start receiver first; all objects were created during init. */
-    ID imu_tid = app_start_task(imu_analysis_task, S4_PRI_IMU_ANALYSIS,
-                               0, "imu_analysis_task");
-    if (imu_tid < E_OK) {
-        return imu_tid;
+    ID h_imu_task = app_start_task(task_imu_analysis_task, S4_PRI_IMU_ANALYSIS,
+                                   0, "task_imu_analysis_task");
+
+    if (h_imu_task < E_OK)
+    {
+        return h_imu_task;
     }
-    imu_tid = app_start_task(imu_sampling_task, S4_PRI_IMU_SAMPLE,
-                            0, "imu_sampling_task");
-    if (imu_tid < E_OK) {
-        return imu_tid;
+
+    h_imu_task = app_start_task(task_imu_sampling_task, S4_PRI_IMU_SAMPLE, 0,
+                                "task_imu_sampling_task");
+
+    if (h_imu_task < E_OK)
+    {
+        return h_imu_task;
     }
-	/* No affinity: the scheduler may run it on either core */
-	ID tid = app_start_task(monitor_task, S4_PRI_MONITOR, 0, "monitor_task");
-	return (tid < E_OK) ? tid : E_OK;
+
+#if ROBOT_MODE
+    return E_OK;
+#else
+    /* No affinity: the scheduler may run it on either core. */
+    ID h_monitor_task = app_start_task(task_monitor_task, S4_PRI_MONITOR, 0,
+                                       "task_monitor_task");
+    return (h_monitor_task < E_OK) ? h_monitor_task : E_OK;
+#endif
 }
+
+/** @brief Wait for accepted sensor data before authorizing robot startup. */
+ER
+subsystem4_wait_ready (TMO timeout_ms)
+{
+#if ROBOT_MODE && S4_IMU_USE_MOCK
+    /* A simulated sensor must never satisfy the real-robot startup gate. */
+    (void)timeout_ms;
+    return E_PAR;
+#else
+    UINT flags = 0U;
+
+    if (timeout_ms <= 0)
+    {
+        return E_PAR;
+    }
+
+    if (gh_events <= 0)
+    {
+        return E_OBJ;
+    }
+
+    /* Preserve readiness for later observers; faults clear it explicitly. */
+    return tk_wai_flg(gh_events, S4_IMU_READY_FLAG, TWF_ORW, &flags,
+                      timeout_ms);
+#endif
+}
+
+#if !ROBOT_MODE
+/** @brief Create teaching-demo resources only when its producer is enabled. */
+static ER
+create_legacy_objects (void)
+{
+    T_CMBF cmbf = {0};
+
+    /* Message buffer: COPIES variable-length data into a kernel ring
+       buffer.  Here it carries short text lines from subsystem 3. */
+    cmbf.mbfatr = TA_TFIFO;
+    cmbf.bufsz  = 4 * S4_SUMMARY_MAX; /* total buffer size, bytes. */
+    cmbf.maxmsz = S4_SUMMARY_MAX;     /* largest single message. */
+    gh_summary  = tk_cre_mbf(&cmbf);
+
+    if (gh_summary < E_OK)
+    {
+        return gh_summary;
+    }
+
+    /* Alarm handler: called ONCE, a given time after tk_sta_alm().
+       The monitor task re-arms it each time round its loop. */
+    gh_monitor_alarm = task_monitor_create_alarm();
+    return (gh_monitor_alarm < E_OK) ? gh_monitor_alarm : E_OK;
+}
+#endif
+
+/** @brief Compute aligned kernel storage for a bounded B4 payload. */
+static SZ
+message_storage_bytes (uint32_t payload_bytes)
+{
+    /* Only the fixed, small B4 payload sizes are passed by this module. */
+    /* The compile-time payload check bounds this unsigned result to 132. */
+    return (SZ)(4U + ((payload_bytes + 3U) & ~3U));
+}
+
+/*** end of file ***/
+

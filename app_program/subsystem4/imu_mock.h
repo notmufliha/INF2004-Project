@@ -1,9 +1,12 @@
+/** @file imu_mock.h
+ * @brief Buddy 4 imu mock interface.
+ */
 #ifndef IMU_MOCK_H
 #define IMU_MOCK_H
 
-#include "imu_types.h"
+#include "imu.h"
 
-/* Simulated robot motion scenarios */
+/* Simulated robot motion scenarios. */
 typedef enum
 {
     IMU_MOCK_STATIONARY = 0,
@@ -18,13 +21,16 @@ typedef enum
     IMU_MOCK_NONFINITE
 } imu_mock_scenario_t;
 
-/* Initialise the mock IMU */
-void imu_mock_init(void);
+/* Initialise the mock IMU. */
+void imu_mock_init (void);
 
-/* Select the motion scenario to simulate */
-void imu_mock_set_scenario(imu_mock_scenario_t scenario);
+/* Select the motion scenario to simulate. */
+void imu_mock_set_scenario (imu_mock_scenario_t scenario);
 
-/* Generate one simulated IMU reading */
-bool imu_mock_read(imu_data_t *data);
+/* Generate one simulated IMU reading. */
+bool imu_mock_read (imu_data_t * p_data);
 
-#endif /* IMU_MOCK_H */
+#endif /* IMU_MOCK_H. */
+
+/*** end of file ***/
+

@@ -4,7 +4,11 @@
  * Verify board and motor terminal labels before energizing wheels.
  * Rebuild and reflash the UF2 after changing this file.
  */
+#ifndef ROBOT_MODE
 #define ROBOT_MODE 1
+#endif
+/* Keep the robot level/still while B4 obtains its startup calibration. */
+#define ROBOT_IMU_STARTUP_TIMEOUT_MS 10000
 #ifndef ROBOT_ENABLE_DRIVE
 #define ROBOT_ENABLE_DRIVE 1
 #endif

@@ -1,0 +1,12 @@
+PASS: ARM C99 B4 mock=0 test=0
+PASS: ARM C99 B4 mock=0 test=1
+PASS: ARM C99 B4 mock=1 test=0
+PASS: ARM C99 B4 mock=1 test=1
+PASS: formatter stable across 38 scoped C/header files
+PASS: B4 selected BARR-C style checks
+See CODING_STANDARD.md for the rule-by-rule manual review and scope.
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.002s
+
+OK
