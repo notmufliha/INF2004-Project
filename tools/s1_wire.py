@@ -60,10 +60,15 @@ ERROR_NAMES = {
     (3, 1): "line lost", (3, 2): "bad barcode",
     (4, 1): "IMU fault",
     # B5: number = S5Error (subsystem5/s5_logic.h)
-    (5, 1): "front sensor", (5, 2): "stop timeout", (5, 3): "scan timeout",
-    (5, 4): "no clear route", (5, 5): "fine scan", (5, 6): "motion timeout",
-    (5, 7): "line timeout", (5, 8): "insufficient clearance",
-    (5, 9): "reverse timeout",
+    (5, 1): "B5 no reliable ultrasonic echo",
+    (5, 2): "B5 motor stop acknowledgement timeout",
+    (5, 3): "B5 obstacle scan timeout",
+    (5, 4): "B5 no safe obstacle bypass route",
+    (5, 5): "B5 fine scan failed",
+    (5, 6): "B5 obstacle avoidance motion timeout",
+    (5, 7): "B5 line reacquisition timeout",
+    (5, 8): "B5 insufficient obstacle clearance",
+    (5, 9): "B5 reverse manoeuvre timeout",
 }
 
 DIST_INVALID = 0x1FF    # 9-bit all ones: no echo / not measured
