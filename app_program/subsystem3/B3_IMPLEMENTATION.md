@@ -77,8 +77,8 @@ handling before allowing the Vehicle Controller to act on decoded commands.
 ## Minimum-bit RAM estimate
 
 `B3_STATE` contains 34 meaningful bits: 12 + 12 + 1 + 3 + 3 + 3. With the
-requested `unsigned int` bit-fields, the GCC bit-field allocation units make
-the packed structure 8 bytes (two 32-bit units); six ordinary 32-bit integer
-members would use 24 bytes. This saves **16 bytes (about 67%)** per snapshot.
-The unused bits are a consequence of the compiler's bit-field allocation
-rules. The `packed` layout is compiler-specific and must not be serialized.
+requested `unsigned int` bit-fields and `packed` attribute, the current RP2040
+GCC toolchain makes the structure 5 bytes (40 bits); six ordinary 32-bit integer
+members would use 24 bytes. This saves **19 bytes (about 79%)** per snapshot.
+Six bits remain unused. The header asserts the 5-byte size because this layout
+is compiler-specific. It must not be used as a serialized wire format.

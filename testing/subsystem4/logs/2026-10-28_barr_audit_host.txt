@@ -1,0 +1,31 @@
+Test 1 PASSED: Stationary
+Test 2 PASSED: Accelerating
+Test 3 PASSED: Turning
+Test 4 PASSED: Climbing hump
+Test 5 PASSED: Hump peak
+Test 6 PASSED: Descending hump
+Test 7 PASSED: Sudden impact
+Test 8 PASSED: Null pointer handling
+
+All Mock IMU tests passed!
+PASS: motion classification and unavailable height
+PASS: ordered traversal, single report and consecutive humps
+PASS: noise rejection, descent without climb and impact interruption
+PASS: invalid readings, null arguments and invalid configuration
+PASS: timestamp wrap, duplicate/backward readings, gaps and timeout
+PASS: tilted gravity and slope hysteresis
+All IMU analysis tests passed.
+PASS: filtered demo produces two humps, impact intervals and fault recoveries
+PASS: smoothing preserves an immediate impact spike
+PASS: angles wrap along the shortest path
+PASS: fault latching, recovery suppression and filter reseeding
+PASS: missing data, gaps, duplicate timestamps and interrupted recovery
+PASS: nonfinite readings, angle bounds and invalid configuration
+PASS: timestamp wrap and backward-clock fault
+All IMU processing tests passed.
+PASS: magnetic overflow is unavailable and resets heading history
+PASS: configuration, signed conversion, X/Z/Y ordering and honest availability
+PASS: tilt, freshness, clipping, bus failures and identity mismatch
+PASS: mounting map validation and gravity-preserving level_mean calibration
+PASS: calibrated heading derivative and unavailable-turn classification
+PASS: numeric console conversion handles bounds and nonfinite values

@@ -1,0 +1,19 @@
+/** @file module.c
+ * @brief Describe the single entity implemented by this module.
+ */
+#include "module.h"
+
+/* Place types/constants, private data and private prototypes here, in order. */
+
+/** @brief Describe the operation, assumptions and any failure result. */
+int32_t
+module_read (void)
+{
+    /* TODO: Implement the module's documented operation. */
+    return 0;
+}
+
+/* Place documented private function definitions after public definitions. */
+
+/*** end of file ***/
+

@@ -1,5 +1,12 @@
 # GY-511: first real-data test
 
+In real-robot mode, keep the car level/still at boot: B4 must finish calibration
+and supply accepted readings within 10 seconds before motor tasks start.
+Change the bounded wait with `ROBOT_IMU_STARTUP_TIMEOUT_MS` in `robot_config.h`.
+An unavailable sensor prevents startup; reconnect it and restart the board.
+The legacy monitor is disabled in this mode. Later faults are reported to B1;
+this startup gate is not a runtime motor-stop interlock.
+
 The driver targets the LSM303DLHC on a GY-511. Register configuration, byte order
 and sensitivities follow [ST DS7202 Rev 2](https://www.st.com/resource/en/datasheet/lsm303dlhc.pdf).
 It checks magnetic identification bytes H43 at 7-bit address 0x1e and verifies
@@ -19,7 +26,7 @@ queues STOP on the final byte of a burst; physical bus behaviour needs validatio
 
 Default mapping is sensor X=car forward, sensor Y=car sideways, sensor Z=up.
 The chip must produce +1g on robot Z when upright. Check the PCB axis markings
-and actual outputs; edit `config.axis[]` in `hardware_read()` in `task_imu.c`
+and actual outputs; edit `config.axis[]` in `initialise_hardware()` in `task_imu.c`
 if the board is mounted differently. Values are signed axis numbers 1=X, 2=Y,
 3=Z; for example {-2,1,3} rotates the horizontal axes. Use a physically consistent
 right-handed mapping. Calibration cannot correct an incorrect mounting map.
@@ -94,17 +101,18 @@ the robot to test impacts. The software does not command motors.
 - Pitch/roll: accelerometer gravity-vector estimates. Driving acceleration and
   vibration affect them; they are not gyroscope-fused orientation measurements.
 - Magnetic field: 75Hz, +/-1.3 gauss, X/Y=1100 and Z=980 LSB/gauss.
-- Heading: tilt-compensated magnetic estimate for near-1g readings. `heading_valid`
+- Heading: tilt-compensated magnetic estimate for near-1g readings. `b_heading_valid`
   means calculable, not calibrated or accurate. No declination correction.
 - Magnetic calibration defaults OFF. Supply robot-frame `mag_offset_ut[]` and
   `mag_scale[]` in `hardware_read()` after collecting calibration data; set
-  `mag_calibrated=true` only after testing near the installed motors/wiring.
+  `b_mag_calibrated=true` only after testing near the installed motors/wiring.
   Diagonal correction is supported; full soft-iron matrix calibration is not.
 - Estimated turn rate uses fresh calibrated heading changes, shortest-angle wrap
-  and a maximum 100ms interval. Without calibration, `turn_rate_valid=false` and
+  and a maximum 100ms interval. Without calibration, `b_turn_rate_valid=false` and
   turning classification is disabled. It remains an estimate, not a gyro reading.
-- Existing hump and impact algorithms consume real data but thresholds still
-  require real-car tests. Height in centimetres and highest height remain unavailable.
+- Hump and impact thresholds still require real-car tests. Hump height and highest
+  height are now estimated from paired encoder travel and pitch when consistency
+  checks pass. Validate against a known-height hump using [HEIGHT.md](HEIGHT.md).
 
 Desktop regression command (no board required):
 

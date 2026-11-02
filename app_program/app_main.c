@@ -28,7 +28,7 @@
  *	  IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
  *	  IF-02  S3 -> S2  semaphore gh_sem_slots + memory pool gh_mpf_samples
  *	                   (owned by S2: S3 hands slots and blocks back)
- *	  IF-03  S3 -> S4  message buffer mbf_summary + event flag flg_events
+ *	  IF-03  S3 -> S4  message buffer gh_summary + event flag gh_events
  *	                   (owned by S4)
  *	  IF-04  S4 -> S3  reads app_stats under mutex mtx_stats (owned by S3)
  *	  IF-05  S4 -> S1  suspends/resumes the LED task tid_led (owned by S1)
@@ -56,6 +56,7 @@
 #include "app.h"
 #include "robot_config.h"
 #include "subsystem2/b2_motor.h"
+#include "subsystem4/subsystem4.h"
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -146,9 +147,32 @@ EXPORT INT usermain(void)
     }
 	b2_initialized = TRUE;
 
+    robot_er = subsystem4_init();
+    if (robot_er < E_OK)
+    {
+        CHECK(robot_er, "subsystem4_init");
+        goto robot_startup_failed;
+    }
+
     robot_er = subsystem5_init();
     if (robot_er < E_OK) {
         CHECK(robot_er, "subsystem5_init");
+        goto robot_startup_failed;
+    }
+
+    /* B4 runs while motor tasks are still stopped for level calibration. */
+    robot_er = subsystem4_start();
+    if (robot_er < E_OK)
+    {
+        CHECK(robot_er, "subsystem4_start");
+        goto robot_startup_failed;
+    }
+
+    tm_printf((UB*)"[ROBOT] Waiting for B4: keep the car level/still\n");
+    robot_er = subsystem4_wait_ready(ROBOT_IMU_STARTUP_TIMEOUT_MS);
+    if (robot_er < E_OK)
+    {
+        CHECK(robot_er, "B4 calibrated readings");
         goto robot_startup_failed;
     }
 
@@ -172,9 +196,11 @@ EXPORT INT usermain(void)
         tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
     }
 
-    tm_printf((UB*)"[ROBOT] B2 motor + B5 obstacle + B1 telemetry tasks started\n");
+    tm_printf((UB*)"[ROBOT] B2 motor + B4 IMU + B5 obstacle"
+                  " + B1 telemetry started\n");
 #if APP_TEST
     subsystem2_test();
+    s4_test_run();
 #endif
     goto robot_startup_complete;
 
@@ -203,10 +229,18 @@ robot_startup_complete:
 	CHECK(subsystem4_start(), "subsystem4_start");
 	CHECK(subsystem5_start(), "subsystem5_start");
 #if APP_TEST
-	subsystem1_test(); subsystem2_test(); subsystem3_test();
-	subsystem4_test(); subsystem5_test();
+	/* Test build (make TEST=1): run every subsystem's tests in turn,
+	   here in the initial task, while the system is running.  Tests may
+	   call tk_dly_tsk() to let the other tasks work for a while. */
+	tm_printf((UB*)"[TEST] === test run start ===\n");
+	subsystem1_test();
+	subsystem2_test();
+	subsystem3_test();
+	s4_test_run();
+	subsystem5_test();
+	tm_printf((UB*)"[TEST] === test run end ===\n");
 #endif
-#endif
+#endif /* ROBOT_MODE */
 
 	/* Sleep forever.  Returning from usermain() would shut down. */
 	tk_slp_tsk(TMO_FEVR);
