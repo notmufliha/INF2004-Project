@@ -1,8 +1,14 @@
 #include "subsystem5.h"
+#include "../subsystem2/b2_motor.h"
 
 EXPORT ER subsystem5_init(void)
 {
-    /* No kernel objects required for the isolated first milestone. */
+    /* B2 is initialized before B5 in robot mode. In Wednesday's
+     * sensor-only demonstration, keep the motor safety latch closed
+     * from initialization, not just after the B5 task starts. */
+#if S5_DEMO_SENSOR_ONLY
+    b2_request_stop();
+#endif
     return E_OK;
 }
 

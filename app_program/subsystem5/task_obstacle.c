@@ -145,7 +145,8 @@ static void stationary_profile_mode(void)
     bool startup_scan_pending = (S5_FORCE_STARTUP_SCAN != 0);
     tm_printf((UB*)"[S5] REAL ROBOT: clear -> forward; close -> STOP -> coarse/fine/profile\n");
     tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=%s LINE=UNAVAILABLE\n",
-              ROBOT_ENABLE_DRIVE ? "GUARDED FORWARD/STOP" : "DISABLED");
+              S5_DEMO_SENSOR_ONLY ? "DEMO STOP-ONLY" :
+              (ROBOT_ENABLE_DRIVE ? "GUARDED FORWARD/STOP" : "DISABLED"));
     tm_printf((UB*)"[S5] STOP below %d cm; RESUME after %d clear samples >= %d cm\n",
               (int)ROBOT_STOP_CM, (int)ROBOT_CLEAR_CONFIRM,
               (int)ROBOT_RELEASE_CM);
@@ -255,12 +256,19 @@ static void stationary_profile_mode(void)
                         tm_printf((UB*)"[S5-RECOVER] path clear again; obstacle latch released\n");
                     obstacle_latched = false;
                     scanned_this_obstacle = false;
+#if S5_DEMO_SENSOR_ONLY
+                    /* Demo mode: keep the B2 STOP latch closed even on
+                     * confirmed clear readings. Do not move the robot. */
+                    b2_request_stop();
+                    driving = false;
+#else
                     b2_request_forward(); /* Heartbeat every valid clear sample. */
                     if (!driving) {
                         tm_printf((UB*)"[S5-DRIVE] valid clear=%d cm; FORWARD requested (verify B2 FORWARD and wheel movement)\n",
                                   (int)cm);
                         driving = true;
                     }
+#endif
                 } else {
                     b2_request_stop();
                     driving = false;

@@ -24,6 +24,15 @@
  * With 0, B5 measures and recommends a path but NEVER moves the car. */
 #define S5_MOTION_BRIDGE_ENABLED 0
 
+/* Wednesday B5 demonstration: 1 holds B2 STOP even on clear readings.
+ * It demonstrates REAL HC-SR04P ranging, GP12 servo scans, profiles,
+ * B1 telemetry and faults without allowing a separate B2 test to drive.
+ * Restore to 0 only after the team authorizes moving-robot integration. */
+#define S5_DEMO_SENSOR_ONLY 1
+#if S5_DEMO_SENSOR_ONLY && S5_MOTION_BRIDGE_ENABLED
+#error "B5 sensor-only demonstration must not enable live motion bridge"
+#endif
+
 /* Bench checks: startup sweep and first scan. No obstacle is required for
  * the initial scan, but valid echoes ARE required for a valid profile. */
 #define S5_STARTUP_SERVO_TEST 1
