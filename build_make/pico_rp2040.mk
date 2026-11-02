@@ -124,7 +124,7 @@ LINK := arm-none-eabi-gcc
 # IMU analysis uses standard float math. Libraries must follow object files.
 LDLIBS += -lm
 SIZE := arm-none-eabi-size
-E2U := tools/elf2uf2
+E2U := tools/elf2uf2$(if $(filter Windows_NT,$(OS)),.exe,)
 
 # Fail early, with a readable message, when the cross compiler is not on PATH.
 ifneq ($(MAKECMDGOALS),clean)

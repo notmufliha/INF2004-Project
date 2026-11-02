@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+#include <stddef.h>
+#include <math.h>
+>>>>>>> fdabf2067ef9dd46513c655d2a2ca2d72a459116
 #include "subsystem5.h"
 #include "../robot_config.h"
 #include "../subsystem1/subsystem1.h"   /* B1 telemetry + shared fault mask */
@@ -20,9 +25,9 @@
 #if !S5_SIMULATION && S5_HARDWARE_ENABLED
 static UH s5_wire_cm(float cm, float maximum_cm)
 {
-    /* This rejects NaN as well as negative measurements.  A valid
-     * measurement beyond B5's range saturates rather than wraps. */
-    if (!(cm >= 0.0f))
+    /* NaN, infinities and negative distances are not measurements.
+     * Finite distances beyond B5's range saturate rather than wrap. */
+    if (!isfinite(cm) || (cm < 0.0f))
     {
         return COMM_CM_INVALID;
     }
@@ -63,12 +68,18 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
             action = AVOID_RIGHT;
         }
 
-        /* A malformed field must not authorise a bypass. */
+        /* Never publish a partly valid profile or authorise bypass
+         * when any field is malformed. The receiver sees one explicit
+         * invalid STOP event, not misleading partial clearance data. */
         if ((distance_cm == COMM_CM_INVALID) ||
             (width_cm == COMM_CM_INVALID) ||
             (left_cm == COMM_CM_INVALID) ||
             (right_cm == COMM_CM_INVALID))
         {
+            distance_cm = COMM_CM_INVALID;
+            width_cm = COMM_CM_INVALID;
+            left_cm = COMM_CM_INVALID;
+            right_cm = COMM_CM_INVALID;
             action = AVOID_STOP;
         }
     }
@@ -188,10 +199,16 @@ static void stationary_profile_mode(void)
             tk_dly_tsk(S5_ECHO_GAP_MS);
         }
         valid = s5_measure_stable_cm(&cm);
+        /* Defensive guard: a malformed successful measurement must
+         * never clear NO_ECHO or release the motors. */
+        valid = valid &&
+                (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) != COMM_CM_INVALID);
         ++samples;
         /* B1 telemetry (non-blocking): front distance in cm, and the
          * shared no-echo fault bit */
-        comm_set_obstacle_dist(valid ? (UH)(cm + 0.5f) : COMM_CM_INVALID);
+        comm_set_obstacle_dist(valid ?
+                               s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
+                               COMM_CM_INVALID);
         if (valid) {
             fault_clear(FAULT_NO_ECHO);
         } else {
@@ -342,14 +359,8 @@ static void stationary_profile_mode(void)
                     tm_printf((UB*)"[S5-FAULT] width not bracketed by valid clear rays; no safe plan\n");
                 }
                 print_profile(&profile);
-                /* B1 obstacle event (cm); STOP when no safe side */
-                (void)comm_report_obstacle(
-                    profile.valid ? (UH)(profile.nearest_cm + 0.5f) : COMM_CM_INVALID,
-                    profile.valid ? (UH)(profile.estimated_width_cm + 0.5f) : COMM_CM_INVALID,
-                    profile.valid ? (UH)(profile.left_clearance_cm + 0.5f) : COMM_CM_INVALID,
-                    profile.valid ? (UH)(profile.right_clearance_cm + 0.5f) : COMM_CM_INVALID,
-                    side == S5_SIDE_LEFT ? AVOID_LEFT :
-                    side == S5_SIDE_RIGHT ? AVOID_RIGHT : AVOID_STOP);
+                /* One scan event is emitted below by s5_report_profile().
+                 * That helper enforces B1's field ranges and STOP policy. */
                 tm_printf((UB*)"[S5-PLAN] direction=%s width_valid=%d action=%s\n",
                           side == S5_SIDE_LEFT ? "LEFT" : side == S5_SIDE_RIGHT ? "RIGHT" : "NONE",
                           (int)profile.valid,
@@ -394,7 +405,10 @@ static void live_controller_mode(void)
         /* Sensor always faces forward outside scans. Monitoring continues
          * during movement. Repeated invalid readings fail closed. */
         in.front_valid = s5_ultrasonic_read_cm(&cm);
-        in.front_cm = cm;
+        in.front_valid = in.front_valid &&
+                         (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) !=
+                          COMM_CM_INVALID);
+        in.front_cm = in.front_valid ? cm : 0.0f;
         comm_set_obstacle_dist(in.front_valid ?
                                s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
                                COMM_CM_INVALID);
