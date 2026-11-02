@@ -34,6 +34,7 @@ extern volatile ID gh_imu_test_events;
 #define S4_LED_TOGGLE_REPORTS 6U
 #define FLG_ALARM 0x0001U         /* Set by the private alarm callback. */
 #define S4_IMU_READY_FLAG 0x0004U /* Fresh, accepted analysis is available. */
+#define S4_RESET_PEAK_FLAG 0x0008U
 
 /* Private to subsystem 4. */
 extern volatile ID gh_monitor_alarm;

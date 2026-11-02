@@ -212,6 +212,14 @@ EXPORT ER comm_report_hump(BOOL valid, H height_mm, H peak_mm)
 	return post_event(&ev);
 }
 
+EXPORT void comm_reset_hump_peak(void)
+{
+    if (telem_lock()) {
+        s1_telem.hump_peak_mm = 0U;
+        telem_unlock();
+    }
+}
+
 EXPORT ER comm_report_obstacle(UH dist_cm, UH width_cm, UH left_cm,
 			       UH right_cm, AVOID_ACTION action)
 {

@@ -243,6 +243,7 @@ IMPORT void comm_get_telemetry(COMM_TELEMETRY *out);	/* copy of snapshot */
  * --------------------------------------------------------------------- */
 IMPORT ER comm_report_barcode(UB letter, NAV_CMD nav);
 IMPORT ER comm_report_hump(BOOL valid, H height_mm, H peak_mm);
+IMPORT void comm_reset_hump_peak(void);
 IMPORT ER comm_report_obstacle(UH dist_cm, UH width_cm, UH left_cm,
 			       UH right_cm, AVOID_ACTION action);
 IMPORT ER comm_report_error(UB err_code, UB detail);	/* error_codes.h */

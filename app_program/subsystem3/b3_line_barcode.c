@@ -57,6 +57,8 @@ typedef struct {
 } B3_EDGE;
 
 static B3_STATE g_b3_state;
+static uint32_t g_line_sample_ms;
+static bool g_line_sample_valid;
 static volatile B3_EDGE g_edge_queue[B3_EDGE_QUEUE_LENGTH];
 static volatile uint8_t g_edge_head;
 static volatile uint8_t g_edge_tail;
@@ -146,6 +148,7 @@ EXPORT ER b3_init(void)
 	g_edge_pending = 0U;
 	g_edge_overflow = 0U;
 	g_b3_started = 0U;
+	g_line_sample_valid = false;
 
 	return E_OK;
 }
@@ -220,6 +223,19 @@ EXPORT ER b3_get_state(B3_STATE *state)
 	*state = g_b3_state;
 	error = tk_unl_mtx(mtx_b3_state);
 	return error;
+}
+
+EXPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
+{
+    ER error;
+    if (state == NULL || sample_ms == NULL) return E_PAR;
+    error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
+    if (error != E_OK) return error;
+    *state = g_b3_state;
+    *sample_ms = g_line_sample_ms;
+    error = g_line_sample_valid ? E_OK : E_OBJ;
+    (void)tk_unl_mtx(mtx_b3_state);
+    return error;
 }
 
 /**
@@ -339,6 +355,11 @@ static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
 	g_b3_state.ir_centre = centre & 0x0FFFU;
 	g_b3_state.ir_right = (right != 0U) ? 1U : 0U;
 	g_b3_state.line_flags = flags & 0x07U;
+    {
+        SYSTIM now;
+        g_line_sample_valid = tk_get_tim(&now) == E_OK;
+        if (g_line_sample_valid) g_line_sample_ms = now.lo;
+    }
 	error = tk_unl_mtx(mtx_b3_state);
 	if (error != E_OK) {
 		CHECK(error, "B3 state unlock");
