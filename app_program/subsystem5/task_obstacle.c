@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-=======
-#include <stddef.h>
-#include <math.h>
->>>>>>> fdabf2067ef9dd46513c655d2a2ca2d72a459116
+#include <float.h>
 #include "subsystem5.h"
 #include "../robot_config.h"
 #include "../subsystem1/subsystem1.h"   /* B1 telemetry + shared fault mask */
@@ -27,7 +23,7 @@ static UH s5_wire_cm(float cm, float maximum_cm)
 {
     /* NaN, infinities and negative distances are not measurements.
      * Finite distances beyond B5's range saturate rather than wrap. */
-    if (!isfinite(cm) || (cm < 0.0f))
+    if (!(cm >= 0.0f) || (cm > FLT_MAX))
     {
         return COMM_CM_INVALID;
     }
