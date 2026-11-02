@@ -46,7 +46,7 @@
  * One run per boot; any fault/obstacle aborts the entire run.
  */
 #ifndef ROBOT_MOTION_TEST
-#define ROBOT_MOTION_TEST 4
+#define ROBOT_MOTION_TEST 0
 #endif
 #define ROBOT_MOTION_TEST_SPEED_CPS 1000
 #define ROBOT_MOTION_TEST_BOOT_MS 5000u

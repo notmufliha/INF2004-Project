@@ -56,6 +56,8 @@
 #include "app.h"
 #include "robot_config.h"
 #include "subsystem2/b2_motor.h"
+#include "subsystem3/b3_line_barcode.h"
+#include "vehicle_controller.h"
 #include "subsystem4/subsystem4.h"
 
 /*
@@ -147,6 +149,12 @@ EXPORT INT usermain(void)
     }
 	b2_initialized = TRUE;
 
+    robot_er = b3_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "b3_init");
+        goto robot_startup_failed;
+    }
+
     robot_er = subsystem4_init();
     if (robot_er < E_OK)
     {
@@ -176,6 +184,12 @@ EXPORT INT usermain(void)
         goto robot_startup_failed;
     }
 
+    robot_er = b3_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "b3_start");
+        goto robot_startup_failed;
+    }
+
     robot_er = subsystem2_start();
     if (robot_er < E_OK) {
         CHECK(robot_er, "subsystem2_start");
@@ -188,6 +202,12 @@ EXPORT INT usermain(void)
         goto robot_startup_failed;
     }
 
+    robot_er = vehicle_controller_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "vehicle_controller_start");
+        goto robot_startup_failed;
+    }
+
     /* Started last, and a failure here does not disable the robot:
      * losing WiFi/MQTT must never stop driving (NFR-B1-1). */
     robot_er = subsystem1_start();
@@ -196,8 +216,7 @@ EXPORT INT usermain(void)
         tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
     }
 
-    tm_printf((UB*)"[ROBOT] B2 motor + B4 IMU + B5 obstacle"
-                  " + B1 telemetry started\n");
+    tm_printf((UB*)"[ROBOT] B1/B2/B3/B4/B5 + controller started; awaiting START\n");
 #if APP_TEST
     subsystem2_test();
     s4_test_run();
