@@ -25,7 +25,7 @@ python3 -I test_wire.py
 
 if command -v node >/dev/null 2>&1; then
     ./test_comm_pack vectors > vectors.txt
-#    node test_dashboard_decoder.js vectors.txt
+    node test_dashboard_decoder.js vectors.txt
     rm -f vectors.txt
 else
     echo "SKIP S1-H06: node not installed"

@@ -166,7 +166,7 @@ code yet: it should call `comm_set_line()` and `comm_report_barcode()`.
 - Every `comm_xxx()` call returns immediately and never waits for the
   network (NFR-B1-2). If a queue is full, the item is dropped and counted.
 - The telemetry snapshot is packed C bit-fields; several tasks write fields
-  that share a 32-bit word, so every access holds `mtx_telem`
+  that share a 32-bit word, so every access holds the telemetry mutex
   (`TA_INHERIT`). The fault mask is a kernel event flag, so `tk_set_flg` /
   `tk_clr_flg` update it atomically, even from an ISR.
 - Only the kernel's WiFi task calls lwIP/MQTT (TEAM.md section 3).
@@ -177,13 +177,18 @@ code yet: it should call `comm_set_line()` and `comm_report_barcode()`.
 
 | Situation | What happens | `link` state | `FAULT_WIFI_LOSS` |
 |---|---|---|---|
-| WiFi down | kernel re-joins the AP every 5 s | `CONNECTING_WIFI` (first time) / `RECONNECTING` | set once a link was lost |
+| WiFi down (AP failed or disappeared) | MQTT session closed at once; kernel re-joins the AP every 5 s (`s1_link.c`); a join stuck for 20 s is reset | `CONNECTING_WIFI` (first time) / `RECONNECTING` | set once a link was lost |
 | WiFi down > 30 s | telemetry paused, re-join continues | `OFFLINE` | set |
 | Broker refuses / unreachable | retry after 1, 2, 4, 8, 16, 16 s | `RECONNECTING` | set |
 | 6 retries failed | wait 60 s, then start again | `OFFLINE` | set |
 | Broker connection drops | noticed within ~15 s (keepalive 10 s), then retries | `RECONNECTING` | set |
+| Broker host name lookup fails (`MQTT_BROKER_HOST` only) | after 5 s, connect to the last address that worked | `RECONNECTING` | set |
 | Connected again | heartbeat sent at once | `CONNECTED` | cleared |
 
 The status LED on GP19 shows the state: fast blink = joining WiFi, slow
 blink = connecting/reconnecting to the broker, solid = connected, short blip
 every 2 s = offline.
+
+Sequence diagrams for these cases, and why DNS is safe on reconnect:
+`testing/subsystem1/DESIGN_B1.md`. Live view of all of it:
+`tools/dashboard/README.md`.

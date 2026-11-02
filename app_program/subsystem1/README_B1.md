@@ -282,3 +282,11 @@ the instructor** first.
    (12–13), above B4 (18–19) and B5 (20). The task is light (sleeps
    > 95 % of the time, S1-U02), but the team should swap bands so S1 is
    numerically the largest.
+
+## Part I -- November 2026: reconnect fix, BARR-C, dashboard
+
+- Design (boxes/arrows, sequence diagrams, statechart): `testing/subsystem1/DESIGN_B1.md`
+- Requirements, traceability matrix, test plan: `testing/subsystem1/REQUIREMENTS_TRACE.md`
+- BARR-C review and deviations: `testing/subsystem1/CODING_STANDARD.md` (`python testing/subsystem1/check_barr_style.py`)
+- Live dashboard: `tools/dashboard/README.md`
+- Files were renamed for BARR-C: `task_comm.c` -> `s1_comm.c`, `task_led.c` -> `s1_led.c`, `demo_sim.c` -> `s1_demo.c`, `subsystem1_test.c` -> `s1_test.c`; the public API moved from `comm_bridge.c` to `comm.c`/`comm.h`; the fault mask functions are in `app_program/fault.c`. Team-facing names are unchanged.
