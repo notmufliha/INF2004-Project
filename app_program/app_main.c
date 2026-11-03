@@ -149,6 +149,18 @@ EXPORT INT usermain(void)
     }
 	b2_initialized = TRUE;
 
+#if ROBOT_B2_DEMO
+    /* B1 storage is required by B2 telemetry; no B1 tasks are started.
+     * The demo alone supplies commands and supervised test authorization. */
+    robot_er = subsystem2_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "B2 demo start");
+        goto robot_startup_failed;
+    }
+    tm_printf((UB*)"[B2-DEMO] B2 only; no obstacle sensing.\n");
+    goto robot_startup_complete;
+#endif
+
     robot_er = b3_init();
     if (robot_er < E_OK) {
         CHECK(robot_er, "b3_init");

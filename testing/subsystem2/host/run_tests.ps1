@@ -8,6 +8,14 @@ $executable = Join-Path $env:TEMP 'inf2004-subsystem2-motion-test.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Subsystem 2 host compilation failed' }
 & $executable
 if ($LASTEXITCODE -ne 0) { throw 'Subsystem 2 host tests failed' }
+$demoExe = Join-Path $env:TEMP 'inf2004-b2-demo-test.exe'
+& gcc -std=c11 -Wall -Wextra -Werror -pedantic -DB2_HOST_DEMO=1 `
+    (Join-Path $PSScriptRoot 'motion_test.c') `
+    (Join-Path $projectRoot 'app_program/subsystem2/motion_profile.c') `
+    -lm -o $demoExe
+if ($LASTEXITCODE -ne 0) { throw 'B2 demo test compilation failed' }
+& $demoExe
+if ($LASTEXITCODE -ne 0) { throw 'B2 demo sequence failed' }
 foreach ($binary in @(0, 1)) {
     $integrationExe = Join-Path $env:TEMP "inf2004-b2-integration-$binary.exe"
     & gcc -std=c11 -Wall -Wextra -Werror -pedantic "-DB2_TEST_BINARY=$binary" `

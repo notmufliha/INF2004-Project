@@ -20,6 +20,9 @@
 #define PID_SETTLE_TIMEOUT_MS 1500
 #define PID_WINDOW_SIZE 10
 #define PID_BASE_PWM 20.0f
+/* Provisional +1 percentage point for the observed slower right motor.
+ * Feedback still trims both wheels; validate on the loaded robot. */
+#define PID_RIGHT_BASE_PWM 21.0f
 #define PID_MAX_PWM 35
 #define PID_KP 0.002f
 #define PID_KI 0.005f
@@ -332,7 +335,7 @@ static void pid_guard(pid_state_t *state)
 }
 
 static INT pid_wheel_pwm(float target_cps, float measured_cps,
-    float *integral, float dt)
+    float *integral, float dt, float base_pwm)
 {
     float error;
     float output;
@@ -352,14 +355,14 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
     {
         candidate = -PID_I_LIMIT;
     }
-    output = PID_BASE_PWM + PID_KP * error + candidate;
+    output = base_pwm + PID_KP * error + candidate;
     /* Conditional integration prevents winding further into saturation. */
     if (!((output > PID_MAX_PWM && error > 0.0f) ||
           (output < 0.0f && error < 0.0f)))
     {
         *integral = candidate;
     }
-    output = PID_BASE_PWM + PID_KP * error + *integral;
+    output = base_pwm + PID_KP * error + *integral;
     if (output > PID_MAX_PWM)
     {
         return PID_MAX_PWM;
@@ -426,9 +429,11 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
             state->right_history[old]) * 1000.0f / elapsed;
     }
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
-        left_cps * state->left_sign, &state->left_integral, dt);
+        left_cps * state->left_sign, &state->left_integral, dt,
+        PID_BASE_PWM);
     right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
-        right_cps * state->right_sign, &state->right_integral, dt);
+        right_cps * state->right_sign, &state->right_integral, dt,
+        PID_RIGHT_BASE_PWM);
     state->left_history[slot] = state->left_now;
     state->right_history[slot] = state->right_now;
     state->time_history[slot] = state->now_ms;

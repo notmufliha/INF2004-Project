@@ -7,6 +7,11 @@
 #ifndef ROBOT_MODE
 #define ROBOT_MODE 1
 #endif
+/* Supervised B2-only floor demo: no obstacle sensing or remote control.
+ * Enable explicitly, clear the area, and keep motor power accessible. */
+#ifndef ROBOT_B2_DEMO
+#define ROBOT_B2_DEMO 0
+#endif
 /* Keep the robot level/still while B4 obtains its startup calibration. */
 #define ROBOT_IMU_STARTUP_TIMEOUT_MS 10000
 #ifndef ROBOT_ENABLE_DRIVE
@@ -46,7 +51,11 @@
  * One run per boot; any fault/obstacle aborts the entire run.
  */
 #ifndef ROBOT_MOTION_TEST
+#if ROBOT_B2_DEMO
+#define ROBOT_MOTION_TEST 10
+#else
 #define ROBOT_MOTION_TEST 0
+#endif
 #endif
 #define ROBOT_MOTION_TEST_SPEED_CPS 1000
 #define ROBOT_MOTION_TEST_BOOT_MS 5000u

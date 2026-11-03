@@ -18,6 +18,15 @@
 
 SMP ?= 1
 
+# Separate supervised Buddy 2 demo image; autonomous mode remains the default.
+B2_DEMO ?= 0
+ifneq ($(filter $(B2_DEMO),0 1),$(B2_DEMO))
+$(error B2_DEMO must be 0 or 1)
+endif
+ifeq ($(B2_DEMO),1)
+B2_DEMO_SUFFIX := _b2demo
+endif
+
 ifneq ($(SMP),0)
 ifneq ($(SMP),1)
 $(error Unknown SMP '$(SMP)'; use 0 or 1)
@@ -116,7 +125,7 @@ endif
 # a live hazard: an SMP=1 build was once flashed in place of an SMP=0 one and
 # only the banner in the log revealed it.
 #
-EXE_FILE := mtk3pico_smp$(SMP)_$(CONSOLE)$(WIFI_SUFFIX)$(NET_SUFFIX)$(MQTT_SUFFIX)$(CRASH_SUFFIX)$(TEST_SUFFIX)
+EXE_FILE := mtk3pico_smp$(SMP)_$(CONSOLE)$(WIFI_SUFFIX)$(NET_SUFFIX)$(MQTT_SUFFIX)$(CRASH_SUFFIX)$(TEST_SUFFIX)$(B2_DEMO_SUFFIX)
 
 GCC := arm-none-eabi-gcc
 AS := arm-none-eabi-gcc
@@ -160,6 +169,8 @@ CFLAGS := -mcpu=cortex-m0plus -mthumb -ffreestanding\
     -MMD -MP \
     -mfloat-abi=soft \
 
+CFLAGS += -DROBOT_B2_DEMO=$(B2_DEMO)
+
 ASFLAGS := -mcpu=cortex-m0plus -mthumb -ffreestanding\
     -x assembler-with-cpp \
     -O2 -g3 \
@@ -167,6 +178,7 @@ ASFLAGS := -mcpu=cortex-m0plus -mthumb -ffreestanding\
 
 LFLAGS := -mcpu=cortex-m0plus -mthumb -ffreestanding \
     -nostartfiles \
+    --specs=nosys.specs \
     -O2 -g3 \
     -mfloat-abi=soft \
 
@@ -211,7 +223,7 @@ endif
 # before any recipe executes.
 ################################################################################
 
-PROFILE_ID := smp$(SMP)-$(CONSOLE)-wifi$(WIFI)-net$(NET)-mqtt$(MQTT)-crash$(CRASH_REPORT)-test$(TEST)
+PROFILE_ID := smp$(SMP)-$(CONSOLE)-wifi$(WIFI)-net$(NET)-mqtt$(MQTT)-crash$(CRASH_REPORT)-test$(TEST)-b2demo$(B2_DEMO)
 PROFILE_FILE := .build_profile
 
 ifneq ($(strip $(shell cat $(PROFILE_FILE) 2>/dev/null)),$(PROFILE_ID))

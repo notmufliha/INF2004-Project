@@ -1,5 +1,12 @@
 # Buddy 2 motion control
 
+For the B2-only hurdle demonstration, use
+[the standalone demo guide](../../testing/subsystem2/DEMO.md).
+`B2_DEMO=1` selects exclusive demo ownership and supervised local authorization.
+Ordinary controller mode still requires Buddy 5 clearance. Configuration and
+networking descriptions below predate controller integration; use the demo
+guide for the current standalone build.
+
 Buddy 2 owns motor PWM and encoder feedback. The 10 ms control task executes
 DRIVE, distance-limited MOVE, in-place TURN, and STOP. No task automatically
 starts driving. Current robot configuration keeps drive and bypass disabled.

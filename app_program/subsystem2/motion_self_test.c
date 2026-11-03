@@ -4,8 +4,11 @@
 #include "b2_motor.h"
 #include "../robot_config.h"
 
-#if ROBOT_MOTION_TEST < 0 || ROBOT_MOTION_TEST > 6
-#error "ROBOT_MOTION_TEST must be 0..6"
+#if ROBOT_MOTION_TEST < 0 || ROBOT_MOTION_TEST > 10
+#error "ROBOT_MOTION_TEST must be 0..10"
+#endif
+#if ROBOT_B2_DEMO && (!ROBOT_MODE || !ROBOT_MOTION_TEST)
+#error "B2 demo requires robot mode and a selected movement test"
 #endif
 #if ROBOT_MOTION_TEST && (!ROBOT_ENABLE_DRIVE || ROBOT_WHEELS_UP_MOTOR_TEST)
 #error "Motion tests need drive enabled and the raw wheels-up test disabled"
@@ -15,6 +18,15 @@
 #define B2_TEST_PERIOD_MS 20u
 #define B2_TEST_CLEAR_WAIT_MS 30000u
 #define B2_TEST_RESULT_WAIT_MS 65000u
+
+static void b2_test_authorize(void)
+{
+#if ROBOT_B2_DEMO
+    /* Explicit supervised demo only. Never used in normal robot mode.
+     * STOP acknowledgement, generations and B2 faults remain enforced. */
+    b2_request_forward();
+#endif
+}
 
 static uint32_t b2_test_now(void)
 {
@@ -39,9 +51,17 @@ static motion_command_t b2_test_command(UINT test)
         command.target_distance_counts = (INT)(10.0f *
             ENC_LEFT_COUNTS_PER_REV / (3.14159265f * ENC_WHEEL_DIAMETER_CM));
     }
-    else if (test == 3u)
+    else if (test == 3u || test >= 7u)
     {
         command.type = MOTION_CMD_DRIVE;
+        if (test == 7u)
+        {
+            command.steering_permille = -250;
+        }
+        if (test == 8u)
+        {
+            command.steering_permille = 250;
+        }
     }
     else
     {
@@ -59,6 +79,7 @@ static bool b2_test_wait_clear(void)
     uint32_t printed = started - 1000u;
     while ((uint32_t)(b2_test_now() - started) < B2_TEST_CLEAR_WAIT_MS)
     {
+        b2_test_authorize();
         motion_status_snapshot_t status = {0};
         bool allowed = b2_safety_motion_allowed();
         ER error = motion_get_status(&status);
@@ -92,6 +113,7 @@ static bool b2_test_wait_result(uint32_t id)
     uint32_t printed = started;
     while ((uint32_t)(b2_test_now() - started) < B2_TEST_RESULT_WAIT_MS)
     {
+        b2_test_authorize();
         motion_status_snapshot_t status;
         if (motion_get_result(id, &status) == E_OK)
         {
@@ -116,12 +138,13 @@ static bool b2_test_wait_result(uint32_t id)
     return false;
 }
 
-/* Refresh only the DRIVE test; any loss of clearance aborts without restart. */
+/* Lost authorization aborts DRIVE without restart. */
 static bool b2_test_drive(motion_command_t command, uint32_t id)
 {
     uint32_t started = b2_test_now();
     while ((uint32_t)(b2_test_now() - started) < 1000u)
     {
+        b2_test_authorize();
         motion_status_snapshot_t result;
         if (!b2_safety_motion_allowed() ||
             command.safety_generation != b2_safety_stop_generation() ||
@@ -147,12 +170,39 @@ static bool b2_test_drive(motion_command_t command, uint32_t id)
     return b2_test_wait_result(id);
 }
 
+/* Deliberately stop refreshing DRIVE: test a real B2 watchdog fault.
+ * Keep demo authorization alive so the watchdog is the cause of stopping. */
+static bool b2_test_watchdog(uint32_t id)
+{
+    uint32_t started = b2_test_now();
+    while ((uint32_t)(b2_test_now() - started) < 3000u)
+    {
+        motion_status_snapshot_t status;
+        b2_test_authorize();
+        if (motion_get_result(id, &status) == E_OK)
+        {
+            if (status.status != MOTION_STATUS_TIMEOUT ||
+                status.fault != MOTION_FAULT_WATCHDOG)
+            {
+                return false;
+            }
+            if (motion_get_status(&status) == E_OK &&
+                status.physically_stopped)
+            {
+                tm_printf((UB *)"[B2-TEST] expected WATCHDOG; stopped\n");
+                return true;
+            }
+        }
+        tk_dly_tsk(B2_TEST_PERIOD_MS);
+    }
+    return false;
+}
+
 static bool b2_test_run(UINT test)
 {
     motion_command_t command;
     uint32_t id;
-    tm_printf((UB *)"[B2-TEST] test=%u waiting for fresh B5 clearance\n",
-        test);
+    tm_printf((UB *)"[B2-TEST] test=%u waiting for authorization\n", test);
     if (!b2_test_wait_clear())
     {
         tm_printf((UB *)"[B2-TEST] no clearance/standstill within 30s\n");
@@ -166,23 +216,34 @@ static bool b2_test_run(UINT test)
     }
     tm_printf((UB *)"[B2-TEST] START test=%u id=%u speed=%d cps\n",
         test, (UINT)id, command.target_speed_cps);
-    return test == 3u ? b2_test_drive(command, id) : b2_test_wait_result(id);
+    if (test == 9u)
+    {
+        return b2_test_watchdog(id);
+    }
+    return command.type == MOTION_CMD_DRIVE ?
+        b2_test_drive(command, id) : b2_test_wait_result(id);
 }
 
 static void b2_motion_test_task(INT stacd, void *exinf)
 {
-    UINT first = ROBOT_MOTION_TEST == 6 ? 1u : ROBOT_MOTION_TEST;
-    UINT last = ROBOT_MOTION_TEST == 6 ? 5u : ROBOT_MOTION_TEST;
+    UINT first = (ROBOT_MOTION_TEST == 6 || ROBOT_MOTION_TEST == 10)
+        ? 1u : ROBOT_MOTION_TEST;
+    UINT last = ROBOT_MOTION_TEST == 10 ? 9u :
+        (ROBOT_MOTION_TEST == 6 ? 5u : ROBOT_MOTION_TEST);
     UINT test;
     bool passed = true;
     (void)stacd;
     (void)exinf;
     tm_printf((UB *)"[B2-TEST] Armed mode=%d; starts after %u ms. "
-        "Clear front/rear/sides; B5 guards front only.\n",
+        "Clear front/rear/sides; keep power accessible.\n",
         ROBOT_MOTION_TEST, (UINT)ROBOT_MOTION_TEST_BOOT_MS);
     tk_dly_tsk(ROBOT_MOTION_TEST_BOOT_MS);
     for (test = first; test <= last; test++)
     {
+        if (test == 6u)
+        {
+            continue; /* 6 selects the legacy sequence. */
+        }
         if (!b2_test_run(test))
         {
             passed = false;

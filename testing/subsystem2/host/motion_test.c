@@ -6,6 +6,11 @@
 #include "../../../app_program/subsystem2/motion_command.c"
 #include "../../../app_program/subsystem2/pid_control.c"
 #define ROBOT_CONFIG_H
+#define ROBOT_MODE 1
+#ifndef B2_HOST_DEMO
+#define B2_HOST_DEMO 0
+#endif
+#define ROBOT_B2_DEMO B2_HOST_DEMO
 #define ROBOT_ENABLE_DRIVE 1
 #define ROBOT_WHEELS_UP_MOTOR_TEST 0
 #define ROBOT_MOTION_TEST 6
@@ -30,6 +35,8 @@ static UINT checks;
 static UW invalid_left;
 static UW invalid_right;
 static motion_fault_t last_integration_fault;
+static pid_state_t *demo_state;
+static void tick(pid_state_t *state, INT left, INT right);
 #define CHECK(expr) do { assert(expr); checks++; } while (0)
 
 ER tk_get_tim(SYSTIM *time)
@@ -47,7 +54,17 @@ ER tk_sig_sem(ID id, INT count)
 ER tk_wup_tsk(ID id) { (void)id; return E_OK; }
 ER tk_can_wup(ID id) { (void)id; return E_OK; }
 ER tk_slp_tsk(INT timeout) { (void)timeout; return E_SYS; }
-ER tk_dly_tsk(INT delay) { (void)delay; return E_OK; }
+ER tk_dly_tsk(INT delay)
+{
+    if (demo_state != NULL)
+    {
+        for (INT elapsed = 0; elapsed < delay; elapsed += 10)
+        {
+            tick(demo_state, pwm_left / 2, pwm_right / 2);
+        }
+    }
+    return E_OK;
+}
 INT tm_printf(UB *format, ...) { (void)format; return 0; }
 void encoder_get_counts(INT *left, INT *right)
 { *left = encoder_left; *right = encoder_right; }
@@ -59,6 +76,11 @@ void b2_request_stop(void)
 {
     if (!latched) safety_generation++;
     latched = true; clearance = false; pwm_left = 0; pwm_right = 0;
+}
+void b2_request_forward(void)
+{
+    if (acknowledged == safety_generation)
+    { clearance = true; latched = false; }
 }
 void b2_safety_force_stop(void) { pwm_left = 0; pwm_right = 0; }
 void b2_safety_acknowledge_stop(void)
@@ -121,6 +143,16 @@ static uint32_t send(motion_command_t value)
 static void test_profiles(void)
 {
     motion_profile_t p;
+    float integral = 0.0f;
+    INT left = pid_wheel_pwm(1000, 1000, &integral, .01f,
+        PID_BASE_PWM);
+    INT right = pid_wheel_pwm(1000, 1000, &integral, .01f,
+        PID_RIGHT_BASE_PWM);
+    CHECK(right == left + 1);
+    CHECK(pid_wheel_pwm(0, 0, &integral, .01f,
+        PID_RIGHT_BASE_PWM) == 0);
+    CHECK(pid_wheel_pwm(5000, 0, &integral, .01f,
+        PID_RIGHT_BASE_PWM) <= PID_MAX_PWM);
     p = motion_profile_targets(20, 0, 10, 0, 100, false, true);
     CHECK(p.left_speed < p.right_speed);
     p = motion_profile_targets(20, .5f, 10, 0, 0, false, true);
@@ -375,6 +407,21 @@ static void test_encoder_diagnostic_fault(void)
 
 int main(void)
 {
+    if (B2_HOST_DEMO)
+    {
+        pid_state_t state = setup();
+        demo_state = &state;
+        for (UINT test = 1; test <= 9; test++)
+        {
+            if (test == 6) continue;
+            CHECK(b2_test_run(test));
+            tk_dly_tsk(3000);
+        }
+        CHECK(pwm_left == 0 && pwm_right == 0);
+        CHECK(state.fault == MOTION_FAULT_WATCHDOG);
+        puts("PASS: B2-only demo sequence and expected watchdog stop");
+        return 0;
+    }
     INT mapped_speed;
     CHECK(motion_speed_from_percent(100, &mapped_speed) == E_OK);
     CHECK(mapped_speed == 5000);
@@ -399,6 +446,14 @@ int main(void)
     hardware_test = b2_test_command(5);
     CHECK(hardware_test.turn_direction == MOTION_TURN_RIGHT);
     CHECK(hardware_test.target_angle_deg == 90);
+    hardware_test = b2_test_command(7);
+    CHECK(hardware_test.type == MOTION_CMD_DRIVE);
+    CHECK(hardware_test.steering_permille == -250);
+    hardware_test = b2_test_command(8);
+    CHECK(hardware_test.steering_permille == 250);
+    hardware_test = b2_test_command(9);
+    CHECK(hardware_test.type == MOTION_CMD_DRIVE);
+    CHECK(hardware_test.steering_permille == 0);
     (void)setup();
     clearance = false;
     CHECK(!b2_test_drive(hardware_test, 123u));
