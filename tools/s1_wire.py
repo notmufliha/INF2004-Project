@@ -30,13 +30,16 @@ MOTION_STATES = ["STATIONARY", "ACCELERATING", "TURNING", "CLIMBING_HUMP",
 NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"]
 AVOID = ["NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"]
 BARCODES = ["-", "A", "B", "C", "D"]
+BARCODE_LETTERS = ["-", *"ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
 EVENT_TYPES = ["barcode", "hump", "obstacle", "error"]
 MODES = ["AUTO", "LINE", "TEST"]
+BARCODE_ROUTES = ["FORWARD", "UTURN", "LEFT", "RIGHT"]
 
-# 4-bit command ids: 1..8 go to the Vehicle Controller, 9..11 to S1
+# 4-bit command ids: 1..8 and 12..13 go to the Vehicle Controller, 9..11 to S1
 COMMANDS = {"START": 1, "STOP": 2, "ESTOP": 3, "PAUSE": 4, "RESUME": 5,
             "MODE": 6, "SPEED": 7, "RESET_PEAK": 8,
-            "PING": 9, "STATUS": 10, "TELEM": 11}
+            "PING": 9, "STATUS": 10, "TELEM": 11,
+            "MAP": 12, "MAP_RESET": 13}
 COMMAND_NAMES = {v: k for k, v in COMMANDS.items()}
 
 RESULTS = {0: "forwarded", 1: "pong", 2: "status sent", 3: "telemetry period set",
@@ -92,7 +95,7 @@ TELEMETRY = [
 EVENT_HEADER = [("ver", 3, False), ("type", 2, False), ("seq", 8, False),
                 ("t_ds", 20, False)]
 EVENT_BODY = {
-    0: [("code", 3, False), ("nav", 3, False)],
+    0: [("code", 5, False), ("nav", 3, False)],
     1: [("valid", 1, False), ("height_mm", 7, False), ("peak_mm", 7, False)],
     2: [("d_cm", 9, False), ("w_cm", 7, False), ("lc_cm", 9, False),
         ("rc_cm", 9, False), ("action", 3, False)],
@@ -197,7 +200,7 @@ def decode_event(data):
     d["t_s"] = d["t_ds"] / 10
     d["type_name"] = EVENT_TYPES[d["type"]]
     if d["type"] == 0:
-        d["code_name"] = _name(BARCODES, d["code"])
+        d["code_name"] = _name(BARCODE_LETTERS, d["code"])
         d["nav_name"] = _name(NAV, d["nav"])
     elif d["type"] == 2:
         d["action_name"] = _name(AVOID, d["action"])
@@ -269,6 +272,12 @@ def encode_command(text, seq=0):
         if ms % 100:
             raise ValueError("TELEM period must be a multiple of 100 ms")
         arg = ms // 100
+    elif verb == "MAP":
+        if (len(args) != 2 or len(args[0]) != 1 or
+                args[0] not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" or
+                args[1] not in BARCODE_ROUTES):
+            raise ValueError("MAP needs one letter A-Z and FORWARD, UTURN, LEFT or RIGHT")
+        arg = (ord(args[0]) - ord("A")) * 4 + BARCODE_ROUTES.index(args[1])
     elif args:
         raise ValueError(f"{verb} takes no argument")
     return pack(COMMAND, {"ver": WIRE_VERSION, "cmd": COMMANDS[verb],

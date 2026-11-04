@@ -148,11 +148,21 @@ decodes_to (uint32_t cmd_id, uint32_t arg, uint32_t seq)
     b_ok = (CMD_OK == comm_pack_cmd_decode(frame, WIRE_CMD_LEN, &cmd)) &&
            (cmd_id == cmd.cmd_id) && (arg == cmd.arg) && (seq == cmd.seq);
 
-    if (b_ok && (cmd_id < (uint32_t)RCMD_COUNT))
+    if (b_ok && (cmd_id <= (uint32_t)RCMD_RESET_PEAK))
     {
         /* Forwarded commands must also fill the VC message. */
         b_ok = (cmd_id == cmd.cmd.type) && (arg == cmd.cmd.arg) &&
                (seq == cmd.cmd.seq);
+    }
+    else if (b_ok && (cmd_id == WCMD_BARCODE_MAP))
+    {
+        b_ok = (RCMD_BARCODE_MAP == cmd.cmd.type) &&
+               (arg == cmd.cmd.arg) && (seq == cmd.cmd.seq);
+    }
+    else if (b_ok && (cmd_id == WCMD_BARCODE_MAP_RESET))
+    {
+        b_ok = (RCMD_BARCODE_MAP_RESET == cmd.cmd.type) &&
+               (arg == cmd.cmd.arg) && (seq == cmd.cmd.seq);
     }
 
     return (b_ok);
@@ -201,6 +211,9 @@ test_commands (void)
            (decodes_to(RCMD_MODE, MODE_LINE_ONLY, 1U)) &&
            (decodes_to(RCMD_ESTOP, 0U, 9U)) &&
            (decodes_to(WCMD_PING, 0U, 2U)) &&
+           (decodes_to(WCMD_BARCODE_MAP, (25U << 2U) | BARCODE_ROUTE_RIGHT,
+                       6U)) &&
+           (decodes_to(WCMD_BARCODE_MAP_RESET, 0U, 7U)) &&
            (decodes_to(WCMD_TELEM, COMM_TELEM_MIN_DS, 4U)) &&
            (decodes_to(WCMD_TELEM, COMM_TELEM_MAX_DS, 5U));
     check("S1-U03", b_ok, "valid 3-byte commands accepted and decoded");
@@ -217,6 +230,8 @@ test_commands (void)
             result_of(WIRE_VERSION, RCMD_SPEED, SPEED_TOO_HIGH, 0U)) &&
            (CMD_ERR_RANGE ==
             result_of(WIRE_VERSION, RCMD_MODE, MODE_COUNT, 0U)) &&
+           (CMD_ERR_RANGE ==
+            result_of(WIRE_VERSION, WCMD_BARCODE_MAP, 104U, 0U)) &&
            (CMD_ERR_RANGE == result_of(WIRE_VERSION, WCMD_TELEM, 0U, 0U)) &&
            (CMD_ERR_EXTRA_ARG ==
             result_of(WIRE_VERSION, RCMD_STOP, EXTRA_ARG, 0U));
@@ -431,4 +446,3 @@ test_network (void)
 #endif /* APP_TEST */
 
 /*** end of file ***/
-

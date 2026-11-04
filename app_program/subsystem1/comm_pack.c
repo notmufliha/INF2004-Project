@@ -19,6 +19,7 @@
 #define BITS_IR        12U
 #define BITS_FLAG      1U
 #define BITS_3         3U
+#define BITS_BARCODE   5U
 #define BITS_PITCH     COMM_PITCH_BITS /* signed               */
 #define BITS_HUMP      7U
 #define BITS_DIST      9U
@@ -49,7 +50,9 @@ static const uint8_t g_cmd_arg_max[WCMD_COUNT] =
     SPEED_PERCENT,           /* SPEED, percent                */
     0U,                      /* RESET_PEAK                    */
     0U, 0U,                  /* PING STATUS                   */
-    COMM_TELEM_MAX_DS        /* TELEM, 100 ms units           */
+    COMM_TELEM_MAX_DS,       /* TELEM, 100 ms units           */
+    127U,                    /* BARCODE_MAP: letter index + route */
+    0U                       /* BARCODE_MAP_RESET              */
 };
 
 /* Console text only: const, so it stays in flash. */
@@ -314,7 +317,7 @@ comm_pack_event (uint8_t * p_out, uint32_t cap, uint8_t seq,
     switch (p_event->type)
     {
         case EVT_BARCODE:
-            comm_pack_bits_put(&bits, p_event->val_a, BITS_3); /* 1..4  */
+            comm_pack_bits_put(&bits, p_event->val_a, BITS_BARCODE); /* A..Z */
             comm_pack_bits_put(&bits, p_event->val_e, BITS_3); /* nav   */
         break;
 
@@ -418,9 +421,26 @@ comm_pack_cmd_decode (const uint8_t * p_in, uint32_t len,
         reserved      = comm_pack_read(&reader, BITS_CMD_RES);
         result        = check_command(version, reserved, p_out);
 
-        if ((CMD_OK == result) && (p_out->cmd_id < (uint8_t)RCMD_COUNT))
+        if (CMD_OK == result)
         {
-            p_out->cmd.type = (UINT)p_out->cmd_id & CMD_ID_MASK;
+            if (p_out->cmd_id <= (uint8_t)RCMD_RESET_PEAK)
+            {
+                p_out->cmd.type = (UINT)p_out->cmd_id & CMD_ID_MASK;
+            }
+            else if (p_out->cmd_id == WCMD_BARCODE_MAP)
+            {
+                uint32_t letter_index = (uint32_t)p_out->arg >> 2U;
+
+                if (letter_index >= COMM_BARCODE_COUNT)
+                {
+                    return CMD_ERR_RANGE;
+                }
+                p_out->cmd.type = (UINT)RCMD_BARCODE_MAP;
+            }
+            else if (p_out->cmd_id == WCMD_BARCODE_MAP_RESET)
+            {
+                p_out->cmd.type = (UINT)RCMD_BARCODE_MAP_RESET;
+            }
             p_out->cmd.arg  = (UINT)p_out->arg & CMD_ARG_MASK;
             p_out->cmd.seq  = p_out->seq;
         }
@@ -498,4 +518,3 @@ check_command (uint32_t version, uint32_t reserved,
 }
 
 /*** end of file ***/
-

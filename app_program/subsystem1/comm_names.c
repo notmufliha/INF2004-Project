@@ -24,7 +24,7 @@ static const char * const g_avoid_names[AVOID_COUNT] =
 static const char * const g_remote_names[RCMD_COUNT] =
 {
     "NONE", "START", "STOP", "ESTOP", "PAUSE", "RESUME",
-    "MODE", "SPEED", "RESET_PEAK"
+    "MODE", "SPEED", "RESET_PEAK", "BARCODE_MAP", "BARCODE_MAP_RESET"
 };
 
 static const char * name_of (const char * const * pp_table, uint32_t index,
@@ -77,4 +77,3 @@ name_of (const char * const * pp_table, uint32_t index, uint32_t count)
 }
 
 /*** end of file ***/
-

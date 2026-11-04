@@ -65,7 +65,8 @@ good = [("START", 0, 1), ("STOP", 0, 2), ("ESTOP", 0, 3), ("PAUSE", 0, 4),
         ("RESUME", 0, 5), ("MODE AUTO", 0, 6), ("MODE TEST", 2, 7),
         ("SPEED 0", 0, 8), ("SPEED 100", 100, 255), ("RESET_PEAK", 0, 0),
         ("PING", 0, 9), ("STATUS", 0, 10), ("TELEM 100", 1, 11),
-        ("TELEM 10000", 100, 12)]
+        ("TELEM 10000", 100, 12), ("MAP A FORWARD", 0, 13),
+        ("MAP Z RIGHT", 103, 14), ("MAP_RESET", 0, 15)]
 frames = [s1_wire.encode_command(t, seq).hex() for t, _, seq in good]
 for f in frames:
     check("command frame length", len(f), 6)
@@ -84,10 +85,11 @@ bad = [  # (frame hex, expected result code)
     (s1_wire.pack(C, {"ver": 2, "cmd": 2}).hex(), 9),
     (s1_wire.pack(C, {"ver": 1, "cmd": 2, "reserved": 1}).hex(), 10),
     (s1_wire.pack(C, {"ver": 1, "cmd": 0}).hex(), 11),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 12}).hex(), 11),
+    (s1_wire.pack(C, {"ver": 1, "cmd": 14}).hex(), 11),
     (s1_wire.pack(C, {"ver": 1, "cmd": 7, "arg": 101}).hex(), 12),
     (s1_wire.pack(C, {"ver": 1, "cmd": 6, "arg": 3}).hex(), 12),
     (s1_wire.pack(C, {"ver": 1, "cmd": 11, "arg": 0}).hex(), 12),
+    (s1_wire.pack(C, {"ver": 1, "cmd": 12, "arg": 104}).hex(), 12),
     (s1_wire.pack(C, {"ver": 1, "cmd": 2, "arg": 5}).hex(), 13),
 ]
 out = run("decode", "\n".join(f for f, _ in bad) + "\n").splitlines()
@@ -97,7 +99,8 @@ print(f"checked {len(good)} valid and {len(bad)} invalid command frames")
 
 # Laptop-side validation refuses what the car would refuse
 for text in ["FLY", "SPEED 101", "SPEED -5", "STOP now", "MODE FLY",
-             "TELEM 50", "TELEM 250", ""]:
+             "TELEM 50", "TELEM 250", "MAP AA LEFT", "MAP A BACKWARD",
+             "MAP", ""]:
     try:
         s1_wire.encode_command(text)
         check(f"encoder refuses {text!r}", "accepted", "ValueError")

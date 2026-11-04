@@ -42,7 +42,13 @@ if (sent.length !== 3 || back.cmd !== 7 || back.arg !== 40 || back.seq !== 5) {
   failures++;
   console.log("FAIL command encode SPEED 40");
 }
-for (const bad of ["SPEED 101", "MODE FAST", "STOP 1", "TELEM 150", "JUMP"]) {
+const map = W.unpack(W.COMMAND, W.encodeCommand("MAP Z RIGHT", 6))[0];
+if (map.cmd !== 12 || map.arg !== 103 || map.seq !== 6) {
+  failures++;
+  console.log("FAIL command encode MAP Z RIGHT");
+}
+for (const bad of ["SPEED 101", "MODE FAST", "STOP 1", "TELEM 150", "JUMP",
+  "MAP AA LEFT", "MAP A BACKWARD", "MAP"]) {
   let threw = false;
   try { W.encodeCommand(bad, 0); } catch (e) { threw = true; }
   if (!threw) { failures++; console.log(`FAIL accepted bad command ${bad}`); }

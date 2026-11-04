@@ -4,6 +4,7 @@
 #include "subsystem3/b3_line_barcode.h"
 #include "subsystem4/imu_vc.h"
 #include "subsystem4/subsystem4.h"
+#include <string.h>
 
 #if ROBOT_MODE && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || S1_STANDALONE_DEMO)
 #error "The Vehicle Controller requires exclusive command ownership; disable demos/tests"
@@ -36,8 +37,23 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     c->paused = false;
     c->navigation = 0u;
     c->navigation_id = 0u;
+    c->pending_barcode = 0u;
     stop_motion(c);
     set_state(c, ROBOT_SAFE_STOP);
+}
+
+static UB route_bit(UB route)
+{
+    return (UB)(1U << route);
+}
+
+static UB navigation_for_route(UB route)
+{
+    static const UB navigation[BARCODE_ROUTE_COUNT] = {
+        B3_NAV_STRAIGHT, B3_NAV_UTURN, B3_NAV_LEFT, B3_NAV_RIGHT
+    };
+
+    return route < BARCODE_ROUTE_COUNT ? navigation[route] : B3_NAV_NONE;
 }
 
 void vehicle_controller_init(VEHICLE_CONTROLLER *c)
@@ -54,10 +70,12 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
 {
     switch (cmd->type) {
     case RCMD_START:
-        if (c->mode != MODE_TEST) {
+        if (c->mode != MODE_TEST && c->barcode_route_mask == 0x0FU) {
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
+        } else if (c->mode != MODE_TEST) {
+            tm_printf((UB *)"[VC] START refused: configure all four barcode routes\n");
         }
         break;
     case RCMD_RESUME:
@@ -101,14 +119,74 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
     case RCMD_RESET_PEAK:
         CHECK(subsystem4_reset_peak(), "VC reset peak");
         break;
+    case RCMD_BARCODE_MAP: {
+        UB letter_index = (UB)(cmd->arg >> 2U);
+        UB route = (UB)(cmd->arg & 0x03U);
+        UB old_route = B3_NAV_NONE;
+
+        if (letter_index >= COMM_BARCODE_COUNT) {
+            tm_printf((UB *)"[VC] invalid barcode mapping argument=%d\n",
+                      (INT)cmd->arg);
+            break;
+        }
+        if (c->running || c->navigation != 0u) {
+            safe_stop(c);
+        }
+        if ((c->barcode_mapped_mask & (1UL << letter_index)) != 0U) {
+            old_route = c->barcode_routes[letter_index];
+            c->barcode_route_mask = (uint8_t)(c->barcode_route_mask &
+                (uint8_t)~route_bit((UB)(old_route == B3_NAV_STRAIGHT
+                    ? BARCODE_ROUTE_FORWARD
+                    : old_route == B3_NAV_UTURN ? BARCODE_ROUTE_UTURN
+                    : old_route == B3_NAV_LEFT ? BARCODE_ROUTE_LEFT
+                    : BARCODE_ROUTE_RIGHT)));
+        }
+        if ((c->barcode_route_mask & route_bit(route)) != 0U) {
+            if (old_route != B3_NAV_NONE) {
+                UB old_route_code = old_route == B3_NAV_STRAIGHT
+                    ? BARCODE_ROUTE_FORWARD
+                    : old_route == B3_NAV_UTURN ? BARCODE_ROUTE_UTURN
+                    : old_route == B3_NAV_LEFT ? BARCODE_ROUTE_LEFT
+                    : BARCODE_ROUTE_RIGHT;
+
+                c->barcode_route_mask = (uint8_t)(c->barcode_route_mask |
+                                                   route_bit(old_route_code));
+            }
+            tm_printf((UB *)"[VC] route already assigned; mapping ignored\n");
+            break;
+        }
+        c->barcode_routes[letter_index] = navigation_for_route(route);
+        c->barcode_mapped_mask |= (1UL << letter_index);
+        c->barcode_route_mask = (uint8_t)(c->barcode_route_mask |
+                                          route_bit(route));
+        tm_printf((UB *)"[VC] barcode %c -> route %d\n",
+                  (INT)('A' + letter_index), (INT)route);
+        break;
+    }
+    case RCMD_BARCODE_MAP_RESET:
+        if (c->running || c->navigation != 0u) {
+            safe_stop(c);
+        }
+        c->barcode_mapped_mask = 0U;
+        c->barcode_route_mask = 0U;
+        c->pending_barcode = 0U;
+        memset(c->barcode_routes, 0, sizeof(c->barcode_routes));
+        tm_printf((UB *)"[VC] barcode route mappings cleared\n");
+        break;
     default: break;
     }
 }
 
-void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
+void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
+                             UB barcode)
 {
     INT speed;
     motion_command_t command = {0};
+    bool junction = in->line_valid &&
+        ((in->line_flags & LINE_F_JUNCTION) != 0U);
+    bool junction_edge = junction && !c->junction_active;
+
+    c->junction_active = junction;
     if (!c->running || c->estop || c->mode == MODE_TEST) {
         stop_motion(c);
         return;
@@ -128,6 +206,39 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (!in->line_valid) {
         safe_stop(c);
         return;
+    }
+    if (barcode != 0U && barcode <= COMM_BARCODE_COUNT &&
+        c->mode == MODE_AUTO) {
+        if (c->pending_barcode == 0U) {
+            c->pending_barcode = barcode;
+            tm_printf((UB *)"[VC] stored barcode %c; waiting for junction\n",
+                      (INT)('A' + barcode - 1U));
+        } else if (c->pending_barcode != barcode) {
+            tm_printf((UB *)"[VC] unexpected second barcode before junction\n");
+            safe_stop(c);
+            return;
+        }
+    }
+    if (c->pending_barcode != 0U && junction_edge &&
+        c->mode == MODE_AUTO) {
+        uint8_t letter_index = (uint8_t)(c->pending_barcode - 1U);
+
+        if ((c->barcode_mapped_mask & (1UL << letter_index)) == 0U) {
+            tm_printf((UB *)"[VC] no route mapping for barcode %c\n",
+                      (INT)('A' + letter_index));
+            safe_stop(c);
+            return;
+        }
+        c->navigation = c->barcode_routes[letter_index];
+        c->pending_barcode = 0U;
+        if (c->navigation != B3_NAV_STRAIGHT) {
+            c->navigation_ms = in->now_ms;
+            stop_motion(c);
+            set_state(c, ROBOT_NAV_COMMAND);
+            return;
+        }
+        c->navigation = 0U;
+        tm_printf((UB *)"[VC] barcode route: continue forward\n");
     }
     if (c->navigation == 0u &&
         (!(in->line_flags & LINE_F_DETECTED) || (in->line_flags & LINE_F_LOST))) {
@@ -152,14 +263,6 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
-    if (c->mode == MODE_AUTO && c->navigation == 0u &&
-        nav >= B3_NAV_LEFT && nav <= B3_NAV_UTURN) {
-        c->navigation = nav;
-        c->navigation_ms = in->now_ms;
-        stop_motion(c);
-        set_state(c, ROBOT_NAV_COMMAND);
-        return;
-    }
     if (c->navigation != 0u) {
         set_state(c, ROBOT_NAV_COMMAND);
         if (c->navigation_id != 0u) {
@@ -229,7 +332,7 @@ static void controller_task(INT stacd, void *exinf)
         VC_INPUT in = {0};
         B3_STATE line;
         uint32_t line_ms = 0u;
-        UB nav = 0u;
+        UB barcode = 0u;
         bool stop_barrier = false;
         bool was_running = c.running;
         if (tk_get_tim(&now) != E_OK) {
@@ -256,7 +359,9 @@ static void controller_task(INT stacd, void *exinf)
         for (UINT i = 0u; i < B3_NAV_QUEUE_LENGTH; ++i) {
             UB next;
             if (tk_rcv_mbf(mbf_nav_cmd, &next, TMO_POL) != (INT)sizeof(next)) break;
-            if (nav == 0u && was_running && c.running && !stop_barrier) nav = next;
+            if (barcode == 0u && was_running && c.running && !stop_barrier) {
+                barcode = next;
+            }
         }
         in.line_valid = b3_get_timed_state(&line, &line_ms) == E_OK &&
             now.lo - line_ms <= VC_LINE_MAX_AGE_MS;
@@ -275,7 +380,7 @@ static void controller_task(INT stacd, void *exinf)
         in.clearance = b2_safety_motion_allowed();
         in.safety_generation = b2_safety_stop_generation();
         in.faults = fault_get();
-        vehicle_controller_step(&c, &in, nav);
+        vehicle_controller_step(&c, &in, barcode);
         /* Hazards stop this tick even when coalesced with recovery. A later
          * explicit START is required; no automatic mission restart. */
         hazard = false;

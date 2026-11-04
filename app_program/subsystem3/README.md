@@ -6,10 +6,12 @@ returns the sample block and producer slot, and sends a short report to
 Subsystem 4 every five samples.
 
 It also contains a separate Buddy 3 line/barcode module in
-`b3_line_barcode.c` / `b3_line_barcode.h`. The existing sample consumer remains
-the active integration example; the B3 module is not started by `app_main.c`
-until the team agrees on the shared startup and Vehicle Controller queue
-interfaces. See [B3_IMPLEMENTATION.md](./B3_IMPLEMENTATION.md) for setup,
+`b3_line_barcode.c` / `b3_line_barcode.h`. In robot mode, `app_main.c` starts
+this module and the Vehicle Controller consumes its line state and navigation
+queue. In teaching-demo mode, the existing sample consumer remains active
+instead. Line sampling and bidirectional Code 39 decoding for A-Z are
+implemented. MQTT route mappings are required before autonomous START. See
+[B3_IMPLEMENTATION.md](./B3_IMPLEMENTATION.md) for setup,
 queue, threshold, and barcode protocol details.
 
 ## Task and objects
@@ -55,7 +57,7 @@ invocation. Follow the root README for toolchain, flash, and console steps.
 The supplied Week 6 design review assigns Buddy 3 to analogue IR line
 following (GP26/GP27), digital right-side barcode sensing (GP28), junction and
 line-loss reporting, and navigation command generation. It proposes a 20 ms
-line update interval and timestamped barcode edge capture. Physical thresholds
-and the A-D pulse-width encoding are not specified in the current repository;
-the new module leaves barcode classification disabled until those values are
-confirmed.
+line update interval and timestamped barcode edge capture. The sensor
+thresholds and speed-dependent scan limits still require physical
+calibration. Barcode classification uses standard Code 39 A-Z patterns and
+the route table is supplied over MQTT; see `B3_IMPLEMENTATION.md`.

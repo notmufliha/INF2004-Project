@@ -11,7 +11,7 @@
  *
  *     frame       bits  bytes   was (JSON / text)
  *     telemetry    223     28   250 typical, 374 worst case
- *     event      39-70    5-9   60-110
+ *     event      41-70    6-9   60-110
  *     status       179     23   ~190
  *     ack           24      3   ~60
  *     command       24      3   up to 64
@@ -32,7 +32,7 @@
 #define WIRE_ACK_LEN      3
 #define WIRE_CMD_LEN      3U
 #define WIRE_EVT_MAX_LEN  9   /* obstacle; barcode 5, hump 6, error 7 */
-#define WIRE_EVT_BAR_LEN  5
+#define WIRE_EVT_BAR_LEN  6
 #define WIRE_EVT_ERR_LEN  7
 
 /** @brief MSB-first bit writer over a byte array. */
@@ -59,7 +59,7 @@ typedef struct
  * never shared while being written.
  *
  *   type      val_a      val_b     val_c    val_d    val_e    flag
- *   BARCODE   1..4       -         -        -        NAV_CMD  -
+ *   BARCODE   1..26      -         -        -        NAV_CMD  -
  *   HUMP      height mm  peak mm   -        -        -        valid
  *   OBSTACLE  dist cm    width cm  left cm  right cm action   -
  *   ERROR     err code   detail    -        -        -        -
@@ -102,11 +102,13 @@ typedef struct
 } comm_pack_status_t;
 
 /* Commands as sent by the laptop (4-bit id): 1..8 are the
- * comm_remote_cmd_type_t values, then those subsystem 1 handles. */
+ * comm_remote_cmd_type_t values, then subsystem 1 commands and B3 mapping. */
 #define WCMD_PING   9U  /* reply "pong"                   */
 #define WCMD_STATUS 10U /* publish a status frame now     */
 #define WCMD_TELEM  11U /* arg = period in 100 ms, 1..100 */
-#define WCMD_COUNT  12U
+#define WCMD_BARCODE_MAP 12U /* arg = (A-Z index << 2) | route code */
+#define WCMD_BARCODE_MAP_RESET 13U
+#define WCMD_COUNT  14U
 
 /* Telemetry period limits for WCMD_TELEM, 100 ms units (7 bits). */
 #define COMM_TELEM_MIN_DS 1U
@@ -175,4 +177,3 @@ const char *       comm_pack_result_text (comm_pack_result_t result);
 #endif /* COMM_PACK_H */
 
 /*** end of file ***/
-

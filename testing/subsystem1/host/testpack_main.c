@@ -159,7 +159,7 @@ make_telemetry (const telem_case_t * p_case)
     telem.ir_centre    = comm_pack_sat_u(p_case->ir_c, COMM_IR_MAX) & 0xFFFU;
     telem.ir_right     = p_case->ir_r & 1U;
     telem.line_flags   = p_case->line & 7U;
-    telem.barcode      = p_case->barcode & 7U;
+    telem.barcode      = p_case->barcode & 0x07U;
     telem.nav          = p_case->nav & 7U;
     telem.motion       = p_case->motion & 7U;
     telem.pitch_ddeg   = comm_pack_twos(comm_pack_sat_s(p_case->pitch,
@@ -232,7 +232,7 @@ event_vector (uint32_t type, uint8_t seq, uint32_t tds, uint32_t val_a,
               uint32_t val_b, uint32_t val_c, uint32_t val_d, uint32_t val_e,
               uint32_t flag)
 {
-    static const int32_t want_len[4] = {5, 6, 9, 7};
+    static const int32_t want_len[4] = {6, 6, 9, 7};
     comm_pack_event_t    event       = {0};
     uint8_t              buf[COMM_PAYLOAD_MAX];
     int32_t              len;
@@ -361,7 +361,7 @@ vectors (void)
     }
 
     event_vector(EVT_BARCODE, 0U, 0U, 1U, 0U, 0U, 0U, NAV_LEFT, 0U);
-    event_vector(EVT_BARCODE, 255U, 0xFFFFFU, 4U, 0U, 0U, 0U, NAV_UTURN, 0U);
+    event_vector(EVT_BARCODE, 255U, 0xFFFFFU, 26U, 0U, 0U, 0U, NAV_NONE, 0U);
     event_vector(EVT_HUMP, 7U, 160U, 23U, 31U, 0U, 0U, 0U, 1U);
     event_vector(EVT_HUMP, 8U, 161U, 0U, 0U, 0U, 0U, 0U, 0U);
     event_vector(EVT_OBSTACLE, 9U, 420U, 25U, 12U, 30U, 9U, AVOID_LEFT, 0U);
@@ -456,4 +456,3 @@ sizes (void)
 }
 
 /*** end of file ***/
-

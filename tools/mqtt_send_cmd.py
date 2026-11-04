@@ -10,6 +10,8 @@ for the matching ack on <prefix>/cmd/ack.
 Setup (once):   pip install paho-mqtt
 Examples:       python3 tools/mqtt_send_cmd.py STOP
                 python3 tools/mqtt_send_cmd.py SPEED 40 --seq 7
+                python3 tools/mqtt_send_cmd.py MAP A LEFT --seq 8
+                python3 tools/mqtt_send_cmd.py MAP_RESET --seq 9
                 python3 tools/mqtt_send_cmd.py TELEM 300 --broker 192.168.1.10
                 python3 tools/mqtt_send_cmd.py --hex 2e 00 2c     # raw frame, for
                                                                    # rejection tests

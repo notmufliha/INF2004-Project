@@ -21,7 +21,7 @@
 #define MS_PER_DS      100U
 #define DIST_INVALID   0x1FFU   /* 9-bit field all ones           */
 #define WIDTH_INVALID  0x7FU    /* 7-bit field all ones           */
-#define BARCODE_MASK   0x07U
+#define BARCODE_MASK   0x1FU
 #define NAV_MASK       0x07U
 #define ACTION_MASK    0x07U
 #define ROBOT_MASK     0x0FU
@@ -143,7 +143,7 @@ comm_get_telemetry (comm_telemetry_t * p_out)
     }
 }
 
-/** @brief Report a decoded barcode 'A'..'D' and its command (B3). */
+/** @brief Report a decoded barcode 'A'..'Z' and its selected command (B3). */
 ER
 comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
 {
@@ -162,7 +162,7 @@ comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
 
         if (telem_lock()) /* also kept in the telemetry snapshot */
         {
-            g_s1_telem.barcode = code & BARCODE_MASK;
+            g_s1_telem.barcode = (code <= 4U) ? code : 0U;
             g_s1_telem.nav     = (UINT)nav & NAV_MASK;
             telem_unlock();
         }
@@ -372,4 +372,3 @@ post_event (comm_pack_event_t * p_event)
 }
 
 /*** end of file ***/
-

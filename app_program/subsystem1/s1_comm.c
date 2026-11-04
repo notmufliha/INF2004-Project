@@ -535,4 +535,3 @@ poll_encoders (uint32_t now_ms)
 #endif
 
 /*** end of file ***/
-

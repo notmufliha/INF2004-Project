@@ -51,20 +51,21 @@ the mission. Hazard observations retained in a coalesced B4 notice stop the
 current tick even if its latest snapshot has recovered. Restart requires a new
 START after healthy data returns. Thresholds need on-car validation.
 
-AUTO consumes B3 navigation messages: LEFT/RIGHT turn 90 degrees, UTURN turns
-180 degrees, STRAIGHT moves 10 cm. STOP/standstill and renewed B5 clearance
-precede submission. The exact B2 command result must indicate successful
-completion and physical standstill. Failed/cancelled moves stop the mission.
-Navigation messages received while idle, paused or already executing another
-segment are discarded. LINE_ONLY ignores navigation. B3's barcode decoder is
-still disabled until the team configures the actual barcode protocol.
+AUTO stores each decoded B3 letter until the next rising junction detection.
+The letter-to-route table is configured over MQTT before START; all four
+distinct routes (FORWARD, UTURN, LEFT, RIGHT) must be assigned. FORWARD
+continues line following through the junction; turns use B2 motion commands
+after STOP/standstill and renewed B5 clearance. The exact B2 command result
+must indicate successful completion and physical standstill. Failed/cancelled
+moves stop the mission. Barcodes received while idle, paused or executing a
+segment are discarded. LINE_ONLY ignores barcode routes.
 
 Two-sensor steering is deliberately provisional: left-only detection applies
 35% left steering, centre/junction detection goes straight. The base speed is
 limited so the outer wheel never exceeds B2's 5000 counts/s limit. Sensor
 thresholds, steering direction/gain, junction travel and turn accuracy must be
-calibrated on the actual track. This controller does not complete B3's barcode
-protocol or B5's physical avoidance bridge.
+calibrated on the actual track. This controller still requires physical validation of B3's junction logic,
+barcode timing and B5's physical avoidance bridge.
 
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File
 testing/controller/run_tests.ps1` from the project root. Tests execute the real

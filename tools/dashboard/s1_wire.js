@@ -25,10 +25,13 @@
   const NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"];
   const AVOID = ["NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"];
   const BARCODES = ["-", "A", "B", "C", "D"];
+  const BARCODE_LETTERS = ["-", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
   const EVENT_TYPES = ["barcode", "hump", "obstacle", "error"];
   const MODES = ["AUTO", "LINE", "TEST"];
+  const BARCODE_ROUTES = ["FORWARD", "UTURN", "LEFT", "RIGHT"];
   const COMMANDS = { START: 1, STOP: 2, ESTOP: 3, PAUSE: 4, RESUME: 5,
-    MODE: 6, SPEED: 7, RESET_PEAK: 8, PING: 9, STATUS: 10, TELEM: 11 };
+    MODE: 6, SPEED: 7, RESET_PEAK: 8, PING: 9, STATUS: 10, TELEM: 11,
+    MAP: 12, MAP_RESET: 13 };
   const COMMAND_NAMES = Object.fromEntries(
     Object.entries(COMMANDS).map(([k, v]) => [v, k]));
   const RESULTS = { 0: "forwarded", 1: "pong", 2: "status sent",
@@ -66,7 +69,7 @@
     ["obs_rc_cm", 9]];
   const EVENT_HEADER = [["ver", 3], ["type", 2], ["seq", 8], ["t_ds", 20]];
   const EVENT_BODY = [
-    [["code", 3], ["nav", 3]],
+    [["code", 5], ["nav", 3]],
     [["valid", 1], ["height_mm", 7], ["peak_mm", 7]],
     [["d_cm", 9], ["w_cm", 7], ["lc_cm", 9], ["rc_cm", 9], ["action", 3]],
     [["err", 8], ["detail", 8]]];
@@ -153,7 +156,7 @@
     d.t_s = d.t_ds / 10;
     d.type_name = EVENT_TYPES[d.type];
     if (d.type === 0) {
-      d.code_name = name(BARCODES, d.code);
+      d.code_name = name(BARCODE_LETTERS, d.code);
       d.nav_name = name(NAV, d.nav);
     } else if (d.type === 2) {
       d.action_name = name(AVOID, d.action);
@@ -225,6 +228,12 @@
       const ms = oneInt(100, 10000);
       if (ms % 100) throw new Error("TELEM period must be a multiple of 100 ms");
       arg = ms / 100;
+    } else if (verb === "MAP") {
+      if (args.length !== 2 || !/^[A-Z]$/.test(args[0]) ||
+          !BARCODE_ROUTES.includes(args[1])) {
+        throw new Error("MAP needs one letter A-Z and FORWARD, UTURN, LEFT or RIGHT");
+      }
+      arg = (args[0].charCodeAt(0) - 65) * 4 + BARCODE_ROUTES.indexOf(args[1]);
     } else if (args.length) throw new Error(`${verb} takes no argument`);
     return pack(COMMAND, { ver: WIRE_VERSION, cmd: COMMANDS[verb], arg,
       seq: (seq || 0) & 0xFF });

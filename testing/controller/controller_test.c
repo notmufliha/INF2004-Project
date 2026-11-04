@@ -106,6 +106,8 @@ ID app_start_task(FP entry, INT priority, UW core, const char *name)
 static VEHICLE_CONTROLLER fresh(void)
 {
     VEHICLE_CONTROLLER c;
+    static const char letters[] = {'A', 'B', 'C', 'D'};
+    UINT i;
     send_error = E_OK; result_ready = false; drives = stops = 0u;
     input = (VC_INPUT){0};
     input.now_ms = 100u; input.clearance = input.line_valid = input.imu_valid = true;
@@ -115,6 +117,12 @@ static VEHICLE_CONTROLLER fresh(void)
     input.left = 3000u; input.centre = 1000u;
     input.safety_generation = generation;
     vehicle_controller_init(&c);
+    for (i = 0U; i < 4U; ++i) {
+        REMOTE_CMD map = {0};
+        map.type = RCMD_BARCODE_MAP;
+        map.arg = ((UINT)(letters[i] - 'A') << 2U) | i;
+        vehicle_controller_command(&c, &map);
+    }
     return c;
 }
 static void command(VEHICLE_CONTROLLER *c, UINT type, UINT arg)
@@ -131,6 +139,11 @@ static void step(VEHICLE_CONTROLLER *c, UINT elapsed, UB nav)
 int main(void)
 {
     VEHICLE_CONTROLLER c = fresh();
+    VEHICLE_CONTROLLER unconfigured;
+    vehicle_controller_init(&unconfigured);
+    command(&unconfigured, RCMD_START, 0u);
+    assert(!unconfigured.running);
+
     step(&c, 20u, 0u); assert(c.state == ROBOT_IDLE && drives == 0u);
     command(&c, RCMD_START, 0u);
     for (UINT i = 0u; i < 50u; ++i) step(&c, 20u, 0u);
@@ -147,7 +160,7 @@ int main(void)
     command(&c, RCMD_MODE, MODE_TEST); command(&c, RCMD_START, 0u);
     assert(!c.running && c.mode == MODE_TEST);
     command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
-    step(&c, 20u, B3_NAV_LEFT); assert(c.navigation == 0u);
+    step(&c, 20u, 1u); assert(c.navigation == 0u);
     command(&c, RCMD_SPEED, 100u); input.left = 1000u; input.centre = 3000u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille < 0 && sent.target_speed_cps * 1350 <= 5000000);
@@ -181,24 +194,57 @@ int main(void)
     send_error = E_OBJ; step(&c, 20u, 0u); assert(c.running);
     step(&c, 40u, 0u); assert(!c.running);
 
-    for (UB nav = B3_NAV_LEFT; nav <= B3_NAV_UTURN; ++nav) {
+    for (UB route = BARCODE_ROUTE_FORWARD;
+         route < BARCODE_ROUTE_COUNT; ++route) {
+        UB letter = (UB)(route + 1U);
+        UB expected_nav = route == BARCODE_ROUTE_FORWARD ? B3_NAV_NONE :
+            route == BARCODE_ROUTE_UTURN ? B3_NAV_UTURN :
+            route == BARCODE_ROUTE_LEFT ? B3_NAV_LEFT : B3_NAV_RIGHT;
+
         c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
-        step(&c, 20u, nav); assert(c.state == ROBOT_NAV_COMMAND && c.navigation_id == 0u);
-        input.clearance = false; step(&c, 20u, 0u); assert(c.navigation == nav);
+        step(&c, 20u, letter);
+        assert(c.pending_barcode == letter && c.navigation == 0u);
+        assert(c.state == ROBOT_LINE_FOLLOW);
+        input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+        step(&c, 20u, 0u);
+        assert(c.pending_barcode == 0u && c.navigation == expected_nav);
+        if (route == BARCODE_ROUTE_FORWARD) {
+            assert(c.state == ROBOT_LINE_FOLLOW && c.navigation_id == 0u);
+            continue;
+        }
+        assert(c.state == ROBOT_NAV_COMMAND && c.navigation_id == 0u);
+        input.clearance = false; step(&c, 20u, 0u); assert(c.navigation == expected_nav);
         input.clearance = true; step(&c, 20u, 0u); assert(c.navigation_id == 42u);
         result = (motion_status_snapshot_t){0}; result.status = MOTION_STATUS_COMPLETED;
         result.physically_stopped = true; result_ready = true;
         step(&c, 20u, 0u); step(&c, 20u, 0u); assert(c.state == ROBOT_LINE_FOLLOW);
     }
     c = fresh(); command(&c, RCMD_START, 0u);
-    step(&c, 20u, B3_NAV_RIGHT); step(&c, 20u, 0u);
+    step(&c, 20u, 4u);
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+    step(&c, 20u, 0u);
+    step(&c, 20u, 0u);
     assert(sent.turn_direction == MOTION_TURN_RIGHT);
     result = (motion_status_snapshot_t){0};
     result.status = MOTION_STATUS_CANCELLED; result_ready = true;
     step(&c, 20u, 0u); assert(!c.running && c.state == ROBOT_SAFE_STOP);
     c = fresh(); command(&c, RCMD_START, 0u);
-    step(&c, 20u, B3_NAV_UTURN); input.clearance = false;
+    step(&c, 20u, 2u);
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+    step(&c, 20u, 0u);
+    input.clearance = false;
     step(&c, VC_RECOVERY_MS, 0u); assert(!c.running);
+
+    c = fresh(); command(&c, RCMD_START, 0u);
+    step(&c, 20u, 5u);
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+    step(&c, 20u, 0u);
+    assert(!c.running && c.state == ROBOT_SAFE_STOP);
+
+    c = fresh(); command(&c, RCMD_START, 0u);
+    step(&c, 20u, 1u);
+    step(&c, 20u, 2u);
+    assert(!c.running && c.state == ROBOT_SAFE_STOP);
     c = fresh(); command(&c, RCMD_START, 0u);
     input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
     input.line_flags = LINE_F_DETECTED; step(&c, 20u, 0u);
@@ -212,9 +258,16 @@ int main(void)
     for (UINT scenario = 0u; scenario < 4u; ++scenario) {
         c = fresh(); (void)c;
         clock_ms = 1000u + scenario * 1000u;
-        task_ticks = remote_head = 0u; remote_count = scenario == 1u ? 2u : 1u;
-        remote_queue[0] = (REMOTE_CMD){0}; remote_queue[0].type = scenario == 1u ? RCMD_ESTOP : RCMD_START;
-        remote_queue[1] = (REMOTE_CMD){0}; remote_queue[1].type = RCMD_START;
+        task_ticks = remote_head = 0u; remote_count = scenario == 1u ? 6u : 5u;
+        for (UINT i = 0U; i < 4U; ++i) {
+            remote_queue[i] = (REMOTE_CMD){0};
+            remote_queue[i].type = RCMD_BARCODE_MAP;
+            remote_queue[i].arg = (i << 2U) | i;
+        }
+        remote_queue[4] = (REMOTE_CMD){0};
+        remote_queue[4].type = scenario == 1u ? RCMD_ESTOP : RCMD_START;
+        remote_queue[5] = (REMOTE_CMD){0};
+        remote_queue[5].type = RCMD_START;
         stale_line = scenario == 2u; stale_imu = scenario == 3u;
         permission = true;
         if (setjmp(task_done) == 0) controller_task(0, NULL);

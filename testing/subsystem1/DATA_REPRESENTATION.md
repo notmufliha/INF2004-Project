@@ -14,8 +14,8 @@ Week 13 evidence for Buddy 1 (WiFi Communication, Command & Telemetry).
 | WiFi-loss fault | B1 | clear / set | 2 | not represented | bit 4 (`0x10`) of the shared fault event flag | 1 |
 | Fault bitmask | all | 8 faults | 2⁸ | separate variables per subsystem | `flg_faults` event flag, 8 bits on the wire | 8 |
 | Telemetry period | B1 | 100–10,000 ms, 100 ms steps | 100 | `UW` ms (32) | `UB` × 100 ms, 7-bit field | 7 |
-| Command type | B1 / VC | 11 commands | 11 | text verb (≤ 12 chars) / `UB` | 4-bit id; `REMOTE_CMD.type : 4` | 4 |
-| Command argument | B1 / VC | speed 0–100 %, mode 0–2, telem 1–100 | 101 | decimal text / `H` (16) | 7-bit field; `REMOTE_CMD.arg : 7` | 7 |
+| Command type | B1 / VC | 13 commands | 13 | text verb (≤ 12 chars) / `UB` | 4-bit id; `REMOTE_CMD.type : 4` | 4 |
+| Command argument | B1 / VC | speed 0–100 %, mode 0–2, telem 1–100, MAP 0–103 | 104 | decimal text / `H` (16) | 7-bit field; MAP packs letter index and route | 7 |
 | Command sequence no. | B1 | 0–255, wraps | 256 | `#n` text up to 8 digits / `UW` (32) | 8-bit field; `REMOTE_CMD.seq : 8` | 8 |
 | Ack accepted flag | B1 | rejected / accepted | 2 | JSON `"ok":false` | 1 bit | 1 |
 | Ack result | B1 | 7 accept/reject reasons + spare | 15 | reason text (≤ 31 chars) | 5-bit code | 5 |
@@ -31,7 +31,7 @@ Week 13 evidence for Buddy 1 (WiFi Communication, Command & Telemetry).
 | IR left / centre | B3 | 0–4095 | 4096 | `UH` (16) | `: 12` | 12 each |
 | IR right | B3 | 0/1 | 2 | `UB` (8) | `: 1` | 1 |
 | Line flags | B3 | detected/lost/junction | 2³ | `UB` (8) | `: 3` bitmask | 3 |
-| Last barcode | B3 | none, A–D | 5 | ASCII `UB` (8) | `: 3` (0 none, 1–4) | 3 |
+| Last barcode telemetry | B3 | none/A–D; full A–Z in events | 5 | ASCII `UB` (8) | `: 3` (0 none or E–Z, 1–4 = A–D) | 3 |
 | Last nav command | B3 | none, L, R, straight, U-turn | 5 | `UB` (8) | `: 3` | 3 |
 | IMU motion state | B4 | 8 states (`imu_motion_state_t`) | 8 | `UB` own 7-state list | `: 3`, B4's own enum | 3 |
 | Pitch | B4 | ±51.1° in 0.1° | 1023 | `H` (16) | `INT : 10` | 10 |
@@ -64,7 +64,7 @@ field at its widest value (worst), from the old `comm_json.c`.
 | Message | Before (typical / worst) | After | Reduction |
 |---|---|---|---|
 | Telemetry | 290 / 374 B | **28 B** | 90 % / 93 % |
-| Event: barcode / hump / obstacle / error | 60 / 55 / 86 / 78 B (worst 117) | **5 / 6 / 9 / 7 B** | ~90 % |
+| Event: barcode / hump / obstacle / error | 60 / 55 / 86 / 78 B (worst 117) | **6 / 6 / 9 / 7 B** | ~90 % |
 | Status / heartbeat | 157 / 233 B | **23 B** | 85 % / 90 % |
 | Online / Last Will | 15 / 16 B | **1 B** | 94 % |
 | Command | 11 / 64 B | **3 B** | 73 % / 95 % |

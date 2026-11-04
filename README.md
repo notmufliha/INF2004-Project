@@ -130,9 +130,10 @@ You should see the task reports. Connect an LED with a 330 Ω resistor from
 Your code lives in **`app_program/`**. Every `.c` file there, and in its
 subfolders, is compiled automatically.
 
-- **`app_main.c` → `usermain()` is where the program starts.** It first calls
-  every subsystem's `subsystemN_init()` (create kernel objects), then every
-  `subsystemN_start()` (start tasks). Read its comments first.
+- **`app_main.c` → `usermain()` is where the program starts.** Robot mode
+  initializes and starts the hardware subsystems in a safety-aware order;
+  teaching-demo mode uses the sample `subsystemN_init()` /
+  `subsystemN_start()` sequence. Read its comments first.
 - **One folder per student:** `app_program/subsystem1/` … `subsystem5/`.
   Subsystems 1–4 hold a working example, one task each (LED, producer,
   consumer, monitor). Together they use the main micro T-Kernel APIs and
@@ -140,12 +141,11 @@ subfolders, is compiled automatically.
   Replace the examples with your own subsystems.
 - `subsystemN.h` is that subsystem's public interface: the object IDs and
   data formats the other subsystems may use.
-- Subsystem 3 currently implements the sample consumer example (priority 16,
-  core 0 on SMP) and owns the sample mailbox and statistics mutex. The supplied
-  Week 6 design review instead assigns Buddy 3 to IR line following and barcode
-  decoding; that robot-specific implementation awaits agreed queue interfaces
-  with the Vehicle Controller and sensor hardware integration. See
-  `app_program/subsystem3/README.md`.
+- Subsystem 3 keeps the sample consumer for teaching-demo mode. Its separate
+  Buddy 3 module samples the line sensors and decodes Code 39 A-Z in either
+  direction; robot mode starts it and the Vehicle Controller waits for the
+  next junction to apply MQTT-configured route mappings.
+  See `app_program/subsystem3/README.md`.
 - `app.h` holds the definitions shared by the whole team.
 - **Drivers go in your subsystem folder too**, as a `drv_<name>.c` /
   `drv_<name>.h` pair, e.g. `subsystem2/drv_ultrasonic.c`. They are compiled

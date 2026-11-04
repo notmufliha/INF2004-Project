@@ -12,6 +12,7 @@
 /* WARNING: Validate the 20 ms period against sensor response and car speed. */
 #define B3_LINE_UPDATE_MS (20U)
 #define B3_NAV_QUEUE_LENGTH (8U)
+#define B3_BARCODE_COUNT (26U)
 
 #define B3_LINE_F_DETECTED (0x01U)
 #define B3_LINE_F_LOST (0x02U)
@@ -19,10 +20,32 @@
 
 typedef enum {
 	B3_BARCODE_NONE = 0,
-	B3_BARCODE_A,
+	B3_BARCODE_A = 1,
 	B3_BARCODE_B,
 	B3_BARCODE_C,
-	B3_BARCODE_D
+	B3_BARCODE_D,
+	B3_BARCODE_E,
+	B3_BARCODE_F,
+	B3_BARCODE_G,
+	B3_BARCODE_H,
+	B3_BARCODE_I,
+	B3_BARCODE_J,
+	B3_BARCODE_K,
+	B3_BARCODE_L,
+	B3_BARCODE_M,
+	B3_BARCODE_N,
+	B3_BARCODE_O,
+	B3_BARCODE_P,
+	B3_BARCODE_Q,
+	B3_BARCODE_R,
+	B3_BARCODE_S,
+	B3_BARCODE_T,
+	B3_BARCODE_U,
+	B3_BARCODE_V,
+	B3_BARCODE_W,
+	B3_BARCODE_X,
+	B3_BARCODE_Y,
+	B3_BARCODE_Z = 26
 } B3_BARCODE;
 
 typedef enum {
@@ -34,25 +57,25 @@ typedef enum {
 } B3_NAV_COMMAND;
 
 /**
- * @brief Packed current readings and most recently decoded navigation data.
+ * @brief Current readings and most recently decoded navigation data.
  *
- * The packed attribute is supported by the RP2040 GNU C toolchain used by
- * this project. Its packed 34-bit payload occupies 5 bytes on this toolchain;
- * allocation order is compiler-specific, so this is not a wire-format type.
+ * The RP2040 GNU C toolchain allocates these unsigned-int bit-fields in
+ * 32-bit units. The 36-bit payload therefore occupies two units (8 bytes).
+ * Allocation order is compiler-specific, so this is not a wire-format type.
  */
-typedef struct __attribute__((__packed__)) {
+typedef struct {
 	unsigned int ir_left : 12;
 	unsigned int ir_centre : 12;
 	unsigned int ir_right : 1;
 	unsigned int line_flags : 3;
-	unsigned int last_barcode : 3;
+	unsigned int last_barcode : 5;
 	unsigned int last_nav_command : 3;
 } B3_STATE;
 
-_Static_assert(sizeof(B3_STATE) == 5U,
-	       "B3_STATE must occupy five bytes on the RP2040 toolchain");
+_Static_assert(sizeof(B3_STATE) == 8U,
+	       "B3_STATE must occupy eight bytes on the RP2040 toolchain");
 
-/* Message buffer owned by B3; each message is one B3_NAV_COMMAND byte. */
+/* Message buffer owned by B3; each message is a decoded A-Z value (1..26). */
 IMPORT ID mbf_nav_cmd;
 IMPORT ID mtx_b3_state;
 
@@ -67,12 +90,12 @@ IMPORT ER b3_init(void);
  * @return E_OK on success or an initialization/task-start error.
  *
  * Call from core 0 after b3_init(). The navigation consumer must receive
- * one uint8_t message from mbf_nav_cmd for each decoded command.
+ * one uint8_t letter value from mbf_nav_cmd for each decoded barcode.
  */
 IMPORT ER b3_start(void);
 
 /**
- * @brief Copy the packed B3 state while holding its mutex.
+ * @brief Copy the B3 state while holding its mutex.
  * @param state Destination for the snapshot.
  * @return E_OK on success, E_PAR for a null pointer, otherwise a kernel error.
  */

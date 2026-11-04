@@ -96,6 +96,8 @@ typedef enum
     RCMD_MODE,       /* arg = comm_run_mode_t                  */
     RCMD_SPEED,      /* arg = target speed, percent 0..100     */
     RCMD_RESET_PEAK, /* forget the highest hump measured so far */
+    RCMD_BARCODE_MAP,       /* arg = 5-bit letter index + 2-bit route */
+    RCMD_BARCODE_MAP_RESET, /* clear all barcode route mappings       */
     RCMD_COUNT
 } comm_remote_cmd_type_t;
 
@@ -109,9 +111,20 @@ typedef enum
     MODE_COUNT
 } comm_run_mode_t;
 
-/* Barcodes 'A'..'D' are sent as 1..4; 0 = none yet (3 bits). */
+/** @brief Two-bit route values carried by RCMD_BARCODE_MAP. */
+typedef enum
+{
+    BARCODE_ROUTE_FORWARD = 0,
+    BARCODE_ROUTE_UTURN,
+    BARCODE_ROUTE_LEFT,
+    BARCODE_ROUTE_RIGHT,
+    BARCODE_ROUTE_COUNT
+} comm_barcode_route_t;
+
+/* Barcodes 'A'..'Z' are sent as 1..26; 0 = none yet (5 bits). */
 #define COMM_BARCODE_FIRST  'A'
-#define COMM_BARCODE_LAST   'D'
+#define COMM_BARCODE_LAST   'Z'
+#define COMM_BARCODE_COUNT  26U
 
 /* IMU motion state: B4's imu_motion_state_t, 0..7 (3 bits). */
 #define COMM_MOTION_COUNT   8U
@@ -185,7 +198,7 @@ typedef struct
     UINT hump_valid   : 1;  /* hump heights are measured       */
 
     UINT enc_left     : 24; /* low 24 bits of B2's total count */
-    UINT barcode      : 3;  /* 0 none, 1..4 = 'A'..'D'         */
+    UINT barcode      : 3;  /* compact telemetry: 0 none, 1..4 = 'A'..'D' */
     UINT nav          : 3;  /* comm_nav_cmd_t of last barcode  */
     UINT spare1       : 2;
 
@@ -247,4 +260,3 @@ void              comm_get_stats (comm_stats_t * p_out);
 #endif /* COMM_H */
 
 /*** end of file ***/
-
