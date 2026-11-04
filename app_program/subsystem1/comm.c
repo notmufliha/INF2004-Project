@@ -162,7 +162,14 @@ comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
 
         if (telem_lock()) /* also kept in the telemetry snapshot */
         {
-            g_s1_telem.barcode = (code <= 4U) ? code : 0U;
+            switch (code)
+            {
+                case 1U: g_s1_telem.barcode = 1U; break;
+                case 2U: g_s1_telem.barcode = 2U; break;
+                case 3U: g_s1_telem.barcode = 3U; break;
+                case 4U: g_s1_telem.barcode = 4U; break;
+                default: g_s1_telem.barcode = 0U; break;
+            }
             g_s1_telem.nav     = (UINT)nav & NAV_MASK;
             telem_unlock();
         }

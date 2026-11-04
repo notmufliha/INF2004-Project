@@ -1,10 +1,13 @@
+#define PROHIBIT_DEF_SIZE_T
+#include <stddef.h>
+#include <string.h>
+
 #include "vehicle_controller.h"
 #include "robot_config.h"
 #include "subsystem2/b2_motor.h"
 #include "subsystem3/b3_line_barcode.h"
 #include "subsystem4/imu_vc.h"
 #include "subsystem4/subsystem4.h"
-#include <string.h>
 
 #if ROBOT_MODE && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || S1_STANDALONE_DEMO)
 #error "The Vehicle Controller requires exclusive command ownership; disable demos/tests"
