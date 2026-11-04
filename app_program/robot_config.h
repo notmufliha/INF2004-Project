@@ -8,7 +8,7 @@
 #define ROBOT_MODE 1
 #endif
 /* Keep the robot level/still while B4 obtains its startup calibration. */
-#define ROBOT_IMU_STARTUP_TIMEOUT_MS 10000
+#define ROBOT_IMU_STARTUP_TIMEOUT_MS 30000
 #ifndef ROBOT_ENABLE_DRIVE
 #define ROBOT_ENABLE_DRIVE 1
 #endif
