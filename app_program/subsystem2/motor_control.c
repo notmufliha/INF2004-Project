@@ -118,21 +118,22 @@ void motor_left_set(int speed_percent)
         duty = (UW)speed_percent;
     }
     duty = (duty * MOTOR_PWM_WRAP) / 100U;
-    /* Stop only the left motor before updating PWM. */
-    pwm_set_cc(MOTOR_L_A_PIN, 0U);
-    pwm_set_cc(MOTOR_L_B_PIN, 0U);
-    /* Positive = forward, negative = reverse. */
+    /* Clear the opposite input before energizing the requested input.
+     * Keep the active input continuous on same-direction duty refreshes. */
     if (speed_percent > 0)
     {
+        pwm_set_cc(MOTOR_L_A_PIN, 0U);
         pwm_set_cc(MOTOR_L_B_PIN, duty);
     }
     else if (speed_percent < 0)
     {
+        pwm_set_cc(MOTOR_L_B_PIN, 0U);
         pwm_set_cc(MOTOR_L_A_PIN, duty);
     }
     else
     {
-        /* No additional action is required. */
+        pwm_set_cc(MOTOR_L_A_PIN, 0U);
+        pwm_set_cc(MOTOR_L_B_PIN, 0U);
     }
 }
 
@@ -162,20 +163,21 @@ void motor_right_set(int speed_percent)
         duty = (UW)speed_percent;
     }
     duty = (duty * MOTOR_PWM_WRAP) / 100U;
-    /* Stop right motor before changing direction. */
-    pwm_set_cc(MOTOR_R_A_PIN, 0U);
-    pwm_set_cc(MOTOR_R_B_PIN, 0U);
+    /* Do not zero the active PWM input on same-direction refreshes. */
     if (speed_percent > 0)
     {
+        pwm_set_cc(MOTOR_R_B_PIN, 0U);
         pwm_set_cc(MOTOR_R_A_PIN, duty);
     }
     else if (speed_percent < 0)
     {
+        pwm_set_cc(MOTOR_R_A_PIN, 0U);
         pwm_set_cc(MOTOR_R_B_PIN, duty);
     }
     else
     {
-        /* No additional action is required. */
+        pwm_set_cc(MOTOR_R_A_PIN, 0U);
+        pwm_set_cc(MOTOR_R_B_PIN, 0U);
     }
 }
 

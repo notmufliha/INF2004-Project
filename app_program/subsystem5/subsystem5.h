@@ -1,6 +1,7 @@
 #ifndef SUBSYSTEM5_H
 #define SUBSYSTEM5_H
 #include "../app.h"
+#include "../robot_config.h"
 
 /* Buddy 5: Week 6 design-review pins. Confirm Maker Pi vs Robo Pico
  * conflicts with the team before connecting motor PWM or servo PWM. */
@@ -32,7 +33,7 @@
 /* Guarded straight-line test only: B5 submits B2 DRIVE commands while
  * B5's fresh front echo is clear. This is NOT physical obstacle bypass.
  * Must disable B2's separate one-shot ROBOT_MOTION_TEST. */
-#define S5_DEMO_B2_FORWARD_COMMANDS 1
+#define S5_DEMO_B2_FORWARD_COMMANDS (!ROBOT_FORWARD_STOP_MODE)
 #define S5_DEMO_SPEED_CPS 600
 #define S5_DEMO_DRIVE_REFRESH_MS 35u
 #define S5_DEMO_CLEAR_MAX_AGE_MS 350u
@@ -58,7 +59,7 @@
 #define S5_FORCE_STARTUP_SCAN 0
 /* 1 = continuous coarse/fine scan, 0 = scan on confirmed obstacle. */
 #define S5_CONTINUOUS_SWEEP_TEST 0
-#define S5_FRONT_POLL_MS 200u
+#define S5_FRONT_POLL_MS 80u
 #define S5_SCAN_COOLDOWN_MS 3000u
 #define S5_CONFIRM_HITS 3u
 #define S5_PICO_DEMO_PAUSE_MS 15000u

@@ -9,7 +9,8 @@ typedef enum {
     S5_ECHO_NO_RISE,
     S5_ECHO_NO_FALL,
     S5_ECHO_TOO_SHORT,
-    S5_ECHO_OUT_OF_RANGE
+    S5_ECHO_OUT_OF_RANGE,
+    S5_ECHO_OPEN_SPACE
 } S5EchoStatus;
 typedef struct {
     S5EchoStatus status;
@@ -22,6 +23,8 @@ void s5_ultrasonic_init(void);
 /* Diagnostic version exposes the actual pulse and failure mode.
  * Only call from the Buddy 5 task (never from an ISR). */
 S5EchoReading s5_ultrasonic_read_detailed(void);
+/* Forward-only policy: OPEN_SPACE is assumed clearance, not a measured range. */
+S5EchoReading s5_ultrasonic_read_front(void);
 bool s5_ultrasonic_read_cm(float *out_cm);
 const char *s5_echo_status_name(S5EchoStatus status);
 #endif

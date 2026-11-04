@@ -8,6 +8,8 @@ bool s5_echo_suppressed_cm(float cm);
 /* Returns true only if 3 of 5 non-near-field echoes agree (with one bounded retry). A false return
  * is UNKNOWN and must never be used as permission to move forward. */
 bool s5_measure_stable_cm(float *out_cm);
+/* Forward policy may accept repeated no-target results; scans remain strict. */
+bool s5_measure_front_cm(float *out_cm);
 /* Repeated STOP chatter protection. 'locked' means a TEMPORARY hold,
  * never permission to ignore an echo. After the hold, re-arm requires
  * multiple consecutive, valid, agreeing stationary clearance batches. */

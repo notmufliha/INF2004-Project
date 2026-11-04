@@ -340,6 +340,7 @@ static void s5_demo_clear_publish(void) { }
 static void stationary_profile_mode(void)
 {
     unsigned samples = 0u, close_hits = 0u, clear_hits = 0u;
+    unsigned moving_samples = 0u;
     bool sensor_unavailable = false;
     bool obstacle_latched = false;
     bool scanned_this_obstacle = false;
@@ -395,6 +396,9 @@ static void stationary_profile_mode(void)
         }
     }
     tm_printf((UB*)"[S5] ready; waiting for confirmed clear path\n");
+#if ROBOT_NO_TARGET_FORWARD
+    tm_printf((UB*)"[S5-POLICY] no target -> OPEN_SPACE_ASSUMED; not a measured distance; disconnected sensor may also allow drive\n");
+#endif
     for (;;) {
         float cm = 0.0f;
         bool valid;
@@ -430,13 +434,24 @@ static void stationary_profile_mode(void)
                 continue;
             }
 #endif
-            S5EchoReading guard = s5_ultrasonic_read_detailed();
-            bool guard_valid = (guard.status == S5_ECHO_OK) &&
+            S5EchoReading guard = s5_ultrasonic_read_front();
+#if ROBOT_VERBOSE_SENSOR_LOG
+            if ((moving_samples++ % 5u) == 0u)
+                tm_printf((UB*)"[S5-FRONT] status=%s pulse_us=%d cm_x100=%d state=FORWARD\n",
+                          s5_echo_status_name(guard.status),
+                          (int)guard.pulse_us, (int)(guard.cm * 100.0f));
+#else
+            (void)moving_samples;
+#endif
+            bool guard_valid = (guard.status == S5_ECHO_OK ||
+                                guard.status == S5_ECHO_OPEN_SPACE) &&
                                !s5_echo_suppressed_cm(guard.cm) &&
                                (s5_wire_cm(guard.cm,
                                            S5_WIRE_DISTANCE_MAX_CM) !=
                                 COMM_CM_INVALID);
-            if (guard_valid && (guard.cm >= ROBOT_RELEASE_CM)) {
+            /* True hysteresis: restart needs 45 cm; while already moving,
+             * valid distances above 35 cm keep the current drive interval. */
+            if (guard_valid && (guard.cm > ROBOT_STOP_CM)) {
                 comm_set_obstacle_dist(s5_wire_cm(guard.cm,
                                                  S5_WIRE_DISTANCE_MAX_CM));
                 fault_clear(FAULT_NO_ECHO);
@@ -460,7 +475,7 @@ static void stationary_profile_mode(void)
             s5_demo_clear_stop();
             driving = false;
             clear_hits = 0u;
-            close_hits = (guard_valid && guard.cm < ROBOT_STOP_CM) ? 1u : 0u;
+            close_hits = (guard_valid && guard.cm <= ROBOT_STOP_CM) ? 1u : 0u;
             if (guard_valid) {
                 comm_set_obstacle_dist(s5_wire_cm(guard.cm,
                                                  S5_WIRE_DISTANCE_MAX_CM));
@@ -493,13 +508,13 @@ static void stationary_profile_mode(void)
         }
         /* Only while stopped: use the slower multi-ping consensus to
          * confirm a clear path before permitting a new drive interval. */
-        valid = s5_measure_stable_cm(&cm);
+        valid = s5_measure_front_cm(&cm);
         /* Defensive guard: a malformed successful measurement must
          * never clear NO_ECHO or release the motors. */
         valid = valid &&
                 (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) != COMM_CM_INVALID);
         ++samples;
-        if (!driving && (samples % 8u) == 0u)
+        if (!driving)
             tm_printf((UB*)"[S5-CHECK] stable=%d cm_x100=%d clear=%d/%d close=%d/%d locked=%d\n",
                       (int)valid, (int)(cm * 100.0f),
                       (int)clear_hits, (int)ROBOT_CLEAR_CONFIRM,
@@ -550,7 +565,7 @@ static void stationary_profile_mode(void)
             }
         } else {
             sensor_unavailable = false;
-            if (cm < ROBOT_STOP_CM) {
+            if (cm <= ROBOT_STOP_CM) {
                 /* One close sample must stop the wheels. Three are needed to scan. */
                 s5_demo_clear_stop();
                 if (driving) {
@@ -632,6 +647,8 @@ static void stationary_profile_mode(void)
             s5_demo_clear_stop();
             driving = false;
         }
+        /* Scan only with PWM stopped and STOP acknowledged, including in
+         * fixed-duty forward/STOP mode. Never drive from a side reading. */
         if (scan_needed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST) {
             S5Scan coarse = {0}, fine = {0};
             S5Profile profile = {0};
@@ -639,7 +656,6 @@ static void stationary_profile_mode(void)
             SYSTIM started, ended;
             unsigned elapsed;
             startup_scan_pending = false;
-            scanned_this_obstacle = true;
             close_hits = 0u;
             s5_demo_clear_stop();
             driving = false;
@@ -650,6 +666,8 @@ static void stationary_profile_mode(void)
                 tk_dly_tsk(S5_FRONT_POLL_MS);
                 continue;
             }
+            scanned_this_obstacle = true;
+            clear_hits = 0u;
             tk_get_tim(&started);
             tm_printf((UB*)"[S5-STOP] confirmed close obstacle; motor PWM=0 acknowledged\n");
             tm_printf((UB*)"[S5-COARSE] sweep=70,80,90,100,110 (real servo)\n");

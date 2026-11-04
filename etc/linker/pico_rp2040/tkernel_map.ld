@@ -69,5 +69,6 @@ SECTIONS {
 		. = ALIGN(4);
 		__bss_end = .;
 		__end = .;
+		PROVIDE(end = .); /* newlib/libnosys end-of-static-RAM symbol */
 	} >RAM
 }

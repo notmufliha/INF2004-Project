@@ -19,6 +19,7 @@ code = r'''
 #include <stdio.h>
 #define SUBSYSTEM5_H
 #define ROBOT_CONFIG_H
+#define ROBOT_STOP_CM 35.0f
 #define ROBOT_IGNORE_ECHO_AT_OR_BELOW_CM 5.0f
 #define ROBOT_SUPPRESS_REPEATING_ECHO_BANDS 0
 #define ROBOT_ECHO_AGREEMENT_FRACTION 0.15f
@@ -39,6 +40,11 @@ static void tk_dly_tsk(unsigned delay) { (void)delay; }
 static S5EchoReading g_readings[10];
 static unsigned g_index;
 S5EchoReading s5_ultrasonic_read_detailed(void) { return g_readings[g_index++ % 10]; }
+S5EchoReading s5_ultrasonic_read_front(void) {
+    S5EchoReading r = s5_ultrasonic_read_detailed();
+    if (r.status == S5_ECHO_NO_RISE) { r.status = S5_ECHO_OPEN_SPACE; r.cm = 400.0f; }
+    return r;
+}
 #include "MEASURE_SOURCE"
 int main(void)
 {
@@ -103,6 +109,19 @@ int main(void)
     for (i = 0; i < 10; ++i) g_readings[i].status = S5_ECHO_NO_FALL;
     g_index = 0;
     assert(!s5_measure_stable_cm(&cm));
+    /* Open-space forward policy never affects side-scan measurements. */
+    for (i = 0; i < 10; ++i) g_readings[i].status = S5_ECHO_NO_RISE;
+    g_index = 0;
+    assert(s5_measure_front_cm(&cm) && cm == 400.0f);
+    g_index = 0;
+    assert(!s5_measure_stable_cm(&cm));
+    /* A single real close echo overrides all assumed-open samples. */
+    g_readings[2].status = S5_ECHO_OK; g_readings[2].cm = 20.0f;
+    g_index = 0;
+    assert(s5_measure_front_cm(&cm) && cm == 20.0f);
+    for (i = 0; i < 10; ++i) g_readings[i].status = S5_ECHO_NO_FALL;
+    g_index = 0;
+    assert(!s5_measure_front_cm(&cm));
     puts("B5 timed guard hold + safe recovery + stopped consensus: PASS");
     return 0;
 }
@@ -112,9 +131,9 @@ code = code.replace('MEASURE_SOURCE', str(src))
 
 # Ensure the running path no longer calls the multi-ping blocking routine.
 start = task.index('        if (driving) {', task.index('static void stationary_profile_mode'))
-end = task.index('        valid = s5_measure_stable_cm(&cm);', start)
+end = task.index('        valid = s5_measure_front_cm(&cm);', start)
 running = task[start:end]
-assert 's5_ultrasonic_read_detailed()' in running
+assert 's5_ultrasonic_read_front()' in running
 assert 'b2_request_forward();' in running
 assert 's5_demo_clear_stop();' in running
 assert 's5_demo_clear_publish();' in running

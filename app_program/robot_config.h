@@ -5,6 +5,14 @@
  * Rebuild and reflash the UF2 after changing this file.
  */
 #define ROBOT_MODE 1
+/* Fixed-duty forward/STOP controller; does not require encoder calibration.
+ * Set 0 to restore the command-driven encoder PI controller. */
+#define ROBOT_FORWARD_STOP_MODE 1
+/* Open-space policy requested for forward driving. NO_RISE means assume
+ * no target, NOT verified clearance. A disconnected ECHO wire looks the
+ * same and cannot be detected by this single-sensor policy. Set 0 for
+ * strict stop-on-missing-echo behavior. Scanning always uses real echoes. */
+#define ROBOT_NO_TARGET_FORWARD 1
 #ifndef ROBOT_ENABLE_DRIVE
 #define ROBOT_ENABLE_DRIVE 1
 #endif
@@ -25,7 +33,7 @@
 #define ROBOT_MOTOR_R_REV_PIN 11u
 #define ROBOT_PWM_TOP 999u
 #define ROBOT_FORWARD_PWM 500u /* 50% initial floor drive; calibrate for load and supply */
-#define ROBOT_MOTOR_WATCHDOG_MS 1200u
+#define ROBOT_MOTOR_WATCHDOG_MS 350u
 #define ROBOT_MOTOR_PERIOD_MS 20u
 #define ROBOT_BOOT_DELAY_MS 2000u
 
@@ -53,13 +61,9 @@
  * Close reading stops immediately; 3 close readings trigger scanning.
  * Three readings >= RELEASE_CM allow forward motion again.
  */
-/* User-requested near-field echo suppression.  Echoes <= 5 cm are
- * discarded from obstacle profiling AND forward ranging; they are NOT
- * evidence of a clear path. If no other valid measurements remain, stop.
- * WARNING: A real obstacle closer than 5 cm will also be ignored as a
- * distance sample. Never drive unless another independent valid reading
- * confirms a clear path. */
-#define ROBOT_IGNORE_ECHO_AT_OR_BELOW_CM 5.0f
+/* Keep valid near-field echoes: they mean CLOSE, not a missing sensor.
+ * The driver separately rejects pulses below its measurable range. */
+#define ROBOT_IGNORE_ECHO_AT_OR_BELOW_CM 0.0f
 /* Known repeatable echoes in the user's clear-area log (centimetres).
  * Suppress ONLY these narrow bands, rather than treating them as a clear
  * path. WARNING: real objects at these ranges become unobservable to this
@@ -82,9 +86,8 @@
  * Invalid readings keep motors stopped, but do not reinitialize hardware
  * or repeatedly print [S5-RECOVER] messages.
  */
-/* Quiet operational logging. 0: state changes and scan summary only.
- * No diagnostic mode or raw-echo diagnostic stream is compiled. */
-#define ROBOT_VERBOSE_SENSOR_LOG 0
+/* B5 raw echo diagnostics on USB CDC, including rejected samples. */
+#define ROBOT_VERBOSE_SENSOR_LOG 1
 /* Five separated pings, requiring at least 3 agreeing valid distances.
  * This rejects one-off 5.8 cm / 24.2 cm cross-talk echoes. */
 #define ROBOT_ECHO_SAMPLES 5u

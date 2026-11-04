@@ -29,6 +29,40 @@
 
 static ID gh_cyc_pid = 0;
 
+#if ROBOT_MODE && ROBOT_FORWARD_STOP_MODE
+#if ROBOT_MOTION_TEST || ROBOT_ENABLE_BYPASS
+#error "Forward/STOP mode cannot run motion tests or bypass commands"
+#endif
+/* Sole motor owner in forward/STOP mode. B5 supplies fresh clearance;
+ * the safety API still checks STOP generations and the sensor watchdog. */
+static void b2_forward_stop_task(INT stacd, void *exinf)
+{
+    bool was_moving = false;
+    (void)stacd;
+    (void)exinf;
+    b2_safety_acknowledge_stop();
+    for (;;)
+    {
+        if (b2_safety_motion_allowed())
+        {
+            uint32_t generation = b2_safety_stop_generation();
+            int duty = (int)((ROBOT_FORWARD_PWM * 100u) / ROBOT_PWM_TOP);
+            b2_safety_apply_pwm(duty, duty, generation);
+        }
+        else
+        {
+            b2_request_stop();
+            b2_safety_acknowledge_stop();
+        }
+        bool moving = !b2_motor_is_stopped();
+        if (moving != was_moving)
+            tm_printf((UB *)"[B2] %s\n", moving ? "FORWARD" : "STOPPED");
+        was_moving = moving;
+        tk_dly_tsk(ROBOT_MOTOR_PERIOD_MS);
+    }
+}
+#endif
+
 /* Network/telemetry locks never run in the 10 ms motor loop. */
 static void b2_telemetry_task(INT stacd, void *exinf)
 {
@@ -150,6 +184,12 @@ EXPORT ER subsystem2_init(void)
     {
         return (err);
     }
+#if ROBOT_MODE && ROBOT_FORWARD_STOP_MODE && !ROBOT_WHEELS_UP_MOTOR_TEST
+    /* No encoder interrupts, PI controller, or command queue in this mode. */
+    tm_printf((UB *)"[B2] Ultrasonic guarded forward/STOP mode; duty=%u/%u\n",
+              ROBOT_FORWARD_PWM, ROBOT_PWM_TOP);
+    return E_OK;
+#endif
     err = encoder_init();
 
     if (E_OK != err)
@@ -204,6 +244,15 @@ EXPORT ER subsystem2_start(void)
         }
 
         return (E_OK);
+    #endif
+    #if ROBOT_MODE && ROBOT_FORWARD_STOP_MODE
+    h_task = app_start_task((FP)b2_forward_stop_task, S2_PRI_CONTROL,
+                           TP_PRC2, "b2_forward_stop_task");
+    if (h_task < E_OK) {
+        b2_request_stop();
+        return h_task;
+    }
+    return E_OK;
     #endif
     #if !ROBOT_MODE
         /* Teaching-demo producer is excluded from real robot mode. */

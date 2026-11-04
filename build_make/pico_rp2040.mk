@@ -123,6 +123,8 @@ AS := arm-none-eabi-gcc
 LINK := arm-none-eabi-gcc
 # IMU analysis uses standard float math. Libraries must follow object files.
 LDLIBS += -lm
+# Bare-metal newlib syscall stubs; console I/O uses T-Kernel's tm interface.
+LDLIBS += --specs=nosys.specs
 SIZE := arm-none-eabi-size
 E2U := tools/elf2uf2
 
