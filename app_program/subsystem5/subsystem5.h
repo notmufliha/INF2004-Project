@@ -24,11 +24,30 @@
  * With 0, B5 measures and recommends a path but NEVER moves the car. */
 #define S5_MOTION_BRIDGE_ENABLED 0
 
-/* Wednesday B5 demonstration: 1 holds B2 STOP even on clear readings.
- * It demonstrates REAL HC-SR04P ranging, GP12 servo scans, profiles,
- * B1 telemetry and faults without allowing a separate B2 test to drive.
- * Restore to 0 only after the team authorizes moving-robot integration. */
-#define S5_DEMO_SENSOR_ONLY 1
+/* 0 = guarded forward/STOP test on a moving robot.
+ * 1 = sensor/servo-only demo; B2 is held STOP even when the path is clear.
+ * MOVING TEST: first validate with the wheels raised, then use a controlled
+ * floor test with a physical emergency stop. B5 never authorises bypass. */
+#define S5_DEMO_SENSOR_ONLY 0
+/* Guarded straight-line test only: B5 submits B2 DRIVE commands while
+ * B5's fresh front echo is clear. This is NOT physical obstacle bypass.
+ * Must disable B2's separate one-shot ROBOT_MOTION_TEST. */
+#define S5_DEMO_B2_FORWARD_COMMANDS 1
+#define S5_DEMO_SPEED_CPS 600
+#define S5_DEMO_DRIVE_REFRESH_MS 35u
+#define S5_DEMO_CLEAR_MAX_AGE_MS 350u
+#define S5_DEMO_B2_STATUS_MAX_AGE_MS 200u
+
+/* Three unsafe/invalid moving readings in a short interval enter a
+ * temporary STOP hold. Re-arm only after BOTH a cooldown and consecutive
+ * independent, agreeing stationary clearance batches. Never re-arm on a
+ * missing echo or a single good ping; repeat failures trigger another hold.
+ * This avoids V2's permanent until-reboot lock after transient noise. */
+#define S5_GUARD_STOP_LIMIT 3u
+#define S5_GUARD_STOP_WINDOW_MS 15000u
+#define S5_GUARD_COOLDOWN_MS 8000u
+#define S5_GUARD_REARM_CLEAR_BATCHES 5u
+#define S5_GUARD_REARM_MAX_GAP_MS 2500u
 #if S5_DEMO_SENSOR_ONLY && S5_MOTION_BRIDGE_ENABLED
 #error "B5 sensor-only demonstration must not enable live motion bridge"
 #endif

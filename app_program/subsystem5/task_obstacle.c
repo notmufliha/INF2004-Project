@@ -1,9 +1,11 @@
-#include <stddef.h>
-#include <math.h>
 #include "subsystem5.h"
 #include "../robot_config.h"
 #include "../subsystem1/subsystem1.h"   /* B1 telemetry + shared fault mask */
 #include "../subsystem2/b2_motor.h"
+#include "../subsystem2/motion_command.h"
+#if TK_SUPPORT_SMP
+#include <tk/smp.h>
+#endif
 #include "s5_logic.h"
 #include "s5_sim.h"
 #include "s5_bridge.h"
@@ -24,7 +26,7 @@ static UH s5_wire_cm(float cm, float maximum_cm)
 {
     /* NaN, infinities and negative distances are not measurements.
      * Finite distances beyond B5's range saturate rather than wrap. */
-    if (!isfinite(cm) || (cm < 0.0f))
+    if (!__builtin_isfinite(cm) || (cm < 0.0f))
     {
         return COMM_CM_INVALID;
     }
@@ -131,10 +133,210 @@ static void emergency_halt(const char *reason)
 #endif /* S5_MOTION_BRIDGE_ENABLED */
 
 
+#if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY && !S5_MOTION_BRIDGE_ENABLED
+/* This is a *guarded forward-only demo adapter*, not an obstacle-bypass VC.
+ * B2 remains the sole PWM owner. No reverse, turn or line reacquisition.
+ * The previous firmware only called b2_request_forward(), which is a safety
+ * permission and does NOT create a MOTION_CMD_DRIVE. A separate task is
+ * needed because B2's DRIVE command watchdog is 100 ms, while ultrasonic
+ * sampling/scan operations can take much longer. */
+#if ROBOT_MOTION_TEST != 0
+#error "B5 forward-only demo requires ROBOT_MOTION_TEST=0 (disable B2 one-shot motion test)"
+#endif
+/* Shared between the sensor task and the B2 command-refresh task.
+ * Use the same T-Kernel SMP spinlock API as Buddy 2; no libatomic dependency
+ * on RP2040 Cortex-M0+. Never call B2 while holding this lock. */
+static uint32_t s5_demo_last_clear_ms;
+static bool s5_demo_clear_permission;
+static bool s5_demo_drive_fault;
+#if TK_SUPPORT_SMP
+static T_SPLOCK s5_demo_lock;
+#endif
+
+static void s5_demo_lock_enter(UINT *irq)
+{
+#if TK_SUPPORT_SMP
+    (void)ISpinLock(&s5_demo_lock, irq);
+#else
+    DI(*irq);
+#endif
+}
+static void s5_demo_lock_leave(UINT irq)
+{
+#if TK_SUPPORT_SMP
+    (void)ISpinUnlock(&s5_demo_lock, irq);
+#else
+    EI(irq);
+#endif
+}
+static void s5_demo_state_init(void)
+{
+#if TK_SUPPORT_SMP
+    (void)InitSpinLock(&s5_demo_lock);
+#endif
+    s5_demo_last_clear_ms = 0u;
+    s5_demo_clear_permission = false;
+    s5_demo_drive_fault = false;
+}
+static bool s5_demo_fault_latched(void)
+{
+    UINT irq;
+    bool fault;
+    s5_demo_lock_enter(&irq);
+    fault = s5_demo_drive_fault;
+    s5_demo_lock_leave(irq);
+    return fault;
+}
+static void s5_demo_state_read(uint32_t *last_clear_ms, bool *permitted)
+{
+    UINT irq;
+    s5_demo_lock_enter(&irq);
+    *last_clear_ms = s5_demo_last_clear_ms;
+    *permitted = s5_demo_clear_permission;
+    s5_demo_lock_leave(irq);
+}
+static void s5_demo_clear_stop(void)
+{
+    UINT irq;
+    s5_demo_lock_enter(&irq);
+    s5_demo_clear_permission = false;
+    s5_demo_lock_leave(irq);
+    b2_request_stop();
+}
+static void s5_demo_clear_publish(void)
+{
+    SYSTIM time;
+    UINT irq;
+    if (tk_get_tim(&time) != E_OK)
+    {
+        s5_demo_clear_stop();
+        return;
+    }
+    s5_demo_lock_enter(&irq);
+    if (!s5_demo_drive_fault)
+    {
+        s5_demo_last_clear_ms = time.lo;
+        s5_demo_clear_permission = true;
+    }
+    s5_demo_lock_leave(irq);
+}
+
+static bool s5_demo_can_refresh(uint32_t now_ms, uint32_t last_clear_ms,
+                                bool clear_permission, bool b2_allowed)
+{
+    return clear_permission && b2_allowed &&
+           (uint32_t)(now_ms - last_clear_ms) <= S5_DEMO_CLEAR_MAX_AGE_MS;
+}
+
+static void s5_demo_drive_fault_stop(const char *reason)
+{
+    UINT irq;
+    /* A PID/encoder/watchdog failure must not be automatically rearmed. */
+    s5_demo_lock_enter(&irq);
+    s5_demo_drive_fault = true;
+    s5_demo_clear_permission = false;
+    s5_demo_lock_leave(irq);
+    b2_request_stop();
+    tm_printf((UB*)"[S5-B2-FAULT] %s; motor drive locked until reset\n", reason);
+}
+
+static void s5_demo_drive_task(INT stacd, void *exinf)
+{
+    bool issued = false;
+    uint32_t last_status_log_ms = 0u;
+    (void)stacd;
+    (void)exinf;
+    for (;;)
+    {
+        SYSTIM time;
+        motion_status_snapshot_t status;
+        uint32_t last_clear;
+        bool permitted;
+        ER er;
+        motion_command_t command = {0};
+        if (s5_demo_fault_latched())
+        {
+            tk_dly_tsk(S5_DEMO_DRIVE_REFRESH_MS);
+            continue;
+        }
+        if (tk_get_tim(&time) != E_OK)
+        {
+            s5_demo_drive_fault_stop("system clock unavailable");
+            continue;
+        }
+        s5_demo_state_read(&last_clear, &permitted);
+        if (!s5_demo_can_refresh(time.lo, last_clear, permitted,
+                                 b2_safety_motion_allowed()))
+        {
+            if (permitted && (uint32_t)(time.lo - last_clear) >
+                             S5_DEMO_CLEAR_MAX_AGE_MS)
+            {
+                /* A delayed ultrasonic task is a recoverable clearance
+                 * timeout, NOT a permanent B2/encoder failure. Revoke
+                 * permission and require stationary revalidation. */
+                s5_demo_clear_stop();
+                tm_printf((UB*)"[S5-B2] front clearance expired; STOP and recheck (not permanently locked)\n");
+            }
+            issued = false;
+            tk_dly_tsk(S5_DEMO_DRIVE_REFRESH_MS);
+            continue;
+        }
+        if (motion_get_status(&status) != E_OK ||
+            (uint32_t)(time.lo - status.sample_time_ms) >
+                S5_DEMO_B2_STATUS_MAX_AGE_MS)
+        {
+            s5_demo_drive_fault_stop("B2 controller status unavailable/stale");
+            continue;
+        }
+        if (status.status == MOTION_STATUS_FAULT ||
+            status.status == MOTION_STATUS_TIMEOUT)
+        {
+            tm_printf((UB*)"[S5-B2-STATUS] status=%d fault=%d L_cps=%d R_cps=%d\n",
+                      (int)status.status, (int)status.fault,
+                      (int)status.left_speed_cps, (int)status.right_speed_cps);
+            s5_demo_drive_fault_stop("B2 controller/encoder fault or timeout");
+            continue;
+        }
+        command.type = MOTION_CMD_DRIVE;
+        command.direction = MOTION_DIR_FORWARD;
+        command.target_speed_cps = S5_DEMO_SPEED_CPS;
+        command.safety_generation = b2_safety_stop_generation();
+        er = motion_send_command(&command);
+        if (er == E_OK)
+        {
+            if (!issued)
+                tm_printf((UB*)"[S5-B2] guarded DRIVE command accepted speed=%d cps; B2 owns PWM\n",
+                          (int)S5_DEMO_SPEED_CPS);
+            issued = true;
+            /* An accepted command only means queued, not that the motors
+             * physically turned. Periodic feedback distinguishes sensor
+             * recovery from B2 encoder/motor-power problems. */
+            if ((uint32_t)(time.lo - last_status_log_ms) >= 1000u)
+            {
+                last_status_log_ms = time.lo;
+                tm_printf((UB*)"[S5-B2-STATUS] status=%d fault=%d L_cps=%d R_cps=%d\n",
+                          (int)status.status, (int)status.fault,
+                          (int)status.left_speed_cps, (int)status.right_speed_cps);
+            }
+        }
+        else if (er != E_OBJ && er != E_TMOUT)
+        {
+            s5_demo_drive_fault_stop("B2 rejected DRIVE command");
+        }
+        /* B2 PID's DRIVE watchdog is 100 ms. Refresh well before that;
+         * B5 clearance and B2's own safety gate are checked each cycle. */
+        tk_dly_tsk(S5_DEMO_DRIVE_REFRESH_MS);
+    }
+}
+#else
+static void s5_demo_clear_stop(void) { b2_request_stop(); }
+static void s5_demo_clear_publish(void) { }
+#endif
+
 #if !S5_MOTION_BRIDGE_ENABLED
-/* Week 6 hardware demonstration. Real sensor + servo; no wheel movement.
- * The real B2/B3 tasks must replace the bridge before robot movement.
- * Logs use cm_x100 to avoid floating-point printf in the RTOS console. */
+/* Real sensor + servo. In optional forward-only demo mode, a B5 helper
+ * submits guarded straight DRIVE commands to B2's public command API.
+ * This does not implement autonomous bypass or B3 line recovery. */
 static void stationary_profile_mode(void)
 {
     unsigned samples = 0u, close_hits = 0u, clear_hits = 0u;
@@ -142,7 +344,9 @@ static void stationary_profile_mode(void)
     bool obstacle_latched = false;
     bool scanned_this_obstacle = false;
     bool driving = false;
+    S5GuardStopHistory guard_history;
     bool startup_scan_pending = (S5_FORCE_STARTUP_SCAN != 0);
+    tm_printf((UB*)"[S5-FW] B5-GUARDED-DRIVE-2026-11-04-V3; bounded trigger + timed sensor recovery + echo safety\n");
     tm_printf((UB*)"[S5] REAL ROBOT: clear -> forward; close -> STOP -> coarse/fine/profile\n");
     tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=%s LINE=UNAVAILABLE\n",
               S5_DEMO_SENSOR_ONLY ? "DEMO STOP-ONLY" :
@@ -150,7 +354,23 @@ static void stationary_profile_mode(void)
     tm_printf((UB*)"[S5] STOP below %d cm; RESUME after %d clear samples >= %d cm\n",
               (int)ROBOT_STOP_CM, (int)ROBOT_CLEAR_CONFIRM,
               (int)ROBOT_RELEASE_CM);
-    b2_request_stop();
+#if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
+    s5_demo_state_init();
+#endif
+    s5_demo_clear_stop();
+    s5_guard_stop_history_init(&guard_history);
+#if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
+    {
+        ID demo_tid = app_start_task((FP)s5_demo_drive_task,
+                                     S5_PRI_MAIN, TP_PRC2,
+                                     "s5_demo_drive_task");
+        if (demo_tid < E_OK)
+        {
+            tm_printf((UB*)"[S5-B2-FAULT] cannot start guarded DRIVE task; STOP locked\n");
+            for (;;) { s5_demo_clear_stop(); tk_dly_tsk(1000); }
+        }
+    }
+#endif
     tm_printf((UB*)"[S5] GPIO TRIG=16 ECHO=17 SERVO=12; confirm 3.3V-safe ECHO\n");
 #if S5_STARTUP_SERVO_TEST
     tm_printf((UB*)"[S5-SERVO] SELF TEST 90 -> 80 -> 100 -> 90\n");
@@ -164,7 +384,7 @@ static void stationary_profile_mode(void)
      * Keep both motors stopped while the supply settles, then throw
      * away a few first echoes. None of these readings authorizes drive. */
     /* Wait for power/servo stabilization without raw sensor diagnostics. */
-    b2_request_stop();
+    s5_demo_clear_stop();
     tk_dly_tsk(ROBOT_SENSOR_STARTUP_SETTLE_MS);
     {
         unsigned warmup;
@@ -179,29 +399,112 @@ static void stationary_profile_mode(void)
         float cm = 0.0f;
         bool valid;
         bool scan_needed = false;
-        /* A five-ping consensus is too slow to be the only guard while
-         * moving. Stop immediately on a single unknown/near/close echo,
-         * then use consensus to decide whether the path can be released.
-         * False-positive stops are safer than delayed collision stops. */
+        /* While moving, perform ONE bounded forward ping per tick, not a
+         * blocking 5-ping consensus. A successful clear ping refreshes
+         * B2's 1200-ms safety heartbeat. This prevents false watchdog
+         * expiries caused by the old slow 5/10-ping sampling loop.
+         * Any invalid, suppressed, close or uncertain ping still causes
+         * an immediate STOP; it is never treated as a clear path. */
         if (driving) {
-            S5EchoReading guard = s5_ultrasonic_read_detailed();
-            if (guard.status != S5_ECHO_OK ||
-                s5_echo_suppressed_cm(guard.cm) ||
-                guard.cm < ROBOT_STOP_CM) {
-                b2_request_stop();
+#if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
+            uint32_t last_clear;
+            bool permitted;
+            s5_demo_state_read(&last_clear, &permitted);
+            (void)last_clear;
+            /* The independent B2 refresh task may have revoked clearance
+             * because the B5 task was delayed. Never re-arm from just one
+             * moving ping: go back to stopped multi-echo consensus. */
+            if (!permitted)
+            {
+                s5_demo_clear_stop();
                 driving = false;
-                tm_printf((UB*)"[S5-GUARD] immediate STOP status=%s cm_x100=%d; verifying next echoes\n",
-                          s5_echo_status_name(guard.status),
-                          (int)(guard.cm * 100.0f));
+                clear_hits = 0u;
+                tk_dly_tsk(S5_FRONT_POLL_MS);
+                continue;
             }
+            if (s5_demo_fault_latched())
+            {
+                s5_demo_clear_stop();
+                driving = false;
+                tk_dly_tsk(S5_FRONT_POLL_MS);
+                continue;
+            }
+#endif
+            S5EchoReading guard = s5_ultrasonic_read_detailed();
+            bool guard_valid = (guard.status == S5_ECHO_OK) &&
+                               !s5_echo_suppressed_cm(guard.cm) &&
+                               (s5_wire_cm(guard.cm,
+                                           S5_WIRE_DISTANCE_MAX_CM) !=
+                                COMM_CM_INVALID);
+            if (guard_valid && (guard.cm >= ROBOT_RELEASE_CM)) {
+                comm_set_obstacle_dist(s5_wire_cm(guard.cm,
+                                                 S5_WIRE_DISTANCE_MAX_CM));
+                fault_clear(FAULT_NO_ECHO);
+                sensor_unavailable = false;
+                close_hits = 0u;
+                clear_hits = ROBOT_CLEAR_CONFIRM;
+                /* B2 grants clearance only after its STOP generation
+                 * has been acknowledged. Refresh on each valid ping. */
+                b2_request_forward();
+                if (b2_safety_motion_allowed()) s5_demo_clear_publish();
+                if (!b2_safety_motion_allowed()) {
+                    s5_demo_clear_stop();
+                    driving = false;
+                    tm_printf((UB*)"[S5-STOP] B2 motion clearance revoked; waiting for confirmed clear path\n");
+                }
+                tk_dly_tsk(S5_FRONT_POLL_MS);
+                continue;
+            }
+            /* A missing or close echo cannot prove the path is clear.
+             * Do not continue moving based on an old 310-cm reading. */
+            s5_demo_clear_stop();
+            driving = false;
+            clear_hits = 0u;
+            close_hits = (guard_valid && guard.cm < ROBOT_STOP_CM) ? 1u : 0u;
+            if (guard_valid) {
+                comm_set_obstacle_dist(s5_wire_cm(guard.cm,
+                                                 S5_WIRE_DISTANCE_MAX_CM));
+                fault_clear(FAULT_NO_ECHO);
+                sensor_unavailable = false;
+            } else {
+                comm_set_obstacle_dist(COMM_CM_INVALID);
+                fault_raise(FAULT_NO_ECHO);
+                if (!sensor_unavailable) {
+                    (void)comm_report_error(ERR_S5_NO_ECHO,
+                                            S5_FRONT_ANGLE_DETAIL);
+                    sensor_unavailable = true;
+                }
+            }
+            {
+                SYSTIM stopped_at;
+                tk_get_tim(&stopped_at);
+                if (s5_guard_stop_history_record(&guard_history,
+                                                 stopped_at.lo)) {
+                    tm_printf((UB*)"[S5-HOLD] repeated unsafe/invalid readings: STOP for at least %d ms; require %d stable clear batches to re-arm\n",
+                              (int)S5_GUARD_COOLDOWN_MS,
+                              (int)S5_GUARD_REARM_CLEAR_BATCHES);
+                }
+            }
+            tm_printf((UB*)"[S5-GUARD] STOP status=%s pulse_us=%d cm_x100=%d; rechecking while stationary\n",
+                      s5_echo_status_name(guard.status),
+                      (int)guard.pulse_us, (int)(guard.cm * 100.0f));
             tk_dly_tsk(S5_ECHO_GAP_MS);
+            continue;
         }
+        /* Only while stopped: use the slower multi-ping consensus to
+         * confirm a clear path before permitting a new drive interval. */
         valid = s5_measure_stable_cm(&cm);
         /* Defensive guard: a malformed successful measurement must
          * never clear NO_ECHO or release the motors. */
         valid = valid &&
                 (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) != COMM_CM_INVALID);
         ++samples;
+        if (!driving && (samples % 8u) == 0u)
+            tm_printf((UB*)"[S5-CHECK] stable=%d cm_x100=%d clear=%d/%d close=%d/%d locked=%d\n",
+                      (int)valid, (int)(cm * 100.0f),
+                      (int)clear_hits, (int)ROBOT_CLEAR_CONFIRM,
+                      (int)close_hits, (int)S5_CONFIRM_HITS,
+                      (int)guard_history.locked);
         /* B1 telemetry (non-blocking): front distance in cm, and the
          * shared no-echo fault bit */
         comm_set_obstacle_dist(valid ?
@@ -212,10 +515,28 @@ static void stationary_profile_mode(void)
         } else {
             fault_raise(FAULT_NO_ECHO);
         }
+        /* Recovery is never inferred from a timeout or a single echo.
+         * Each accepted stationary sample already represents 3 agreeing
+         * echoes from a batch of 5 (or its bounded retry). */
+        if (valid && cm >= ROBOT_RELEASE_CM)
+        {
+            SYSTIM recovered_at;
+            if (tk_get_tim(&recovered_at) == E_OK &&
+                s5_guard_stop_history_clear(&guard_history,
+                                             recovered_at.lo))
+            {
+                tm_printf((UB*)"[S5-REARM] echo recovered: cooldown and %d clear batches passed; forward can resume\n",
+                          (int)S5_GUARD_REARM_CLEAR_BATCHES);
+            }
+        }
+        else
+        {
+            s5_guard_stop_history_unclear(&guard_history);
+        }
         if (!valid) {
             close_hits = 0u;
             clear_hits = 0u;
-            b2_request_stop();
+            s5_demo_clear_stop();
             if (driving) tm_printf((UB*)"[S5-STOP] invalid ultrasonic echo: motors disabled\n");
             driving = false;
             if (!sensor_unavailable)
@@ -231,7 +552,7 @@ static void stationary_profile_mode(void)
             sensor_unavailable = false;
             if (cm < ROBOT_STOP_CM) {
                 /* One close sample must stop the wheels. Three are needed to scan. */
-                b2_request_stop();
+                s5_demo_clear_stop();
                 if (driving) {
                     tm_printf((UB*)"[S5-STOP] object at %d cm (< %d cm); PWM=0 requested\n",
                               (int)cm, (int)ROBOT_STOP_CM);
@@ -257,20 +578,34 @@ static void stationary_profile_mode(void)
                     obstacle_latched = false;
                     scanned_this_obstacle = false;
 #if S5_DEMO_SENSOR_ONLY
-                    /* Demo mode: keep the B2 STOP latch closed even on
-                     * confirmed clear readings. Do not move the robot. */
-                    b2_request_stop();
+                    /* Sensor-only demo: never release B2 STOP. */
+                    s5_demo_clear_stop();
                     driving = false;
 #else
-                    b2_request_forward(); /* Heartbeat every valid clear sample. */
-                    if (!driving) {
-                        tm_printf((UB*)"[S5-DRIVE] valid clear=%d cm; FORWARD requested (verify B2 FORWARD and wheel movement)\n",
-                                  (int)cm);
-                        driving = true;
+                    if (guard_history.locked
+#if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
+                        || s5_demo_fault_latched()
+#endif
+                        ) {
+                        /* A burst of bad echoes requires a timed hold and
+                         * sustained stationary verification, not a reboot. */
+                        s5_demo_clear_stop();
+                        driving = false;
+                    } else {
+                        b2_request_forward();
+                        if (b2_safety_motion_allowed()) {
+                            s5_demo_clear_publish();
+                            tm_printf((UB*)"[S5-DRIVE] confirmed clear=%d cm; B2 permission granted\n",
+                                      (int)cm);
+                            driving = true;
+                        } else {
+                            s5_demo_clear_stop();
+                            driving = false;
+                        }
                     }
 #endif
                 } else {
-                    b2_request_stop();
+                    s5_demo_clear_stop();
                     driving = false;
                 }
 #if ROBOT_VERBOSE_SENSOR_LOG
@@ -284,7 +619,7 @@ static void stationary_profile_mode(void)
                 /* 35..45cm hysteresis band is not confirmed safe. */
                 close_hits = 0u;
                 clear_hits = 0u;
-                b2_request_stop();
+                s5_demo_clear_stop();
                 if (driving) tm_printf((UB*)"[S5-STOP] distance in uncertain band; PWM=0 requested\n");
                 driving = false;
 #if ROBOT_VERBOSE_SENSOR_LOG
@@ -294,7 +629,7 @@ static void stationary_profile_mode(void)
             }
         }
         if (obstacle_latched) {
-            b2_request_stop();
+            s5_demo_clear_stop();
             driving = false;
         }
         if (scan_needed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST) {
@@ -306,7 +641,7 @@ static void stationary_profile_mode(void)
             startup_scan_pending = false;
             scanned_this_obstacle = true;
             close_hits = 0u;
-            b2_request_stop();
+            s5_demo_clear_stop();
             driving = false;
             tk_dly_tsk(ROBOT_STOP_SETTLE_MS);
             if (!b2_motor_is_stopped()) {

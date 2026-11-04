@@ -5,11 +5,12 @@
 
 #include <stdbool.h>
 #include "motor_control.h"
-#define MOTOR_L_A_PIN   8U      // Left motor PWM output A
-#define MOTOR_L_B_PIN   9U      // Left motor PWM output B
-#define MOTOR_R_A_PIN   10U     // Right motor PWM output A
-#define MOTOR_R_B_PIN   11U     // Right motor PWM output B
-#define MOTOR_PWM_WRAP  999U
+#include "../robot_config.h"
+#define MOTOR_L_A_PIN   ROBOT_MOTOR_L_REV_PIN      // Left motor PWM output A
+#define MOTOR_L_B_PIN   ROBOT_MOTOR_L_FWD_PIN      // Left motor PWM output B
+#define MOTOR_R_A_PIN   ROBOT_MOTOR_R_FWD_PIN     // Right motor PWM output A
+#define MOTOR_R_B_PIN   ROBOT_MOTOR_R_REV_PIN     // Right motor PWM output B
+#define MOTOR_PWM_WRAP  ROBOT_PWM_TOP
 #define MOTOR_TEST_DUTY 50
 /* RP2040 peripheral reset control. */
 #define RESETS_RESET_REG  (*(volatile UW *)0x4000C000U)

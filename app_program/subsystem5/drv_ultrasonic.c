@@ -83,6 +83,7 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
 {
     S5EchoReading r = { S5_ECHO_NO_RISE, 0u, 0.0f };
     uint32_t start, count;
+    UINT trigger_irq;
     bool saw_high = false;
 
     /* A stuck-high pin is not a valid echo. */
@@ -100,10 +101,15 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
     gpio_set_val(S5_TRIG_PIN, 0u);
     start = now_us();
     while (!expired(start, 3u)) { }
+    /* Keep the 12-us trigger bounded: a scheduler/USB/WiFi interrupt
+     * must not stretch it into a millisecond pulse. Echo waits below
+     * remain preemptible; hardware PWM captures their duration. */
+    DI(trigger_irq);
     gpio_set_val(S5_TRIG_PIN, 1u);
     start = now_us();
     while (!expired(start, 12u)) { }
     gpio_set_val(S5_TRIG_PIN, 0u);
+    EI(trigger_irq);
 
     /* A preemption can happen before we see ECHO rise.  If the hardware
      * counter is already nonzero, the pulse has begun or completed even
@@ -126,6 +132,11 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
     start = now_us();
     while (gpio_get_val(S5_ECHO_PIN)) {
         if (expired(start, S5_ECHO_TIMEOUT_US)) {
+            /* Preserve the actual PWM-captured high duration so the
+             * serial log can distinguish an overlong ECHO pulse from a
+             * scheduling or electrical interference problem. This is
+             * diagnostic only: NO_FALL remains INVALID and forces STOP. */
+            r.pulse_us = in_w(S5_ECHO_CTR) & 0xffffu;
             r.status = S5_ECHO_NO_FALL;
             return r;
         }

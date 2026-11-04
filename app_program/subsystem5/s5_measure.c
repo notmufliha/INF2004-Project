@@ -159,3 +159,90 @@ bool s5_measure_stable_cm(float *out_cm)
 
     return false;
 }
+
+/* Chatter protection: an invalid or close moving echo still stops the
+ * motors immediately. A cluster of such events imposes a timed hold,
+ * but unlike V2 it can recover without a reboot after the sensor proves
+ * it is healthy again with consecutive multi-echo clear batches. */
+void s5_guard_stop_history_init(S5GuardStopHistory *history)
+{
+    if (history != NULL)
+    {
+        history->window_start_ms = 0u;
+        history->hold_start_ms = 0u;
+        history->last_clear_ms = 0u;
+        history->stop_count = 0u;
+        history->clear_batches = 0u;
+        history->locked = false;
+    }
+}
+
+bool s5_guard_stop_history_record(S5GuardStopHistory *history,
+                                  uint32_t now_ms)
+{
+    if (history == NULL)
+    {
+        return true; /* Missing safety state must never grant motion. */
+    }
+    history->clear_batches = 0u;
+    if (history->locked)
+    {
+        return true;
+    }
+    if ((history->stop_count == 0u) ||
+        ((uint32_t)(now_ms - history->window_start_ms) >
+         S5_GUARD_STOP_WINDOW_MS))
+    {
+        history->window_start_ms = now_ms;
+        history->stop_count = 1u;
+    }
+    else if (history->stop_count < S5_GUARD_STOP_LIMIT)
+    {
+        ++history->stop_count;
+    }
+    if (history->stop_count >= S5_GUARD_STOP_LIMIT)
+    {
+        history->locked = true;
+        history->hold_start_ms = now_ms;
+        history->clear_batches = 0u;
+    }
+    return history->locked;
+}
+
+void s5_guard_stop_history_unclear(S5GuardStopHistory *history)
+{
+    if (history != NULL)
+    {
+        history->clear_batches = 0u;
+    }
+}
+
+bool s5_guard_stop_history_clear(S5GuardStopHistory *history,
+                                 uint32_t now_ms)
+{
+    if (history == NULL || !history->locked)
+    {
+        return false;
+    }
+    if (history->clear_batches != 0u &&
+        (uint32_t)(now_ms - history->last_clear_ms) >
+            S5_GUARD_REARM_MAX_GAP_MS)
+    {
+        history->clear_batches = 0u;
+    }
+    history->last_clear_ms = now_ms;
+    if (history->clear_batches < S5_GUARD_REARM_CLEAR_BATCHES)
+    {
+        ++history->clear_batches;
+    }
+    if ((uint32_t)(now_ms - history->hold_start_ms) <
+            S5_GUARD_COOLDOWN_MS ||
+        history->clear_batches < S5_GUARD_REARM_CLEAR_BATCHES)
+    {
+        return false;
+    }
+    /* A full hold and fresh clear batches: re-arm once. The next failure
+     * still forces an immediate STOP and starts a new observation window. */
+    s5_guard_stop_history_init(history);
+    return true;
+}
