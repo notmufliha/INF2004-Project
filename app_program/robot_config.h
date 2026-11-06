@@ -5,9 +5,9 @@
  * Rebuild and reflash the UF2 after changing this file.
  */
 #define ROBOT_MODE 1
-/* Fixed-duty forward/STOP controller; does not require encoder calibration.
- * Set 0 to restore the command-driven encoder PI controller. */
-#define ROBOT_FORWARD_STOP_MODE 1
+/* Autonomous mode uses encoder-controlled line following and bypass.
+ * Disable bypass to select the legacy fixed-duty forward/STOP profile. */
+#define ROBOT_FORWARD_STOP_MODE (!ROBOT_ENABLE_BYPASS)
 /* Open-space policy requested for forward driving. NO_RISE means assume
  * no target, NOT verified clearance. A disconnected ECHO wire looks the
  * same and cannot be detected by this single-sensor policy. Set 0 for
@@ -16,11 +16,41 @@
 #ifndef ROBOT_ENABLE_DRIVE
 #define ROBOT_ENABLE_DRIVE 1
 #endif
-/* Real autonomous bypass requires working B2 encoder feedback and B3 line
- * sensing, measured robot geometry, and independent path safety checks.
- * The uploaded team project does not contain those working interfaces.
- */
-#define ROBOT_ENABLE_BYPASS 0
+/* Start by following the line, avoid a profiled obstacle, then reacquire
+ * the line and resume following. Can be overridden with -D for bench builds. */
+#ifndef ROBOT_ENABLE_BYPASS
+#define ROBOT_ENABLE_BYPASS 1
+#endif
+#ifndef ROBOT_BYPASS_CALIBRATED
+/* Calibration evidence flag only; enabling the requested autonomous profile
+ * does not certify the provisional physical measurements below. */
+#define ROBOT_BYPASS_CALIBRATED 0
+#endif
+/* This is an explicit course constraint, NOT an ultrasonic depth estimate.
+ * Autonomous mode requires measured obstacles no deeper than this bound. */
+#define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
+#define ROBOT_BYPASS_SPEED_CPS 600
+#define ROBOT_BYPASS_REVERSE_CM 8.0f
+#define ROBOT_BYPASS_SEARCH_STEP_CM 2.0f
+#define ROBOT_BYPASS_SEARCH_EXTRA_CM 10.0f
+#define ROBOT_BYPASS_MAX_LEG_CM 150.0f
+#define ROBOT_BYPASS_LEG_TIMEOUT_MS 60000u
+#define ROBOT_BYPASS_TOTAL_TIMEOUT_MS 180000u
+#define ROBOT_BYPASS_LINE_MAX_AGE_MS 100u
+#define ROBOT_BYPASS_LINE_CONFIRM 3u
+#define ROBOT_BYPASS_LINE_WINDOW_CM 5.0f
+#define ROBOT_BYPASS_MIN_TURN_CM 20.0f
+
+/* Visible ultrasonic silhouette only; centimetres. Measure chassis before
+ * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse. */
+#define ROBOT_SCAN_SAFE_MIN_DEG 70u
+#define ROBOT_SCAN_SAFE_MAX_DEG 110u
+#define ROBOT_OBSTACLE_SMALL_CM 10.0f
+#define ROBOT_OBSTACLE_MAX_BYPASS_CM 30.0f
+#define ROBOT_CHASSIS_HALF_WIDTH_CM 8.0f
+#define ROBOT_CHASSIS_HALF_LENGTH_CM 10.0f
+#define ROBOT_SENSOR_FORWARD_OFFSET_CM 0.0f
+#define ROBOT_OBSTACLE_MARGIN_CM 8.0f
 
 /* Pin pairs for M1 and M2 on Maker Pi Pico Base.
  * M1 forward defaults to GP9, M2 forward defaults to GP10, following the
@@ -105,7 +135,10 @@
 #define ROBOT_CLEAR_CONFIRM 3u
 #define ROBOT_STOP_SETTLE_MS 250u
 
-#if ROBOT_ENABLE_BYPASS
-#error "Physical bypass needs encoder, IR and geometry calibration; not yet available in uploaded project."
+#if ROBOT_ENABLE_BYPASS && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || !ROBOT_MODE)
+#error "B5 autonomous mode needs ROBOT_MODE=1 and exclusive motor ownership: disable motor tests."
+#endif
+#if ROBOT_SCAN_SAFE_MIN_DEG > 70u || ROBOT_SCAN_SAFE_MAX_DEG < 110u || ROBOT_SCAN_SAFE_MAX_DEG > 180u
+#error "Servo limits must contain the five-ray 70..110 degree coarse scan."
 #endif
 #endif

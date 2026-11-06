@@ -21,7 +21,7 @@ subsystem, ask its owner or open a pull request for them to review.
 | 2 | *example:* Producer: makes a sample every 300 ms | | | `app_program/subsystem2/` | `testing/subsystem2/` |
 | 3 | *example:* Consumer: collects samples into statistics | | | `app_program/subsystem3/` | `testing/subsystem3/` |
 | 4 | IMU motion/terrain monitoring (mock RTOS demo); legacy example monitor retained | 2503027 | | `app_program/subsystem4/` | `testing/subsystem4/` |
-| 5 | | | | `app_program/subsystem5/` | `testing/subsystem5/` |
+| 5 | Adaptive ultrasonic scan, profiling, avoidance and line recovery | | | `app_program/subsystem5/` | `testing/subsystem5/` |
 
 Shared files (`app_program/app_main.c`, `app_program/app.h`, this file)
 are changed only by agreement of the team. The exception is claiming an empty
@@ -60,19 +60,19 @@ fixed.
 | GP9 | | |
 | GP10 | | |
 | GP11 | | |
-| GP12 | | |
+| GP12 | B5 | Ultrasonic servo PWM slice 6 |
 | GP13 | | |
 | GP14 | | |
 | GP15 | | |
-| GP16 | | |
-| GP17 | | |
+| GP16 | B5 | Ultrasonic TRIG |
+| GP17 | B5 | Ultrasonic ECHO / pulse-width capture |
 | GP18 | | |
 | GP19 | S1 | WiFi/MQTT link-status LED (LED + 330 Ω to GND) |
 | GP20 | | |
 | GP21 | | |
 | GP22 | | |
-| GP26 | | (ADC0 capable) |
-| GP27 | | (ADC1 capable) |
+| GP26 | B3 | ADC0 left line input (autonomous profile) |
+| GP27 | B3 | ADC1 centre line input (autonomous profile) |
 | GP28 | | (ADC2 capable) |
 
 ## 3. Peripherals
@@ -110,8 +110,8 @@ the drivers have no locking to stop it.
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |
-| ADC | | | GP26–GP28 |
-| PWM slices (list) | | | |
+| ADC | B3 (autonomous profile) | b3_line, via kernel ADC driver | GP26/GP27 |
+| PWM slice 6 | B5 | s5_task | GP12 |
 | WiFi radio, TCP/IP, MQTT | *kernel* (S1 feeds it via `comm_bridge.h`) | `cyw43_utk_task` (built in) | GP23–25, GP29 |
 
 ### WiFi and MQTT are special
@@ -148,9 +148,9 @@ change it only by team agreement. Write down every task you create.
 |---|---|---|
 | 1 | 12–13 | led_task – 12 – any; comm_task – 13 – any; demo_task – 12 – any (only while `S1_STANDALONE_DEMO`=1) |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
-| 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
+| 3 | 16–17 | consumer_task (teaching) / b3_line (autonomous robot), priority 16, core 0 |
 | 4 | 18–19 | imu_sampling_task – 18 – any; imu_analysis_task – 19 – any; legacy monitor_task – 19 – any |
-| 5 | 20–21 | |
+| 5 | 20–21 | s5_task, priority 20, any core; scans and autonomous command sequencing |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
 
@@ -171,7 +171,8 @@ sends to it or waits on it. Agree on the data format before coding.
 | IF-S1-EVT | any → S1 | message buffer (owned by S1), `TMO_POL` | `mbf_events` via `comm_report_xxx()` | barcode / hump / obstacle / error | *proposed* |
 | IF-S1-CMD | S1 → Vehicle Controller | message buffer (owned by S1) | `mbf_remote_cmd` | `REMOTE_CMD` in `subsystem1.h`, receive with `TMO_POL` | *proposed* |
 | IF-S1-NET | S1 ↔ kernel WiFi task | message buffers `mbf_tx` / `mbf_rx`, `TMO_POL` only | `comm_bridge_xxx()` in `comm_bridge.h` | topic id + JSON / command text; see `subsystem1/MQTT.md` | *needs team + instructor OK (changes `mqtt_utk.c`)* |
-| IF-06 | | | | | |
+| IF-06 | B3 to B5 | B3-owned mutex; bounded 5 ms getter | `b3_get_timed_state()` | ADC pair, line flags, successful-sample timestamp | implemented for B5 robot profile |
+| IF-07 | B5 to B2 | B2 command queue + safety generation + retained ID results | `motion_move_cm()`, `motion_turn_degrees()`, `motion_get_result()` | one active movement; encoder-confirmed completion; immediate STOP | implemented for B5 robot profile |
 
 Each interface is tested by at least one integration test
 (`testing/integration/TEST_LOG.md`).

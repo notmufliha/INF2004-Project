@@ -2,10 +2,9 @@
  * @file s5_bridge.c
  * @brief Fail-closed B5/VC/B2/B3 bridge with a real B2 emergency STOP.
  *
- * This file intentionally does not implement a speculative path planner or
- * directly submit B2 MOVE/TURN commands. B5's ultrasonic side rays cannot
- * prove the entire bypass corridor or rear path is clear. The Vehicle
- * Controller is responsible for motor arbitration and calibrated movement.
+ * This wrapper delegates to the installed command owner. The autonomous
+ * profile installs s5_navigation.c, which executes s5_maneuver.c through B2
+ * and reads timestamped B3 line data. It does not bypass B2 safety gates.
  */
 #include "s5_bridge.h"
 #include "../subsystem2/b2_motor.h"

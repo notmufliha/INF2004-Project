@@ -44,11 +44,11 @@ EXPORT void subsystem5_test(void)
                l.controller.profile.nearest_angle_deg == 90u, "closest point");
     TEST_CHECK("S5-U17", l.controller.profile.left_clearance_cm == 90.0f &&
                l.controller.profile.right_clearance_cm == 65.0f, "both clearances");
-    TEST_CHECK("S5-U18", angles[0] == 70u && angles[4] == 110u, "adaptive fine angles");
+    TEST_CHECK("S5-U18", angles[0] == 80u && angles[4] == 100u, "adaptive fine angles");
     TEST_CHECK("S5-U19", l.controller.profile.required_lateral_clearance_cm >
                l.controller.profile.estimated_width_cm / 2.0f, "margin added");
-    TEST_CHECK("S5-U20", l.controller.profile.center_x_cm > -0.1f &&
-               l.controller.profile.center_x_cm < 0.1f &&
+    TEST_CHECK("S5-U20", l.controller.profile.center_x_cm > 0.25f &&
+               l.controller.profile.center_x_cm < 0.27f &&
                l.controller.profile.center_y_cm > 14.9f &&
                l.controller.profile.center_y_cm < 15.1f,
                "obstacle location relative to sensor");

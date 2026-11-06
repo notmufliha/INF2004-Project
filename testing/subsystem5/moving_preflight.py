@@ -11,7 +11,7 @@ config = (root / 'app_program/robot_config.h').read_text()
 
 checks = {
     'B5 guarded forward/STOP enabled': bool(re.search(r'^#define S5_DEMO_SENSOR_ONLY\s+0\s*$', b5, re.M)),
-    'B5 physical bypass remains disabled': bool(re.search(r'^#define S5_MOTION_BRIDGE_ENABLED\s+0\s*$', b5, re.M)),
+    'B5 physical bypass remains disabled': (bool(re.search(r'^#define S5_MOTION_BRIDGE_ENABLED\s+0\s*$', b5, re.M)) or ('#define S5_MOTION_BRIDGE_ENABLED ROBOT_ENABLE_BYPASS' in b5 and bool(re.search(r'^#define ROBOT_ENABLE_BYPASS\s+0\s*$', config, re.M)))),
     'B5 single-ping moving monitor present': 'B5-GUARDED-DRIVE-2026-11-04-V3' in task and 's5_guard_stop_history_record' in task,
     'B5 motor STOP on invalid/close echo': 's5_demo_clear_stop();\n            driving = false;' in task,
     'B5 B2 heartbeat refresh while moving': 'b2_request_forward();\n                if (b2_safety_motion_allowed()) s5_demo_clear_publish();' in task,

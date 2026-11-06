@@ -2,6 +2,7 @@
 Release
 
 # Build artifacts
+/.codex_tmp/
 *.elf
 *.uf2
 *.map

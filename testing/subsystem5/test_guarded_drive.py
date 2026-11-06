@@ -15,9 +15,10 @@ assert '#include <stddef.h>' not in task
 assert '__builtin_isfinite' in task
 assert '#define ROBOT_MOTION_TEST 0' in config
 assert '#define ROBOT_ENCODER_DIAGNOSTICS 0' in config
-assert '#define S5_DEMO_B2_FORWARD_COMMANDS 1' in header
+assert '#define S5_DEMO_B2_FORWARD_COMMANDS (!ROBOT_FORWARD_STOP_MODE)' in header
 assert '#define S5_DEMO_SENSOR_ONLY 0' in header
-assert '#define S5_MOTION_BRIDGE_ENABLED 0' in header
+assert '#define S5_MOTION_BRIDGE_ENABLED ROBOT_ENABLE_BYPASS' in header
+assert '#define ROBOT_FORWARD_STOP_MODE (!ROBOT_ENABLE_BYPASS)' in config
 assert 'motion_send_command(&command)' in task
 assert 'command.type = MOTION_CMD_DRIVE;' in task
 assert 'command.direction = MOTION_DIR_FORWARD;' in task

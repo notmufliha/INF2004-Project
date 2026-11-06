@@ -13,6 +13,7 @@
 #include "s5_measure.h"
 #include "drv_servo.h"
 #include "obstacle_scan.h"
+#include "s5_navigation.h"
 
 /* The B1 wire format uses 9/7-bit obstacle fields.  B5's approved
  * application ranges are 0..400 cm (distance/clearance) and 0..100 cm
@@ -689,29 +690,11 @@ static void stationary_profile_mode(void)
 #if ROBOT_VERBOSE_SENSOR_LOG
                 print_scan("FINE", &fine);
 #endif
-                profile = s5_estimate_profile(&fine, side);
+                profile = s5_profile_from_scans(&coarse, &fine, side);
                 if (profile.valid) {
-                    int k;
-                    float required = profile.required_lateral_clearance_cm;
-                    float l = 0.0f, r = 0.0f;
-                    bool left_ok = true, right_ok = true;
-                    for (k = 0; k < 2; ++k)
-                        if (!coarse.points[k].valid || coarse.points[k].distance_cm < S5_CLEAR_CM)
-                            left_ok = false;
-                    for (k = 3; k < 5; ++k)
-                        if (!coarse.points[k].valid || coarse.points[k].distance_cm < S5_CLEAR_CM)
-                            right_ok = false;
-                    if (left_ok) l = coarse.points[0].distance_cm < coarse.points[1].distance_cm ?
-                                     coarse.points[0].distance_cm : coarse.points[1].distance_cm;
-                    if (right_ok) r = coarse.points[3].distance_cm < coarse.points[4].distance_cm ?
-                                      coarse.points[3].distance_cm : coarse.points[4].distance_cm;
-                    profile.left_clearance_cm = l;
-                    profile.right_clearance_cm = r;
-                    if (side == S5_SIDE_LEFT && l < required)
-                        side = r >= required ? S5_SIDE_RIGHT : S5_SIDE_NONE;
-                    else if (side == S5_SIDE_RIGHT && r < required)
-                        side = l >= required ? S5_SIDE_LEFT : S5_SIDE_NONE;
-                    profile.bypass_side = side;
+                    side = s5_plan_bypass(&profile, &coarse);
+                    tm_printf((UB*)"[S5-SIZE] class=%d (1=small 2=large 3=oversized) width_cm_x100=%d\n",
+                              (int)profile.size, (int)(profile.estimated_width_cm * 100.0f));
                 } else {
                     side = S5_SIDE_NONE;
                     tm_printf((UB*)"[S5-FAULT] width not bracketed by valid clear rays; no safe plan\n");
@@ -749,7 +732,6 @@ static void live_controller_mode(void)
     S5Controller c;
     S5Scan coarse = {0}, fine = {0};
     bool coarse_ready = false, fine_ready = false;
-    unsigned invalid_motion_echo = 0;
     bool stop_requested = false;
     bool sensor_unavailable = false;
     if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
@@ -785,16 +767,18 @@ static void live_controller_mode(void)
                 sensor_unavailable = true;
             }
         }
-        if (c.state == S5_AVOID || c.state == S5_RECOVER || c.state == S5_REVERSE) {
-            if (!in.front_valid) {
-                if (++invalid_motion_echo >= S5_FRONT_INVALID_LIMIT)
-                    emergency_halt("echo invalid during motion");
-            } else {
-                invalid_motion_echo = 0;
-                if (cm < 10.0f) emergency_halt("very close obstacle during motion");
-            }
-        } else invalid_motion_echo = 0;
-        in.stopped = s5_bridge_stopped();
+        s5_navigation_tick(in.front_valid, cm, c.state == S5_FOLLOW);
+        if (s5_navigation_error() != S5_ERR_NONE) {
+            (void)comm_report_error(ERR_S5(s5_navigation_error()), 0u);
+            emergency_halt(s5_error_name(s5_navigation_error()));
+        }
+        /* Establish the original line before starting an avoidance cycle.
+         * A robot placed off the line waits, even with an obstacle ahead. */
+        if (c.state == S5_FOLLOW && !s5_navigation_has_line_reference()) {
+            tk_dly_tsk(S5_ECHO_GAP_MS);
+            continue;
+        }
+        in.stopped = s5_navigation_stopped();
         in.motion_complete = s5_bridge_motion_complete();
         in.line_found = s5_bridge_line_found();
         in.coarse_ready = coarse_ready;
@@ -811,11 +795,13 @@ static void live_controller_mode(void)
         switch (cmd) {
         case S5_CMD_NONE: break;
         case S5_CMD_SCAN_COARSE:
+            if (!s5_navigation_stopped()) emergency_halt("scan requires encoder-confirmed STOP");
             s5_coarse_scan(&coarse);
             print_scan("COARSE", &coarse);
             coarse_ready = true;
             break;
         case S5_CMD_SCAN_FINE:
+            if (!s5_navigation_stopped()) emergency_halt("scan requires encoder-confirmed STOP");
             s5_fine_scan(&fine, c.fine_center_deg);
             print_scan("FINE", &fine);
             fine_ready = true;
@@ -835,8 +821,10 @@ static void live_controller_mode(void)
             break;
         case S5_CMD_STOP:
             if (!stop_requested) {
-                if (!s5_bridge_request(cmd, &c.profile))
+                if (!s5_bridge_request(cmd, &c.profile)) {
+                    (void)comm_report_error(ERR_S5_STOP_ACK, 0u);
                     emergency_halt("stop request rejected");
+                }
                 stop_requested = true;
             }
             break;
@@ -848,8 +836,10 @@ static void live_controller_mode(void)
                               S5_SIDE_RIGHT);
             /* fall through */
         default:
-            if (!s5_bridge_request(cmd, &c.profile))
+            if (!s5_bridge_request(cmd, &c.profile)) {
+                (void)comm_report_error(ERR_S5_NO_CLEAR_ROUTE, (UH)cmd);
                 emergency_halt("motion or line command rejected");
+            }
             if (cmd == S5_CMD_RESUME) {
                 /* Resume is a completed handoff, not a permanent DONE state. */
                 s5_controller_init(&c);
@@ -857,7 +847,7 @@ static void live_controller_mode(void)
             }
             break;
         }
-        tk_dly_tsk(100);
+        tk_dly_tsk(S5_ECHO_GAP_MS);
     }
 }
 #endif /* S5_MOTION_BRIDGE_ENABLED */
@@ -876,14 +866,26 @@ EXPORT void s5_task(INT stacd, void *exinf)
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] 2026-10-21 PWM-ECHO-CAPTURE-V1: hardware pulse timing, obstacle safety ON\n");
+    tm_printf((UB*)"[FW-ID] 2026-11-06 B5-SIZE-AVOID-RECOVER: autonomous=%d\n", (int)ROBOT_ENABLE_BYPASS);
     tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
     s5_ultrasonic_init();
     tm_printf((UB*)"[S5-BOOT] ultrasonic pins initialized\n");
-    s5_servo_init();
+    if (!s5_servo_init()) {
+        b2_request_stop();
+        (void)comm_report_error(ERR_S5_FINE_SCAN, 0u);
+        tm_printf((UB*)"[S5-FAULT] servo initialization failed; motors stopped\n");
+        for (;;) tk_dly_tsk(1000);
+    }
     tm_printf((UB*)"[S5-BOOT] servo PWM initialized at 50Hz\n");
     tk_dly_tsk(600);
 #if S5_MOTION_BRIDGE_ENABLED
+    /* Warm-up never releases the initial B2 STOP latch. Startup echoes are
+     * discarded; the controller then requires fresh clearance to drive. */
+    tk_dly_tsk(ROBOT_SENSOR_STARTUP_SETTLE_MS);
+    for (unsigned i = 0u; i < ROBOT_SENSOR_WARMUP_PINGS; ++i) {
+        (void)s5_ultrasonic_read_detailed();
+        tk_dly_tsk(S5_ECHO_GAP_MS);
+    }
     live_controller_mode();
 #else
     stationary_profile_mode();

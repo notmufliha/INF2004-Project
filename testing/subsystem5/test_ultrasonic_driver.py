@@ -1,5 +1,6 @@
 """Run the real B5 driver against a simulated GPIO/PWM register bank."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 
@@ -103,6 +104,8 @@ with tempfile.TemporaryDirectory() as tmp:
     src = Path(tmp) / 'driver_test.c'
     exe = Path(tmp) / 'driver_test'
     src.write_text(code)
+    # MinGW does not ship libubsan. Keep sanitizer coverage on Unix builds.
+    sanitizer = [] if os.name == 'nt' else ['-fsanitize=undefined']
     subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=undefined', str(src), '-o', str(exe)], check=True)
+                    *sanitizer, str(src), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

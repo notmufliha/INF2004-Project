@@ -146,7 +146,7 @@ assert 's5_guard_stop_history_unclear' in task
 assert '#define S5_GUARD_STOP_LIMIT 3u' in config
 assert '#define S5_GUARD_COOLDOWN_MS 8000u' in config
 assert '#define S5_GUARD_REARM_CLEAR_BATCHES 5u' in config
-assert '#define S5_MOTION_BRIDGE_ENABLED 0' in config
+assert '#define S5_MOTION_BRIDGE_ENABLED ROBOT_ENABLE_BYPASS' in config
 
 with tempfile.TemporaryDirectory(prefix='b5_guard_') as tmp:
     source = Path(tmp) / 'guard_test.c'

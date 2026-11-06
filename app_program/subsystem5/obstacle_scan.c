@@ -49,7 +49,13 @@ static void scan_angles(S5Scan *scan, const uint16_t angles[S5_SCAN_COUNT])
         tm_printf((UB*)"[S5-SCAN] move servo to %d deg; settling %d ms\n",
                   (int)angles[i], (int)S5_SERVO_SETTLE_MS);
 #endif
-        s5_servo_angle(angles[i]);
+        if (!s5_servo_angle(angles[i])) {
+            int k;
+            for (k = 0; k < S5_SCAN_COUNT; ++k) scan->points[k].valid = false;
+            scan->nearest_index = -1;
+            (void)s5_servo_angle(90u);
+            return;
+        }
         tk_dly_tsk(S5_SERVO_SETTLE_MS);
         scan->points[i].valid = s5_measure_stable_cm(&scan->points[i].distance_cm);
         /* A failed 5-ping measurement is unknown. Do not repeatedly
@@ -63,7 +69,9 @@ static void scan_angles(S5Scan *scan, const uint16_t angles[S5_SCAN_COUNT])
 #endif
     }
 #if S5_SERVO_ENABLED && S5_HARDWARE_ENABLED && !S5_SIMULATION
-    s5_servo_angle(90u);
+    if (!s5_servo_angle(90u)) {
+        for (i = 0; i < S5_SCAN_COUNT; ++i) scan->points[i].valid = false;
+    }
     tk_dly_tsk(S5_SERVO_SETTLE_MS);
 #endif
     scan->nearest_index = s5_find_nearest(scan->points, S5_SCAN_COUNT);
@@ -72,19 +80,6 @@ void s5_coarse_scan(S5Scan *scan) { scan_angles(scan, coarse_angles); }
 void s5_fine_scan(S5Scan *scan, uint16_t center_deg)
 {
     uint16_t angles[S5_SCAN_COUNT];
-    /* Five 5-degree rays, all within the mechanically safe travel.
-     * Preserve monotonic rays for the existing width estimator. */
-    int center = (int)center_deg;
-    int i;
-    if (center < (int)S5_SAFE_MIN_DEG + 10)
-    {
-        center = (int)S5_SAFE_MIN_DEG + 10;
-    }
-    if (center > (int)S5_SAFE_MAX_DEG - 10)
-    {
-        center = (int)S5_SAFE_MAX_DEG - 10;
-    }
-    for (i = 0; i < S5_SCAN_COUNT; ++i)
-        angles[i] = (uint16_t)(center + (i - 2) * 5);
+    s5_make_fine_angles(center_deg, angles);
     scan_angles(scan, angles);
 }

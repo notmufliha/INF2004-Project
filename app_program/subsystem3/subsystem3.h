@@ -4,8 +4,8 @@
  *
  * This checkout retains the integrated producer/consumer example described
  * in TEAM.md. The attached Week 6 review assigns the real robot's B3 role to
- * IR line following and barcode decoding; those queues and hardware drivers
- * are not present in this codebase yet.
+ * IR line following and barcode decoding. The optional robot line sampler
+ * is exposed separately in b3_line.h; the teaching consumer is unchanged.
  */
 
 #ifndef SUBSYSTEM3_H

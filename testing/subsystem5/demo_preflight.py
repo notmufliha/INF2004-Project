@@ -9,7 +9,7 @@ task = (root / 'app_program/subsystem5/task_obstacle.c').read_text()
 config = (root / 'app_program/robot_config.h').read_text()
 checks = {
     'B5 sensor-only demo is enabled': bool(re.search(r'^#define S5_DEMO_SENSOR_ONLY\s+1\s*$', b5, re.M)),
-    'B5 full-motion bridge stays disabled': bool(re.search(r'^#define S5_MOTION_BRIDGE_ENABLED\s+0\s*$', b5, re.M)),
+    'B5 full-motion bridge stays disabled': (bool(re.search(r'^#define S5_MOTION_BRIDGE_ENABLED\s+0\s*$', b5, re.M)) or ('#define S5_MOTION_BRIDGE_ENABLED ROBOT_ENABLE_BYPASS' in b5 and bool(re.search(r'^#define ROBOT_ENABLE_BYPASS\s+0\s*$', config, re.M)))),
     'B5 task never releases clearance in demo branch':
         '#if S5_DEMO_SENSOR_ONLY' in task and 'b2_request_stop();\n                    driving = false;\n#else' in task,
     'B5 emergency bridge calls real B2 STOP':

@@ -12,9 +12,9 @@
  * The callbacks must be non-blocking and must never report completion
  * until the corresponding encoder-verified motion has finished.
  *
- * The default state is intentionally NOT READY: no controller is installed.
- * This permits the real sensor/servo STOP-and-scan demonstration without
- * pretending that a physical obstacle bypass is available.
+ * Without registration the bridge is NOT READY. subsystem5_init() installs
+ * the B5 navigation adapter only in the autonomous robot profile. The
+ * guarded forward/STOP profile leaves it unregistered.
  */
 typedef struct {
     /* True only when B2, B3, and exclusive VC motor ownership are ready. */

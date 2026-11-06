@@ -49,7 +49,23 @@ The supplied Week 6 design review assigns Buddy 3 to analogue IR line
 following (GP26/GP27), digital right-side barcode sensing (GP28), junction and
 line-loss reporting, and navigation command generation. It proposes a 20 ms
 line update interval and timestamped barcode edge capture, with threshold
-values and decoding limits still subject to calibration/testing. Those robot
-interfaces and drivers are not implemented in this example checkout; replacing
-the current consumer requires the team to first define the Navigation Command
-Queue and line-status interface with the Vehicle Controller owner.
+values and decoding limits still subject to calibration/testing. The teaching
+consumer remains available. The optional line-only integration below provides
+Buddy 5 with real line samples; full barcode and mission navigation integration
+is separate.
+
+## Buddy 5 autonomous integration
+
+`b3_line.c` / `b3_line.h` provide the timestamped GP26/GP27 line input used by
+Buddy 5 autonomous mode. The pin mapping, low-on-line polarity, 2048 ADC
+threshold and 20 ms sampling interval come from this project's B3 code at
+commit `912c369`. Only the line sampler was extracted; this does not restore
+that branch's barcode/navigation changes. Robot startup initializes and
+starts this sampler only when `ROBOT_ENABLE_BYPASS=1`. The teaching consumer
+retains its original lifecycle when `ROBOT_MODE=0`.
+
+B3 owns the ADC handle and state mutex. `b3_get_timed_state()` returns a
+complete successful ADC pair and its timestamp, or an error; failed ADC
+reads invalidate availability. B5 rejects samples older than 100 ms. The
+2048 threshold and geometry still require physical calibration. See
+`../subsystem5/README_BUDDY5.md` for the integrated feature and build checks.

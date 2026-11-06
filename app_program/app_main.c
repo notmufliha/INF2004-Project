@@ -56,6 +56,9 @@
 #include "app.h"
 #include "robot_config.h"
 #include "subsystem2/b2_motor.h"
+#if ROBOT_ENABLE_BYPASS
+#include "subsystem3/b3_line.h"
+#endif
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -146,6 +149,14 @@ EXPORT INT usermain(void)
     }
 	b2_initialized = TRUE;
 
+#if ROBOT_ENABLE_BYPASS
+    robot_er = b3_line_init();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "b3_line_init");
+        goto robot_startup_failed;
+    }
+#endif
+
     robot_er = subsystem5_init();
     if (robot_er < E_OK) {
         CHECK(robot_er, "subsystem5_init");
@@ -157,6 +168,14 @@ EXPORT INT usermain(void)
         CHECK(robot_er, "subsystem2_start");
         goto robot_startup_failed;
     }
+
+#if ROBOT_ENABLE_BYPASS
+    robot_er = b3_line_start();
+    if (robot_er < E_OK) {
+        CHECK(robot_er, "b3_line_start");
+        goto robot_startup_failed;
+    }
+#endif
 
     robot_er = subsystem5_start();
     if (robot_er < E_OK) {

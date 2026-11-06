@@ -16,14 +16,14 @@
  * Keep within 70..110 degrees until the horn/bracket is secured and checked.
  * This is NOT a substitute for fastening the horn and strain-relieving wires.
  */
-#define S5_SAFE_MIN_DEG 70u
-#define S5_SAFE_MAX_DEG 110u
+#define S5_SAFE_MIN_DEG ROBOT_SCAN_SAFE_MIN_DEG
+#define S5_SAFE_MAX_DEG ROBOT_SCAN_SAFE_MAX_DEG
 #define S5_SERVO_STEP_DEG 3u
 #define S5_SERVO_STEP_DELAY_MS 35u
 
-/* Safety gate: leave at 0 until B2/B3 bridge is actually implemented.
- * With 0, B5 measures and recommends a path but NEVER moves the car. */
-#define S5_MOTION_BRIDGE_ENABLED 0
+/* Autonomous B2/B3 adapter follows the robot configuration. With bypass
+ * disabled, retain the existing guarded forward/STOP demonstration. */
+#define S5_MOTION_BRIDGE_ENABLED ROBOT_ENABLE_BYPASS
 
 /* 0 = guarded forward/STOP test on a moving robot.
  * 1 = sensor/servo-only demo; B2 is held STOP even when the path is clear.

@@ -1,5 +1,6 @@
 #include "subsystem5.h"
 #include "../subsystem2/b2_motor.h"
+#include "s5_navigation.h"
 
 EXPORT ER subsystem5_init(void)
 {
@@ -8,6 +9,9 @@ EXPORT ER subsystem5_init(void)
      * from initialization, not just after the B5 task starts. */
 #if S5_DEMO_SENSOR_ONLY
     b2_request_stop();
+#endif
+#if S5_MOTION_BRIDGE_ENABLED
+    if (!s5_navigation_init()) return E_OBJ;
 #endif
     return E_OK;
 }

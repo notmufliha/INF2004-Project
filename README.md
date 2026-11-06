@@ -143,9 +143,10 @@ subfolders, is compiled automatically.
 - Subsystem 3 currently implements the sample consumer example (priority 16,
   core 0 on SMP) and owns the sample mailbox and statistics mutex. The supplied
   Week 6 design review instead assigns Buddy 3 to IR line following and barcode
-  decoding; that robot-specific implementation awaits agreed queue interfaces
-  with the Vehicle Controller and sensor hardware integration. See
-  `app_program/subsystem3/README.md`.
+  decoding. The default autonomous Buddy 5 profile now uses the GP26/GP27
+  timestamped line sampler in `b3_line.h`; barcode integration remains
+  separate. See `app_program/subsystem5/README_BUDDY5.md` for scanning,
+  size-aware avoidance, recovery, configuration and validation.
 - `app.h` holds the definitions shared by the whole team.
 - **Drivers go in your subsystem folder too**, as a `drv_<name>.c` /
   `drv_<name>.h` pair, e.g. `subsystem2/drv_ultrasonic.c`. They are compiled
