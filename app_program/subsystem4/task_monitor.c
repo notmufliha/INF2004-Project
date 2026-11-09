@@ -20,7 +20,6 @@
 #include "s4_runtime.h"
 #include "../subsystem1/subsystem1.h" /* IF-05: tid_led. */
 #include "../subsystem2/subsystem2.h" /* Shared sample semaphore and pool. */
-#include "../subsystem3/subsystem3.h" /* IF-04: app_stats, mtx_stats. */
 
 /* One task writes this aligned word; tests only take snapshots.
  * Volatile forces fresh loads on the cacheless RP2040.
@@ -145,29 +144,13 @@ state_name (UINT tskstat)
     }
 }
 
-/** @brief Snapshot protected statistics and print available resources. */
+/** @brief Print available time and sample-pool resources. */
 static void
 report_monitor_stats (void)
 {
-    APP_STATS snap;
-
     T_RSEM rsem;
     T_RMPF rmpf;
     SYSTIM now;
-
-    /* 3. Copy the stats under subsystem 3's mutex, print outside
-          it: hold a mutex for as short a time as possible. */
-
-    ER error_code = tk_loc_mtx(mtx_stats, TMO_FEVR);
-
-    if (error_code < E_OK)
-    {
-        CHECK(error_code, "monitor stats lock");
-        return;
-    }
-
-    snap = app_stats;
-    CHECK(tk_unl_mtx(mtx_stats), "monitor stats unlock");
 
     if ((tk_get_tim(&now) < E_OK) || (tk_ref_sem(gh_sem_slots, &rsem) < E_OK) ||
         (tk_ref_mpf(gh_mpf_samples, &rmpf) < E_OK))
@@ -176,19 +159,8 @@ report_monitor_stats (void)
         return;
     }
 
-    INT average = 0;
-
-    if (0U != snap.received)
-    {
-        /* Both kernel 32-bit values widen exactly to int64_t. The
-         * nonzero denominator makes the quotient fit the signed sum. */
-        average = (INT)((int64_t)snap.sum / (int64_t)snap.received);
-    }
-
-    tm_printf((UB *)"monitor: t=%u ms  samples=%u  min=%d max=%d avg=%d"
-                    "  free slots=%d  free blocks=%d\n",
-              now.lo, snap.received, snap.min, snap.max, average, rsem.semcnt,
-              rmpf.frbcnt);
+    tm_printf((UB *)"monitor: t=%u ms  free slots=%d  free blocks=%d\n",
+              now.lo, rsem.semcnt, rmpf.frbcnt);
 }
 
 /** @brief Periodically pause or resume the demonstration LED task. */
@@ -240,4 +212,3 @@ task_monitor_alarm_isr (void * p_exinf)
 }
 
 /*** end of file ***/
-
