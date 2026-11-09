@@ -54,5 +54,17 @@ for (const bad of ["SPEED 101", "MODE FAST", "STOP 1", "TELEM 150", "JUMP",
   if (!threw) { failures++; console.log(`FAIL accepted bad command ${bad}`); }
 }
 
+for (let code = 1; code <= 26; code++) {
+  const frame = W.pack(W.EVENT_HEADER.concat(W.EVENT_BODY[0]), {
+    ver: W.WIRE_VERSION, type: 0, seq: code, t_ds: 0, code, nav: 0
+  });
+  const event = W.decode("event", frame);
+  const expected = String.fromCharCode(64 + code);
+  if (event.code_name !== expected) {
+    failures++;
+    console.log(`FAIL barcode event ${code}: ${event.code_name} != ${expected}`);
+  }
+}
+
 console.log(`S1-H06 dashboard decoder: ${frames} frames, ${failures} failures`);
 process.exit(failures === 0 && frames > 0 ? 0 : 1);

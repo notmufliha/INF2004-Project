@@ -9,7 +9,7 @@ host test S1-H06).
 |---|---|---|
 | Tiles | robot state, the car's own link state + IP, telemetry age and period, missing telemetry frames (sequence gaps), fault bits | telemetry + heartbeat |
 | Motion | left/right wheel speed chart (last 60 s), unwrapped encoder totals | B2 |
-| Line & barcode | IR left/centre bars, right sensor, line flags, last barcode and its command | B3 |
+| Line & barcode | IR left/centre bars, right sensor, line flags, compact last barcode, and the last decoded A–Z barcode event with its navigation command | B3 |
 | IMU & hump | motion state, pitch, last/peak hump height | B4 |
 | Obstacle | front distance chart, width, left/right clearance | B5 |
 | Link health | frames queued/dropped, commands ok/rejected, reconnects, heartbeat age | B1 heartbeat |

@@ -121,6 +121,7 @@ svg.chart { width: 100%; height: 150px; display: block; }
       <dt>IR right</dt><dd id="ir-r">–</dd>
       <dt>Line flags</dt><dd id="line">–</dd>
       <dt>Last barcode</dt><dd id="barcode">–</dd>
+      <dt>Last decoded barcode</dt><dd id="barcode-event">none yet</dd>
     </dl>
   </section>
 
@@ -347,7 +348,11 @@ function onStatus(d) {
 }
 function onEvent(d) {
   let text = `#${d.seq} ${d.type_name.toUpperCase()} `;
-  if (d.type === 0) text += `${d.code_name} → ${d.nav_name}`;
+  if (d.type === 0) {
+    text += `${d.code_name} → ${d.nav_name}`;
+    $("barcode-event").textContent =
+      `${d.code_name} → ${d.nav_name} (event #${d.seq})`;
+  }
   else if (d.type === 1) text += d.valid ? `height ${d.height_mm} mm, peak ${d.peak_mm} mm` : "height not measured";
   else if (d.type === 2) text += `front ${fmtCm(d.d_cm)}, width ${d.w_cm === null ? "?" : d.w_cm + " cm"}, L ${fmtCm(d.lc_cm)}, R ${fmtCm(d.rc_cm)} → ${d.action_name}`;
   else text += `${d.err_text} (detail ${d.detail})`;
