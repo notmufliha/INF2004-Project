@@ -1,77 +1,35 @@
 #include "../../app_program/subsystem3/code39.h"
+#include "../../app_program/subsystem3/cfg_barcode.h"
 
 #include <assert.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdint.h>
 
-static uint32_t encode_symbol(char symbol, uint32_t narrow, uint32_t wide,
-			      uint32_t *widths, uint32_t offset)
-{
-	uint16_t pattern;
-	uint32_t i;
-
-	assert(code39_pattern_for(symbol, &pattern));
-	for (i = 0U; i < 9U; ++i) {
-		widths[offset + i] = ((pattern >> (8U - i)) & 1U) != 0U
-			? wide : narrow;
-	}
-	return offset + 9U;
-}
-
-static uint32_t encode_payload(char payload, uint32_t *widths,
-			       uint32_t narrow, uint32_t wide)
-{
-	uint32_t count = encode_symbol('*', narrow, wide, widths, 0U);
-
-	widths[count++] = narrow;
-	count = encode_symbol(payload, narrow, wide, widths, count);
-	widths[count++] = narrow;
-	return encode_symbol('*', narrow, wide, widths, count);
-}
-
-static void check_character(char expected)
-{
-	uint32_t widths[CODE39_MAX_ELEMENTS];
-	uint32_t reverse_widths[CODE39_MAX_ELEMENTS];
-	uint32_t count = encode_payload(expected, widths, 100U, 250U);
-	char decoded[CODE39_MAX_PAYLOAD + 1U];
-	bool reversed = true;
-	uint32_t i;
-
-	assert(count == CODE39_MIN_ELEMENTS);
-	assert(code39_decode(widths, count, decoded, sizeof(decoded), &reversed));
-	assert(strcmp(decoded, (char[2]){expected, '\0'}) == 0);
-	assert(!reversed);
-	for (i = 0U; i < count; ++i) {
-		reverse_widths[i] = widths[count - 1U - i];
-	}
-	assert(code39_decode(reverse_widths, count, decoded, sizeof(decoded),
-			     &reversed));
-	assert(strcmp(decoded, (char[2]){expected, '\0'}) == 0);
-	assert(reversed);
-}
+static uint8_t const g_star_a_star[BAR_ELEMENTS] = {
+	20U, 50U, 20U, 20U, 50U, 20U, 50U, 20U, 20U, 20U,
+	50U, 20U, 20U, 20U, 20U, 50U, 20U, 20U, 50U, 20U,
+	20U, 50U, 20U, 20U, 50U, 20U, 50U, 20U, 20U
+};
 
 int main(void)
 {
-	uint32_t widths[CODE39_MAX_ELEMENTS];
-	char decoded[CODE39_MAX_PAYLOAD + 1U];
-	char letter;
+	uint8_t reverse[BAR_ELEMENTS];
+	uint32_t char_index = 0U;
+	uint32_t index;
 
-	for (letter = 'A'; letter <= 'Z'; ++letter) {
-		check_character(letter);
+	assert(code39_decode(g_star_a_star, BAR_ELEMENTS, &char_index) ==
+	       CODE39_OK);
+	assert(char_index == 10U);
+	assert(code39_char_ascii(char_index) == (uint32_t)'A');
+
+	for (index = 0U; index < BAR_ELEMENTS; index++) {
+		reverse[index] = g_star_a_star[BAR_ELEMENTS - 1U - index];
 	}
+	assert(code39_decode(reverse, BAR_ELEMENTS, &char_index) == CODE39_OK);
+	assert(char_index == 10U);
+	assert(code39_decode(g_star_a_star, BAR_ELEMENTS - 1U, &char_index) ==
+	       CODE39_INVALID);
 
-	assert(encode_payload('A', widths, 100U, 250U) ==
-	       CODE39_MIN_ELEMENTS);
-	assert(!code39_decode(widths, CODE39_MIN_ELEMENTS - 1U, decoded,
-			      sizeof(decoded), 0));
-	assert(!code39_decode(widths, CODE39_MIN_ELEMENTS, decoded, 1U, 0));
-	for (uint32_t i = 0U; i < CODE39_MIN_ELEMENTS; ++i) {
-		widths[i] = 100U;
-	}
-	assert(!code39_decode(widths, CODE39_MIN_ELEMENTS, decoded,
-			      sizeof(decoded), 0));
-
-	puts("Code 39: A-Z decode forward and reverse; invalid scans rejected");
+	puts("Code 39: A decoded forward and reverse; incomplete capture rejected");
 	return 0;
 }

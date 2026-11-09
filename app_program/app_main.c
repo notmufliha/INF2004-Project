@@ -16,24 +16,10 @@
  *	and then puts the initial task to sleep forever.
  *	If usermain() RETURNS, the kernel shuts the whole system down.
  *
- *	The example system: one subsystem per folder, one task each
- *	------------------------------------------------------------
- *	  subsystem1/  LED       blinks GP19, paced by a cyclic handler
- *	  subsystem2/  Producer  makes a "sample" every 300 ms     (core 1)
- *	  subsystem3/  Consumer  collects samples into statistics  (priority 16, core 0)
- *	  subsystem4/  Monitor   prints reports, pauses/resumes the LED
- *	  subsystem5/  (empty template for the fifth student)
- *
- *	How they talk to each other (the interfaces, see TEAM.md section 5):
- *	  IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
- *	  IF-02  S3 -> S2  semaphore gh_sem_slots + memory pool gh_mpf_samples
- *	                   (owned by S2: S3 hands slots and blocks back)
- *	  IF-03  S3 -> S4  message buffer gh_summary + event flag gh_events
- *	                   (owned by S4)
- *	  IF-04  S4 -> S3  reads app_stats under mutex mtx_stats (owned by S3)
- *	  IF-05  S4 -> S1  suspends/resumes the LED task tid_led (owned by S1)
- *	The subsystem that RECEIVES or OWNS the data creates the object and
- *	publishes its ID in its header; the other side just uses it.
+ *	Robot integration: B1 owns telemetry and commands; B2 provides motor,
+ *	odometry and GPIO-IRQ services; B3 publishes line state and barcode
+ *	navigation; B4 provides IMU status; B5 provides ultrasonic clearance.
+ *	The Vehicle Controller consumes these interfaces and owns motion commands.
  *
  *	micro T-Kernel APIs used, and where to find them:
  *	  tasks       tk_cre_tsk tk_sta_tsk tk_slp_tsk tk_wup_tsk tk_can_wup
@@ -226,6 +212,7 @@ EXPORT INT usermain(void)
     tm_printf((UB*)"[ROBOT] B1/B2/B3/B4 + controller started; line-sensor test only\n");
 #endif
 #if APP_TEST
+    subsystem3_test();
     subsystem2_test();
     s4_test_run();
 #endif
@@ -244,7 +231,7 @@ robot_startup_failed:
 
 robot_startup_complete:
 #else
-	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
+	/* Non-robot startup path; B3 still requires its physical ADC/GPIO sensors. */
 	CHECK(subsystem1_init(), "subsystem1_init");
 	CHECK(subsystem2_init(), "subsystem2_init");
 	CHECK(subsystem3_init(), "subsystem3_init");
