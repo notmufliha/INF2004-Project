@@ -3,9 +3,10 @@
 Robot mode starts the B3 line and barcode tasks from `app_main.c`. The line
 task reads GP26/ADC0 and GP27/ADC1 through the `adca` device, publishes raw
 readings to B1 telemetry, and exposes a timestamped state snapshot to the
-Vehicle Controller. Both GP26/left and GP27/centre are active-high (black at
-or above their thresholds, both default 2000). Thresholds are in `cfg_line.h`
-and should be rechecked against the physical track.
+Vehicle Controller. On either GP26/left or GP27/centre, readings from 300
+through 3999 count as line-active. Readings below 300 or above 3999 count as
+inactive. Check that the sensors' white readings are outside the active range
+before relying on line-loss detection.
 
 The barcode task captures both-edge transitions from the digital sensor on
 GP28 using the shared GPIO IRQ dispatcher. It decodes Code 39 `*A*` through

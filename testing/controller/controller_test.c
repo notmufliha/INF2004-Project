@@ -164,14 +164,15 @@ int main(void)
     assert(!c.running && c.mode == MODE_TEST);
     command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
     step(&c, 20u, 1u); assert(c.navigation == 0u);
-    command(&c, RCMD_SPEED, 100u); input.left = 3500u; input.centre = 1000u;
+    command(&c, RCMD_SPEED, 100u); input.left = 3500u; input.centre = 200u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille < 0 && sent.target_speed_cps * 1350 <= 5000000);
     input.left = 1600u; input.centre = 3900u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille == 0);
     assert(B3_LINE_LEFT_ACTIVE(2500u) && B3_LINE_CENTRE_ACTIVE(2500u));
-    assert(!B3_LINE_LEFT_ACTIVE(1600u) && !B3_LINE_CENTRE_ACTIVE(380u));
+    assert(!B3_LINE_LEFT_ACTIVE(200u) && !B3_LINE_CENTRE_ACTIVE(200u));
+    assert(!B3_LINE_LEFT_ACTIVE(4000u) && !B3_LINE_CENTRE_ACTIVE(4000u));
     input.hump = true; step(&c, 20u, 0u);
     assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
     command(&c, RCMD_SPEED, 0u); step(&c, 20u, 0u);

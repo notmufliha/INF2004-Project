@@ -20,6 +20,6 @@ pure `line_track` helpers; neither test validates real sensors.
 
 No hardware results are recorded yet. Before enabling robot movement, test
 each analog sensor separately on white and black, tune
-`B3_LINE_LEFT_THRESHOLD` and `B3_LINE_CENTRE_THRESHOLD` in `cfg_line.h`, then
-verify turns, barcode capture, and the ultrasonic clearance gate. Record the
+the active raw range in `cfg_line.h`, then verify turns, barcode capture, and
+the ultrasonic clearance gate. Record the
 date, firmware revision, tester, result, and evidence for each physical test.

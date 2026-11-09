@@ -14,16 +14,14 @@
 #ifndef LINE_BLACK_IS_HIGH
 #define LINE_BLACK_IS_HIGH       (true) /* MEASURE: A1 */
 #endif
-#ifndef B3_LINE_LEFT_THRESHOLD
-#define B3_LINE_LEFT_THRESHOLD   (2000u) /* GP26 black is active-high */
-#endif
-#ifndef B3_LINE_CENTRE_THRESHOLD
-#define B3_LINE_CENTRE_THRESHOLD (2000u) /* GP27 black is active-high */
-#endif
+#define B3_LINE_ACTIVE_MIN (300u)
+#define B3_LINE_ACTIVE_MAX (3999u)
 #define B3_LINE_LEFT_ACTIVE(raw) \
-	((uint16_t)(raw) >= B3_LINE_LEFT_THRESHOLD)
+	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
+	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
 #define B3_LINE_CENTRE_ACTIVE(raw) \
-	((uint16_t)(raw) >= B3_LINE_CENTRE_THRESHOLD)
+	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
+	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
 #define APP_SIDE_LEFT            (0u)
 #define APP_SIDE_RIGHT           (1u)
 #define APP_JCT_NONE             (0u)
@@ -80,9 +78,9 @@
 #error "LINE_CAL_MIN_SPAN must fit within the 12-bit ADC range (1..4095)"
 #endif
 
-#if ((B3_LINE_LEFT_THRESHOLD > 4095u) ||                                   \
-     (B3_LINE_CENTRE_THRESHOLD > 4095u))
-#error "B3 ADC thresholds must fit within the 12-bit ADC range (0..4095)"
+#if ((B3_LINE_ACTIVE_MIN > B3_LINE_ACTIVE_MAX) ||                           \
+     (B3_LINE_ACTIVE_MAX > 4095u))
+#error "B3 active range must be ordered and fit the 12-bit ADC range"
 #endif
 
 #if ((LINE_WHITE_THRESHOLD >= LINE_BLACK_THRESHOLD) ||                         \
