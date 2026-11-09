@@ -159,8 +159,8 @@ int main(void)
     input.left = 3150u; input.centre = 3150u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille == 0);
-    assert(!B3_LINE_LEFT_ACTIVE(349u) && !B3_LINE_CENTRE_ACTIVE(349u));
-    assert(B3_LINE_LEFT_ACTIVE(350u) && B3_LINE_CENTRE_ACTIVE(350u));
+    assert(!B3_LINE_LEFT_ACTIVE(300u) && !B3_LINE_CENTRE_ACTIVE(300u));
+    assert(B3_LINE_LEFT_ACTIVE(301u) && B3_LINE_CENTRE_ACTIVE(301u));
     assert(B3_LINE_LEFT_ACTIVE(3999u) && !B3_LINE_LEFT_ACTIVE(4000u));
     input.hump = true; step(&c, 20u, 0u);
     assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
@@ -196,6 +196,15 @@ int main(void)
     step(&c, 20u, 0u);
     input.clearance = false; step(&c, 20u, 0u);
     assert(c.state == ROBOT_OBSTACLE_SCAN && c.running && stops > 0u);
+
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.left = 200u; input.centre = 3500u;
+    step(&c, 20u, 0u);
+    assert(c.last_line_search_direction == -1);
+    input.line_flags = LINE_F_LOST;
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY &&
+        sent.steering_permille == -VC_LINE_SEARCH_STEER);
 
     for (UINT failure = 0u; failure < 6u; ++failure) {
         c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
