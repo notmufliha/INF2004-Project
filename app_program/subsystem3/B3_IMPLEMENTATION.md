@@ -2,7 +2,7 @@
 
 - Reads ADC channel 0 (GP26, left) and channel 1 (GP27, centre) nominally
   every 20 ms. Both raw readings are published for diagnosis.
-- Treats readings from 300 through 3999 on either GP26/left or GP27/centre
+- Treats readings from 350 through 3999 on either GP26/left or GP27/centre
   as line-active. It reports
   `DETECTED` if either sensor is active, `LOST` if neither is active, and
   `JUNCTION` if both are active. These are provisional thresholds based on
@@ -42,7 +42,7 @@
    separate sample `subsystem3_init()` / `subsystem3_start()` lifecycle remains
    for the teaching demo and does not start this B3 module.
 6. Test the ADC active range with the actual line sensors and floor. Readings
-   from 300 through 3999 currently count as line-active. This range will also
+   from 350 through 3999 currently count as line-active. This range will also
    classify any white-surface reading in that interval as active; verify that
    white readings are outside it before using line-loss behavior.
    For stationary line-sensor testing, `ROBOT_ENABLE_ULTRASONIC` in

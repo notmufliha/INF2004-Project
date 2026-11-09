@@ -14,7 +14,7 @@
 #ifndef LINE_BLACK_IS_HIGH
 #define LINE_BLACK_IS_HIGH       (true) /* MEASURE: A1 */
 #endif
-#define B3_LINE_ACTIVE_MIN (300u)
+#define B3_LINE_ACTIVE_MIN (350u)
 #define B3_LINE_ACTIVE_MAX (3999u)
 #define B3_LINE_LEFT_ACTIVE(raw) \
 	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
