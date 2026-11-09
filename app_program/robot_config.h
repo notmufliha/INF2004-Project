@@ -15,7 +15,7 @@
 /* Set to 0 for stationary line-sensor testing without starting the
  * ultrasonic/servo task. B2's clearance interlock remains fail-closed. */
 #ifndef ROBOT_ENABLE_ULTRASONIC
-#define ROBOT_ENABLE_ULTRASONIC 0
+#define ROBOT_ENABLE_ULTRASONIC 1
 #endif
 /* Real autonomous bypass requires working B2 encoder feedback and B3 line
  * sensing, measured robot geometry, and independent path safety checks.
