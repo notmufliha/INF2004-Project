@@ -150,12 +150,15 @@ int main(void)
     step(&c, 20u, B3_NAV_LEFT); assert(c.navigation == 0u);
     command(&c, RCMD_SPEED, 100u); input.left = 3400u; input.centre = 2900u;
     step(&c, 20u, 0u);
-    assert(sent.steering_permille > 0 &&
+    assert(sent.steering_permille == B3_LINE_STEER_MAX &&
         sent.target_speed_cps * (1000 + sent.steering_permille) <= 5000000);
     input.left = 2900u; input.centre = 3400u;
     step(&c, 20u, 0u);
-    assert(sent.steering_permille < 0 &&
+    assert(sent.steering_permille == -B3_LINE_STEER_MAX &&
         sent.target_speed_cps * (1000 - sent.steering_permille) <= 5000000);
+    input.left = 3300u; input.centre = 3200u;
+    step(&c, 20u, 0u);
+    assert(sent.steering_permille > 0);
     input.left = 3150u; input.centre = 3150u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille == 0);
