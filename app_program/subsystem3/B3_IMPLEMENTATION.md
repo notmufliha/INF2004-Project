@@ -8,7 +8,7 @@ is intentionally left intact for teaching-demo mode. Robot-mode startup in
 ## What the module does
 
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
-- Treats readings at or below `B3_LINE_THRESHOLD` as line-active. It reports
+- Treats readings at or above `B3_LINE_THRESHOLD` as line-active. It reports
   `DETECTED` if either sensor is active, `LOST` if neither is active, and
   `JUNCTION` if both are active.
 - Reads GP28 as the digital barcode input and registers both-edge GPIO
@@ -43,7 +43,13 @@ is intentionally left intact for teaching-demo mode. Robot-mode startup in
    separate sample `subsystem3_init()` / `subsystem3_start()` lifecycle remains
    for the teaching demo and does not start this B3 module.
 5. Test ADC polarity and thresholds with the actual line sensors and floor.
-   The provisional threshold is 2048; it is not a validated track setting.
+   The provisional active-high threshold is 2048; it is not a validated
+   track setting.
+   For stationary line-sensor testing, `ROBOT_ENABLE_ULTRASONIC` in
+   `robot_config.h` can be set to 0; this skips the ultrasonic/servo task.
+   B2's clearance interlock remains fail-closed, so this must not be used to
+   drive the robot. Re-enable the ultrasonic task and verify clearance before
+   any movement test.
 
 ## Code 39 decoding and route mapping
 

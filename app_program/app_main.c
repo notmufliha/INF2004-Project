@@ -196,11 +196,15 @@ EXPORT INT usermain(void)
         goto robot_startup_failed;
     }
 
+#if ROBOT_ENABLE_ULTRASONIC
     robot_er = subsystem5_start();
     if (robot_er < E_OK) {
         CHECK(robot_er, "subsystem5_start");
         goto robot_startup_failed;
     }
+#else
+    tm_printf((UB*)"[ROBOT] Ultrasonic task disabled; clearance unavailable, drive inhibited\n");
+#endif
 
     robot_er = vehicle_controller_start();
     if (robot_er < E_OK) {
@@ -216,7 +220,11 @@ EXPORT INT usermain(void)
         tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
     }
 
+#if ROBOT_ENABLE_ULTRASONIC
     tm_printf((UB*)"[ROBOT] B1/B2/B3/B4/B5 + controller started; awaiting START\n");
+#else
+    tm_printf((UB*)"[ROBOT] B1/B2/B3/B4 + controller started; line-sensor test only\n");
+#endif
 #if APP_TEST
     subsystem2_test();
     s4_test_run();

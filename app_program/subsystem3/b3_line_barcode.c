@@ -265,14 +265,14 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
 		flags = 0U;
-		if ((left <= B3_LINE_THRESHOLD) ||
-		    (centre <= B3_LINE_THRESHOLD)) {
+		if ((left >= B3_LINE_THRESHOLD) ||
+		    (centre >= B3_LINE_THRESHOLD)) {
 			flags |= B3_LINE_F_DETECTED;
 		} else {
 			flags |= B3_LINE_F_LOST;
 		}
-		if ((left <= B3_LINE_THRESHOLD) &&
-		    (centre <= B3_LINE_THRESHOLD)) {
+		if ((left >= B3_LINE_THRESHOLD) &&
+		    (centre >= B3_LINE_THRESHOLD)) {
 			flags |= B3_LINE_F_JUNCTION;
 		}
 

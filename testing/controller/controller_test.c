@@ -161,7 +161,7 @@ int main(void)
     assert(!c.running && c.mode == MODE_TEST);
     command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
     step(&c, 20u, 1u); assert(c.navigation == 0u);
-    command(&c, RCMD_SPEED, 100u); input.left = 1000u; input.centre = 3000u;
+    command(&c, RCMD_SPEED, 100u); input.left = 3000u; input.centre = 1000u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille < 0 && sent.target_speed_cps * 1350 <= 5000000);
     input.hump = true; step(&c, 20u, 0u);
