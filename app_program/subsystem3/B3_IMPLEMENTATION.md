@@ -4,7 +4,7 @@
   every 20 ms. Both raw readings are published for diagnosis.
 - Uses independent thresholds from `cfg_line.h`: both GP26/left and
   GP27/centre are active-high, with black detected at or above their
-  respective thresholds (both default 3000). It reports
+  respective thresholds (both default 2000). It reports
   `DETECTED` if either sensor is active, `LOST` if neither is active, and
   `JUNCTION` if both are active. These are provisional thresholds based on
   current bench readings; recalibrate if readings change on the track.
@@ -43,8 +43,8 @@
    separate sample `subsystem3_init()` / `subsystem3_start()` lifecycle remains
    for the teaching demo and does not start this B3 module.
 6. Test ADC thresholds with the actual line sensors and floor. The initial
-   thresholds are 3000 for both sensors, based on reported black readings of
-   3500-3999 and previously observed white readings below 1700. Recheck both
+   thresholds are 2000 for both sensors, based on reported black readings of
+   2500-3999 and previously observed white readings below 1700. Recheck both
    sensors on the installed track and adjust if their white ranges differ.
    For stationary line-sensor testing, `ROBOT_ENABLE_ULTRASONIC` in
    `robot_config.h` can be set to 0; this skips the ultrasonic/servo task.
