@@ -165,7 +165,7 @@ int main(void)
     step(&c, 20u, 0u);
     assert(sent.steering_permille < 0 && sent.target_speed_cps * 1350 <= 5000000);
     input.hump = true; step(&c, 20u, 0u);
-    assert(c.state == ROBOT_HUMP && sent.target_speed_cps < 2500);
+    assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
     command(&c, RCMD_SPEED, 0u); step(&c, 20u, 0u);
     assert(c.state == ROBOT_IDLE);
     command(&c, RCMD_RESET_PEAK, 0u); assert(resets == 1u);

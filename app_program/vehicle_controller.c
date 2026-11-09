@@ -305,8 +305,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
-    /* Provisional active-high two-sensor steering: left-only detection
-     * steers left. Centre or junction detection drives straight. */
+    /* Provisional active-high two-sensor steering; tune on the actual track. */
     command.steering_permille = (in->left >= 2048u && in->centre < 2048u) ? -350 : 0;
     /* Preserve B2's outer-wheel <=5000 cps constraint at SPEED 100. */
     command.target_speed_cps = speed * 1000 / (1000 - command.steering_permille);

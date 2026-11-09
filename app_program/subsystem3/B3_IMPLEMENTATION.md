@@ -7,10 +7,12 @@ is intentionally left intact for teaching-demo mode. Robot-mode startup in
 
 ## What the module does
 
-- Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
+- Reads ADC channel 0 (GP26, left) and channel 1 (GP27, centre) nominally
+  every 20 ms. Both raw readings are published for diagnosis.
 - Treats readings at or above `B3_LINE_THRESHOLD` as line-active. It reports
   `DETECTED` if either sensor is active, `LOST` if neither is active, and
-  `JUNCTION` if both are active.
+  `JUNCTION` if both are active. The threshold is provisional and may need
+  per-sensor calibration against the installed sensors and track.
 - Reads GP28 as the digital barcode input and registers both-edge GPIO
   interrupts through the shared `app_gpio_irq_dispatch()` subscriber.
 - The GP28 callback only timestamps and records edge levels in a bounded
@@ -30,19 +32,22 @@ is intentionally left intact for teaching-demo mode. Robot-mode startup in
    This change enables ADC pin initialization for channels 0 and 1 in
    `device/adc/sysdepend/rp2040/adc_cnf_sysdep.h`. Channel 2 / GP28 remains
    disabled because GP28 is a digital interrupt input in this module.
-2. The Vehicle Controller receives a `uint8_t` barcode code from
+2. Line following and junction detection require both sensors to respond
+   correctly. Confirm each raw ADC channel changes between white and black
+   before enabling movement; barcode decoding alone does not validate line
+   following or junction detection.
+3. The Vehicle Controller receives a `uint8_t` barcode code from
    `mbf_nav_cmd`: 1 is A, ..., 26 is Z. It stores that character and waits
-   for the next rising edge of the B3 junction flag before applying its
-   configured route.
-3. Coordinate task ownership and priority with the current Subsystem 3 demo:
+   for a junction signal before applying its configured route.
+4. Coordinate task ownership and priority with the current Subsystem 3 demo:
    this module uses priorities 16 and 17 on core 0, while the example
    `consumer_task` already uses priority 16. Do not start both at the same
    priority without agreeing on the project task table.
-4. In robot mode, `app_main.c` initializes Subsystem 1 before calling
+5. In robot mode, `app_main.c` initializes Subsystem 1 before calling
    `b3_init()`, then calls `b3_start()` from core 0 after B4 readiness. The
    separate sample `subsystem3_init()` / `subsystem3_start()` lifecycle remains
    for the teaching demo and does not start this B3 module.
-5. Test ADC polarity and thresholds with the actual line sensors and floor.
+6. Test ADC polarity and thresholds with the actual line sensors and floor.
    The provisional active-high threshold is 2048; it is not a validated
    track setting.
    For stationary line-sensor testing, `ROBOT_ENABLE_ULTRASONIC` in
