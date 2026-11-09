@@ -15,8 +15,8 @@ the Buddy 3 tasks yet.
   The ADC named `left` is physically on the robot's right, and the ADC named
   `centre` is physically on its left. Similar readings drive straight; a
   stronger right sensor steers right and a stronger left sensor steers left.
-  A 100-code deadband filters small differences, with steering capped at
-  350 permille.
+  A 50-code deadband filters small differences, with steering capped at
+  500 permille. The correction reaches its cap at a 500-code difference.
 - If line flags report `LOST`, the controller searches at half the selected
   speed, initially toward the last detected side, then alternates direction
   every 600 ms. Search ends in a safe stop after 3 seconds without detection;

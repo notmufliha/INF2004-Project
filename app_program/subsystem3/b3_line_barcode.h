@@ -24,9 +24,9 @@
 #define B3_LINE_CENTRE_ACTIVE(raw) \
 	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
 	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
-#define B3_LINE_STEER_DEADBAND (100)
-#define B3_LINE_STEER_ERROR_FULL_SCALE (800)
-#define B3_LINE_STEER_MAX (350)
+#define B3_LINE_STEER_DEADBAND (50)
+#define B3_LINE_STEER_ERROR_FULL_SCALE (500)
+#define B3_LINE_STEER_MAX (500)
 
 typedef enum {
 	B3_BARCODE_NONE = 0,
