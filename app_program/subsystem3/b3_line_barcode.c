@@ -3,6 +3,7 @@
  * @brief Buddy 3 line telemetry, edge capture, and navigation queue.
  */
 #include "b3_line_barcode.h"
+#include "b3_code39.h"
 
 #include <stdbool.h>
 
@@ -12,32 +13,10 @@
 #define B3_BARCODE_PIN (28U)
 #define B3_ADC_LEFT_CHANNEL (0)
 #define B3_ADC_CENTRE_CHANNEL (1)
-#define B3_EDGE_QUEUE_LENGTH (16U)
+#define B3_EDGE_QUEUE_LENGTH (64U)
 #define B3_MBF_MSG_OVERHEAD (8U)
 #define B3_STATE_LOCK_TIMEOUT_MS (5)
 #define B3_BARCODE_TASK_POLL_MS (1U)
-#ifndef B3_BARCODE_PROTOCOL_CONFIGURED
-#define B3_BARCODE_PROTOCOL_CONFIGURED (0)
-#endif
-
-/*
- * The barcode note in app_program/subsystem3/README.md does not specify a
- * pulse-width protocol. Set B3_BARCODE_PROTOCOL_CONFIGURED to 1 and define
- * the four upper bounds only after measuring the real track's A-D symbols.
- */
-#if B3_BARCODE_PROTOCOL_CONFIGURED
-#if !defined(B3_BARCODE_A_MAX_US) || !defined(B3_BARCODE_B_MAX_US) || \
-	!defined(B3_BARCODE_C_MAX_US) || !defined(B3_BARCODE_D_MAX_US)
-#error "Define measured A-D pulse-width upper bounds before enabling decoding"
-#endif
-#if (B3_BARCODE_A_MAX_US == 0U) || \
-	(B3_BARCODE_A_MAX_US >= B3_BARCODE_B_MAX_US) || \
-	(B3_BARCODE_B_MAX_US >= B3_BARCODE_C_MAX_US) || \
-	(B3_BARCODE_C_MAX_US >= B3_BARCODE_D_MAX_US)
-#error "Barcode pulse-width bounds must be positive and strictly increasing"
-#endif
-#endif
-
 #define B3_SIO_BASE (0xD0000000UL)
 #define B3_SIO_GPIO_IN (*(volatile uint32_t *)(B3_SIO_BASE + 0x004U))
 #define B3_TIMER_BASE (0x40054000UL)
@@ -75,10 +54,8 @@ static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
 static void b3_set_barcode_state(uint8_t barcode, uint8_t nav);
 static bool b3_pop_edge(B3_EDGE *edge);
 static uint8_t b3_take_overflow(void);
-static bool b3_decode_pulse_width(uint32_t width_us, uint8_t *barcode,
-				  uint8_t *nav);
-static void b3_process_edge(const B3_EDGE *edge, uint8_t *pulse_active,
-			    uint32_t *pulse_start_us);
+static void b3_process_edge(const B3_EDGE *edge,
+			    B3_CODE39_DECODER *decoder);
 static void b3_publish_barcode(uint8_t barcode, uint8_t nav);
 static void b3_delay(uint32_t delay_ms);
 
@@ -290,15 +267,14 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 }
 
 /**
- * @brief Drain timestamped GP28 edges and decode pulse widths outside the ISR.
+ * @brief Drain GP28 edges and decode Code 39 symbols outside the ISR.
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
 EXPORT void b3_barcode_task(INT stacd, void *exinf)
 {
 	B3_EDGE edge;
-	uint8_t pulse_active = 0U;
-	uint32_t pulse_start_us = 0U;
+	B3_CODE39_DECODER decoder = {0};
 
 	(void)stacd;
 	(void)exinf;
@@ -309,11 +285,11 @@ EXPORT void b3_barcode_task(INT stacd, void *exinf)
 			continue;
 		}
 		if (b3_take_overflow() != 0U) {
-			pulse_active = 0U;
-			tm_printf((UB *)"[B3] GP28 edge queue overflow; pulse discarded\n");
+			b3_code39_reset(&decoder);
+			tm_printf((UB *)"[B3] GP28 edge queue overflow; barcode discarded\n");
 		}
 		while (b3_pop_edge(&edge)) {
-			b3_process_edge(&edge, &pulse_active, &pulse_start_us);
+			b3_process_edge(&edge, &decoder);
 		}
 		b3_delay(B3_BARCODE_TASK_POLL_MS);
 	}
@@ -445,68 +421,33 @@ static uint8_t b3_take_overflow(void)
 	return overflow;
 }
 
-static bool b3_decode_pulse_width(uint32_t width_us, uint8_t *barcode,
-				  uint8_t *nav)
+static void b3_process_edge(const B3_EDGE *edge,
+			    B3_CODE39_DECODER *decoder)
 {
-	if ((barcode == NULL) || (nav == NULL) || (width_us == 0U)) {
-		return false;
-	}
-
-#if B3_BARCODE_PROTOCOL_CONFIGURED
-	if (width_us <= B3_BARCODE_A_MAX_US) {
-		*barcode = B3_BARCODE_A;
-		*nav = B3_NAV_LEFT;
-	} else if (width_us <= B3_BARCODE_B_MAX_US) {
-		*barcode = B3_BARCODE_B;
-		*nav = B3_NAV_RIGHT;
-	} else if (width_us <= B3_BARCODE_C_MAX_US) {
-		*barcode = B3_BARCODE_C;
-		*nav = B3_NAV_STRAIGHT;
-	} else if (width_us <= B3_BARCODE_D_MAX_US) {
-		*barcode = B3_BARCODE_D;
-		*nav = B3_NAV_UTURN;
-	} else {
-		return false;
-	}
-	return true;
-#else
-	(void)width_us;
-	(void)barcode;
-	(void)nav;
-	return false;
-#endif
-}
-
-static void b3_process_edge(const B3_EDGE *edge, uint8_t *pulse_active,
-			    uint32_t *pulse_start_us)
-{
-	uint32_t pulse_width_us;
+	char symbol;
 	uint8_t barcode;
 	uint8_t nav;
 
-	/* NOTE: This assumes an active-low barcode pulse on GP28. */
-	if (edge->level == 0U) {
-		if (*pulse_active == 0U) {
-			*pulse_start_us = edge->timestamp_us;
-			*pulse_active = 1U;
-		}
+	if (!b3_code39_feed(decoder, edge->level, edge->timestamp_us, &symbol)) {
 		return;
 	}
-
-	if (*pulse_active == 0U) {
+	if (symbol == 'A') {
+		barcode = B3_BARCODE_A;
+		nav = B3_NAV_STRAIGHT;
+	} else if (symbol == 'Z') {
+		barcode = B3_BARCODE_Z;
+		nav = B3_NAV_RIGHT;
+	} else {
 		return;
 	}
-
-	pulse_width_us = edge->timestamp_us - *pulse_start_us;
-	*pulse_active = 0U;
-	if (b3_decode_pulse_width(pulse_width_us, &barcode, &nav)) {
-		b3_publish_barcode(barcode, nav);
-	}
+	b3_publish_barcode(barcode, nav);
 }
 
 static void b3_publish_barcode(uint8_t barcode, uint8_t nav)
 {
 	uint8_t command = nav;
+	UB barcode_character = barcode == B3_BARCODE_Z ?
+		(UB)'Z' : (UB)('A' + barcode - 1U);
 	ER error;
 
 	b3_set_barcode_state(barcode, nav);
@@ -515,7 +456,7 @@ static void b3_publish_barcode(uint8_t barcode, uint8_t nav)
 		CHECK(error, "B3 navigation queue send");
 	}
 
-	error = comm_report_barcode((UB)('A' + barcode - 1U), (NAV_CMD)nav);
+	error = comm_report_barcode(barcode_character, (NAV_CMD)nav);
 	if (error != E_OK) {
 		CHECK(error, "B3 barcode telemetry report");
 	}

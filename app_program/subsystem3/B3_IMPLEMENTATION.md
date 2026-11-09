@@ -21,17 +21,22 @@ the Buddy 3 tasks yet.
   speed, initially toward the last detected side, then alternates direction
   every 600 ms. Search ends in a safe stop after 3 seconds without detection;
   it never searches without fresh ultrasonic clearance.
+- In AUTO mode, a barcode route is held as pending until three consecutive
+  junction samples confirm both sensors are on the junction. The robot slows
+  to 75% after receiving a route, then drives straight at half speed through a
+  junction without a route. After three non-junction samples the junction
+  latch clears. A pending route executes at the confirmed junction.
 - Reads GP28 as the digital barcode input and registers both-edge GPIO
   interrupts through the shared `app_gpio_irq_dispatch()` subscriber.
 - The GP28 callback only timestamps and records edge levels in a bounded
   ring, sets the pending/overflow flags, and acknowledges GP28's edge bits.
-  It does not call the ADC, decode a pulse, print, or send a kernel message.
-- A separate task drains edges, calculates active-low pulse widths, and
+  It does not call the ADC, decode a barcode, print, or send a kernel message.
+- A separate task drains GP28 edges and decodes the Code 39 widths, then
   pushes valid `uint8_t` navigation command values to `mbf_nav_cmd` with
   `tk_snd_mbf(..., TMO_POL)`. μT-Kernel's message buffer serializes concurrent
   senders and copies the one-byte message. A full queue is reported, not
   silently treated as a successful send.
-- Uses the packed eight-byte `B3_STATE` snapshot under `mtx_b3_state`, and
+- Uses the packed five-byte `B3_STATE` snapshot under `mtx_b3_state`, and
   updates the existing B1 telemetry/event APIs from task context.
 - Publishes line readings and status only; it does not issue B2 motion
   commands. The Vehicle Controller must own steering and safety arbitration.
@@ -60,32 +65,28 @@ the Buddy 3 tasks yet.
    The steering deadband and correction scale are initial tuning values; test
    with the wheels raised and adjust them only after confirming turn direction.
 
-## Barcode format is not yet confirmed
+## Code 39 barcode behavior
 
-The repository's B3 design note states that barcode pulse thresholds and
-decoding limits still require calibration, and the available project files
-do not specify a numeric A-D pulse-width encoding. Therefore
-`B3_BARCODE_PROTOCOL_CONFIGURED` is `0` in the C file: edge capture and
-asynchronous width measurement work, but unverified pulses do not enqueue
-navigation commands. This avoids inventing track semantics that could steer
-the car incorrectly.
+The GP28 digital IR input records both edges as the robot crosses the Code 39
+strip. The decoder groups the nine alternating bar/space widths in each
+character and separates narrow from wide elements by their relative widths,
+so decoding does not depend on a fixed robot speed. It requires the standard
+`*` start/stop characters and accepts one-character payloads only:
 
-The supplied one-page line/barcode drawing gives an approximate barcode
-length of 141 mm, a 20 mm gap from barcode to line, and an 18 mm line width.
-It does not specify the bar-width-to-letter mapping or pulse-time bounds, so
-those dimensions are not enough to safely enable command decoding.
+| Code 39 payload | Recorded barcode | Navigation |
+|---|---|---|
+| `*A*` | A | Straight |
+| `*Z*` | Z | Right |
 
-After confirming the protocol from the track specification or measurements,
-set `B3_BARCODE_PROTOCOL_CONFIGURED` to `1` and define strictly increasing
-`B3_BARCODE_A_MAX_US`, `B3_BARCODE_B_MAX_US`, `B3_BARCODE_C_MAX_US`, and
-`B3_BARCODE_D_MAX_US` bounds. The current decoder assumes one active-low
-pulse per barcode, with A-D mapped to left, right, straight, and U-turn.
-That assumption and mapping must also be verified before enabling it.
+Other Code 39 payloads and malformed scans are ignored. The decoder currently
+uses alternating edge levels, so either black/white electrical polarity is
+supported. The track barcode is approximately 144 mm long; this length is not
+used as a decode threshold.
 
-**WARNING:** Pulse-width bounds, active polarity, line threshold, and the
-20 ms sampling cadence depend on sensor response, barcode geometry, robot
-speed, surface, and lighting. Measure representative tracks and test queue
-handling before allowing the Vehicle Controller to act on decoded commands.
+The controller retains a decoded navigation command until three consecutive
+junction samples confirm the junction. Test the scan and route first on the
+track at low speed; reject incorrect or incomplete decodes rather than
+turning from a partial barcode.
 
 ## Minimum-bit RAM estimate
 

@@ -351,6 +351,7 @@ vectors (void)
         {3000, 2987, 16777216 + 42, 123456, 812, 2400, 0, LINE_F_DETECTED, 1,
          -45, 1, 23, 31, 250, 12, 30, 9, 42, 2100, ROBOT_HUMP,
          FAULT_NO_ECHO | FAULT_IMU, 2, NAV_RIGHT},
+        {.barcode = 5U, .nav = NAV_RIGHT},
     };
     uint32_t index;
 
@@ -362,6 +363,7 @@ vectors (void)
 
     event_vector(EVT_BARCODE, 0U, 0U, 1U, 0U, 0U, 0U, NAV_LEFT, 0U);
     event_vector(EVT_BARCODE, 255U, 0xFFFFFU, 4U, 0U, 0U, 0U, NAV_UTURN, 0U);
+    event_vector(EVT_BARCODE, 12U, 431U, 5U, 0U, 0U, 0U, NAV_RIGHT, 0U);
     event_vector(EVT_HUMP, 7U, 160U, 23U, 31U, 0U, 0U, 0U, 1U);
     event_vector(EVT_HUMP, 8U, 161U, 0U, 0U, 0U, 0U, 0U, 0U);
     event_vector(EVT_OBSTACLE, 9U, 420U, 25U, 12U, 30U, 9U, AVOID_LEFT, 0U);
@@ -456,4 +458,3 @@ sizes (void)
 }
 
 /*** end of file ***/
-

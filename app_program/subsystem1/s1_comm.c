@@ -355,9 +355,14 @@ publish_event (const comm_pack_event_t * p_event)
     switch (p_event->type)
     {
         case EVT_BARCODE:
+        {
+            UINT code = p_event->val_a;
+            UINT letter = code == COMM_BARCODE_Z_CODE ? (UINT)'Z' :
+                (UINT)COMM_BARCODE_FIRST - 1U + code;
             tm_printf((UB *)"s1: EVENT barcode '%c' -> %s\n",
-                      (INT)((UINT)COMM_BARCODE_FIRST - 1U + p_event->val_a),
+                      (INT)letter,
                       comm_names_nav((comm_nav_cmd_t)p_event->val_e));
+        }
         break;
 
         case EVT_HUMP:
@@ -535,4 +540,3 @@ poll_encoders (uint32_t now_ms)
 #endif
 
 /*** end of file ***/
-

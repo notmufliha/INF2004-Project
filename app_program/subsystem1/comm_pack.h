@@ -59,7 +59,7 @@ typedef struct
  * never shared while being written.
  *
  *   type      val_a      val_b     val_c    val_d    val_e    flag
- *   BARCODE   1..4       -         -        -        NAV_CMD  -
+ *   BARCODE   1..5       -         -        -        NAV_CMD  -
  *   HUMP      height mm  peak mm   -        -        -        valid
  *   OBSTACLE  dist cm    width cm  left cm  right cm action   -
  *   ERROR     err code   detail    -        -        -        -
@@ -175,4 +175,3 @@ const char *       comm_pack_result_text (comm_pack_result_t result);
 #endif /* COMM_PACK_H */
 
 /*** end of file ***/
-

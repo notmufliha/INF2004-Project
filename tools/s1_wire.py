@@ -29,7 +29,7 @@ MOTION_STATES = ["STATIONARY", "ACCELERATING", "TURNING", "CLIMBING_HUMP",
                  "HUMP_PEAK", "DESCENDING_HUMP", "SUDDEN_IMPACT", "UNKNOWN"]
 NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"]
 AVOID = ["NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"]
-BARCODES = ["-", "A", "B", "C", "D"]
+BARCODES = ["-", "A", "B", "C", "D", "Z"]
 EVENT_TYPES = ["barcode", "hump", "obstacle", "error"]
 MODES = ["AUTO", "LINE", "TEST"]
 

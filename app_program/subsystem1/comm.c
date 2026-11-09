@@ -143,7 +143,7 @@ comm_get_telemetry (comm_telemetry_t * p_out)
     }
 }
 
-/** @brief Report a decoded barcode 'A'..'D' and its command (B3). */
+/** @brief Report a decoded barcode A..D or Z and its command (B3). */
 ER
 comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
 {
@@ -151,11 +151,14 @@ comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
     ER                result = E_PAR;
     uint32_t          code;
 
-    if ((letter >= (uint8_t)COMM_BARCODE_FIRST) &&
-        (letter <= (uint8_t)COMM_BARCODE_LAST) &&
+    if (((letter >= (uint8_t)COMM_BARCODE_FIRST &&
+          letter <= (uint8_t)COMM_BARCODE_LAST) ||
+         letter == (uint8_t)COMM_BARCODE_Z) &&
         ((uint32_t)nav < (uint32_t)NAV_COUNT))
     {
-        code        = ((uint32_t)letter - (uint32_t)COMM_BARCODE_FIRST) + 1U;
+        code = letter == (uint8_t)COMM_BARCODE_Z ?
+            COMM_BARCODE_Z_CODE :
+            ((uint32_t)letter - (uint32_t)COMM_BARCODE_FIRST) + 1U;
         event.type  = EVT_BARCODE;
         event.val_a = code & BARCODE_MASK;
         event.val_e = (UINT)nav & NAV_MASK;
@@ -372,4 +375,3 @@ post_event (comm_pack_event_t * p_event)
 }
 
 /*** end of file ***/
-
