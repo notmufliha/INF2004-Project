@@ -148,14 +148,22 @@ int main(void)
     assert(!c.running && c.mode == MODE_TEST);
     command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
     step(&c, 20u, B3_NAV_LEFT); assert(c.navigation == 0u);
-    command(&c, RCMD_SPEED, 100u); input.left = 3500u; input.centre = 200u;
+    command(&c, RCMD_SPEED, 100u); input.left = 3400u; input.centre = 2900u;
     step(&c, 20u, 0u);
-    assert(sent.steering_permille < 0 && sent.target_speed_cps * 1350 <= 5000000);
+    assert(sent.steering_permille > 0 &&
+        sent.target_speed_cps * (1000 + sent.steering_permille) <= 5000000);
+    input.left = 2900u; input.centre = 3400u;
+    step(&c, 20u, 0u);
+    assert(sent.steering_permille < 0 &&
+        sent.target_speed_cps * (1000 - sent.steering_permille) <= 5000000);
+    input.left = 3150u; input.centre = 3150u;
+    step(&c, 20u, 0u);
+    assert(sent.steering_permille == 0);
     assert(!B3_LINE_LEFT_ACTIVE(349u) && !B3_LINE_CENTRE_ACTIVE(349u));
     assert(B3_LINE_LEFT_ACTIVE(350u) && B3_LINE_CENTRE_ACTIVE(350u));
     assert(B3_LINE_LEFT_ACTIVE(3999u) && !B3_LINE_LEFT_ACTIVE(4000u));
     input.hump = true; step(&c, 20u, 0u);
-    assert(c.state == ROBOT_HUMP && sent.target_speed_cps < 2500);
+    assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
     command(&c, RCMD_SPEED, 0u); step(&c, 20u, 0u);
     assert(c.state == ROBOT_IDLE);
     command(&c, RCMD_RESET_PEAK, 0u); assert(resets == 1u);

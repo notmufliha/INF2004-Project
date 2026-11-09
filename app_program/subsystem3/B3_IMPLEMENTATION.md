@@ -11,6 +11,12 @@ the Buddy 3 tasks yet.
 - Treats readings from 350 through 3999 on either GP26/left or GP27/centre as
   line-active. It reports `DETECTED` if either sensor is active, `LOST` if
   neither is active, and `JUNCTION` if both are active.
+- While following, adjusts steering proportionally to the raw ADC difference.
+  The ADC named `left` is physically on the robot's right, and the ADC named
+  `centre` is physically on its left. Similar readings drive straight; a
+  stronger right sensor steers right and a stronger left sensor steers left.
+  A 100-code deadband filters small differences, with steering capped at
+  350 permille.
 - Reads GP28 as the digital barcode input and registers both-edge GPIO
   interrupts through the shared `app_gpio_irq_dispatch()` subscriber.
 - The GP28 callback only timestamps and records edge levels in a bounded
@@ -47,6 +53,8 @@ the Buddy 3 tasks yet.
 5. Test ADC readings with the actual line sensors and floor. Readings below
    350 or above 3999 count as inactive; verify that white-surface readings
    stay outside the active range before relying on line-loss detection.
+   The steering deadband and correction scale are initial tuning values; test
+   with the wheels raised and adjust them only after confirming turn direction.
 
 ## Barcode format is not yet confirmed
 
