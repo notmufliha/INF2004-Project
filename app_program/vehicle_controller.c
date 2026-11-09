@@ -183,18 +183,21 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
     if (c->navigation == 0u && line_detected) {
-        INT steering = line_follow_steering(in);
+        bool right_sensor_active = B3_LINE_LEFT_ACTIVE(in->left);
+        bool left_sensor_active = B3_LINE_CENTRE_ACTIVE(in->centre);
 
-        if (steering > 0) {
-            c->last_line_search_direction = 1;
-        } else if (steering < 0) {
+        if (left_sensor_active && !right_sensor_active) {
             c->last_line_search_direction = -1;
-        } else if (B3_LINE_LEFT_ACTIVE(in->left) &&
-                   !B3_LINE_CENTRE_ACTIVE(in->centre)) {
+        } else if (right_sensor_active && !left_sensor_active) {
             c->last_line_search_direction = 1;
-        } else if (B3_LINE_CENTRE_ACTIVE(in->centre) &&
-                   !B3_LINE_LEFT_ACTIVE(in->left)) {
-            c->last_line_search_direction = -1;
+        } else if (right_sensor_active && left_sensor_active) {
+            INT steering = line_follow_steering(in);
+
+            if (steering > 0) {
+                c->last_line_search_direction = 1;
+            } else if (steering < 0) {
+                c->last_line_search_direction = -1;
+            }
         }
     }
     if (c->navigation == 0u && !line_detected) {
