@@ -11,20 +11,7 @@
 
 #define B3_LINE_UPDATE_MS (20U)
 #define B3_NAV_QUEUE_LENGTH (8U)
-<<<<<<< HEAD
 #define B3_BARCODE_COUNT (26U)
-
-/* Calibrated provisional thresholds from the reported bench readings:
- * GP26/left is active-low; GP27/centre is active-high. */
-#define B3_LINE_LEFT_THRESHOLD (1000U)
-#define B3_LINE_CENTRE_THRESHOLD (2100U)
-#define B3_LINE_LEFT_ACTIVE(raw) \
-	((uint16_t)(raw) <= B3_LINE_LEFT_THRESHOLD)
-#define B3_LINE_CENTRE_ACTIVE(raw) \
-	((uint16_t)(raw) >= B3_LINE_CENTRE_THRESHOLD)
-
-=======
->>>>>>> fef4f646fc9825e6a7c3252e4aa85a29913b9cb0
 #define B3_LINE_F_DETECTED (0x01U)
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)

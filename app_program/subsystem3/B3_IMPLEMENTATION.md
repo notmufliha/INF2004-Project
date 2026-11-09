@@ -1,28 +1,11 @@
 # B3 integration notes
 
-- `b3_init()` runs after B1 and B2 initialization. It opens the ADC device,
-  creates the shared B3 state mutex and the navigation message buffer, then
-  initializes barcode capture.
-- `b3_start()` starts the 20 ms line-sampling task and the GP28 barcode task.
-- GP26/ADC0 is reported as `ir_left`; GP27/ADC1 is reported as `ir_centre`.
-  Their active-high thresholds are independently configurable with
-  `B3_LINE_LEFT_THRESHOLD` and `B3_LINE_CENTRE_THRESHOLD` in `cfg_line.h`;
-  both default to 2048. B3 sets `DETECTED` when either sample is at/above its
-  threshold, `LOST` when neither is, and `JUNCTION` when both are.
-- `comm_set_line()` publishes B1 telemetry. The Vehicle Controller reads the
-  timestamped B3 snapshot and navigation queue. Decoded letters also go to
-  `comm_report_barcode()`; route selection remains in the Vehicle Controller.
-- GP28 is digital barcode input, not a third analog line sensor. Its callback
-  acknowledges only its own GPIO edge bits and records bounded edge samples;
-  decoding and message delivery happen in task context.
-
-<<<<<<< HEAD
-## What the module does
-
 - Reads ADC channel 0 (GP26, left) and channel 1 (GP27, centre) nominally
   every 20 ms. Both raw readings are published for diagnosis.
-- Uses independent thresholds and polarities: GP26/left is active-low at or
-  below 1000, while GP27/centre is active-high at or above 2100. It reports
+- Uses independent thresholds and polarities from `cfg_line.h`: GP26/left is
+  active-low at or below `B3_LINE_LEFT_THRESHOLD` (default 1000), while
+  GP27/centre is active-high at or above `B3_LINE_CENTRE_THRESHOLD`
+  (default 2100). It reports
   `DETECTED` if either sensor is active, `LOST` if neither is active, and
   `JUNCTION` if both are active. These are provisional thresholds based on
   current bench readings; recalibrate if readings change on the track.
@@ -112,11 +95,3 @@ GCC toolchain allocates the `unsigned int` bit-fields in two 32-bit units, so
 the state occupies 8 bytes. The header asserts that size because bit-field
 layout is compiler-specific; the structure must not be used as a serialized
 wire format.
-=======
-The line threshold and steering are provisional. Verify both ADC channels
-separately on white and black, then calibrate sensor placement and turns on the
-track. The ultrasonic task is separately disabled by default for stationary
-line tests; with it disabled, B2's fail-closed clearance gate must prevent
-movement. Do not enable movement until valid ultrasonic clearance and both
-line sensors have been checked.
->>>>>>> fef4f646fc9825e6a7c3252e4aa85a29913b9cb0

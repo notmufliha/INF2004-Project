@@ -215,14 +215,14 @@ static void line_task(INT stacd, void *p_exinf)
 			continue;
 		}
 
-		if (left_raw >= B3_LINE_LEFT_THRESHOLD ||
-		    centre_raw >= B3_LINE_CENTRE_THRESHOLD) {
+		if (B3_LINE_LEFT_ACTIVE(left_raw) ||
+		    B3_LINE_CENTRE_ACTIVE(centre_raw)) {
 			flags |= B3_LINE_F_DETECTED;
 		} else {
 			flags |= B3_LINE_F_LOST;
 		}
-		if (left_raw >= B3_LINE_LEFT_THRESHOLD &&
-		    centre_raw >= B3_LINE_CENTRE_THRESHOLD) {
+		if (B3_LINE_LEFT_ACTIVE(left_raw) &&
+		    B3_LINE_CENTRE_ACTIVE(centre_raw)) {
 			flags |= B3_LINE_F_JUNCTION;
 		}
 		barcode_level = (uint8_t)barcode_do_level();
