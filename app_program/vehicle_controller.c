@@ -36,6 +36,10 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     c->paused = false;
     c->navigation = 0u;
     c->navigation_id = 0u;
+    c->pending_navigation = B3_NAV_NONE;
+    c->junction_enter_samples = 0u;
+    c->junction_clear_samples = 0u;
+    c->junction_latched = false;
     stop_motion(c);
     set_state(c, ROBOT_SAFE_STOP);
 }
@@ -73,6 +77,34 @@ static INT line_follow_steering(const VC_INPUT *in)
     }
 
     return 0;
+}
+
+static void update_junction_state(VEHICLE_CONTROLLER *c, UB line_flags)
+{
+    bool junction = (line_flags & LINE_F_JUNCTION) != 0u &&
+        (line_flags & LINE_F_DETECTED) != 0u &&
+        (line_flags & LINE_F_LOST) == 0u;
+
+    if (junction) {
+        c->junction_clear_samples = 0u;
+        if (c->junction_enter_samples < VC_JUNCTION_CONFIRM_SAMPLES) {
+            c->junction_enter_samples++;
+        }
+        if (c->junction_enter_samples >= VC_JUNCTION_CONFIRM_SAMPLES) {
+            c->junction_latched = true;
+        }
+    } else {
+        c->junction_enter_samples = 0u;
+        if (c->junction_latched) {
+            if (c->junction_clear_samples < VC_JUNCTION_RELEASE_SAMPLES) {
+                c->junction_clear_samples++;
+            }
+            if (c->junction_clear_samples >= VC_JUNCTION_RELEASE_SAMPLES) {
+                c->junction_latched = false;
+                c->junction_clear_samples = 0u;
+            }
+        }
+    }
 }
 
 void vehicle_controller_init(VEHICLE_CONTROLLER *c)
@@ -113,6 +145,10 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
         c->running = false;
         c->navigation = 0u;
         c->navigation_id = 0u;
+        c->pending_navigation = 0u;
+        c->junction_enter_samples = 0u;
+        c->junction_clear_samples = 0u;
+        c->junction_latched = false;
         stop_motion(c);
         if (!c->estop) set_state(c, ROBOT_IDLE);
         break;
@@ -129,6 +165,10 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
             if (cmd->arg == 0u) {
                 c->navigation = 0u;
                 c->navigation_id = 0u;
+                c->pending_navigation = B3_NAV_NONE;
+                c->junction_enter_samples = 0u;
+                c->junction_clear_samples = 0u;
+                c->junction_latched = false;
                 stop_motion(c);
             }
         }
@@ -182,6 +222,21 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
+    update_junction_state(c, in->line_flags);
+    if (c->mode == MODE_AUTO && c->navigation == 0u &&
+        c->pending_navigation == B3_NAV_NONE &&
+        nav >= B3_NAV_LEFT && nav <= B3_NAV_UTURN) {
+        c->pending_navigation = nav;
+    }
+    if (c->mode == MODE_AUTO && c->navigation == 0u &&
+        c->pending_navigation != B3_NAV_NONE && c->junction_latched) {
+        c->navigation = c->pending_navigation;
+        c->pending_navigation = B3_NAV_NONE;
+        c->navigation_ms = in->now_ms;
+        stop_motion(c);
+        set_state(c, ROBOT_NAV_COMMAND);
+        return;
+    }
     if (c->navigation == 0u && line_detected) {
         bool right_sensor_active = B3_LINE_LEFT_ACTIVE(in->left);
         bool left_sensor_active = B3_LINE_CENTRE_ACTIVE(in->centre);
@@ -238,14 +293,6 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
         return;
     }
-    if (c->mode == MODE_AUTO && c->navigation == 0u &&
-        nav >= B3_NAV_LEFT && nav <= B3_NAV_UTURN) {
-        c->navigation = nav;
-        c->navigation_ms = in->now_ms;
-        stop_motion(c);
-        set_state(c, ROBOT_NAV_COMMAND);
-        return;
-    }
     if (c->navigation != 0u) {
         set_state(c, ROBOT_NAV_COMMAND);
         if (c->navigation_id != 0u) {
@@ -285,13 +332,23 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
-    command.steering_permille = line_follow_steering(in);
+    if ((in->line_flags & LINE_F_JUNCTION) != 0u || c->junction_latched) {
+        command.steering_permille = 0;
+        command.target_speed_cps = speed / 2;
+    } else {
+        command.steering_permille = line_follow_steering(in);
+        if (c->mode == MODE_AUTO &&
+            c->pending_navigation != B3_NAV_NONE) {
+            speed = speed * 3 / 4;
+        }
+        command.target_speed_cps = speed;
+    }
     /* Preserve B2's outer-wheel <=5000 cps constraint in either direction. */
     {
         INT steering_magnitude = command.steering_permille < 0 ?
             -command.steering_permille : command.steering_permille;
-        command.target_speed_cps =
-            speed * 1000 / (1000 + steering_magnitude);
+        command.target_speed_cps = command.target_speed_cps * 1000 /
+            (1000 + steering_magnitude);
     }
     if (in->hump) command.target_speed_cps /= 2;
     command.safety_generation = in->safety_generation;

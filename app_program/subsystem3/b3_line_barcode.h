@@ -33,7 +33,8 @@ typedef enum {
 	B3_BARCODE_A,
 	B3_BARCODE_B,
 	B3_BARCODE_C,
-	B3_BARCODE_D
+	B3_BARCODE_D,
+	B3_BARCODE_Z
 } B3_BARCODE;
 
 typedef enum {
@@ -99,7 +100,7 @@ IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
 IMPORT void b3_line_task(INT stacd, void *exinf);
 
 /**
- * @brief Drain timestamped GP28 edges and decode pulse widths outside the ISR.
+ * @brief Drain timestamped GP28 edges and decode Code 39 outside the ISR.
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */

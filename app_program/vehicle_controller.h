@@ -12,6 +12,8 @@
 #define VC_RECOVERY_MS 3000u
 #define VC_LINE_SEARCH_SWITCH_MS 600u
 #define VC_LINE_SEARCH_STEER 250
+#define VC_JUNCTION_CONFIRM_SAMPLES 3u
+#define VC_JUNCTION_RELEASE_SAMPLES 3u
 
 typedef struct {
     uint32_t now_ms, safety_generation;
@@ -29,7 +31,9 @@ typedef struct {
     bool running, paused, estop, stopped, drive_sent;
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
     INT last_line_search_direction;
-    UB navigation;
+    UINT junction_enter_samples, junction_clear_samples;
+    bool junction_latched;
+    UB navigation, pending_navigation;
 } VEHICLE_CONTROLLER;
 
 void vehicle_controller_init(VEHICLE_CONTROLLER *controller);

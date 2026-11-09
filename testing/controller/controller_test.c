@@ -127,6 +127,13 @@ static void step(VEHICLE_CONTROLLER *c, UINT elapsed, UB nav)
     input.now_ms += elapsed;
     vehicle_controller_step(c, &input, nav);
 }
+static void confirm_junction(VEHICLE_CONTROLLER *c)
+{
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+    step(c, 20u, 0u);
+    step(c, 20u, 0u);
+    step(c, 20u, 0u);
+}
 
 int main(void)
 {
@@ -209,6 +216,21 @@ int main(void)
     assert(c.state == ROBOT_LINE_RECOVERY &&
         sent.steering_permille == -VC_LINE_SEARCH_STEER);
 
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+    step(&c, 20u, 0u);
+    assert(!c.junction_latched && sent.steering_permille == 0 &&
+        sent.target_speed_cps < 1000);
+    step(&c, 20u, 0u);
+    step(&c, 20u, 0u);
+    assert(c.junction_latched && sent.steering_permille == 0);
+    input.line_flags = LINE_F_DETECTED;
+    step(&c, 20u, 0u);
+    step(&c, 20u, 0u);
+    assert(c.junction_latched);
+    step(&c, 20u, 0u);
+    assert(!c.junction_latched);
+
     for (UINT failure = 0u; failure < 6u; ++failure) {
         c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
         if (failure == 0u) input.line_valid = false;
@@ -225,7 +247,11 @@ int main(void)
 
     for (UB nav = B3_NAV_LEFT; nav <= B3_NAV_UTURN; ++nav) {
         c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
-        step(&c, 20u, nav); assert(c.state == ROBOT_NAV_COMMAND && c.navigation_id == 0u);
+        step(&c, 20u, nav);
+        assert(c.navigation == 0u && c.pending_navigation == nav);
+        confirm_junction(&c);
+        assert(c.state == ROBOT_NAV_COMMAND && c.navigation == nav &&
+            c.navigation_id == 0u);
         input.clearance = false; step(&c, 20u, 0u); assert(c.navigation == nav);
         input.clearance = true; step(&c, 20u, 0u); assert(c.navigation_id == 42u);
         result = (motion_status_snapshot_t){0}; result.status = MOTION_STATUS_COMPLETED;
@@ -233,13 +259,17 @@ int main(void)
         step(&c, 20u, 0u); step(&c, 20u, 0u); assert(c.state == ROBOT_LINE_FOLLOW);
     }
     c = fresh(); command(&c, RCMD_START, 0u);
-    step(&c, 20u, B3_NAV_RIGHT); step(&c, 20u, 0u);
+    step(&c, 20u, B3_NAV_RIGHT);
+    confirm_junction(&c);
+    step(&c, 20u, 0u);
     assert(sent.turn_direction == MOTION_TURN_RIGHT);
     result = (motion_status_snapshot_t){0};
     result.status = MOTION_STATUS_CANCELLED; result_ready = true;
     step(&c, 20u, 0u); assert(!c.running && c.state == ROBOT_SAFE_STOP);
     c = fresh(); command(&c, RCMD_START, 0u);
-    step(&c, 20u, B3_NAV_UTURN); input.clearance = false;
+    step(&c, 20u, B3_NAV_UTURN);
+    confirm_junction(&c);
+    input.clearance = false;
     step(&c, VC_RECOVERY_MS, 0u); assert(!c.running);
     c = fresh(); command(&c, RCMD_START, 0u);
     input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);

@@ -314,7 +314,7 @@ comm_pack_event (uint8_t * p_out, uint32_t cap, uint8_t seq,
     switch (p_event->type)
     {
         case EVT_BARCODE:
-            comm_pack_bits_put(&bits, p_event->val_a, BITS_3); /* 1..4  */
+            comm_pack_bits_put(&bits, p_event->val_a, BITS_3); /* 1..5  */
             comm_pack_bits_put(&bits, p_event->val_e, BITS_3); /* nav   */
         break;
 
@@ -498,4 +498,3 @@ check_command (uint32_t version, uint32_t reserved,
 }
 
 /*** end of file ***/
-
