@@ -173,10 +173,29 @@ int main(void)
     assert(c.state == ROBOT_OBSTACLE_SCAN && c.running);
     input.clearance = true; step(&c, 20u, 0u); assert(c.state == ROBOT_LINE_FOLLOW);
     input.faults = FAULT_WIFI_LOSS; step(&c, 20u, 0u); assert(c.running);
+    input.left = 3500u; input.centre = 200u;
+    step(&c, 20u, 0u);
+    assert(c.last_line_search_direction == 1);
     input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_DRIVE &&
+        sent.steering_permille == VC_LINE_SEARCH_STEER &&
+        sent.target_speed_cps < 2500);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u);
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
+    input.line_flags = LINE_F_DETECTED;
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_FOLLOW && c.running);
+    input.line_flags = LINE_F_LOST;
+    step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY);
-    input.clearance = false; step(&c, VC_RECOVERY_MS, 0u);
+    step(&c, VC_RECOVERY_MS, 0u);
     assert(c.state == ROBOT_SAFE_STOP && !c.running);
+
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.line_flags = LINE_F_LOST;
+    step(&c, 20u, 0u);
+    input.clearance = false; step(&c, 20u, 0u);
+    assert(c.state == ROBOT_OBSTACLE_SCAN && c.running && stops > 0u);
 
     for (UINT failure = 0u; failure < 6u; ++failure) {
         c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);

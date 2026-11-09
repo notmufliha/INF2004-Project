@@ -17,6 +17,10 @@ the Buddy 3 tasks yet.
   stronger right sensor steers right and a stronger left sensor steers left.
   A 100-code deadband filters small differences, with steering capped at
   350 permille.
+- If line flags report `LOST`, the controller searches at half the selected
+  speed, initially toward the last detected side, then alternates direction
+  every 600 ms. Search ends in a safe stop after 3 seconds without detection;
+  it never searches without fresh ultrasonic clearance.
 - Reads GP28 as the digital barcode input and registers both-edge GPIO
   interrupts through the shared `app_gpio_irq_dispatch()` subscriber.
 - The GP28 callback only timestamps and records edge levels in a bounded
