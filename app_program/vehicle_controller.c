@@ -40,6 +40,41 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     set_state(c, ROBOT_SAFE_STOP);
 }
 
+static INT line_follow_steering(const VC_INPUT *in)
+{
+    /* ADC "left" is mounted on the robot's right; "centre" is on its left.
+     * Positive B2 steering turns right, toward the stronger right sensor. */
+    INT error = (INT)in->left - (INT)in->centre;
+    INT magnitude;
+    INT correction;
+
+    if (error > B3_LINE_STEER_DEADBAND) {
+        magnitude = error - B3_LINE_STEER_DEADBAND;
+        if (magnitude > (B3_LINE_STEER_ERROR_FULL_SCALE -
+                         B3_LINE_STEER_DEADBAND)) {
+            magnitude = B3_LINE_STEER_ERROR_FULL_SCALE -
+                        B3_LINE_STEER_DEADBAND;
+        }
+        correction = magnitude * B3_LINE_STEER_MAX /
+            (B3_LINE_STEER_ERROR_FULL_SCALE - B3_LINE_STEER_DEADBAND);
+        return correction;
+    }
+
+    if (error < -B3_LINE_STEER_DEADBAND) {
+        magnitude = -error - B3_LINE_STEER_DEADBAND;
+        if (magnitude > (B3_LINE_STEER_ERROR_FULL_SCALE -
+                         B3_LINE_STEER_DEADBAND)) {
+            magnitude = B3_LINE_STEER_ERROR_FULL_SCALE -
+                        B3_LINE_STEER_DEADBAND;
+        }
+        correction = magnitude * B3_LINE_STEER_MAX /
+            (B3_LINE_STEER_ERROR_FULL_SCALE - B3_LINE_STEER_DEADBAND);
+        return -correction;
+    }
+
+    return 0;
+}
+
 void vehicle_controller_init(VEHICLE_CONTROLLER *c)
 {
     *c = (VEHICLE_CONTROLLER){0};
@@ -199,12 +234,14 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
-    /* Left-only detection steers left; centre or junction drives straight. */
-    command.steering_permille =
-        (B3_LINE_LEFT_ACTIVE(in->left) &&
-         !B3_LINE_CENTRE_ACTIVE(in->centre)) ? -350 : 0;
-    /* Preserve B2's outer-wheel <=5000 cps constraint at SPEED 100. */
-    command.target_speed_cps = speed * 1000 / (1000 - command.steering_permille);
+    command.steering_permille = line_follow_steering(in);
+    /* Preserve B2's outer-wheel <=5000 cps constraint in either direction. */
+    {
+        INT steering_magnitude = command.steering_permille < 0 ?
+            -command.steering_permille : command.steering_permille;
+        command.target_speed_cps =
+            speed * 1000 / (1000 + steering_magnitude);
+    }
     if (in->hump) command.target_speed_cps /= 2;
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {
