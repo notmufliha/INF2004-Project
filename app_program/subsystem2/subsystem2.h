@@ -15,9 +15,8 @@
 #define S2_PRI_CONTROL          5
 #define S2_PERIOD_MS        300    /* one sample every 300 ms */
 /* ---------------------------------------------------------------------
- *  IF-01 data format: one sample, sent to subsystem 3's mailbox.
- *  A mailbox message MUST start with a T_MSG header: the kernel links
- *  messages together through it, so the data itself is never copied.
+ *  Sample record retained for the fixed-size pool diagnostics and tests.
+ *  The integrated robot does not send this record to Subsystem 3.
  * --------------------------------------------------------------------- */
 
 typedef struct
@@ -29,9 +28,7 @@ typedef struct
     INT prc;        /* processor (core) that produced it: 1 or 2 */
 } subsystem2_sample_msg_t;
 #define S2_POOL_COUNT    4    /* at most 4 samples in flight */
-/* IF-02: the receiver of a sample gives its memory block back to
- * gh_mpf_samples (tk_rel_mpf) and then a slot back to gh_sem_slots
- * (tk_sig_sem, count 1).  Nothing else may use these two objects. */
+/* Sample-pool resources inspected by the system monitor and tests. */
 IMPORT ID gh_sem_slots;
 IMPORT ID gh_mpf_samples;
 ER subsystem2_init(void);

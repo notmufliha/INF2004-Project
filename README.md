@@ -135,16 +135,14 @@ subfolders, is compiled automatically.
   teaching-demo mode uses the sample `subsystemN_init()` /
   `subsystemN_start()` sequence. Read its comments first.
 - **One folder per student:** `app_program/subsystem1/` … `subsystem5/`.
-  Subsystems 1–4 hold a working example, one task each (LED, producer,
-  consumer, monitor). Together they use the main micro T-Kernel APIs and
-  pass data between subsystems. Subsystem 5 is an empty template.
-  Replace the examples with your own subsystems.
+  Subsystems 1–4 contain the integrated robot implementation. Subsystem 5 is
+  an empty template. The former sample producer/consumer mailbox path is not
+  part of the current robot integration.
 - `subsystemN.h` is that subsystem's public interface: the object IDs and
   data formats the other subsystems may use.
-- Subsystem 3 keeps the sample consumer for teaching-demo mode. Its separate
-  Buddy 3 module samples the line sensors and decodes Code 39 A-Z in either
-  direction; robot mode starts it and the Vehicle Controller waits for the
-  next junction to apply MQTT-configured route mappings.
+- Subsystem 3's Buddy 3 module samples the line sensors and decodes Code 39
+  A-Z in either direction; robot mode starts it and the Vehicle Controller
+  waits for the next junction to apply MQTT-configured route mappings.
   See `app_program/subsystem3/README.md`.
 - `app.h` holds the definitions shared by the whole team.
 - **Drivers go in your subsystem folder too**, as a `drv_<name>.c` /

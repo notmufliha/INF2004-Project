@@ -3,10 +3,11 @@
  *
  * Buddy 2 - Motion Control Subsystem
  *
- * Preserves the original producer task,
- * semaphore and fixed-size memory pool.
+ * Owns motor control, encoder feedback, and motion commands. The sample
+ * semaphore and fixed-size pool remain available for status monitoring and
+ * tests; the old mailbox producer is not part of the integrated robot.
  *
- * Adds:
+ * Provides:
  * - Motor initialization
  * - Encoder initialization
  * - PI controller initialization
@@ -14,7 +15,6 @@
  */
 
 #include "subsystem2.h"
-#include "task_producer.h"
 #include "../subsystem1/subsystem1.h"
 #include "../robot_config.h"
 #include "b2_motor.h"
@@ -204,22 +204,6 @@ EXPORT ER subsystem2_start(void)
         }
 
         return (E_OK);
-    #endif
-    #if !ROBOT_MODE
-        /* Teaching-demo producer is excluded from real robot mode. */
-        h_task = app_start_task(
-            subsystem2_producer_task,
-            S2_PRI_PRODUCER,
-            TP_PRC2,
-            "subsystem2_producer_task"
-        );
-
-        if (h_task < E_OK)
-        {
-            b2_request_stop();
-            b2_safety_acknowledge_stop();
-            return (h_task);
-        }
     #endif
     #if ROBOT_ENCODER_DIAGNOSTICS
     /* Optional calibration tasks, disabled during ordinary operation. */
