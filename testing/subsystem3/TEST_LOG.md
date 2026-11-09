@@ -1,25 +1,25 @@
-# Subsystem 3 — test log
+# Subsystem 3 test log
 
-**Current implementation:** sample consumer example · **Priority:** 16 ·
-**Core:** 0 on SMP · **Code:** `app_program/subsystem3/`
+Subsystem 3 reads GP26/ADC0 and GP27/ADC1 for line following and captures
+Code 39 barcode transitions on GP28. Host decoder tests do not verify ADC
+pin mapping, sensor polarity, thresholds, GPIO timing, or robot motion.
 
-The attached Week 6 design review assigns Buddy 3 to IR line following and
-barcode decoding. Those robot requirements are not yet implemented in this
-checkout; see `app_program/subsystem3/README.md`. Do not record them as passed
-based on the sample-consumer tests below.
+## Automated checks
 
-## Test cases
+| Test | Coverage | Method |
+|---|---|---|
+| Code 39 host test | Forward/reverse `*A*` decoding and rejection of an incomplete capture | `testing/subsystem3/code39_host_test.c` |
+| Vehicle Controller test | Navigation queue commands, hazards, DRIVE cadence, and task adapter | `testing/controller/run_tests.ps1` |
+| Source syntax check | Changed B3 sources against host-visible T-Kernel declarations | GCC syntax-only check; not a firmware build |
 
-| ID | What is tested | Requirement / interface | Method | Steps | Expected result |
-|---|---|---|---|---|---|
-| S3-U01 | Count, min, max, and sum for a known sequence | Statistics helper | auto | `subsystem3_test.c` | `[TEST] S3-U01 PASS` |
-| S3-U02 | Live statistics bounds and mutex usability | IF-04 | auto | `subsystem3_test.c` | `[TEST] S3-U02 PASS` |
-| INT-01 | Samples move from S2 to S3 and update count | IF-01, IF-02 | auto | `subsystem3_test.c`; integration log | `[TEST] INT-01 PASS` |
+On-target helper tests are available through `test_line_run()` and
+`test_barcode_run()` when `APP_TEST` is enabled. `test_line_run()` tests the
+pure `line_track` helpers; neither test validates real sensors.
 
-Test implementation is built with `make TEST=1 -j8` from `build_make`, then
-flashed to the Pico W. This firmware uses a `.uf2` image, not `sysmain.exe`.
+## Hardware validation
 
-## Results
-
-No hardware test results have been recorded in this change. Add one row for
-each actual run with date, tested commit, tester, result, and saved evidence.
+No hardware results are recorded yet. Before enabling robot movement, test
+each analog sensor separately on white and black, tune
+`B3_LINE_LEFT_THRESHOLD` and `B3_LINE_CENTRE_THRESHOLD` in `cfg_line.h`, then
+verify turns, barcode capture, and the ultrasonic clearance gate. Record the
+date, firmware revision, tester, result, and evidence for each physical test.

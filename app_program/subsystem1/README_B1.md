@@ -268,11 +268,12 @@ the instructor** first.
    telemetry and the Vehicle Controller owns `mbf_remote_cmd`. Build with
    `S1_STANDALONE_DEMO=1` only for a bench test without them.
 2. Connected: B2 (`subsystem2/b2_integration.c` calls `comm_set_motion()`;
-   keep `S1_POLL_B2_ENCODERS` at 0), B4 (`task_imu.c`),
-   B5 (`task_obstacle.c`). Still to do: B3 calls `comm_set_line()` and
-   `comm_report_barcode()`; the Vehicle Controller calls
-   `comm_set_robot_state()`, reads `mbf_remote_cmd`, and takes over
-   creating `flg_faults` from `subsystem1_init()`.
+   keep `S1_POLL_B2_ENCODERS` at 0), B3 (`subsystem3/line.c` calls
+   `comm_set_line()` and `subsystem3/barcode.c` calls
+   `comm_report_barcode()`), B4 (`task_imu.c`), B5 (`task_obstacle.c`), and
+   the Vehicle Controller (`comm_set_robot_state()` and `mbf_remote_cmd`).
+   `subsystem1_init()` creates the shared fault flag before the other tasks
+   start.
 3. Every buddy sets/clears only their own bit with `fault_raise()` /
    `fault_clear()` (`app_program/fault_flags.h`) and adds error codes to
    their block in `app_program/error_codes.h` (and the names to

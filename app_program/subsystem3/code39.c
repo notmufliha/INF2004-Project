@@ -1,206 +1,539 @@
+/**
+ * @file    code39.c
+ * @brief   Pure Code 39 width-to-character decoder in both directions.
+ * @owner   Buddy 3 (line, barcode)
+ * @kind    algo
+ * @reqs    FR2, NFR5
+ */
+
 #include "code39.h"
+#include "cfg_barcode.h"
 
-typedef struct {
-	char symbol;
-	uint16_t pattern;
-} CODE39_ENTRY;
+/* ---- private constants and types ------------------------------------ */
 
-static const CODE39_ENTRY g_code39_table[] = {
-	{'0', 0x034U}, {'1', 0x121U}, {'2', 0x061U}, {'3', 0x160U},
-	{'4', 0x031U}, {'5', 0x130U}, {'6', 0x070U}, {'7', 0x025U},
-	{'8', 0x124U}, {'9', 0x064U}, {'A', 0x109U}, {'B', 0x049U},
-	{'C', 0x148U}, {'D', 0x019U}, {'E', 0x118U}, {'F', 0x058U},
-	{'G', 0x00DU}, {'H', 0x10CU}, {'I', 0x04CU}, {'J', 0x01CU},
-	{'K', 0x103U}, {'L', 0x043U}, {'M', 0x142U}, {'N', 0x013U},
-	{'O', 0x112U}, {'P', 0x052U}, {'Q', 0x007U}, {'R', 0x106U},
-	{'S', 0x046U}, {'T', 0x016U}, {'U', 0x181U}, {'V', 0x0C1U},
-	{'W', 0x1C0U}, {'X', 0x091U}, {'Y', 0x190U}, {'Z', 0x0D0U},
-	{'-', 0x085U}, {'.', 0x184U}, {' ', 0x0C4U}, {'*', 0x094U},
-	{'$', 0x0A8U}, {'/', 0x0A2U}, {'+', 0x08AU}, {'%', 0x02AU},
+#define CODE39_TABLE_SIZE      (44u)
+#define CODE39_WIDTHS_NULL     ((uint8_t const *) 0)
+#define CODE39_CHAR_NULL       ((uint32_t *) 0)
+#define CODE39_CHAR_ELEMENTS   (9u)
+#define CODE39_BARS_PER_CHAR   (5u)
+#define CODE39_SPACES_PER_CHAR (4u)
+#define CODE39_BAR_NARROW_LAST (2u)
+#define CODE39_BAR_WIDE_FIRST  (3u)
+#define CODE39_BAR_MAX_IDX     (4u)
+#define CODE39_SP_NARROW_LAST  (2u)
+#define CODE39_SP_WIDE_FIRST   (3u)
+#define CODE39_SP_SPEC_WIDE    (1u)
+#define CODE39_CHAR0_START     (0u)
+#define CODE39_GAP1_IDX        (9u)
+#define CODE39_CHAR1_START     (10u)
+#define CODE39_GAP2_IDX        (19u)
+#define CODE39_CHAR2_START     (20u)
+#define CODE39_NARROW_MAX_IDX  (19u)
+#define CODE39_WIDE_MIN_IDX    (20u)
+#define CODE39_RATIO_SCALE     (10u)
+#define CODE39_NOT_FOUND       (0xFFu)
+#define CODE39_ASCII_UNKNOWN   ((uint32_t) '?')
+
+/* ---- private data ---------------------------------------------------- */
+
+/* Code 39 9-bit element patterns (bit 8 = first element, 1 = wide). */
+static uint16_t const g_code39_patterns[CODE39_TABLE_SIZE] =
+{
+    0x034u, 0x121u, 0x061u, 0x160u, 0x031u,
+    0x130u, 0x070u, 0x025u, 0x124u, 0x064u,
+    0x109u, 0x049u, 0x148u, 0x019u, 0x118u,
+    0x058u, 0x00Du, 0x10Cu, 0x04Cu, 0x01Cu,
+    0x103u, 0x043u, 0x142u, 0x013u, 0x112u,
+    0x052u, 0x007u, 0x106u, 0x046u, 0x016u,
+    0x181u, 0x0C1u, 0x1C0u, 0x091u, 0x190u,
+    0x0D0u, 0x085u, 0x184u, 0x0C4u, 0x0A8u,
+    0x0A2u, 0x08Au, 0x02Au, 0x094u
 };
 
-#define CODE39_TABLE_SIZE \
-	(sizeof(g_code39_table) / sizeof(g_code39_table[0]))
-
-static bool code39_decode_direction(const uint32_t *widths, uint32_t count,
-				    char *out, uint32_t out_size,
-				    bool reverse_scan);
-static bool code39_decode_character(const uint32_t *widths,
-				    bool reverse_scan, char *symbol);
-
-bool code39_pattern_for(char symbol, uint16_t *pattern)
+/* ASCII character table matching indices 0..43. */
+static uint8_t const g_code39_ascii[CODE39_TABLE_SIZE] =
 {
-	uint32_t i;
+    (uint8_t) '0', (uint8_t) '1', (uint8_t) '2', (uint8_t) '3',
+    (uint8_t) '4', (uint8_t) '5', (uint8_t) '6', (uint8_t) '7',
+    (uint8_t) '8', (uint8_t) '9', (uint8_t) 'A', (uint8_t) 'B',
+    (uint8_t) 'C', (uint8_t) 'D', (uint8_t) 'E', (uint8_t) 'F',
+    (uint8_t) 'G', (uint8_t) 'H', (uint8_t) 'I', (uint8_t) 'J',
+    (uint8_t) 'K', (uint8_t) 'L', (uint8_t) 'M', (uint8_t) 'N',
+    (uint8_t) 'O', (uint8_t) 'P', (uint8_t) 'Q', (uint8_t) 'R',
+    (uint8_t) 'S', (uint8_t) 'T', (uint8_t) 'U', (uint8_t) 'V',
+    (uint8_t) 'W', (uint8_t) 'X', (uint8_t) 'Y', (uint8_t) 'Z',
+    (uint8_t) '-', (uint8_t) '.', (uint8_t) ' ', (uint8_t) '$',
+    (uint8_t) '/', (uint8_t) '+', (uint8_t) '%', (uint8_t) '*'
+};
 
-	if (pattern == 0) {
-		return false;
-	}
-	for (i = 0U; i < CODE39_TABLE_SIZE; ++i) {
-		if (g_code39_table[i].symbol == symbol) {
-			*pattern = g_code39_table[i].pattern;
-			return true;
-		}
-	}
-	return false;
+/* ---- private function prototypes ------------------------------------- */
+
+static void     code39_sort_n(uint8_t const * p_src, uint8_t * p_sorted,
+                              uint32_t len);
+static uint16_t code39_build_pattern(uint8_t const * p_widths,
+                                     uint32_t start_idx,
+                                     uint32_t thr_bar,
+                                     uint32_t thr_space);
+static uint32_t code39_lookup_pattern(uint16_t pattern);
+static uint32_t code39_try_direction(uint8_t const * p_widths,
+                                     uint32_t threshold,
+                                     uint32_t * p_char_index);
+static uint32_t code39_try_both(uint8_t const * p_widths,
+                                uint32_t threshold,
+                                uint32_t * p_char_index);
+static uint32_t code39_decode_char_split(uint8_t const * p_widths,
+                                         uint32_t start_idx,
+                                         uint32_t * p_char_out,
+                                         uint32_t * p_thr_space);
+static uint32_t code39_try_split_dir(uint8_t const * p_widths,
+                                     uint32_t * p_char_index);
+static uint32_t code39_try_split_both(uint8_t const * p_widths,
+                                      uint32_t * p_char_index);
+
+/* ---- public functions ------------------------------------------------- */
+
+/**
+ * code39_decode
+ * @brief   Decodes a 29-element `*<char>*` Code 39 capture in either
+ *          forward or reverse order. Falls back to separate per-character
+ *          bar/space thresholding when optical spot bias shifts bar vs
+ *          space widths on small or high-contrast barcodes.
+ * @param   p_widths      Array of 29 element widths (0.1 mm units).
+ * @param   count         Number of elements captured (must be 29).
+ * @param   p_char_index  Output data character index (0..42) on success.
+ * @return  CODE39_OK (0) on valid decode, CODE39_INVALID (1) otherwise.
+ * @context barcode_task
+ */
+uint32_t code39_decode(uint8_t const * p_widths, uint32_t count,
+                       uint32_t * p_char_index)
+{
+    uint32_t result = CODE39_INVALID;
+
+    if ((CODE39_WIDTHS_NULL != p_widths) &&
+        (CODE39_CHAR_NULL != p_char_index) &&
+        (BAR_ELEMENTS == count))
+    {
+        uint8_t  sorted[BAR_ELEMENTS] = {0u};
+        uint32_t narrow_max           = 0u;
+        uint32_t wide_min             = 0u;
+
+        code39_sort_n(p_widths, sorted, BAR_ELEMENTS);
+        narrow_max = (uint32_t) sorted[CODE39_NARROW_MAX_IDX]; /* cast: widen */
+        wide_min   = (uint32_t) sorted[CODE39_WIDE_MIN_IDX];   /* cast: widen */
+
+        if ((narrow_max > 0u) &&
+            ((wide_min * CODE39_RATIO_SCALE) >=
+             (narrow_max * BAR_WIDE_RATIO_X10_MIN)))
+        {
+            uint32_t const threshold = ((narrow_max + wide_min) + 1u) / 2u;
+
+            result = code39_try_both(p_widths, threshold, p_char_index);
+        }
+        else
+        {
+            /* Pooled ratio < 1.8; try separate bar/space thresholds below. */
+        }
+
+        if (CODE39_OK != result)
+        {
+            result = code39_try_split_both(p_widths, p_char_index);
+        }
+        else
+        {
+            /* Pooled global threshold already decoded valid frame. */
+        }
+    }
+    else
+    {
+        /* Null pointer or element count != 29. */
+    }
+
+    return result;
 }
 
-bool code39_decode(const uint32_t *widths, uint32_t count, char *out,
-		   uint32_t out_size, bool *reversed)
+/**
+ * code39_char_ascii
+ * @brief   Returns the ASCII character code for a Code 39 index (0..43).
+ * @param   char_index  Character index in 0..43.
+ * @return  ASCII byte value as uint32_t, or '?' if out of range.
+ * @context any
+ */
+uint32_t code39_char_ascii(uint32_t char_index)
 {
-	if (widths == 0 || out == 0 || out_size == 0U) {
-		return false;
-	}
-	if (code39_decode_direction(widths, count, out, out_size, false)) {
-		if (reversed != 0) {
-			*reversed = false;
-		}
-		return true;
-	}
-	if (code39_decode_direction(widths, count, out, out_size, true)) {
-		if (reversed != 0) {
-			*reversed = true;
-		}
-		return true;
-	}
-	return false;
+    uint32_t ascii_ch = CODE39_ASCII_UNKNOWN;
+
+    if (char_index < CODE39_TABLE_SIZE)
+    {
+        /* cast: widen 8-bit ASCII code to uint32_t */
+        ascii_ch = (uint32_t) g_code39_ascii[char_index];
+    }
+    else
+    {
+        /* Out-of-range character index returns '?'. */
+    }
+
+    return ascii_ch;
 }
 
-static bool code39_decode_direction(const uint32_t *widths, uint32_t count,
-				    char *out, uint32_t out_size,
-				    bool reverse_scan)
+/* ---- private functions ------------------------------------------------ */
+
+/**
+ * code39_sort_n
+ * @brief   Copies len element widths and insertion-sorts them ascending.
+ * @param   p_src     Input array of len widths.
+ * @param   p_sorted  Output sorted array of len widths.
+ * @param   len       Number of elements to sort.
+ * @return  none
+ * @context barcode_task
+ */
+static void code39_sort_n(uint8_t const * p_src, uint8_t * p_sorted,
+                          uint32_t len)
 {
-	uint32_t characters;
-	uint32_t payload_length;
-	uint32_t i;
+    uint32_t idx = 0u;
 
-	if (count < CODE39_MIN_ELEMENTS || count > CODE39_MAX_ELEMENTS ||
-	    (count % 10U) != 9U) {
-		return false;
-	}
-	characters = (count + 1U) / 10U;
-	if (characters < 3U || characters > (CODE39_MAX_PAYLOAD + 2U)) {
-		return false;
-	}
-	payload_length = characters - 2U;
-	if (out_size <= payload_length) {
-		return false;
-	}
+    for (idx = 0u; idx < len; idx++)
+    {
+        uint8_t const val = p_src[idx];
+        uint32_t      pos = idx;
 
-	for (i = 0U; i < characters; ++i) {
-		char symbol;
-		uint32_t offset = i * 10U;
-		uint32_t j;
-
-		if (!code39_decode_character(&widths[offset],
-					     reverse_scan, &symbol)) {
-			return false;
-		}
-		if (i == 0U || i == characters - 1U) {
-			if (symbol != '*') {
-				return false;
-			}
-		} else if (symbol == '*') {
-			return false;
-		} else {
-			uint32_t payload_index = i - 1U;
-
-			if (reverse_scan) {
-				payload_index = payload_length - i;
-			}
-			out[payload_index] = symbol;
-		}
-
-		if (i + 1U < characters) {
-			uint32_t gap_index = offset + 9U;
-
-			if (widths[gap_index] == 0U) {
-				return false;
-			}
-		}
-		for (j = 0U; j < 9U; ++j) {
-			uint32_t width_index = offset + j;
-
-			if (widths[width_index] == 0U) {
-				return false;
-			}
-		}
-	}
-	out[payload_length] = '\0';
-	return true;
+        while ((pos > 0u) && (p_sorted[pos - 1u] > val))
+        {
+            p_sorted[pos] = p_sorted[pos - 1u];
+            pos--;
+        }
+        p_sorted[pos] = val;
+    }
 }
 
-static bool code39_decode_character(const uint32_t *widths,
-				    bool reverse_scan, char *symbol)
+/**
+ * code39_build_pattern
+ * @brief   Builds a 9-bit wide/narrow pattern starting at start_idx using
+ *          thr_bar for even offsets (bars) and thr_space for odd (spaces).
+ * @param   p_widths   Array of 29 element widths.
+ * @param   start_idx  Starting element index (0, 10, or 20).
+ * @param   thr_bar    Wide threshold for bar elements (even offsets).
+ * @param   thr_space  Wide threshold for space elements (odd offsets).
+ * @return  9-bit pattern (bit 8 = first element, bit 0 = ninth element).
+ * @context barcode_task
+ */
+static uint16_t code39_build_pattern(uint8_t const * p_widths,
+                                     uint32_t start_idx,
+                                     uint32_t thr_bar,
+                                     uint32_t thr_space)
 {
-	int64_t adjusted[9];
-	int64_t sorted[9];
-	int64_t min_bar = INT64_MAX;
-	int64_t min_space = INT64_MAX;
-	int64_t bias;
-	int64_t threshold;
-	int64_t narrow_median;
-	int64_t wide_median;
-	uint16_t pattern = 0U;
-	uint32_t i;
-	uint32_t j;
+    uint16_t pattern = 0u;
+    uint32_t idx     = 0u;
 
-	for (i = 0U; i < 9U; ++i) {
-		uint32_t index = reverse_scan ? 8U - i : i;
+    for (idx = 0u; idx < CODE39_CHAR_ELEMENTS; idx++)
+    {
+        uint32_t const width =
+            (uint32_t) p_widths[start_idx + idx]; /* cast: widen */
+        uint32_t const thr = (0u == (idx & 1u)) ? thr_bar : thr_space;
 
-		if (widths[index] == 0U) {
-			return false;
-		}
-		if ((i & 1U) == 0U) {
-			if ((int64_t)widths[index] < min_bar) {
-				min_bar = (int64_t)widths[index];
-			}
-		} else if ((int64_t)widths[index] < min_space) {
-			min_space = (int64_t)widths[index];
-		}
-	}
+        pattern = (uint16_t) (pattern << 1u); /* cast: 9-bit pattern */
+        if (width >= thr)
+        {
+            pattern = (uint16_t) (pattern | 1u); /* cast: 9-bit pattern */
+        }
+        else
+        {
+            /* Narrow element leaves bit 0 clear. */
+        }
+    }
 
-	bias = (min_space - min_bar) / 2;
-	for (i = 0U; i < 9U; ++i) {
-		uint32_t index = reverse_scan ? 8U - i : i;
-		int64_t correction = ((i & 1U) == 0U) ? bias : -bias;
-
-		adjusted[i] = (int64_t)widths[index] + correction;
-		if (adjusted[i] <= 0) {
-			return false;
-		}
-		sorted[i] = adjusted[i];
-	}
-	for (i = 1U; i < 9U; ++i) {
-		int64_t value = sorted[i];
-
-		j = i;
-		while (j > 0U && sorted[j - 1U] > value) {
-			sorted[j] = sorted[j - 1U];
-			--j;
-		}
-		sorted[j] = value;
-	}
-
-	narrow_median = sorted[4];
-	wide_median = sorted[7];
-	if (sorted[5] == 0 || sorted[6] <= sorted[5] ||
-	    (wide_median * 10 < narrow_median * 15) ||
-	    (wide_median * 10 > narrow_median * 35)) {
-		return false;
-	}
-	threshold = (sorted[5] + sorted[6]) / 2;
-	for (i = 0U; i < 9U; ++i) {
-		if (adjusted[i] > threshold) {
-			pattern = (uint16_t)((pattern << 1U) | 1U);
-		} else {
-			pattern = (uint16_t)(pattern << 1U);
-		}
-	}
-	for (i = 0U; i < CODE39_TABLE_SIZE; ++i) {
-		if (g_code39_table[i].pattern == pattern) {
-			*symbol = g_code39_table[i].symbol;
-			return true;
-		}
-	}
-	return false;
+    return pattern;
 }
+
+/**
+ * code39_lookup_pattern
+ * @brief   Looks up a 9-bit pattern in g_code39_patterns.
+ * @param   pattern  9-bit wide/narrow bitmask.
+ * @return  Character index 0..43, or CODE39_NOT_FOUND (0xFF).
+ * @context barcode_task
+ */
+static uint32_t code39_lookup_pattern(uint16_t pattern)
+{
+    uint32_t found_idx = CODE39_NOT_FOUND;
+    uint32_t idx       = 0u;
+
+    for (idx = 0u; idx < CODE39_TABLE_SIZE; idx++)
+    {
+        if (g_code39_patterns[idx] == pattern)
+        {
+            found_idx = idx;
+        }
+        else
+        {
+            /* Continue scan. */
+        }
+    }
+
+    return found_idx;
+}
+
+/**
+ * code39_try_direction
+ * @brief   Checks inter-character gaps and decodes start, data, and stop
+ *          characters in the given element order using one threshold.
+ * @param   p_widths      Array of 29 element widths.
+ * @param   threshold     Wide element threshold.
+ * @param   p_char_index  Output data character index (0..42) if valid.
+ * @return  CODE39_OK or CODE39_INVALID.
+ * @context barcode_task
+ */
+static uint32_t code39_try_direction(uint8_t const * p_widths,
+                                     uint32_t threshold,
+                                     uint32_t * p_char_index)
+{
+    uint32_t       result = CODE39_INVALID;
+    uint32_t const gap1   = (uint32_t) p_widths[CODE39_GAP1_IDX]; /* cast */
+    uint32_t const gap2   = (uint32_t) p_widths[CODE39_GAP2_IDX]; /* cast */
+
+    if ((gap1 < threshold) && (gap2 < threshold))
+    {
+        uint16_t const pat0 = code39_build_pattern(
+            p_widths, CODE39_CHAR0_START, threshold, threshold);
+        uint16_t const pat1 = code39_build_pattern(
+            p_widths, CODE39_CHAR1_START, threshold, threshold);
+        uint16_t const pat2 = code39_build_pattern(
+            p_widths, CODE39_CHAR2_START, threshold, threshold);
+        uint32_t const ch0  = code39_lookup_pattern(pat0);
+        uint32_t const ch1  = code39_lookup_pattern(pat1);
+        uint32_t const ch2  = code39_lookup_pattern(pat2);
+
+        if ((CODE39_STAR == ch0) && (CODE39_STAR == ch2) &&
+            (ch1 < APP_C39_CHAR_COUNT))
+        {
+            *p_char_index = ch1;
+            result        = CODE39_OK;
+        }
+        else
+        {
+            /* Delimiters or data character did not match. */
+        }
+    }
+    else
+    {
+        /* Inter-character gap was wide: invalid framing. */
+    }
+
+    return result;
+}
+
+/**
+ * code39_try_both
+ * @brief   Attempts forward decode, then reversed element order if needed.
+ * @param   p_widths      Array of 29 element widths.
+ * @param   threshold     Wide element threshold.
+ * @param   p_char_index  Output data character index (0..42) if valid.
+ * @return  CODE39_OK or CODE39_INVALID.
+ * @context barcode_task
+ */
+static uint32_t code39_try_both(uint8_t const * p_widths,
+                                uint32_t threshold,
+                                uint32_t * p_char_index)
+{
+    uint32_t result = code39_try_direction(p_widths, threshold, p_char_index);
+
+    if (CODE39_OK != result)
+    {
+        uint8_t  rev[BAR_ELEMENTS] = {0u};
+        uint32_t idx               = 0u;
+
+        for (idx = 0u; idx < BAR_ELEMENTS; idx++)
+        {
+            rev[idx] = p_widths[(BAR_ELEMENTS - 1u) - idx];
+        }
+        result = code39_try_direction(rev, threshold, p_char_index);
+    }
+    else
+    {
+        /* Forward direction matched. */
+    }
+
+    return result;
+}
+
+/**
+ * code39_decode_char_split
+ * @brief   Decodes one 9-element character using separate thresholds for
+ *          its 5 bars (even offsets) and 4 spaces (odd offsets).
+ * @param   p_widths     Array of 29 element widths.
+ * @param   start_idx    Character start offset (0, 10, or 20).
+ * @param   p_char_out   Output character index (0..43).
+ * @param   p_thr_space  Output space threshold for inter-char gap check.
+ * @return  CODE39_OK or CODE39_INVALID.
+ * @context barcode_task
+ */
+static uint32_t code39_decode_char_split(uint8_t const * p_widths,
+                                         uint32_t start_idx,
+                                         uint32_t * p_char_out,
+                                         uint32_t * p_thr_space)
+{
+    uint8_t  raw_b[CODE39_BARS_PER_CHAR]     = {0u};
+    uint8_t  raw_s[CODE39_SPACES_PER_CHAR]   = {0u};
+    uint8_t  bars[CODE39_BARS_PER_CHAR]      = {0u};
+    uint8_t  spaces[CODE39_SPACES_PER_CHAR]  = {0u};
+    uint32_t idx                             = 0u;
+    uint32_t result                          = CODE39_INVALID;
+
+    for (idx = 0u; idx < CODE39_BARS_PER_CHAR; idx++)
+    {
+        raw_b[idx] = p_widths[start_idx + (idx * 2u)];
+    }
+    for (idx = 0u; idx < CODE39_SPACES_PER_CHAR; idx++)
+    {
+        raw_s[idx] = p_widths[start_idx + (idx * 2u) + 1u];
+    }
+
+    code39_sort_n(raw_b, bars, CODE39_BARS_PER_CHAR);
+    code39_sort_n(raw_s, spaces, CODE39_SPACES_PER_CHAR);
+
+    if ((bars[0] > 0u) && (spaces[0] > 0u))
+    {
+        /* casts: widen 8-bit element widths to uint32_t */
+        uint32_t const b_nar = (uint32_t) bars[CODE39_BAR_NARROW_LAST];
+        uint32_t const b_wid = (uint32_t) bars[CODE39_BAR_WIDE_FIRST];
+        uint32_t const s_nar = (uint32_t) spaces[CODE39_SP_NARROW_LAST];
+        uint32_t const s_wid = (uint32_t) spaces[CODE39_SP_WIDE_FIRST];
+        uint32_t       thr_b = 0u;
+        uint32_t       thr_s = 0u;
+
+        if (((b_wid * CODE39_RATIO_SCALE) >=
+             (b_nar * BAR_WIDE_RATIO_X10_MIN)) &&
+            ((s_wid * CODE39_RATIO_SCALE) >=
+             (s_nar * BAR_WIDE_RATIO_X10_MIN)))
+        {
+            thr_b = ((b_nar + b_wid) + 1u) / 2u;
+            thr_s = ((s_nar + s_wid) + 1u) / 2u;
+        }
+        else if ((((uint32_t) spaces[CODE39_SP_SPEC_WIDE] *
+                   CODE39_RATIO_SCALE) >=
+                  ((uint32_t) spaces[0] * BAR_WIDE_RATIO_X10_MIN)) &&
+                 (((uint32_t) bars[CODE39_BAR_MAX_IDX] * CODE39_RATIO_SCALE) <
+                  ((uint32_t) bars[0] * BAR_WIDE_RATIO_X10_MIN)))
+        {
+            /* Special chars ($, /, +, %): 5 narrow bars + 3 wide spaces. */
+            thr_b = (uint32_t) bars[CODE39_BAR_MAX_IDX] + 1u; /* cast: widen */
+            thr_s = (((uint32_t) spaces[0] +
+                      (uint32_t) spaces[CODE39_SP_SPEC_WIDE]) + 1u) / 2u;
+        }
+        else
+        {
+            /* Neither standard (2B+1S) nor special (0B+3S) ratio met. */
+        }
+
+        if ((thr_b > 0u) && (thr_s > 0u))
+        {
+            uint16_t const pat =
+                code39_build_pattern(p_widths, start_idx, thr_b, thr_s);
+            uint32_t const ch  = code39_lookup_pattern(pat);
+
+            if (CODE39_NOT_FOUND != ch)
+            {
+                *p_char_out  = ch;
+                *p_thr_space = thr_s;
+                result       = CODE39_OK;
+            }
+            else
+            {
+                /* Pattern did not match any Code 39 character. */
+            }
+        }
+        else
+        {
+            /* Ratios below minimum threshold. */
+        }
+    }
+    else
+    {
+        /* Zero-width element is invalid. */
+    }
+
+    return result;
+}
+
+/**
+ * code39_try_split_dir
+ * @brief   Decodes a 29-element frame in one direction using separate
+ *          per-character bar and space thresholds.
+ * @param   p_widths      Array of 29 element widths.
+ * @param   p_char_index  Output data character index (0..42) if valid.
+ * @return  CODE39_OK or CODE39_INVALID.
+ * @context barcode_task
+ */
+static uint32_t code39_try_split_dir(uint8_t const * p_widths,
+                                     uint32_t * p_char_index)
+{
+    uint32_t result = CODE39_INVALID;
+    uint32_t ch0    = CODE39_NOT_FOUND;
+    uint32_t ch1    = CODE39_NOT_FOUND;
+    uint32_t ch2    = CODE39_NOT_FOUND;
+    uint32_t thr_s0 = 0u;
+    uint32_t thr_s1 = 0u;
+    uint32_t thr_s2 = 0u;
+
+    if ((CODE39_OK == code39_decode_char_split(
+            p_widths, CODE39_CHAR0_START, &ch0, &thr_s0)) &&
+        (CODE39_OK == code39_decode_char_split(
+            p_widths, CODE39_CHAR1_START, &ch1, &thr_s1)) &&
+        (CODE39_OK == code39_decode_char_split(
+            p_widths, CODE39_CHAR2_START, &ch2, &thr_s2)))
+    {
+        uint32_t const gap1 = (uint32_t) p_widths[CODE39_GAP1_IDX]; /* cast */
+        uint32_t const gap2 = (uint32_t) p_widths[CODE39_GAP2_IDX]; /* cast */
+
+        if ((CODE39_STAR == ch0) && (CODE39_STAR == ch2) &&
+            (ch1 < APP_C39_CHAR_COUNT) &&
+            (gap1 < thr_s0) && (gap1 < thr_s1) &&
+            (gap2 < thr_s1) && (gap2 < thr_s2))
+        {
+            *p_char_index = ch1;
+            result        = CODE39_OK;
+        }
+        else
+        {
+            /* Delimiters, data char range, or inter-char gaps invalid. */
+        }
+    }
+    else
+    {
+        /* At least one character failed split bar/space decode. */
+    }
+
+    return result;
+}
+
+/**
+ * code39_try_split_both
+ * @brief   Attempts split bar/space decode in forward then reverse order.
+ * @param   p_widths      Array of 29 element widths.
+ * @param   p_char_index  Output data character index (0..42) if valid.
+ * @return  CODE39_OK or CODE39_INVALID.
+ * @context barcode_task
+ */
+static uint32_t code39_try_split_both(uint8_t const * p_widths,
+                                      uint32_t * p_char_index)
+{
+    uint32_t result = code39_try_split_dir(p_widths, p_char_index);
+
+    if (CODE39_OK != result)
+    {
+        uint8_t  rev[BAR_ELEMENTS] = {0u};
+        uint32_t idx               = 0u;
+
+        for (idx = 0u; idx < BAR_ELEMENTS; idx++)
+        {
+            rev[idx] = p_widths[(BAR_ELEMENTS - 1u) - idx];
+        }
+        result = code39_try_split_dir(rev, p_char_index);
+    }
+    else
+    {
+        /* Forward split decode succeeded. */
+    }
+
+    return result;
+}
+
+/*** end of file ***/

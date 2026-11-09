@@ -306,7 +306,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
     /* Provisional active-high two-sensor steering; tune on the actual track. */
-    command.steering_permille = (in->left >= 2048u && in->centre < 2048u) ? -350 : 0;
+    command.steering_permille =
+        (in->left >= B3_LINE_LEFT_THRESHOLD &&
+         in->centre < B3_LINE_CENTRE_THRESHOLD) ? -350 : 0;
     /* Preserve B2's outer-wheel <=5000 cps constraint at SPEED 100. */
     command.target_speed_cps = speed * 1000 / (1000 - command.steering_permille);
     if (in->hump) command.target_speed_cps /= 2;

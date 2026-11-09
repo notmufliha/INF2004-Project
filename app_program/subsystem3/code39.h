@@ -1,15 +1,24 @@
-#ifndef B3_CODE39_H
-#define B3_CODE39_H
+/**
+ * @file    code39.h
+ * @brief   Pure Code 39 barcode decoder (forward and reverse, both scales).
+ * @owner   Buddy 3 (line, barcode)
+ * @kind    algo
+ */
 
-#include <stdbool.h>
+#ifndef CODE39_H
+#define CODE39_H
+
 #include <stdint.h>
+#include <stdbool.h>
 
-#define CODE39_MAX_PAYLOAD (8U)
-#define CODE39_MAX_ELEMENTS ((10U * (CODE39_MAX_PAYLOAD + 2U)) - 1U)
-#define CODE39_MIN_ELEMENTS (29U)
+#define CODE39_OK       (0u)
+#define CODE39_INVALID  (1u)
+#define CODE39_STAR     (43u)   /* index of '*' in the pattern table */
 
-bool code39_pattern_for(char symbol, uint16_t *pattern);
-bool code39_decode(const uint32_t *widths, uint32_t count, char *out,
-		   uint32_t out_size, bool *reversed);
+extern uint32_t code39_decode(uint8_t const * p_widths, uint32_t count,
+                              uint32_t * p_char_index);
+extern uint32_t code39_char_ascii(uint32_t char_index);  /* for logs/tests */
 
-#endif
+#endif /* CODE39_H */
+
+/*** end of file ***/
