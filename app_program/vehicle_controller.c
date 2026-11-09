@@ -144,6 +144,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
 {
     INT speed;
     motion_command_t command = {0};
+    bool line_detected;
     if (!c->running || c->estop || c->mode == MODE_TEST) {
         stop_motion(c);
         return;
@@ -164,14 +165,6 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         safe_stop(c);
         return;
     }
-    if (c->navigation == 0u &&
-        (!(in->line_flags & LINE_F_DETECTED) || (in->line_flags & LINE_F_LOST))) {
-        if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
-        stop_motion(c);
-        set_state(c, ROBOT_LINE_RECOVERY);
-        if (in->now_ms - c->recovery_ms >= VC_RECOVERY_MS) safe_stop(c);
-        return;
-    }
     if (!in->clearance || (in->faults & FAULT_NO_ECHO)) {
         if (c->navigation != 0u) {
             /* Our navigation STOP revokes clearance. Wait for a fresh B5
@@ -187,6 +180,61 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
+    line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
+        ((in->line_flags & LINE_F_LOST) == 0u);
+    if (c->navigation == 0u && line_detected) {
+        INT steering = line_follow_steering(in);
+
+        if (steering > 0) {
+            c->last_line_search_direction = 1;
+        } else if (steering < 0) {
+            c->last_line_search_direction = -1;
+        } else if (B3_LINE_LEFT_ACTIVE(in->left) &&
+                   !B3_LINE_CENTRE_ACTIVE(in->centre)) {
+            c->last_line_search_direction = 1;
+        } else if (B3_LINE_CENTRE_ACTIVE(in->centre) &&
+                   !B3_LINE_LEFT_ACTIVE(in->left)) {
+            c->last_line_search_direction = -1;
+        }
+    }
+    if (c->navigation == 0u && !line_detected) {
+        uint32_t recovery_elapsed;
+        INT direction;
+
+        if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
+        recovery_elapsed = in->now_ms - c->recovery_ms;
+        set_state(c, ROBOT_LINE_RECOVERY);
+        if (recovery_elapsed >= VC_RECOVERY_MS) {
+            safe_stop(c);
+            return;
+        }
+
+        direction = c->last_line_search_direction;
+        if (direction == 0) direction = 1;
+        if (((recovery_elapsed / VC_LINE_SEARCH_SWITCH_MS) & 1u) != 0u) {
+            direction = -direction;
+        }
+        if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) {
+            return;
+        }
+        command.type = MOTION_CMD_DRIVE;
+        command.direction = MOTION_DIR_FORWARD;
+        command.steering_permille = direction * VC_LINE_SEARCH_STEER;
+        command.target_speed_cps = speed / 2;
+        if (command.target_speed_cps == 0) command.target_speed_cps = 1;
+        command.target_speed_cps = command.target_speed_cps * 1000 /
+            (1000 + VC_LINE_SEARCH_STEER);
+        command.safety_generation = in->safety_generation;
+        if (motion_send_command(&command) == E_OK) {
+            c->stopped = false;
+            c->drive_sent = true;
+            c->last_drive_ms = in->now_ms;
+        } else if (!c->drive_sent ||
+                   in->now_ms - c->last_drive_ms >= 60u) {
+            safe_stop(c);
+        }
+        return;
+    }
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
         nav >= B3_NAV_LEFT && nav <= B3_NAV_UTURN) {
         c->navigation = nav;

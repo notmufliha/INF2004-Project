@@ -10,6 +10,8 @@
 #define VC_IMU_MAX_AGE_MS 1500u /* B4 publishes a quiet snapshot every second. */
 #define VC_MOTION_MAX_AGE_MS 100u
 #define VC_RECOVERY_MS 3000u
+#define VC_LINE_SEARCH_SWITCH_MS 600u
+#define VC_LINE_SEARCH_STEER 250
 
 typedef struct {
     uint32_t now_ms, safety_generation;
@@ -26,6 +28,7 @@ typedef struct {
     UINT speed_percent;
     bool running, paused, estop, stopped, drive_sent;
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
+    INT last_line_search_direction;
     UB navigation;
 } VEHICLE_CONTROLLER;
 
