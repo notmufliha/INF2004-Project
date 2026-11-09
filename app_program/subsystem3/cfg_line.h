@@ -15,13 +15,13 @@
 #define LINE_BLACK_IS_HIGH       (true) /* MEASURE: A1 */
 #endif
 #ifndef B3_LINE_LEFT_THRESHOLD
-#define B3_LINE_LEFT_THRESHOLD   (1000u) /* GP26 black is active-low */
+#define B3_LINE_LEFT_THRESHOLD   (3000u) /* GP26 black is active-high */
 #endif
 #ifndef B3_LINE_CENTRE_THRESHOLD
-#define B3_LINE_CENTRE_THRESHOLD (2100u) /* GP27 black is active-high */
+#define B3_LINE_CENTRE_THRESHOLD (3000u) /* GP27 black is active-high */
 #endif
 #define B3_LINE_LEFT_ACTIVE(raw) \
-	((uint16_t)(raw) <= B3_LINE_LEFT_THRESHOLD)
+	((uint16_t)(raw) >= B3_LINE_LEFT_THRESHOLD)
 #define B3_LINE_CENTRE_ACTIVE(raw) \
 	((uint16_t)(raw) >= B3_LINE_CENTRE_THRESHOLD)
 #define APP_SIDE_LEFT            (0u)

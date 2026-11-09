@@ -2,10 +2,9 @@
 
 - Reads ADC channel 0 (GP26, left) and channel 1 (GP27, centre) nominally
   every 20 ms. Both raw readings are published for diagnosis.
-- Uses independent thresholds and polarities from `cfg_line.h`: GP26/left is
-  active-low at or below `B3_LINE_LEFT_THRESHOLD` (default 1000), while
-  GP27/centre is active-high at or above `B3_LINE_CENTRE_THRESHOLD`
-  (default 2100). It reports
+- Uses independent thresholds from `cfg_line.h`: both GP26/left and
+  GP27/centre are active-high, with black detected at or above their
+  respective thresholds (both default 3000). It reports
   `DETECTED` if either sensor is active, `LOST` if neither is active, and
   `JUNCTION` if both are active. These are provisional thresholds based on
   current bench readings; recalibrate if readings change on the track.
@@ -43,9 +42,10 @@
    `b3_init()`, then calls `b3_start()` from core 0 after B4 readiness. The
    separate sample `subsystem3_init()` / `subsystem3_start()` lifecycle remains
    for the teaching demo and does not start this B3 module.
-6. Test ADC polarity and thresholds with the actual line sensors and floor.
-   The initial thresholds are 1000 for the active-low left sensor and 2100
-   for the active-high centre sensor; they are not validated track settings.
+6. Test ADC thresholds with the actual line sensors and floor. The initial
+   thresholds are 3000 for both sensors, based on reported black readings of
+   3500-3999 and previously observed white readings below 1700. Recheck both
+   sensors on the installed track and adjust if their white ranges differ.
    For stationary line-sensor testing, `ROBOT_ENABLE_ULTRASONIC` in
    `robot_config.h` can be set to 0; this skips the ultrasonic/servo task.
    B2's clearance interlock remains fail-closed, so this must not be used to

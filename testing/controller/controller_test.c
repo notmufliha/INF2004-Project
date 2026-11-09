@@ -114,7 +114,7 @@ static VEHICLE_CONTROLLER fresh(void)
     input.motion_valid = true;
     input.motion.physically_stopped = true;
     input.line_flags = LINE_F_DETECTED;
-    input.left = 425u; input.centre = 1000u;
+    input.left = 3500u; input.centre = 1000u;
     input.safety_generation = generation;
     vehicle_controller_init(&c);
     for (i = 0U; i < 4U; ++i) {
@@ -164,12 +164,14 @@ int main(void)
     assert(!c.running && c.mode == MODE_TEST);
     command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
     step(&c, 20u, 1u); assert(c.navigation == 0u);
-    command(&c, RCMD_SPEED, 100u); input.left = 425u; input.centre = 1000u;
+    command(&c, RCMD_SPEED, 100u); input.left = 3500u; input.centre = 1000u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille < 0 && sent.target_speed_cps * 1350 <= 5000000);
     input.left = 1600u; input.centre = 3900u;
     step(&c, 20u, 0u);
     assert(sent.steering_permille == 0);
+    assert(B3_LINE_LEFT_ACTIVE(3500u) && B3_LINE_CENTRE_ACTIVE(3900u));
+    assert(!B3_LINE_LEFT_ACTIVE(1600u) && !B3_LINE_CENTRE_ACTIVE(380u));
     input.hump = true; step(&c, 20u, 0u);
     assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
     command(&c, RCMD_SPEED, 0u); step(&c, 20u, 0u);
