@@ -73,7 +73,8 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
 {
     switch (cmd->type) {
     case RCMD_START:
-        if (c->mode != MODE_TEST && c->barcode_route_mask == 0x0FU) {
+        if (c->mode == MODE_LINE_ONLY ||
+            (c->mode == MODE_AUTO && c->barcode_route_mask == 0x0FU)) {
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
@@ -305,8 +306,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
-    /* Provisional active-high two-sensor steering; tune on the actual track. */
-    command.steering_permille = (in->left >= 2048u && in->centre < 2048u) ? -350 : 0;
+    /* A left-only line reading steers toward the line; centre-only is straight. */
+    command.steering_permille =
+        (B3_LINE_LEFT_ACTIVE(in->left) &&
+         !B3_LINE_CENTRE_ACTIVE(in->centre)) ? -350 : 0;
     /* Preserve B2's outer-wheel <=5000 cps constraint at SPEED 100. */
     command.target_speed_cps = speed * 1000 / (1000 - command.steering_permille);
     if (in->hump) command.target_speed_cps /= 2;

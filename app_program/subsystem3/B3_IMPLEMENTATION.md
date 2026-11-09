@@ -9,10 +9,11 @@ is intentionally left intact for teaching-demo mode. Robot-mode startup in
 
 - Reads ADC channel 0 (GP26, left) and channel 1 (GP27, centre) nominally
   every 20 ms. Both raw readings are published for diagnosis.
-- Treats readings at or above `B3_LINE_THRESHOLD` as line-active. It reports
+- Uses independent thresholds and polarities: GP26/left is active-low at or
+  below 1000, while GP27/centre is active-high at or above 2100. It reports
   `DETECTED` if either sensor is active, `LOST` if neither is active, and
-  `JUNCTION` if both are active. The threshold is provisional and may need
-  per-sensor calibration against the installed sensors and track.
+  `JUNCTION` if both are active. These are provisional thresholds based on
+  current bench readings; recalibrate if readings change on the track.
 - Reads GP28 as the digital barcode input and registers both-edge GPIO
   interrupts through the shared `app_gpio_irq_dispatch()` subscriber.
 - The GP28 callback only timestamps and records edge levels in a bounded
@@ -48,13 +49,14 @@ is intentionally left intact for teaching-demo mode. Robot-mode startup in
    separate sample `subsystem3_init()` / `subsystem3_start()` lifecycle remains
    for the teaching demo and does not start this B3 module.
 6. Test ADC polarity and thresholds with the actual line sensors and floor.
-   The provisional active-high threshold is 2048; it is not a validated
-   track setting.
+   The initial thresholds are 1000 for the active-low left sensor and 2100
+   for the active-high centre sensor; they are not validated track settings.
    For stationary line-sensor testing, `ROBOT_ENABLE_ULTRASONIC` in
    `robot_config.h` can be set to 0; this skips the ultrasonic/servo task.
    B2's clearance interlock remains fail-closed, so this must not be used to
-   drive the robot. Re-enable the ultrasonic task and verify clearance before
-   any movement test.
+   drive the robot. Re-enable and verify the ultrasonic task before any
+   movement test. For a line-only run, select `MODE LINE` so barcode routes
+   are not required; start at low speed only after clearance is available.
 
 ## Code 39 decoding and route mapping
 
@@ -72,11 +74,13 @@ MAP C LEFT
 MAP D RIGHT
 ```
 
-Send one command per letter; all four routes (FORWARD, UTURN, LEFT, RIGHT)
-must be assigned to distinct letters before START is accepted. `MAP_RESET`
-clears the current table. The seven-bit MAP argument stores the letter index
-in its upper five bits and route code in its lower two bits. A barcode with
-no configured route causes a safe stop at the next junction.
+For autonomous barcode routing, send one command per letter; all four routes
+(FORWARD, UTURN, LEFT, RIGHT) must be assigned to distinct letters before
+`MODE AUTO` START is accepted. `MODE LINE` does not require mappings and
+ignores barcode navigation. `MAP_RESET` clears the current table. The seven-bit
+MAP argument stores the letter index in its upper five bits and route code in
+its lower two bits. A barcode with no configured route causes a safe stop at
+the next junction in AUTO mode.
 
 The provided dimensions are an 18 mm line, about 20 mm gap between line and
 barcode, and about 141 mm barcode length. They do not specify sensor mounting,
