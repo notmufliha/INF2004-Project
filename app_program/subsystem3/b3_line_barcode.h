@@ -16,6 +16,14 @@
 #define B3_LINE_F_DETECTED (0x01U)
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)
+#define B3_LINE_ACTIVE_MIN (350U)
+#define B3_LINE_ACTIVE_MAX (3999U)
+#define B3_LINE_LEFT_ACTIVE(raw) \
+	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
+	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
+#define B3_LINE_CENTRE_ACTIVE(raw) \
+	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
+	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
 
 typedef enum {
 	B3_BARCODE_NONE = 0,

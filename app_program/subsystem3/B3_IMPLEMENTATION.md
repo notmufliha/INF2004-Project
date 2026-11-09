@@ -8,9 +8,9 @@ the Buddy 3 tasks yet.
 ## What the module does
 
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
-- Treats readings at or below `B3_LINE_THRESHOLD` as line-active. It reports
-  `DETECTED` if either sensor is active, `LOST` if neither is active, and
-  `JUNCTION` if both are active.
+- Treats readings from 350 through 3999 on either GP26/left or GP27/centre as
+  line-active. It reports `DETECTED` if either sensor is active, `LOST` if
+  neither is active, and `JUNCTION` if both are active.
 - Reads GP28 as the digital barcode input and registers both-edge GPIO
   interrupts through the shared `app_gpio_irq_dispatch()` subscriber.
 - The GP28 callback only timestamps and records edge levels in a bounded
@@ -44,8 +44,9 @@ the Buddy 3 tasks yet.
    its telemetry mutex and event queue exist; then call `b3_init()` before
    starting tasks and `b3_start()` from core 0. The sample `subsystem3_init()`
    and `subsystem3_start()` lifecycle currently do not call either function.
-5. Test ADC polarity and thresholds with the actual line sensors and floor.
-   The provisional threshold is 2048; it is not a validated track setting.
+5. Test ADC readings with the actual line sensors and floor. Readings below
+   350 or above 3999 count as inactive; verify that white-surface readings
+   stay outside the active range before relying on line-loss detection.
 
 ## Barcode format is not yet confirmed
 
