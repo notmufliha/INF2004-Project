@@ -18,8 +18,19 @@
  * The slowdown follows the hardest recent steering and relaxes by
  * VC_CURVE_DECAY_PER_TICK each 20 ms tick, so the car stays slow through
  * the whole curve instead of speeding up between corrections. */
-#define VC_CURVE_MIN_PERMILLE 500
+#define VC_CURVE_MIN_PERMILLE 600
 #define VC_CURVE_DECAY_PER_TICK 40
+/* Smoothness: steering may change by at most this much per 20 ms tick
+ * (0 to full 800 in about 0.1 s), and speed may rise by at most
+ * VC_SPEED_RISE_PER_TICK counts/s per tick.  Slowing down is immediate. */
+#define VC_STEER_SLEW_PER_TICK 150
+#define VC_SPEED_RISE_PER_TICK 100
+/* CALIBRATE: slowest wheel speed (counts/s) the loaded motors hold without
+ * stalling; about 25 mm/s.  A curve's inner wheel is never asked to run
+ * between 0 and this: a little below it is raised to it, far below it is
+ * set to 0 so the car pivots around that wheel (a wheel commanded to 0 is
+ * never reported as stalled). */
+#define VC_MIN_WHEEL_CPS 300
 #define VC_JUNCTION_RELEASE_SAMPLES 3u
 
 typedef struct {
@@ -39,6 +50,7 @@ typedef struct {
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
     INT last_line_search_direction;
     INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
+    INT last_steer, last_speed; /* last DRIVE sent, for smoothing */
     UINT junction_enter_samples, junction_clear_samples;
     bool junction_latched;
     UB navigation, pending_navigation;

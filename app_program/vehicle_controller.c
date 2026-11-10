@@ -95,6 +95,36 @@ static INT line_search_direction(uint32_t elapsed_ms, INT first_direction)
     return direction;
 }
 
+/* Convert the requested curve into wheel speeds the motors can hold.
+ * B2 drives left = v(1+s), right = v(1-s) with s in permille. */
+static void apply_wheel_minimum(motion_command_t *command)
+{
+    INT steering = command->steering_permille;
+    INT magnitude = steering < 0 ? -steering : steering;
+    int64_t outer = (int64_t)command->target_speed_cps * (1000 + magnitude);
+    int64_t inner = (int64_t)command->target_speed_cps * (1000 - magnitude);
+
+    if (magnitude == 0) {
+        /* Straight: both wheels at least the sustainable minimum. */
+        if (command->target_speed_cps < VC_MIN_WHEEL_CPS) {
+            command->target_speed_cps = VC_MIN_WHEEL_CPS;
+        }
+        return;
+    }
+    if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 1000) return;
+    outer /= 1000;
+    if (outer < VC_MIN_WHEEL_CPS) outer = VC_MIN_WHEEL_CPS;
+    if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 500) {
+        inner = VC_MIN_WHEEL_CPS;      /* raise to the sustainable minimum */
+    } else {
+        inner = 0;                     /* pivot around the inner wheel */
+    }
+    if (outer <= inner) return;
+    command->target_speed_cps = (INT)((outer + inner) / 2);
+    magnitude = (INT)((outer - inner) * 1000 / (outer + inner));
+    command->steering_permille = steering < 0 ? -magnitude : magnitude;
+}
+
 static void update_junction_state(VEHICLE_CONTROLLER *c, UB line_flags)
 {
     bool junction = (line_flags & LINE_F_JUNCTION) != 0u &&
@@ -300,6 +330,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (command.target_speed_cps == 0) command.target_speed_cps = 1;
         command.target_speed_cps = command.target_speed_cps * 1000 /
             (1000 + VC_LINE_SEARCH_STEER);
+        apply_wheel_minimum(&command);
         command.safety_generation = in->safety_generation;
         if (motion_send_command(&command) == E_OK) {
             c->stopped = false;
@@ -354,6 +385,16 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
      * their own, so a junction is still crossed straight, while a curve is
      * followed even when both sensors see the line. */
     command.steering_permille = line_follow_steering(in);
+    /* Smooth steering changes so the car does not jerk between corrections. */
+    if (c->drive_sent) {
+        if (command.steering_permille > c->last_steer + VC_STEER_SLEW_PER_TICK) {
+            command.steering_permille = c->last_steer + VC_STEER_SLEW_PER_TICK;
+        } else if (command.steering_permille <
+                   c->last_steer - VC_STEER_SLEW_PER_TICK) {
+            command.steering_permille = c->last_steer - VC_STEER_SLEW_PER_TICK;
+        }
+    }
+    c->last_steer = command.steering_permille;
     {
         INT magnitude = command.steering_permille < 0 ?
             -command.steering_permille : command.steering_permille;
@@ -381,6 +422,14 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         command.target_speed_cps = speed;
     }
     if (command.target_speed_cps < 1) command.target_speed_cps = 1;
+    /* Gentle acceleration, also from standstill; slowing applies at once. */
+    {
+        INT previous = c->drive_sent ? c->last_speed : 0;
+        if (command.target_speed_cps > previous + VC_SPEED_RISE_PER_TICK) {
+            command.target_speed_cps = previous + VC_SPEED_RISE_PER_TICK;
+        }
+    }
+    c->last_speed = command.target_speed_cps;
     /* Preserve B2's outer-wheel <=5000 cps constraint in either direction.
      * Only scale when the outer wheel would actually exceed it, so low
      * speeds keep enough inner-wheel speed to avoid B2 stall detection. */
@@ -393,6 +442,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
     }
     if (in->hump) command.target_speed_cps /= 2;
+    apply_wheel_minimum(&command);
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {
         c->stopped = false;
