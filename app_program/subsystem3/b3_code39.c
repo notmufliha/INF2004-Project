@@ -8,6 +8,7 @@ static void reset_candidate(B3_CODE39_DECODER *decoder)
     decoder->in_barcode = 0U;
     decoder->payload_valid = 0U;
     decoder->payload = '\0';
+    decoder->reversed = 0U;
 }
 
 void b3_code39_reset(B3_CODE39_DECODER *decoder)
@@ -63,6 +64,11 @@ static char decode_character(const B3_CODE39_DECODER *decoder,
     if (wide_mask == 0x094U) return '*';
     if (wide_mask == 0x109U) return 'A';
     if (wide_mask == 0x0D0U) return 'Z';
+    /* The same characters crossed from the other end of the strip: the
+     * nine elements arrive in reverse order (bit-reversed masks). */
+    if (wide_mask == 0x052U) return '#'; /* '*' backwards */
+    if (wide_mask == 0x121U) return 'a'; /* 'A' backwards */
+    if (wide_mask == 0x016U) return 'z'; /* 'Z' backwards */
     return '?';
 }
 
@@ -104,11 +110,14 @@ static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
         decoder->widths_us[index] = width_us;
         decoder->levels[index] = level;
         decoder->run_count++;
-        if (decoder->run_count == 9U &&
-            decode_character(decoder, 0U, &narrow_max_us) == '*') {
-            decoder->in_barcode = 1U;
-            decoder->payload_valid = 0U;
-            decoder->payload = '\0';
+        if (decoder->run_count == 9U) {
+            character = decode_character(decoder, 0U, &narrow_max_us);
+            if (character == '*' || character == '#') {
+                decoder->in_barcode = 1U;
+                decoder->payload_valid = 0U;
+                decoder->payload = '\0';
+                decoder->reversed = character == '#' ? 1U : 0U;
+            }
         }
         return;
     }
@@ -126,8 +135,13 @@ static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
         character = decode_character(decoder, 10U, &narrow_max_us);
         if (!valid_intercharacter_gap(decoder, 9U, 10U, narrow_max_us)) {
             decoder->payload_valid = 0U;
-        } else if (character == 'A' || character == 'Z') {
+        } else if (decoder->reversed == 0U &&
+                   (character == 'A' || character == 'Z')) {
             decoder->payload = character;
+            decoder->payload_valid = 1U;
+        } else if (decoder->reversed != 0U &&
+                   (character == 'a' || character == 'z')) {
+            decoder->payload = character == 'a' ? 'A' : 'Z';
             decoder->payload_valid = 1U;
         } else {
             decoder->payload_valid = 0U;
@@ -138,7 +152,8 @@ static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
     if (decoder->run_count == B3_CODE39_RUN_COUNT) {
         character = decode_character(decoder, 20U, &narrow_max_us);
         if (valid_intercharacter_gap(decoder, 19U, 20U, narrow_max_us) &&
-            character == '*' && decoder->payload_valid != 0U) {
+            character == (decoder->reversed != 0U ? '#' : '*') &&
+            decoder->payload_valid != 0U) {
             *symbol = decoder->payload;
             *decoded = true;
         }
