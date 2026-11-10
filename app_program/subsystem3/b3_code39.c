@@ -1,5 +1,7 @@
 #include "b3_code39.h"
 
+#include <stddef.h>
+
 static void reset_candidate(B3_CODE39_DECODER *decoder)
 {
     decoder->run_count = 0U;
