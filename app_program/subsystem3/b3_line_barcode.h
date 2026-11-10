@@ -35,14 +35,20 @@
  * sensor (ADC "centre"), 1000 = under its RIGHT sensor (ADC "left"),
  * B3_LINE_POS_CENTRE = centred.  Off the line it holds the last side. */
 #define B3_LINE_POS_CENTRE (500)
-/* PD gains (Pololu 3pi pattern: P on error = position - centre, D on its
- * change per 20 ms tick, no deadband), in tenths of permille per count:
- * steering = (KP * error + KD * (error - last_error)) / 10.
- * KP 16: the line fully under one sensor (error 500) gives full steer.
- * CALIBRATE on the course: raise KP if curves are missed, raise KD if the
- * car weaves (overshoots) on straights. */
-#define B3_LINE_KP_X10 (16)
-#define B3_LINE_KD_X10 (10)
+/* Steering for THIS robot's sensor layout: the line is wider than the
+ * sensor gap, so both sensors read black when centred and the only
+ * steering signal appears when one of them reaches a line edge.  The car
+ * then has just the sensor gap left before the line is lost, so it must
+ * correct hard and at once.  Steering is the team's original, tested
+ * mapping on the normalised difference (right - left): a 40-count deadband,
+ * rising to full steer at a 400-count difference (one sensor ~40% onto the
+ * white).  The Pololu weighted position, 500 * (R - L) / (R + L) for two
+ * sensors, gave only ~270 permille with one sensor half off the line,
+ * against 800 here: the car ran straight off at curves.
+ * CALIBRATE on the course: lower FULL_SCALE (stronger) if curves are
+ * missed, raise it (gentler) if the car weaves on straights. */
+#define B3_LINE_STEER_DEADBAND (40)
+#define B3_LINE_STEER_ERROR_FULL_SCALE (400)
 /* 800 permille: inner wheel at 0.2x, outer at 1.8x (before the 5000 cps
  * outer-wheel limit), so sharp curves can be followed. */
 #define B3_LINE_STEER_MAX (800)

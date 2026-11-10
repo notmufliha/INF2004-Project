@@ -79,13 +79,26 @@ static INT line_position(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
  * positive = line to the right = positive B2 steering (turn right). */
 static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
 {
-    INT error = line_position(c, in) - B3_LINE_POS_CENTRE;
-    INT derivative = c->drive_sent ? error - c->last_error : 0;
-    INT steering = (B3_LINE_KP_X10 * error + B3_LINE_KD_X10 * derivative) / 10;
+    /* ADC "left" is the robot's RIGHT sensor, "centre" its LEFT one.
+     * Positive difference: the left sensor is coming off the line on its
+     * side, so the line lies to the right: steer right (positive). */
+    INT error = (INT)in->left - (INT)in->centre;
+    INT magnitude = error < 0 ? -error : error;
+    INT steering = 0;
 
+    (void)line_position(c, in); /* keep the last-seen side for recovery */
+    if (magnitude > B3_LINE_STEER_DEADBAND) {
+        magnitude -= B3_LINE_STEER_DEADBAND;
+        if (magnitude > B3_LINE_STEER_ERROR_FULL_SCALE -
+                        B3_LINE_STEER_DEADBAND) {
+            magnitude = B3_LINE_STEER_ERROR_FULL_SCALE -
+                        B3_LINE_STEER_DEADBAND;
+        }
+        steering = magnitude * B3_LINE_STEER_MAX /
+            (B3_LINE_STEER_ERROR_FULL_SCALE - B3_LINE_STEER_DEADBAND);
+        if (error < 0) steering = -steering;
+    }
     c->last_error = error;
-    if (steering > B3_LINE_STEER_MAX) steering = B3_LINE_STEER_MAX;
-    if (steering < -B3_LINE_STEER_MAX) steering = -B3_LINE_STEER_MAX;
     return steering;
 }
 
@@ -138,7 +151,11 @@ static void apply_wheel_minimum(motion_command_t *command)
     } else {
         inner = 0;                     /* pivot around the inner wheel */
     }
-    if (outer <= inner) return;
+    if (outer <= inner) {
+        /* Both wheels would sit at the minimum and the turn would be lost
+         * (or the inner wheel left in the stall zone): pivot instead. */
+        inner = 0;
+    }
     command->target_speed_cps = (INT)((outer + inner) / 2);
     magnitude = (INT)((outer - inner) * 1000 / (outer + inner));
     command->steering_permille = steering < 0 ? -magnitude : magnitude;
