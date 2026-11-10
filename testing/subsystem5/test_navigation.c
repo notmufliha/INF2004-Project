@@ -155,6 +155,9 @@ int main(void)
     assert(drive_calls == 1u);
     assert(s5_navigation_has_line_reference());
     assert(!s5_navigation_stopped());
+    clock_ms += 65u;
+    s5_navigation_tick(true, 40.0f, true);
+    assert(allowed && drive_calls == 2u); /* Continue through hysteresis band. */
     assert(s5_bridge_request(S5_CMD_STOP, &p));
     assert(!allowed && stop_calls > 0u);
     assert(s5_navigation_stopped());
@@ -204,7 +207,7 @@ int main(void)
         clock_ms += 65u;
         s5_navigation_tick(true, 120.0f, true);
     }
-    assert(drive_calls == 2u && allowed); /* Following resumes after recovery. */
+    assert(drive_calls == 3u && allowed); /* Following resumes after recovery. */
     clock_ms += 65u;
     s5_navigation_tick(true, 25.0f, true);
     assert(!allowed); /* A second obstacle interrupts following immediately. */

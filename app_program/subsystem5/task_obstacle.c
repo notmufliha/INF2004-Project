@@ -734,6 +734,7 @@ static void live_controller_mode(void)
     bool coarse_ready = false, fine_ready = false;
     bool stop_requested = false;
     bool sensor_unavailable = false;
+    uint32_t last_log_ms = 0u;
     if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
     s5_controller_init(&c);
     tm_printf((UB*)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
@@ -742,9 +743,18 @@ static void live_controller_mode(void)
         S5Input in = {0};
         S5Command cmd;
         float cm = 0.0f;
+        SYSTIM cycle_start = {0}, cycle_end;
+        S5EchoReading reading;
+        if (tk_get_tim(&cycle_start) != E_OK) emergency_halt("system clock unavailable");
         /* Sensor always faces forward outside scans. Monitoring continues
          * during movement. Repeated invalid readings fail closed. */
-        in.front_valid = s5_ultrasonic_read_cm(&cm);
+        /* Apply the configured open-space policy only while following.
+         * Bypass/recovery still require actual echoes in the new heading. */
+        reading = c.state == S5_FOLLOW ? s5_ultrasonic_read_front() :
+                                       s5_ultrasonic_read_detailed();
+        cm = reading.cm;
+        in.front_valid = reading.status == S5_ECHO_OK ||
+                         (c.state == S5_FOLLOW && reading.status == S5_ECHO_OPEN_SPACE);
         in.front_valid = in.front_valid &&
                          (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) !=
                           COMM_CM_INVALID);
@@ -752,6 +762,12 @@ static void live_controller_mode(void)
         comm_set_obstacle_dist(in.front_valid ?
                                s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
                                COMM_CM_INVALID);
+        if (cycle_start.lo - last_log_ms >= 1000u) {
+            last_log_ms = cycle_start.lo;
+            tm_printf((UB*)"[S5-LIVE] state=%s echo=%s cm_x100=%d nav_error=%s\n",
+                      s5_state_name(c.state), s5_echo_status_name(reading.status),
+                      (int)(cm * 100.0f), s5_error_name(s5_navigation_error()));
+        }
         if (in.front_valid)
         {
             fault_clear(FAULT_NO_ECHO);
@@ -847,7 +863,14 @@ static void live_controller_mode(void)
             }
             break;
         }
-        tk_dly_tsk(S5_ECHO_GAP_MS);
+        /* 65 ms between trigger starts, rather than echo time PLUS 65 ms.
+         * A 38 ms no-target pulse previously exceeded B2's 100 ms DRIVE
+         * watchdog. Scans run stationary and retain their longer pacing. */
+        if (tk_get_tim(&cycle_end) == E_OK &&
+            cycle_end.lo - cycle_start.lo < S5_ECHO_GAP_MS)
+            tk_dly_tsk(S5_ECHO_GAP_MS - (cycle_end.lo - cycle_start.lo));
+        else
+            tk_dly_tsk(1);
     }
 }
 #endif /* S5_MOTION_BRIDGE_ENABLED */

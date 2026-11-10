@@ -174,7 +174,13 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     }
     if (follow && (mode == NAV_FOLLOW || mode == NAV_STOP)) {
         motion_command_t drive = {0};
-        if (!front_valid || !(front_cm >= ROBOT_RELEASE_CM) ||
+        /* Hysteresis: require release distance to START, but keep following
+         * down to STOP distance. Stopping at RELEASE left the robot parked
+         * at 35..45 cm forever, outside the controller's scan trigger. */
+        bool clearance = mode == NAV_FOLLOW && !stop_queued &&
+                         clear_hits >= ROBOT_CLEAR_CONFIRM ?
+                         front_cm > ROBOT_STOP_CM : front_cm >= ROBOT_RELEASE_CM;
+        if (!front_valid || !clearance ||
             front_cm > S5_MAX_RANGE_CM || !in.line_detected) {
             clear_hits = 0u;
             (void)stop_motor();

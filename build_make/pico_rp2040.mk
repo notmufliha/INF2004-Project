@@ -127,6 +127,9 @@ LDLIBS += -lm
 LDLIBS += --specs=nosys.specs
 SIZE := arm-none-eabi-size
 E2U := tools/elf2uf2
+ifeq ($(OS),Windows_NT)
+E2U := tools/elf2uf2.exe
+endif
 
 # Fail early, with a readable message, when the cross compiler is not on PATH.
 ifneq ($(MAKECMDGOALS),clean)

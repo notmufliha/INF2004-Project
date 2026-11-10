@@ -56,6 +56,7 @@
 #include "app.h"
 #include "robot_config.h"
 #include "subsystem2/b2_motor.h"
+#include "subsystem2/motion_command.h"
 #if ROBOT_ENABLE_BYPASS
 #include "subsystem3/b3_line.h"
 #endif
@@ -205,10 +206,37 @@ robot_startup_failed:
     }
 
     for (;;) {
-        tk_slp_tsk(TMO_FEVR);
+        tm_printf((UB*)"[ROBOT] STARTUP FAILED error=%d; motors disabled; rebuild "
+                  __DATE__ " " __TIME__ "\n", (int)robot_er);
+        tk_dly_tsk(2000);
     }
 
 robot_startup_complete:
+    /* Periodic diagnostics survive a terminal opened after the boot banner,
+     * and remain available when B5 has parked on a fault. Never wait on USB. */
+    for (;;) {
+        motion_status_snapshot_t status;
+        tk_dly_tsk(2000);
+        if (motion_get_status(&status) == E_OK)
+            tm_printf((UB*)"[ROBOT-HEALTH] " __DATE__ " " __TIME__
+                      " drive=%d bypass=%d motion=%d fault=%d stopped=%d enc=%d,%d\n",
+                      (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS,
+                      (int)status.status, (int)status.fault,
+                      (int)status.physically_stopped,
+                      (int)status.left_encoder_counts, (int)status.right_encoder_counts);
+#if ROBOT_ENABLE_BYPASS
+        {
+            B3_STATE line;
+            uint32_t sample;
+            ER line_er = b3_get_timed_state(&line, &sample);
+            if (line_er == E_OK)
+                tm_printf((UB*)"[LINE] left=%d centre=%d flags=%d threshold=%d (black=low)\n",
+                          (int)line.ir_left, (int)line.ir_centre,
+                          (int)line.line_flags, (int)B3_LINE_THRESHOLD);
+            else tm_printf((UB*)"[LINE] unavailable error=%d\n", (int)line_er);
+        }
+#endif
+    }
 #else
 	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
 	CHECK(subsystem1_init(), "subsystem1_init");
