@@ -15,6 +15,7 @@ typedef struct {
     uint8_t have_level;
     uint8_t in_barcode;
     uint8_t payload_valid;
+    uint8_t reversed; /* 1 when the start character was read backwards */
     char payload;
 } B3_CODE39_DECODER;
 

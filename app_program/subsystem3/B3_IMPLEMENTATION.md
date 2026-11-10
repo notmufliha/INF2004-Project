@@ -16,11 +16,18 @@ the Buddy 3 tasks yet.
   `centre` is physically on its left. Similar readings drive straight; a
   stronger right sensor steers right and a stronger left sensor steers left.
   A 50-code deadband filters small differences, with steering capped at
-  500 permille. The correction reaches its cap at a 500-code difference.
+  800 permille. The correction reaches its cap at a 500-code difference.
+  Steering applies whenever the line is detected, including when both
+  sensors see it. The car slows on curves (down to 50% at full steer) and
+  only speeds back up gradually after the curve.
 - If line flags report `LOST`, the controller searches at half the selected
-  speed, initially toward the last detected side, then alternates direction
-  every 600 ms. Search ends in a safe stop after 3 seconds without detection;
-  it never searches without fresh ultrasonic clearance.
+  speed, initially toward the last detected side, in widening sweeps for up
+  to 8 seconds, then stops but stays armed until the line is seen again.
+  It never searches without fresh ultrasonic clearance.
+- `JUNCTION` means both sensors read at least `B3_LINE_JUNCTION_MIN` (3500)
+  and within `B3_LINE_JUNCTION_BALANCE` (300) of each other. Calibrate the
+  minimum from the dashboard IR values over a real junction. Both sensors
+  merely above 300 is normal line following, not a junction.
 - In AUTO mode, a barcode route is held as pending until three consecutive
   junction samples confirm both sensors are on the junction. The robot slows
   to 75% after receiving a route, then drives straight at half speed through a
@@ -71,14 +78,18 @@ The GP28 digital IR input records both edges as the robot crosses the Code 39
 strip. The decoder groups the nine alternating bar/space widths in each
 character and separates narrow from wide elements by their relative widths,
 so decoding does not depend on a fixed robot speed. It requires the standard
-`*` start/stop characters and accepts one-character payloads only:
+`*` start/stop characters and accepts one-character payloads only, scanned
+in either direction (a strip crossed from the far end arrives reversed and
+is matched against the mirrored patterns):
 
 | Code 39 payload | Recorded barcode | Navigation |
 |---|---|---|
 | `*A*` | A | Straight |
 | `*Z*` | Z | Right |
 
-Other Code 39 payloads and malformed scans are ignored. The decoder currently
+Other Code 39 payloads and malformed scans are ignored. A bounce on GP28
+(rise and fall in one interrupt) records the settled level and merges into
+the surrounding element instead of discarding the barcode. The decoder currently
 uses alternating edge levels, so either black/white electrical polarity is
 supported. The track barcode is approximately 144 mm long; this length is not
 used as a decode threshold.

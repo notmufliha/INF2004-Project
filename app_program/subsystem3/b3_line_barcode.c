@@ -255,8 +255,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		} else {
 			flags |= B3_LINE_F_LOST;
 		}
-		if (B3_LINE_LEFT_ACTIVE(left) &&
-		    B3_LINE_CENTRE_ACTIVE(centre)) {
+		if (B3_LINE_IS_JUNCTION(left, centre)) {
 			flags |= B3_LINE_F_JUNCTION;
 		}
 
@@ -370,19 +369,19 @@ static void b3_gpio_irq_handler(UINT intno)
 		return;
 	}
 
-	if ((pending_edges & (pending_edges - 1U)) != 0U) {
+	/* Both rise and fall pending means the pin bounced since the last
+	 * interrupt.  Record only the level it settled at: the decoder ignores
+	 * a repeated level, so the bounce merges into the surrounding bar or
+	 * space instead of discarding the whole barcode. */
+	next_head = (uint8_t)((g_edge_head + 1U) &
+			      (B3_EDGE_QUEUE_LENGTH - 1U));
+	if (next_head == g_edge_tail) {
 		g_edge_overflow = 1U;
 	} else {
-		next_head = (uint8_t)((g_edge_head + 1U) &
-				      (B3_EDGE_QUEUE_LENGTH - 1U));
-		if (next_head == g_edge_tail) {
-			g_edge_overflow = 1U;
-		} else {
-			g_edge_queue[g_edge_head].timestamp_us = B3_TIMER_RAWL;
-			g_edge_queue[g_edge_head].level = (uint8_t)
-				((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-			g_edge_head = next_head;
-		}
+		g_edge_queue[g_edge_head].timestamp_us = B3_TIMER_RAWL;
+		g_edge_queue[g_edge_head].level = (uint8_t)
+			((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
+		g_edge_head = next_head;
 	}
 
 	g_edge_pending = 1U;
