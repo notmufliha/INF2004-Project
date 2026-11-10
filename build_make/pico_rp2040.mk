@@ -35,7 +35,9 @@ CONSOLE ?= usb_cdc
 # Pico W radio.  Defaults to cyw43: the radio is powered up and owned by a
 # core-0 polling service task, using the Pico SDK's cyw43 driver.  WIFI=none
 # leaves the radio powered down.
-WIFI ?= cyw43
+# A fresh checkout without credentials must still build and drive offline.
+# Explicit WIFI=cyw43 / tools/build_robot.ps1 -Network selects the radio.
+WIFI ?= $(if $(wildcard ../config/wifi_secrets.h),cyw43,none)
 ifneq ($(filter $(WIFI),none cyw43),$(WIFI))
 $(error Unknown WIFI '$(WIFI)'; use none or cyw43)
 endif
@@ -117,12 +119,17 @@ endif
 # only the banner in the log revealed it.
 #
 EXE_FILE := mtk3pico_smp$(SMP)_$(CONSOLE)$(WIFI_SUFFIX)$(NET_SUFFIX)$(MQTT_SUFFIX)$(CRASH_SUFFIX)$(TEST_SUFFIX)
+NETWORK_EXAMPLE ?= 0
+ifeq ($(NETWORK_EXAMPLE),1)
+EXE_FILE := $(EXE_FILE)_example
+endif
 
 GCC := arm-none-eabi-gcc
 AS := arm-none-eabi-gcc
 LINK := arm-none-eabi-gcc
 # IMU analysis uses standard float math. Libraries must follow object files.
 LDLIBS += -lm
+LDLIBS += --specs=nosys.specs
 SIZE := arm-none-eabi-size
 E2U := tools/elf2uf2$(if $(filter Windows_NT,$(OS)),.exe,)
 
@@ -171,6 +178,9 @@ LFLAGS := -mcpu=cortex-m0plus -mthumb -ffreestanding \
     -mfloat-abi=soft \
 
 LNKFILE := "../etc/linker/pico_rp2040/tkernel_map.ld"
+ifeq ($(NETWORK_EXAMPLE),1)
+CFLAGS += -I"../.codex_tmp/network-example"
+endif
 
 # Applied here, after CFLAGS/ASFLAGS are assigned with ':=', which would
 # otherwise discard anything appended above.
@@ -211,7 +221,7 @@ endif
 # before any recipe executes.
 ################################################################################
 
-PROFILE_ID := smp$(SMP)-$(CONSOLE)-wifi$(WIFI)-net$(NET)-mqtt$(MQTT)-crash$(CRASH_REPORT)-test$(TEST)
+PROFILE_ID := smp$(SMP)-$(CONSOLE)-wifi$(WIFI)-net$(NET)-mqtt$(MQTT)-crash$(CRASH_REPORT)-test$(TEST)-example$(NETWORK_EXAMPLE)
 PROFILE_FILE := .build_profile
 
 ifneq ($(strip $(shell cat $(PROFILE_FILE) 2>/dev/null)),$(PROFILE_ID))

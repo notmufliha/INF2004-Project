@@ -59,6 +59,7 @@
 #include "subsystem3/b3_line_barcode.h"
 #include "vehicle_controller.h"
 #include "subsystem4/subsystem4.h"
+#include "subsystem5/s5_mission.h"
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -216,7 +217,7 @@ EXPORT INT usermain(void)
         tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
     }
 
-    tm_printf((UB*)"[ROBOT] B1/B2/B3/B4/B5 + controller started; awaiting START\n");
+    tm_printf((UB*)"[ROBOT] B1/B2/B3/B4/B5 + controller started; configured autostart waits for healthy sensors\n");
 #if APP_TEST
     subsystem2_test();
     s4_test_run();
@@ -231,10 +232,27 @@ robot_startup_failed:
     }
 
     for (;;) {
-        tk_slp_tsk(TMO_FEVR);
+        tm_printf((UB*)"[ROBOT] STARTUP FAILED error=%d; motors disabled\n", (int)robot_er);
+        tk_dly_tsk(2000);
     }
 
 robot_startup_complete:
+    for (;;) {
+        motion_status_snapshot_t status;
+        B3_STATE line;
+        uint32_t sample;
+        tk_dly_tsk(2000);
+        if (motion_get_status(&status) == E_OK)
+            tm_printf((UB*)"[ROBOT-HEALTH] " __DATE__ " " __TIME__
+                      " mission=%d b5=%d motion=%d fault=%d stopped=%d enc=%d,%d\n",
+                      (int)s5_mission_enabled(), (int)s5_mission_state(),
+                      (int)status.status, (int)status.fault, (int)status.physically_stopped,
+                      (int)status.left_encoder_counts, (int)status.right_encoder_counts);
+        if (b3_get_timed_state(&line, &sample) == E_OK)
+            tm_printf((UB*)"[LINE] GP26=%d GP27=%d flags=%d black_min=%d\n",
+                      (int)line.ir_left, (int)line.ir_centre,
+                      (int)line.line_flags, (int)B3_LINE_ACTIVE_MIN);
+    }
 #else
 	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
 	CHECK(subsystem1_init(), "subsystem1_init");

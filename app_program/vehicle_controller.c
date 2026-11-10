@@ -4,6 +4,7 @@
 #include "subsystem3/b3_line_barcode.h"
 #include "subsystem4/imu_vc.h"
 #include "subsystem4/subsystem4.h"
+#include "subsystem5/s5_mission.h"
 
 #if ROBOT_MODE && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || S1_STANDALONE_DEMO)
 #error "The Vehicle Controller requires exclusive command ownership; disable demos/tests"
@@ -32,6 +33,7 @@ static void stop_motion(VEHICLE_CONTROLLER *c)
 
 static void safe_stop(VEHICLE_CONTROLLER *c)
 {
+    b2_request_stop(); /* Revoke B5 movement as well as VC movement. */
     c->running = false;
     c->paused = false;
     c->navigation = 0u;
@@ -205,7 +207,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         stop_motion(c);
         return;
     }
-    if (!in->motion_valid || !in->imu_valid || in->hazard ||
+    if (!in->motion_valid || !in->imu_valid || in->hazard || in->obstacle_fault ||
         (in->faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU)) ||
         in->motion.status == MOTION_STATUS_FAULT ||
         in->motion.status == MOTION_STATUS_TIMEOUT) {
@@ -219,6 +221,17 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (!in->line_valid) {
         safe_stop(c);
+        return;
+    }
+    if (in->obstacle_active) {
+        /* B5 owns bounded bypass/recovery legs; never overwrite them. */
+        c->drive_sent = false;
+        c->stopped = false;
+        c->navigation = 0u;
+        c->navigation_id = 0u;
+        c->pending_navigation = B3_NAV_NONE;
+        c->junction_latched = false;
+        c->junction_enter_samples = c->junction_clear_samples = 0u;
         return;
     }
     if (!in->clearance || (in->faults & FAULT_NO_ECHO)) {
@@ -409,6 +422,7 @@ static void controller_task(INT stacd, void *exinf)
     imu_notice_t notice = {0};
     imu_event_t imu = {0};
     bool hazard = false;
+    bool autostart_pending = ROBOT_AUTOSTART != 0;
     (void)stacd;
     (void)exinf;
     vehicle_controller_init(&c);
@@ -438,6 +452,7 @@ static void controller_task(INT stacd, void *exinf)
             if (tk_rcv_mbf(mbf_remote_cmd, &remote, TMO_POL) != (INT)sizeof(remote)) break;
             bool halt_command = remote.type == RCMD_STOP || remote.type == RCMD_ESTOP ||
                 remote.type == RCMD_PAUSE || remote.type == RCMD_MODE;
+            if (halt_command || remote.type == RCMD_START) autostart_pending = false;
             if (!stop_barrier || halt_command) vehicle_controller_command(&c, &remote);
             if (halt_command) stop_barrier = true;
         }
@@ -463,7 +478,25 @@ static void controller_task(INT stacd, void *exinf)
         in.clearance = b2_safety_motion_allowed();
         in.safety_generation = b2_safety_stop_generation();
         in.faults = fault_get();
+        {
+            S5MissionState obstacle = s5_mission_state();
+            in.obstacle_active = obstacle == S5_MISSION_BUSY;
+            in.obstacle_fault = obstacle == S5_MISSION_FAULT;
+        }
+        /* Higher-priority VC can run before B2/B3 publish their first
+         * sample. Arm boot motion only after producers are actually ready. */
+        if (autostart_pending && in.line_valid && in.imu_valid &&
+            in.motion_valid && !in.hazard && !in.obstacle_fault &&
+            (in.line_flags & LINE_F_DETECTED) &&
+            !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU))) {
+            REMOTE_CMD start = {0};
+            start.type = RCMD_START;
+            vehicle_controller_command(&c, &start);
+            autostart_pending = false;
+        }
         vehicle_controller_step(&c, &in, nav);
+        s5_mission_enable(c.running && !c.estop && !c.paused &&
+                          c.mode != MODE_TEST && c.speed_percent != 0u);
         /* Hazards stop this tick even when coalesced with recovery. A later
          * explicit START is required; no automatic mission restart. */
         hazard = false;

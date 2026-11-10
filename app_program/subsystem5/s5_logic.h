@@ -3,20 +3,21 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "obstacle_scan.h"
+#include "../robot_config.h"
 
-/* Software-demo thresholds. NOT certified physical collision clearances. */
-#define S5_STOP_CM 25.0f
+/* Profiling thresholds and configured stop distance; calibrate physically. */
+#define S5_STOP_CM ROBOT_STOP_CM
 #define S5_CLEAR_CM 40.0f
 #define S5_MAX_RANGE_CM 450.0f
 #define S5_FRONT_INVALID_LIMIT 3u
-#define S5_WAIT_LIMIT 30u /* stop ACK / scan ACK: 3 seconds at 100ms/tick */
-#define S5_MOTION_LIMIT 200u /* bypass/reverse: 20 seconds */
-#define S5_RECOVERY_LIMIT 150u /* line search: 15 seconds */
-/* Demonstration assumptions: adjust from measured chassis geometry later. */
-#define S5_CHASSIS_HALF_WIDTH_CM 8.0f
-#define S5_EXTRA_MARGIN_CM 8.0f
+#define S5_WAIT_LIMIT 30u /* stop/scan outer tick budget */
+#define S5_MOTION_LIMIT 3000u /* outer tick budget; executor uses real ms deadlines */
+#define S5_RECOVERY_LIMIT 1500u /* executor additionally bounds travel and wall time */
+/* Geometry comes from robot_config.h and requires measured calibration. */
+#define S5_CHASSIS_HALF_WIDTH_CM ROBOT_CHASSIS_HALF_WIDTH_CM
+#define S5_EXTRA_MARGIN_CM ROBOT_OBSTACLE_MARGIN_CM
 
-/* Five angles centered on nearest coarse detection, at 10-degree steps. */
+/* Five 5-degree rays around nearest detection, within the servo limits. */
 void s5_make_fine_angles(uint16_t center_deg, uint16_t out[S5_SCAN_COUNT]);
 
 typedef enum {
@@ -48,8 +49,12 @@ typedef struct {
     bool line_found;
 } S5Input;
 
+typedef enum { S5_SIZE_UNKNOWN, S5_SIZE_SMALL, S5_SIZE_LARGE,
+               S5_SIZE_OVERSIZED } S5ObstacleSize;
+
 typedef struct {
     bool valid;
+    S5ObstacleSize size;
     float nearest_cm;
     float nearest_lateral_cm; /* x: negative left, positive right */
     float nearest_forward_cm; /* y: forward distance */
@@ -62,7 +67,7 @@ typedef struct {
     float required_lateral_clearance_cm;
     float left_clearance_cm; /* minimum measured coarse left rays */
     float right_clearance_cm; /* minimum measured coarse right rays */
-    /* Distance readings do not prove a driveable route: simulation only. */
+    /* Recommendation; execution also needs live sensing and course bounds. */
     S5Side bypass_side;
 } S5Profile;
 
@@ -83,6 +88,11 @@ void s5_controller_init(S5Controller *c);
 S5Command s5_controller_step(S5Controller *c, const S5Input *in);
 S5Side s5_choose_side(const S5Scan *scan);
 S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side);
+/* Prefer a bracketed fine silhouette. A valid but clipped fine scan may
+ * fall back to the wider coarse silhouette; invalid echoes never do. */
+S5Profile s5_profile_from_scans(const S5Scan *coarse, const S5Scan *fine, S5Side side);
+/* Shared size-aware recommendation; does not authorise physical motion. */
+S5Side s5_plan_bypass(S5Profile *profile, const S5Scan *coarse);
 const char *s5_state_name(S5State s);
 const char *s5_command_name(S5Command a);
 const char *s5_error_name(S5Error e);

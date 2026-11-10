@@ -17,12 +17,18 @@
 #define B3_MBF_MSG_OVERHEAD (8U)
 #define B3_STATE_LOCK_TIMEOUT_MS (5)
 #define B3_BARCODE_TASK_POLL_MS (1U)
+#ifndef B3_SIO_BASE
 #define B3_SIO_BASE (0xD0000000UL)
+#endif
 #define B3_SIO_GPIO_IN (*(volatile uint32_t *)(B3_SIO_BASE + 0x004U))
+#ifndef B3_TIMER_BASE
 #define B3_TIMER_BASE (0x40054000UL)
+#endif
 #define B3_TIMER_RAWL (*(volatile uint32_t *)(B3_TIMER_BASE + 0x028U))
 
+#ifndef B3_IO_BANK_BASE
 #define B3_IO_BANK_BASE (0x40014000UL)
+#endif
 #define B3_IO_INTR3 (*(volatile uint32_t *)(B3_IO_BANK_BASE + 0x0FCU))
 #define B3_IO_PROC0_INTE3 (*(volatile uint32_t *)(B3_IO_BANK_BASE + 0x10CU))
 #define B3_IO_PROC0_INTS3 (*(volatile uint32_t *)(B3_IO_BANK_BASE + 0x12CU))
@@ -207,13 +213,25 @@ EXPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
     ER error;
     if (state == NULL || sample_ms == NULL) return E_PAR;
+    if (mtx_b3_state <= 0) return E_OBJ;
     error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
     if (error != E_OK) return error;
     *state = g_b3_state;
     *sample_ms = g_line_sample_ms;
     error = g_line_sample_valid ? E_OK : E_OBJ;
-    (void)tk_unl_mtx(mtx_b3_state);
+    {
+        ER unlock_error = tk_unl_mtx(mtx_b3_state);
+        if (unlock_error != E_OK) return unlock_error;
+    }
     return error;
+}
+
+static void b3_invalidate_line(void)
+{
+    if (tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS) == E_OK) {
+        g_line_sample_valid = false;
+        (void)tk_unl_mtx(mtx_b3_state);
+    }
 }
 
 /**
@@ -236,6 +254,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &left);
 		if (error != E_OK) {
 			CHECK(error, "B3 GP26 ADC read");
+            b3_invalidate_line();
 			b3_delay(B3_LINE_UPDATE_MS);
 			continue;
 		}
@@ -243,6 +262,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		error = b3_read_adc(B3_ADC_CENTRE_CHANNEL, &centre);
 		if (error != E_OK) {
 			CHECK(error, "B3 GP27 ADC read");
+            b3_invalidate_line();
 			b3_delay(B3_LINE_UPDATE_MS);
 			continue;
 		}
@@ -309,7 +329,7 @@ static ER b3_read_adc(uint8_t channel, uint16_t *value)
 	if (result != E_OK) {
 		return result;
 	}
-	if (actual_size != 1) {
+	if (actual_size != 1 || adc_word > 4095U) {
 		return E_IO;
 	}
 

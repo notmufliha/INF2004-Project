@@ -25,6 +25,7 @@
 typedef struct {
     uint32_t now_ms, safety_generation;
     bool clearance, line_valid, imu_valid, hump, hazard, motion_valid;
+    bool obstacle_active, obstacle_fault;
     UH left, centre;
     UB line_flags, faults;
     motion_status_snapshot_t motion;

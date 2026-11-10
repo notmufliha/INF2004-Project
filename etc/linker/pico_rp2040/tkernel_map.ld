@@ -69,5 +69,6 @@ SECTIONS {
 		. = ALIGN(4);
 		__bss_end = .;
 		__end = .;
+		PROVIDE(end = .);
 	} >RAM
 }
