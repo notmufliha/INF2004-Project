@@ -290,11 +290,22 @@ int main(void)
     input.left = 900u; input.centre = 100u;
     step(&c, 20u, 0u);
     assert(c.last_line_search_direction == 1);
-    input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
+    {
+        /* Dropout grace: one LOST sample keeps the last command. */
+        INT held_steer = sent.steering_permille;
+        INT held_speed = sent.target_speed_cps;
+        input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
+        assert(c.state == ROBOT_LINE_FOLLOW && sent.type == MOTION_CMD_DRIVE &&
+            sent.steering_permille == held_steer &&
+            sent.target_speed_cps == held_speed);
+    }
+    step(&c, VC_LINE_DROPOUT_MS, 0u);
+    /* Then a tightening arc toward the remembered side (right). */
     assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_DRIVE &&
-        sent.steering_permille >= B3_LINE_STEER_MAX && right_wheel() == 0 &&
+        sent.steering_permille > 0 &&
+        sent.steering_permille < B3_LINE_STEER_MAX &&
         sent.target_speed_cps < 2500);
-    step(&c, VC_LINE_REACQUIRE_MS / 2u, 0u); /* still pivoting right */
+    step(&c, VC_LINE_REACQUIRE_MS / 2u, 0u); /* tightened to full: pivot */
     assert(sent.steering_permille >= B3_LINE_STEER_MAX && right_wheel() == 0);
     input.line_flags = LINE_F_DETECTED;
     step(&c, 20u, 0u);
@@ -302,9 +313,8 @@ int main(void)
     /* Pivot back right for VC_LINE_REACQUIRE_MS only, then stop: no
      * sweeps that drive the car across the course. */
     input.line_flags = LINE_F_LOST;
-    step(&c, 20u, 0u);
-    assert(c.state == ROBOT_LINE_RECOVERY &&
-        sent.steering_permille >= B3_LINE_STEER_MAX);
+    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille > 0);
     step(&c, VC_LINE_REACQUIRE_MS, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY && c.running &&
         sent.type == MOTION_CMD_STOP);
@@ -333,9 +343,10 @@ int main(void)
     step(&c, 20u, 0u);
     assert(c.last_line_search_direction == -1);
     input.line_flags = LINE_F_LOST;
-    step(&c, 20u, 0u);
-    assert(c.state == ROBOT_LINE_RECOVERY &&
-        sent.steering_permille <= -B3_LINE_STEER_MAX && left_wheel() == 0);
+    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
+    step(&c, VC_LINE_REACQUIRE_MS / 2u, 0u);
+    assert(sent.steering_permille <= -B3_LINE_STEER_MAX && left_wheel() == 0);
 
     /* Curve with BOTH sensors on the line (no junction flag): the car
      * must steer, not drive straight, and slow down for the curve. */
@@ -544,7 +555,7 @@ int main(void)
     settle(&c, 30u);
     assert(c.last_line_search_direction == 0);
     input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
-    step(&c, 20u, 0u);
+    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY && c.running &&
         sent.type == MOTION_CMD_STOP);
     /* START clears B2's latched stall/encoder faults (operator restart). */
@@ -567,9 +578,34 @@ int main(void)
         step(&c, 20u, 0u);
         assert(drives == before + 1u && c.state == ROBOT_LINE_FOLLOW);
         input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
-        step(&c, 20u, 0u);
-        assert(drives == before + 2u && c.state == ROBOT_LINE_RECOVERY &&
+        step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
+        assert(drives >= before + 2u && c.state == ROBOT_LINE_RECOVERY &&
             sent.type == MOTION_CMD_DRIVE);
+    }
+    /* Tightening arc: steering grows each tick up to the cap; a dropout
+     * shorter than VC_LINE_DROPOUT_MS never enters recovery. */
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.line_flags = LINE_F_DETECTED; input.left = 1000u; input.centre = 300u;
+    settle(&c, 30u);
+    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
+    step(&c, 20u, 0u); step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_FOLLOW);           /* 40 ms: still grace */
+    input.line_flags = LINE_F_DETECTED; input.left = 1000u; input.centre = 300u;
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_FOLLOW);
+    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
+    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
+    {
+        INT previous = 0;
+        for (UINT i = 0u; i < 15u; ++i) {
+            step(&c, 20u, 0u);
+            assert(c.state == ROBOT_LINE_RECOVERY &&
+                sent.type == MOTION_CMD_DRIVE);
+            assert(c.last_steer >= previous &&
+                c.last_steer <= B3_LINE_STEER_MAX);
+            previous = c.last_steer;
+        }
+        assert(previous == B3_LINE_STEER_MAX);
     }
     puts("PASS: controller commands, curves, B5 handoff, boot readiness, hazards and task adapter");
     return 0;

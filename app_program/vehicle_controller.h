@@ -21,6 +21,16 @@
  * stop and wait, still armed.  No wide sweeps: they drove the car across
  * the course ("moving randomly"). */
 #define VC_LINE_REACQUIRE_MS 3000u
+/* A LOST lasting no longer than this while following is treated as a
+ * sensor dropout (noise, a scuff, a tape joint): keep the last steering
+ * and speed instead of starting recovery on a single bad sample. */
+#define VC_LINE_DROPOUT_MS 60u
+/* Recovery is a tightening arc toward the remembered side: it starts at
+ * this steering and tightens by VC_RECOVER_RAMP_PER_TICK each 20 ms up to
+ * B3_LINE_STEER_MAX, instead of an immediate pivot (jerky, and the pivot
+ * load is what tends to trip B2's stall check). */
+#define VC_RECOVER_START_STEER 400
+#define VC_RECOVER_RAMP_PER_TICK 40
 #define VC_JUNCTION_CONFIRM_SAMPLES 3u
 /* Curve speed: at full steer the base speed drops to VC_CURVE_MIN_PERMILLE.
  * The slowdown follows the hardest recent steering and relaxes by
@@ -62,7 +72,8 @@ typedef struct {
     bool running, paused, estop, stopped, drive_sent;
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
     INT last_line_search_direction;
-    bool line_seen_since_start; /* never search for a line not yet seen */ /* -1 left / +1 right: last line side */
+    bool line_seen_since_start; /* never search for a line not yet seen */
+    uint32_t lost_since_ms;     /* start of the current LOST, 0 = on line */ /* -1 left / +1 right: last line side */
     INT line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */
     INT last_error; /* previous PD error, for the derivative term */
     INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
