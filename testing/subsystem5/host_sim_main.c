@@ -49,8 +49,8 @@ int main(void)
     {
         uint16_t angles[S5_SCAN_COUNT];
         s5_make_fine_angles(90u, angles);
-        int ok = angles[0] == 70u && angles[1] == 80u &&
-                 angles[2] == 90u && angles[3] == 100u && angles[4] == 110u;
+        int ok = angles[0] == 80u && angles[1] == 85u &&
+                 angles[2] == 90u && angles[3] == 95u && angles[4] == 100u;
         printf("[HOST TEST] adaptive-angles   %s\n", ok ? "PASS" : "FAIL");
         if (ok) passed++; else failed++;
     }
@@ -72,6 +72,38 @@ int main(void)
             printf("[HOST TEST] width-no-route    %s\n", ok ? "PASS" : "FAIL");
             if (ok) passed++; else failed++;
         }
+    }
+    {
+        S5Scan coarse = {0};
+        S5Profile p = {0};
+        static const uint16_t angles[5] = {70,80,90,100,110};
+        int ok;
+        for (i = 0; i < 5; ++i) {
+            coarse.points[i] = (S5ScanPoint){angles[i], 130.0f, true};
+        }
+        p.valid = true;
+        p.estimated_width_cm = 8.0f;
+        p.required_lateral_clearance_cm = 20.0f;
+        ok = s5_plan_bypass(&p, &coarse) == S5_SIDE_LEFT;
+        /* Same measured corridor fits small, but not larger, obstacles. */
+        p.estimated_width_cm = 24.0f;
+        p.required_lateral_clearance_cm = 28.0f;
+        ok = ok && s5_plan_bypass(&p, &coarse) == S5_SIDE_NONE;
+        /* Radial 50cm is not lateral 50cm for these narrow mounting rays. */
+        for (i = 0; i < 5; ++i) coarse.points[i].distance_cm = 50.0f;
+        p.estimated_width_cm = 8.0f;
+        p.required_lateral_clearance_cm = 20.0f;
+        ok = ok && s5_plan_bypass(&p, &coarse) == S5_SIDE_NONE;
+        for (i = 0; i < 5; ++i) coarse.points[i].distance_cm = 300.0f;
+        p.estimated_width_cm = ROBOT_OBSTACLE_MAX_BYPASS_CM + 1.0f;
+        ok = ok && s5_plan_bypass(&p, &coarse) == S5_SIDE_NONE;
+        p.estimated_width_cm = 8.0f;
+        coarse.points[0].valid = false;
+        ok = ok && s5_plan_bypass(&p, &coarse) == S5_SIDE_RIGHT;
+        coarse.points[4].valid = false;
+        ok = ok && s5_plan_bypass(&p, &coarse) == S5_SIDE_NONE;
+        printf("[HOST TEST] size-aware-route  %s\n", ok ? "PASS" : "FAIL");
+        if (ok) passed++; else failed++;
     }
     printf("[HOST TEST] TOTAL %u passed, %u failed\n", passed, failed);
     return failed ? EXIT_FAILURE : EXIT_SUCCESS;

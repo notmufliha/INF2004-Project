@@ -3,11 +3,14 @@
 `vehicle_controller.c` runs on core 0 at priority 6 with a 20 ms period.
 Real robot startup initializes B1, B2, B3, B4 and B5, preserves B4's calibration
 gate, starts B3's actual sensor tasks and starts the controller. The old B3
-teaching consumer is not used. Boot state is Idle; movement requires START.
+teaching consumer is not used. ROBOT_AUTOSTART=1 arms the mission after fresh
+motor/line/IMU inputs and a detected line; set 0 to require remote START.
 The default target is 20% (1000 encoder counts/s).
 
-The controller is the only mission command producer. B5 retains its independent
-immediate STOP and clearance heartbeat; B2 alone applies motor PWM. Automatic
+The controller owns normal DRIVE and barcode commands. B5 owns motor commands
+while its mission handoff is BUSY, executing encoder-controlled avoidance and
+line recovery. The controller still handles hazards and remote STOP during
+that handoff. B2 alone applies motor PWM. Automatic
 motion tests and the B1 standalone demo are incompatible with controller mode
 and produce a compile error. `ROBOT_MOTION_TEST` now defaults to zero.
 
@@ -35,9 +38,9 @@ All commands carry the current B2 safety generation. No controller path grants
 clearance: B5 must provide a fresh authorization following every safety STOP.
 
 States use the existing B1 wire enum: INIT, IDLE, LINE_FOLLOW, NAV_COMMAND,
-HUMP, OBSTACLE_SCAN, LINE_RECOVERY and SAFE_STOP. OBSTACLE_AVOID is reserved;
-physical bypass remains disabled. On lost clearance the controller stops and
-waits for B5. Hump observations halve the following speed. On line loss the
+HUMP, OBSTACLE_SCAN, OBSTACLE_AVOID, LINE_RECOVERY and SAFE_STOP. B5 scans,
+profiles, bypasses and reacquires the original line/heading before returning
+control. On lost clearance the controller stops and waits for B5. Hump observations halve the following speed. On line loss the
 car enters LINE_RECOVERY and searches for up to 8 seconds: it creeps forward
 at half speed with 25% steering, first toward the side the line was last
 seen, in widening sweeps (600 ms, then 1200 ms the other way, 1800 ms back,
@@ -88,3 +91,5 @@ controller policy and task adapter with simulated producer interfaces, including
 commands, watchdog cadence, sensor staleness, faults, navigation and clock wrap.
 Hardware scheduling, stop distance and full Pico firmware execution require
 separate validation.
+
+See [current build, recovery and calibration notes](../ROBOT_FIX_NOTES.md).

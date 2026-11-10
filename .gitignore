@@ -24,3 +24,8 @@ config/wifi_secrets.h
 
 # macOS
 .DS_Store
+
+# Local tools and generated caches
+/.codex_tmp/
+build_make/tools/elf2uf2.exe
+__pycache__/

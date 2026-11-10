@@ -1,3 +1,5 @@
+> Current autonomous firmware: see [ROBOT_FIX_NOTES.md](ROBOT_FIX_NOTES.md) for building, flashing and calibration.
+
 # micro T-Kernel 3.0 project for Raspberry Pi Pico W
 
 A starting point for your project: micro T-Kernel 3.0 running on **both cores**
