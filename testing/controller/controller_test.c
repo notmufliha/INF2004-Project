@@ -171,7 +171,7 @@ int main(void)
     assert(sent.steering_permille == 0);
     assert(!B3_LINE_LEFT_ACTIVE(300u) && !B3_LINE_CENTRE_ACTIVE(300u));
     assert(B3_LINE_LEFT_ACTIVE(301u) && B3_LINE_CENTRE_ACTIVE(301u));
-    assert(B3_LINE_LEFT_ACTIVE(3999u) && !B3_LINE_LEFT_ACTIVE(4000u));
+    assert(B3_LINE_LEFT_ACTIVE(4100u) && !B3_LINE_LEFT_ACTIVE(4101u));
     input.hump = true; step(&c, 20u, 0u);
     assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
     command(&c, RCMD_SPEED, 0u); step(&c, 20u, 0u);
