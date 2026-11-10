@@ -50,6 +50,10 @@ for line in run("vectors").splitlines():
     data = bytes.fromhex(hexstr)
     d = s1_wire.decode(kind, data)
     s1_wire.describe(kind, d)                       # must not raise
+    if kind == "telemetry" and d.get("barcode") == 5:
+        check("Z barcode telemetry name", d["barcode_name"], "Z")
+    if kind == "event" and d.get("code") == 5:
+        check("Z barcode event name", d["code_name"], "Z")
     check(f"{kind} version", d["ver"], s1_wire.WIRE_VERSION)
     for p in pairs:
         key, val = p.split("=")

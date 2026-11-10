@@ -16,21 +16,25 @@
 #define B3_LINE_F_DETECTED (0x01U)
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)
-#define B3_LINE_ACTIVE_MIN (350U)
-#define B3_LINE_ACTIVE_MAX (3999U)
+#define B3_LINE_ACTIVE_MIN (301U)
+#define B3_LINE_ACTIVE_MAX (4100U)
 #define B3_LINE_LEFT_ACTIVE(raw) \
 	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
 	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
 #define B3_LINE_CENTRE_ACTIVE(raw) \
 	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
 	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
+#define B3_LINE_STEER_DEADBAND (50)
+#define B3_LINE_STEER_ERROR_FULL_SCALE (500)
+#define B3_LINE_STEER_MAX (500)
 
 typedef enum {
 	B3_BARCODE_NONE = 0,
 	B3_BARCODE_A,
 	B3_BARCODE_B,
 	B3_BARCODE_C,
-	B3_BARCODE_D
+	B3_BARCODE_D,
+	B3_BARCODE_Z
 } B3_BARCODE;
 
 typedef enum {
@@ -96,7 +100,7 @@ IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
 IMPORT void b3_line_task(INT stacd, void *exinf);
 
 /**
- * @brief Drain timestamped GP28 edges and decode pulse widths outside the ISR.
+ * @brief Drain timestamped GP28 edges and decode Code 39 outside the ISR.
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */

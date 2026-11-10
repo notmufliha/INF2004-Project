@@ -23,7 +23,14 @@ for (const line of fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/)) {
   } else {
     raw = W.unpack(LAYOUT[kind](), bytes)[0];
   }
-  W.decode(kind, bytes); // the readable decode must not throw either
+  const decoded = W.decode(kind, bytes);
+  if ((kind === "telemetry" && decoded.barcode === 5 &&
+       decoded.barcode_name !== "Z") ||
+      (kind === "event" && decoded.code === 5 &&
+       decoded.code_name !== "Z")) {
+    failures++;
+    console.log(`FAIL ${kind} Z barcode name`);
+  }
   for (const pair of pairs) {
     const [key, value] = pair.split("=");
     if (!(key in raw)) continue; // printed-only helper fields

@@ -24,7 +24,7 @@
     "CLIMBING_HUMP", "HUMP_PEAK", "DESCENDING_HUMP", "SUDDEN_IMPACT", "UNKNOWN"];
   const NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"];
   const AVOID = ["NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"];
-  const BARCODES = ["-", "A", "B", "C", "D"];
+  const BARCODES = ["-", "A", "B", "C", "D", "Z"];
   const EVENT_TYPES = ["barcode", "hump", "obstacle", "error"];
   const MODES = ["AUTO", "LINE", "TEST"];
   const COMMANDS = { START: 1, STOP: 2, ESTOP: 3, PAUSE: 4, RESUME: 5,

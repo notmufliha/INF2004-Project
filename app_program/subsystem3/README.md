@@ -55,7 +55,6 @@ invocation. Follow the root README for toolchain, flash, and console steps.
 The supplied Week 6 design review assigns Buddy 3 to analogue IR line
 following (GP26/GP27), digital right-side barcode sensing (GP28), junction and
 line-loss reporting, and navigation command generation. It proposes a 20 ms
-line update interval and timestamped barcode edge capture. Physical thresholds
-and the A-D pulse-width encoding are not specified in the current repository;
-the new module leaves barcode classification disabled until those values are
-confirmed.
+line update interval and timestamped barcode edge capture. The confirmed
+barcode format is Code 39; B3 decodes the `*A*` and `*Z*` payloads as straight
+and right navigation commands.
