@@ -39,7 +39,7 @@ typedef struct { uint32_t lo; } SYSTIM;
 #define TP_PRC1 1
 #include "../../app_program/subsystem3/b3_line_barcode.h"
 static jmp_buf iteration;
-static uint32_t values[2] = {1000u, 3000u};
+static uint32_t values[2] = {200u, 3000u};
 static int fail_channel = -1;
 static bool busy, short_read, bad_clock;
 static uint32_t time_ms = 100u;
@@ -99,8 +99,8 @@ int main(void)
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     /* B3_STATE carries per-sensor normalised values (b3_line_cal): with the
-     * default 300..3000 range, raw 1000 -> 259 and raw 3000 -> 1000. */
-    assert(out.ir_left == (1000u - 300u) * 1000u / 2700u &&
+     * default 100..500 range, raw 200 -> ~250 and raw 3000 -> 1000. */
+    assert(out.ir_left >= 240u && out.ir_left <= 260u &&
            out.ir_centre == 1000u && timestamp == 100u);
     assert(out.line_flags == B3_LINE_F_DETECTED);
     fail_channel = 1;

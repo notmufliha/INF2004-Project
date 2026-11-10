@@ -17,11 +17,15 @@
 
 #include <stdint.h>
 
-/* Starting range until the sensor has seen the course. */
-#define B3_CAL_DEFAULT_WHITE (300U)
-#define B3_CAL_DEFAULT_BLACK (3000U)
+/* Starting range until the sensor has seen the course.  Its midpoint is
+ * the team's tested raw threshold (300).  The range starts NARROW on
+ * purpose: widening to a darker or lighter reading is instant, while
+ * narrowing is slow, so a too-wide default (e.g. black 3000) made sensors
+ * whose black reads ~1000 report LINE LOST for tens of seconds. */
+#define B3_CAL_DEFAULT_WHITE (100U)
+#define B3_CAL_DEFAULT_BLACK (500U)
 /* Smallest raw span kept between learned white and black. */
-#define B3_CAL_MIN_SPAN (800U)
+#define B3_CAL_MIN_SPAN (300U)
 #define B3_CAL_FORGET_PER_SAMPLE (1U)
 #define B3_CAL_FULL_SCALE (1000U)
 

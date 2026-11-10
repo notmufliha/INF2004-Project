@@ -10,7 +10,8 @@ the Buddy 3 tasks yet.
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
 - Auto-calibrates each sensor (`b3_line_cal.c`): it learns that sensor's own
   white and black readings (widening at once, slowly forgetting old extremes,
-  never narrower than 800 counts) and normalises to 0 = white .. 1000 =
+  never narrower than 300 counts; starts from 100..500, whose midpoint is the
+  team's tested raw threshold of 300, and only widens from there) and normalises to 0 = white .. 1000 =
   black. The controller receives normalised values; the dashboard still shows
   raw ADC. This removes the bias between two sensors of different
   sensitivity, and a grey floor beside the course no longer reads as line.
@@ -72,7 +73,7 @@ the Buddy 3 tasks yet.
    and `subsystem3_start()` lifecycle currently do not call either function.
 5. Before a run, slide the car across the line once or twice so each sensor
    sees white and black; calibration then settles on the course. Check on the
-   dashboard that black reads at least ~800 counts above white.
+   dashboard that black reads at least ~300 counts above white.
    The steering deadband and correction scale are initial tuning values; test
    with the wheels raised and adjust them only after confirming turn direction.
 
