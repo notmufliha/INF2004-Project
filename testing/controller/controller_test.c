@@ -34,7 +34,16 @@ ER motion_send_command(const motion_command_t *command)
 {
     if (send_error != E_OK) return send_error;
     sent = *command;
-    if (command->type == MOTION_CMD_DRIVE) ++drives;
+    if (command->type == MOTION_CMD_DRIVE) {
+        /* Every DRIVE: no wheel in the stall zone, outer within B2's limit. */
+        INT s = command->steering_permille;
+        INT left = command->target_speed_cps * (1000 + s) / 1000;
+        INT right = command->target_speed_cps * (1000 - s) / 1000;
+        assert(left == 0 || left >= VC_MIN_WHEEL_CPS - 1);
+        assert(right == 0 || right >= VC_MIN_WHEEL_CPS - 1);
+        assert(left <= 5000 && right <= 5000 && (left > 0 || right > 0));
+        ++drives;
+    }
     if (command->type == MOTION_CMD_STOP) ++stops;
     return E_OK;
 }
@@ -127,6 +136,24 @@ static void step(VEHICLE_CONTROLLER *c, UINT elapsed, UB nav)
     input.now_ms += elapsed;
     vehicle_controller_step(c, &input, nav);
 }
+static void settle(VEHICLE_CONTROLLER *c, UINT ticks)
+{
+    for (UINT i = 0u; i < ticks; ++i) step(c, 20u, 0u);
+}
+/* Wheel targets B2 derives from the last DRIVE: v(1+s) and v(1-s). */
+static INT left_wheel(void)
+{
+    return sent.target_speed_cps * (1000 + sent.steering_permille) / 1000;
+}
+static INT right_wheel(void)
+{
+    return sent.target_speed_cps * (1000 - sent.steering_permille) / 1000;
+}
+static bool wheel_ok(INT wheel)
+{
+    /* Never in the stall zone: stopped, or at least the sustainable minimum. */
+    return wheel == 0 || wheel >= VC_MIN_WHEEL_CPS - 1;
+}
 static void confirm_junction(VEHICLE_CONTROLLER *c)
 {
     input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
@@ -156,18 +183,20 @@ int main(void)
     command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
     step(&c, 20u, B3_NAV_LEFT); assert(c.navigation == 0u);
     command(&c, RCMD_SPEED, 100u); input.left = 3400u; input.centre = 2900u;
-    step(&c, 20u, 0u);
+    settle(&c, 30u);
     assert(sent.steering_permille == B3_LINE_STEER_MAX &&
-        sent.target_speed_cps * (1000 + sent.steering_permille) <= 5000000);
+        left_wheel() <= 5000 && wheel_ok(right_wheel()));
     input.left = 2900u; input.centre = 3400u;
-    step(&c, 20u, 0u);
+    step(&c, 20u, 0u); /* steering slews, it does not jump */
+    assert(sent.steering_permille == B3_LINE_STEER_MAX - VC_STEER_SLEW_PER_TICK);
+    settle(&c, 30u);
     assert(sent.steering_permille == -B3_LINE_STEER_MAX &&
-        sent.target_speed_cps * (1000 - sent.steering_permille) <= 5000000);
+        right_wheel() <= 5000 && wheel_ok(left_wheel()));
     input.left = 3300u; input.centre = 3200u;
-    step(&c, 20u, 0u);
+    settle(&c, 30u);
     assert(sent.steering_permille > 0);
     input.left = 3150u; input.centre = 3150u;
-    step(&c, 20u, 0u);
+    settle(&c, 30u);
     assert(sent.steering_permille == 0);
     assert(!B3_LINE_LEFT_ACTIVE(300u) && !B3_LINE_CENTRE_ACTIVE(300u));
     assert(B3_LINE_LEFT_ACTIVE(301u) && B3_LINE_CENTRE_ACTIVE(301u));
@@ -245,19 +274,27 @@ int main(void)
      * must steer, not drive straight, and slow down for the curve. */
     c = fresh(); command(&c, RCMD_START, 0u);
     input.line_flags = LINE_F_DETECTED;
-    input.left = 3000u; input.centre = 3000u; step(&c, 20u, 0u);
+    input.left = 3000u; input.centre = 3000u;
+    step(&c, 20u, 0u); /* acceleration from standstill is ramped */
+    assert(sent.target_speed_cps == VC_MIN_WHEEL_CPS);
+    settle(&c, 30u);
     INT straight_speed = sent.target_speed_cps;
-    assert(sent.steering_permille == 0);
-    input.left = 3400u; input.centre = 2900u; step(&c, 20u, 0u);
-    assert(sent.steering_permille == B3_LINE_STEER_MAX &&
-        sent.target_speed_cps <= straight_speed * 55 / 100 &&
-        sent.target_speed_cps * (1000 - sent.steering_permille) / 1000 >= 90);
+    assert(sent.steering_permille == 0 && straight_speed == 1000);
+    /* Sharp curve at 20%: inner wheel would be far below the minimum, so it
+     * stops (pivot) instead of stalling; outer keeps turning; slower. */
+    input.left = 3400u; input.centre = 2900u; settle(&c, 10u);
+    assert(sent.steering_permille > 0 && right_wheel() == 0 &&
+        left_wheel() > 0 && sent.target_speed_cps <= straight_speed * 6 / 10);
+    /* Moderate curve: inner wheel raised to the sustainable minimum. */
+    input.left = 3375u; input.centre = 2950u; settle(&c, 10u);
+    assert(sent.steering_permille > 0 && wheel_ok(right_wheel()) &&
+        right_wheel() > 0 && left_wheel() > right_wheel());
     /* Look-ahead hold: back on centre, speed recovers only gradually. */
     input.left = 3000u; input.centre = 3000u; step(&c, 20u, 0u);
+    assert(sent.target_speed_cps < straight_speed * 9 / 10);
+    settle(&c, 40u);
     assert(sent.steering_permille == 0 &&
-        sent.target_speed_cps < straight_speed * 9 / 10);
-    for (UINT tick = 0u; tick < 30u; ++tick) step(&c, 20u, 0u);
-    assert(sent.target_speed_cps == straight_speed);
+        sent.target_speed_cps == straight_speed);
     /* B3 junction rule: both strongly black and balanced only. */
     assert(B3_LINE_IS_JUNCTION(3900u, 3800u));
     assert(!B3_LINE_IS_JUNCTION(3000u, 1000u));

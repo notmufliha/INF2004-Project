@@ -69,8 +69,15 @@ sensors, ignoring the first 50 ADC codes, sets up to 80% steering toward the
 stronger side. It applies whenever the line is detected, including at a
 junction (balanced sensors give zero steering on their own). Curve speed:
 the base speed drops in proportion to the hardest recent steering, down to
-50% at full steer, and recovers over about 0.4 s after the curve
-(`VC_CURVE_MIN_PERMILLE`, `VC_CURVE_DECAY_PER_TICK`). A sensor counts as on the line between 301 and 4100 ADC codes.
+60% at full steer, and recovers over about 0.4 s after the curve
+(`VC_CURVE_MIN_PERMILLE`, `VC_CURVE_DECAY_PER_TICK`). Motion is smoothed:
+steering changes by at most 150 permille per 20 ms tick, and speed rises by
+at most 100 counts/s per tick (also from standstill); slowing is immediate.
+No DRIVE asks a wheel to run between 0 and `VC_MIN_WHEEL_CPS` (300 counts/s,
+about 25 mm/s; calibrate on the car): a curve's inner wheel a little below it
+is raised to it, far below it is set to 0 so the car pivots around that wheel,
+keeping the outer wheel's speed. This prevents B2 stall faults on curves and
+at low dashboard speeds. A sensor counts as on the line between 301 and 4100 ADC codes.
 The base speed is reduced only when the outer wheel would otherwise exceed
 B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn
 accuracy must be calibrated on the actual track. B5's physical avoidance
