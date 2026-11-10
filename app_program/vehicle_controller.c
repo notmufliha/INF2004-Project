@@ -333,7 +333,12 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (c->navigation == 0u && line_detected) {
         (void)line_position(c, in); /* remember which side the line is on */
     }
-    if (line_detected) c->line_seen_since_start = true;
+    if (line_detected) {
+        c->line_seen_since_start = true;
+        c->lost_since_ms = 0u;
+    } else if (c->lost_since_ms == 0u) {
+        c->lost_since_ms = in->now_ms != 0u ? in->now_ms : 1u;
+    }
     if (c->navigation == 0u && !line_detected && !c->line_seen_since_start) {
         /* Not seen since START (car off the line, or calibration just
          * restarted): wait in place instead of driving a search.  It
@@ -342,9 +347,29 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         set_state(c, ROBOT_LINE_RECOVERY);
         return;
     }
+    if (c->navigation == 0u && !line_detected &&
+        c->state == ROBOT_LINE_FOLLOW && c->drive_sent &&
+        in->now_ms - c->lost_since_ms < VC_LINE_DROPOUT_MS) {
+        /* Short dropout while following: hold the last steering/speed. */
+        if (in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
+        command.type = MOTION_CMD_DRIVE;
+        command.direction = MOTION_DIR_FORWARD;
+        command.steering_permille = c->last_steer;
+        command.target_speed_cps = c->last_speed > 0 ? c->last_speed : 1;
+        apply_wheel_minimum(&command);
+        command.safety_generation = in->safety_generation;
+        if (motion_send_command(&command) == E_OK) {
+            c->stopped = false;
+            c->last_drive_ms = in->now_ms;
+        } else if (in->now_ms - c->last_drive_ms >= 60u) {
+            safe_stop(c);
+        }
+        return;
+    }
     if (c->navigation == 0u && !line_detected) {
         uint32_t recovery_elapsed;
         INT direction = c->last_line_search_direction;
+        INT search_steer;
 
         if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
         recovery_elapsed = in->now_ms - c->recovery_ms;
@@ -361,13 +386,16 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) {
             return;
         }
-        /* Pivot toward the side the line was last clearly on, close to
-         * where it was lost; the outer wheel runs at the set speed so the
-         * car turns far enough in VC_LINE_REACQUIRE_MS. */
+        /* Tightening arc toward the side the line was last clearly on,
+         * close to where it was lost; the outer wheel runs at the set
+         * speed so the car turns far enough in VC_LINE_REACQUIRE_MS. */
+        search_steer = VC_RECOVER_START_STEER + VC_RECOVER_RAMP_PER_TICK *
+            (INT)(recovery_elapsed / VC_PERIOD_MS);
+        if (search_steer > B3_LINE_STEER_MAX) search_steer = B3_LINE_STEER_MAX;
         command.type = MOTION_CMD_DRIVE;
         command.direction = MOTION_DIR_FORWARD;
-        command.steering_permille = direction * B3_LINE_STEER_MAX;
-        command.target_speed_cps = speed * 1000 / (1000 + B3_LINE_STEER_MAX);
+        command.steering_permille = direction * search_steer;
+        command.target_speed_cps = speed * 1000 / (1000 + search_steer);
         if (command.target_speed_cps < 1) command.target_speed_cps = 1;
         c->last_steer = command.steering_permille;
         c->last_error = direction * B3_LINE_POS_CENTRE;

@@ -45,10 +45,13 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
   Steering applies whenever
   the line is detected, including when both sensors see it. The car slows on
   curves (down to 60% at full steer) and only speeds back up gradually.
-- If line flags report `LOST` while following, the controller pivots
-  toward the side the line was last clearly on for up to 3 s (about 60
-  degrees at the default speed), then stops but stays armed until the line
-  is seen again. There are no wide sweeps: they drove the car across the
+- A `LOST` of 60 ms or less while following (`VC_LINE_DROPOUT_MS`) is a
+  sensor dropout: the last steering and speed are kept.
+- If line flags report `LOST` for longer, the controller turns toward the
+  side the line was last clearly on in a tightening arc (steering 400,
+  +40 per 20 ms, up to full), for up to 3 s (about 60 degrees at the
+  default speed), then stops but stays armed until the line is seen
+  again. There are no wide sweeps: they drove the car across the
   course. With no clear side (line lost straight ahead) it stops at once.
   It never searches a line not seen since START, and never without fresh
   ultrasonic clearance.
