@@ -26,7 +26,17 @@
 	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
 #define B3_LINE_STEER_DEADBAND (50)
 #define B3_LINE_STEER_ERROR_FULL_SCALE (500)
-#define B3_LINE_STEER_MAX (500)
+/* 800 permille: inner wheel at 0.2x, outer at 1.8x (before the 5000 cps
+ * outer-wheel limit), so sharp curves can be followed. */
+#define B3_LINE_STEER_MAX (800)
+/* A junction (cross line) puts BOTH sensors on solid black, reading about
+ * equally.  Merely "both above 300" is normal line following, not a
+ * junction; treating it as one forced the car straight on every curve.
+ * CALIBRATE: read the dashboard IR values with both sensors over a junction
+ * and set B3_LINE_JUNCTION_MIN a little below the lower of the two. */
+#define B3_LINE_JUNCTION_MIN (3500U)
+#define B3_LINE_JUNCTION_BALANCE (300)
+#define B3_LINE_IS_JUNCTION(left, centre) 	((uint16_t)(left) >= B3_LINE_JUNCTION_MIN && 	 (uint16_t)(centre) >= B3_LINE_JUNCTION_MIN && 	 (uint16_t)(left) <= B3_LINE_ACTIVE_MAX && 	 (uint16_t)(centre) <= B3_LINE_ACTIVE_MAX && 	 ((int)(left) - (int)(centre)) <= B3_LINE_JUNCTION_BALANCE && 	 ((int)(centre) - (int)(left)) <= B3_LINE_JUNCTION_BALANCE)
 
 typedef enum {
 	B3_BARCODE_NONE = 0,

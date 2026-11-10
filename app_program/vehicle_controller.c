@@ -350,23 +350,47 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
+    /* Always steer proportionally: balanced sensors give zero steering on
+     * their own, so a junction is still crossed straight, while a curve is
+     * followed even when both sensors see the line. */
+    command.steering_permille = line_follow_steering(in);
+    {
+        INT magnitude = command.steering_permille < 0 ?
+            -command.steering_permille : command.steering_permille;
+        INT slow_permille;
+
+        /* Look-ahead: remember the hardest recent correction and only
+         * relax it gradually, so speed stays low through the curve. */
+        c->curve_steer -= VC_CURVE_DECAY_PER_TICK;
+        if (c->curve_steer < magnitude) c->curve_steer = magnitude;
+        if (c->curve_steer < 0) c->curve_steer = 0;
+        slow_permille = 1000 - (1000 - VC_CURVE_MIN_PERMILLE) *
+            c->curve_steer / B3_LINE_STEER_MAX;
+        if (slow_permille < VC_CURVE_MIN_PERMILLE) {
+            slow_permille = VC_CURVE_MIN_PERMILLE;
+        }
+        speed = speed * slow_permille / 1000;
+    }
     if ((in->line_flags & LINE_F_JUNCTION) != 0u || c->junction_latched) {
-        command.steering_permille = 0;
         command.target_speed_cps = speed / 2;
     } else {
-        command.steering_permille = line_follow_steering(in);
         if (c->mode == MODE_AUTO &&
             c->pending_navigation != B3_NAV_NONE) {
             speed = speed * 3 / 4;
         }
         command.target_speed_cps = speed;
     }
-    /* Preserve B2's outer-wheel <=5000 cps constraint in either direction. */
+    if (command.target_speed_cps < 1) command.target_speed_cps = 1;
+    /* Preserve B2's outer-wheel <=5000 cps constraint in either direction.
+     * Only scale when the outer wheel would actually exceed it, so low
+     * speeds keep enough inner-wheel speed to avoid B2 stall detection. */
     {
         INT steering_magnitude = command.steering_permille < 0 ?
             -command.steering_permille : command.steering_permille;
-        command.target_speed_cps = command.target_speed_cps * 1000 /
-            (1000 + steering_magnitude);
+        if ((int64_t)command.target_speed_cps * (1000 + steering_magnitude) >
+            5000000) {
+            command.target_speed_cps = 5000000 / (1000 + steering_magnitude);
+        }
     }
     if (in->hump) command.target_speed_cps /= 2;
     command.safety_generation = in->safety_generation;
