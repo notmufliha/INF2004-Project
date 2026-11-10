@@ -101,6 +101,18 @@
 /* A short second attempt helps transient echoes, never turns a timeout
  * into a fabricated clear distance. */
 #define ROBOT_SCAN_RETRY_DELAY_MS 120u
+/* "Nothing within range": the echo pulse outlasts the 30 ms capture
+ * window (ECHO_NO_FALL) or measures beyond 400 cm (OUT_OF_RANGE).  With 1,
+ * such a ping counts as a clear reading at ROBOT_FAR_CLEAR_CM so the car
+ * can drive in open space or toward a distant obstacle.  A sensor that
+ * never answers (NO_RISE), a stuck-high pin or a glitch pulse is still a
+ * fault and keeps the motors stopped.  WARNING: a soft or steeply angled
+ * object that returns no echo also reads as clear.  Set 0 for the old
+ * fail-closed behaviour (stop whenever no echo returns). */
+#ifndef ROBOT_NO_ECHO_MEANS_CLEAR
+#define ROBOT_NO_ECHO_MEANS_CLEAR 1
+#endif
+#define ROBOT_FAR_CLEAR_CM 400.0f
 #define ROBOT_STOP_CM 35.0f
 #define ROBOT_RELEASE_CM 45.0f
 #define ROBOT_CLEAR_CONFIRM 3u

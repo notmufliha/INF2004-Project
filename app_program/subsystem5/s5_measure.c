@@ -22,6 +22,31 @@ bool s5_echo_suppressed_cm(float cm)
     return false;
 }
 
+bool s5_echo_usable_cm(S5EchoStatus status, float raw_cm, float *out_cm)
+{
+    if (out_cm == NULL)
+    {
+        return false;
+    }
+    if (status == S5_ECHO_OK)
+    {
+        if (s5_echo_suppressed_cm(raw_cm))
+        {
+            return false;
+        }
+        *out_cm = raw_cm;
+        return true;
+    }
+#if ROBOT_NO_ECHO_MEANS_CLEAR
+    if ((status == S5_ECHO_NO_FALL) || (status == S5_ECHO_OUT_OF_RANGE))
+    {
+        *out_cm = ROBOT_FAR_CLEAR_CM;
+        return true;
+    }
+#endif
+    return false;
+}
+
 static float abs_difference(float first, float second)
 {
     return (first > second) ? (first - second) : (second - first);
@@ -62,14 +87,15 @@ static bool measure_one_batch(float *out_cm)
     for (i = 0u; i < ROBOT_ECHO_SAMPLES; ++i)
     {
         S5EchoReading reading = s5_ultrasonic_read_detailed();
+        float usable_cm = 0.0f;
 
-        if ((reading.status == S5_ECHO_OK) &&
-            !s5_echo_suppressed_cm(reading.cm))
+        if (s5_echo_usable_cm(reading.status, reading.cm, &usable_cm))
         {
-            values[count] = reading.cm;
+            values[count] = usable_cm;
             ++count;
         }
 
+        /* NO_FALL leaves ECHO high; the longer gap lets it fall first. */
         if ((uint8_t)(i + 1u) < ROBOT_ECHO_SAMPLES)
         {
             tk_dly_tsk((reading.status == S5_ECHO_OK) ?

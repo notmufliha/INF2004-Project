@@ -183,9 +183,9 @@ static void stationary_profile_mode(void)
          * False-positive stops are safer than delayed collision stops. */
         if (driving) {
             S5EchoReading guard = s5_ultrasonic_read_detailed();
-            if (guard.status != S5_ECHO_OK ||
-                s5_echo_suppressed_cm(guard.cm) ||
-                guard.cm < ROBOT_STOP_CM) {
+            float guard_cm = 0.0f;
+            if (!s5_echo_usable_cm(guard.status, guard.cm, &guard_cm) ||
+                guard_cm < ROBOT_STOP_CM) {
                 b2_request_stop();
                 driving = false;
                 tm_printf((UB*)"[S5-GUARD] immediate STOP status=%s cm_x100=%d; verifying next echoes\n",
