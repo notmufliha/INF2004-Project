@@ -7,9 +7,14 @@
  */
 #include "../app.h"
 #include "gy511_i2c.h"
+#include "imu_odom.h"
 #include "../../device/include/dev_i2c.h"
 
-static ID gh_i2c_device;
+static ID   gh_i2c_device;
+static bool capture_clock (void * p_context, uint32_t * p_time_ms);
+static void pair_acceleration (void * p_context, imu_data_t * p_data,
+                               uint32_t begin_ms, uint32_t end_ms,
+                               bool b_time_valid);
 
 static bool read_registers (void * p_context, uint8_t address, uint8_t reg,
                             uint8_t * p_data, uint32_t count);
@@ -40,6 +45,42 @@ gy511_i2c_open (gy511_bus_t * p_bus)
     return true;
 }
 
+/** @brief Bind real clock and encoder hooks without coupling decoder to kernel.
+ */
+bool
+gy511_i2c_pair (gy511_t * p_sensor)
+{
+    const gy511_capture_t capture = {NULL, capture_clock, pair_acceleration};
+
+    return gy511_set_capture(p_sensor, &capture);
+}
+
+/** @brief Read the software acquisition clock only in the sampling task. */
+static bool
+capture_clock (void * p_context, uint32_t * p_time_ms)
+{
+    SYSTIM now = {0};
+
+    (void)p_context;
+
+    if (E_OK != tk_get_tim(&now))
+    {
+        return false;
+    }
+
+    *p_time_ms = now.lo;
+    return true;
+}
+
+/** @brief Capture paired counts while acceleration bytes are still fresh. */
+static void
+pair_acceleration (void * p_context, imu_data_t * p_data, uint32_t begin_ms,
+                   uint32_t end_ms, bool b_time_valid)
+{
+    (void)p_context;
+    imu_odom_pair(p_data, begin_ms, end_ms, b_time_valid);
+}
+
 /** @brief Read a bounded register burst through the kernel I2C driver. */
 static bool
 read_registers (void * p_context, uint8_t address, uint8_t reg,
@@ -48,7 +89,7 @@ read_registers (void * p_context, uint8_t address, uint8_t reg,
     /* This bus adapter needs no caller-owned callback context. */
     (void)p_context;
 
-    if ((NULL == p_data) || (0U == count) || (count > 6U))
+    if ((NULL == p_data) || (0U == count) || (count > 7U))
     {
         return false;
     }
@@ -59,7 +100,7 @@ read_registers (void * p_context, uint8_t address, uint8_t reg,
     transfer.sadr     = address;
     transfer.snd_size = 1;
     transfer.snd_data = &reg;
-    /* The register protocol reads at most six bytes, which fits kernel SZ. */
+    /* Status plus XYZ is at most seven bytes, which fits kernel SZ. */
     transfer.rcv_size = (SZ)count;
     transfer.rcv_data = p_data;
 

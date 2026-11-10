@@ -5,6 +5,7 @@
 #include "subsystem4.h"
 #include "s4_runtime.h"
 #include "imu.h"
+#include "s4_motion_test.h"
 #if !ROBOT_MODE
 #include "task_monitor.h"
 #endif
@@ -61,6 +62,12 @@ s4_test_run (void)
                "real GY-511 readings arrive after level calibration");
 #endif
     TEST_SUMMARY("subsystem4");
+#if S4_MOTION_TEST_ACTIVE
+    /* Earlier checks have released the single-consumer test tap. */
+    ER motion_error = s4_motion_test_run();
+
+    tm_printf((UB *)"[B4-TEST] Integration run returned %d\n", motion_error);
+#endif
 }
 
 /** @brief Discard old observations without stealing acquisition readings. */

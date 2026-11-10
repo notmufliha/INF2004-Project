@@ -1,0 +1,22 @@
+B4 odometry diagnostic split (2026-11-02)
+
+PASS: selected BARR-C style checks and all eight strict ARM configurations.
+PASS: existing seven host programs (reading=124, event=52, height context=96).
+PASS: native startup profiles, B2 snapshot reader, controller queue and all
+      fifteen movement-orchestration scenarios.
+PASS: real imu_odom_capture tests for valid capture at 10 ms and invalid at
+      11 ms, separate and overlapping timing/left/right error-change causes,
+      independently measured encoder/context phases, 32-bit clock wrap,
+      final clock failure, harmless diagnostic-probe failure and saturation.
+PASS: real diagnostic collector tests for overlapping causes, valid/invalid
+      totals, timing availability, unknown-value exclusion and per-frame
+      derived before-encoder time. Report size is now 244 bytes.
+PASS: make TEST=1 -j8 USB/Wi-Fi build with GCC 10.3.1 and Pico SDK 2.3.1;
+      updated mtk3pico_smp1_usb_cdc_wifi_test.uf2 generated.
+
+B2/B5 source unchanged. Original 10 ms capture rule, height rules and detector
+thresholds unchanged. Eight-byte metadata increases the acquisition queue by
+64 bytes; event/network formats unchanged. No unbounded sample history.
+
+NOT RUN: updated UF2 on the car. New serial output is needed to distinguish
+the observed hardware run's timing overruns from encoder-error races.

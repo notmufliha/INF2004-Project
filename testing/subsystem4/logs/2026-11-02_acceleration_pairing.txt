@@ -1,0 +1,32 @@
+B4 acceleration/encoder pairing correction (2026-11-02)
+
+Real sensor path now brackets the six-byte acceleration burst and invokes
+encoder capture immediately after successful bytes, before conversion/angle
+math, calibration bookkeeping and magnetic reads. Frame timestamp remains
+burst completion. The complete burst-plus-pairing window must still fit 10 ms.
+
+PASS: actual portable GY-511 decoder plus actual B4 odometry adapter with
+      deterministic kernel/B2/I2C stubs. A 12ms status read, 4ms acceleration
+      burst, 2ms encoder capture and later 24ms magnetic read produce a valid
+      6ms pair. Timestamp stays at acceleration completion, not overall end.
+PASS: 11ms acceleration burst is still rejected; invalid source clocks do not
+      produce a fabricated pair. Clipping and no-fresh-data remain invalid.
+PASS: missing magnetic data does not suppress a valid acceleration pair.
+PASS: software clock wrap across burst completion retains valid pairing.
+PASS: aggregation of acceleration/magnetic read timing flags, including their
+      coexistence with pairing flags and per-frame pre-encoder derivation.
+PASS: full native startup/odometry/B2/controller/15 motion scenarios/diagnostics.
+PASS: all seven existing host programs and eight strict ARM configurations.
+PASS: selected BARR-C style checks and whitespace check.
+PASS: USB/Wi-Fi make TEST=1 -j8, GCC 10.3.1, Pico SDK 2.3.1; UF2 generated.
+
+Current reading/event/report sizes: 128/52/260 bytes. Reading queue remains
+within the 128-byte payload bound. B1/controller formats and B2/B5 sources
+unchanged. No pitch/roll thresholds, height formula, gap limits or safety
+permission checks were relaxed.
+
+NOT RUN: updated image on physical robot. Burst-completion time approximates
+read availability, not exact ADC conversion time. Slow magnetic reads may
+still reduce acceleration sampling rate and trigger the unchanged 25ms height
+gap rejection. New hardware diagnostics are needed before claiming detection
+or height accuracy.

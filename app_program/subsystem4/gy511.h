@@ -32,14 +32,32 @@ typedef struct
     bool b_mag_calibrated; /* Enable only after magnetic calibration/trials. */
 } gy511_config_t;
 
+typedef bool (*gy511_clock_fn_t)(void * p_context, uint32_t * p_time_ms);
+typedef void (*gy511_pair_fn_t)(void * p_context, imu_data_t * p_data,
+                                uint32_t begin_ms, uint32_t end_ms,
+                                bool b_time_valid);
+
+/* Pair immediately after the acceleration burst, before math/magnetic reads. */
 typedef struct
 {
-    gy511_bus_t    bus;
-    gy511_config_t config;
-    float32_t      previous_heading;
-    uint32_t       previous_heading_ms;
-    bool           b_have_heading;
-    bool           b_ready;
+    void * p_context;
+
+    gy511_clock_fn_t p_clock;
+    gy511_pair_fn_t  p_pair;
+} gy511_capture_t;
+
+typedef struct
+{
+    gy511_bus_t     bus;
+    gy511_config_t  config;
+    float32_t       previous_heading;
+    uint32_t        previous_heading_ms;
+    bool            b_have_heading;
+    bool            b_ready;
+    gy511_capture_t capture;
+    bool            b_magnetic_idle_only;
+    bool            b_idle_seen;
+    uint32_t        idle_since_ms;
 } gy511_t;
 
 typedef enum
@@ -56,6 +74,11 @@ bool           gy511_init (gy511_t * p_sensor, const gy511_bus_t * p_bus,
                            const gy511_config_t * p_config);
 gy511_result_t gy511_read (gy511_t * p_sensor, uint32_t timestamp_ms,
                            imu_data_t * p_data);
+bool gy511_set_capture (gy511_t * p_sensor, const gy511_capture_t * p_capture);
+/* Enabled policy requires fresh, non-running standstill for one second.
+ * Suppressed frames mark magnetic/heading/turn-rate data unavailable.
+ */
+bool gy511_set_magnetic_idle_only (gy511_t * p_sensor, bool b_enabled);
 /* Level, still startup average in robot axes; preserves 1g on Z. */
 bool gy511_set_level_calibration (gy511_t *       p_sensor,
                                   const float32_t p_mean[3]);

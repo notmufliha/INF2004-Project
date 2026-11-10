@@ -12,6 +12,11 @@ imu_demo_scenario (uint32_t elapsed_ms)
         case 1U:
             return IMU_MOCK_ACCELERATING;
         case 2U:
+            if (elapsed_ms % 8000U >= 2800U)
+            {
+                /* Flat forward approach rearms roll after the turn. */
+                return IMU_MOCK_ACCELERATING;
+            }
             return IMU_MOCK_TURNING;
         case 3U:
             return IMU_MOCK_CLIMBING_HUMP;

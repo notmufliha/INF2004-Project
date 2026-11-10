@@ -24,8 +24,8 @@ foreach ($robotMode in @(0, 1)) {
 
 $odometryExecutable = Join-Path $PSScriptRoot 'testodom_main.exe'
 $odometrySources = @(
+    (Join-Path $sourceDirectory 'gy511.c'),
     (Join-Path $sourceDirectory 'imu_odom.c'),
-    (Join-Path $sourceDirectory 'imu_height.c'),
     (Join-Path $sourceDirectory 'imu_motion.c'),
     (Join-Path $sourceDirectory 'imu_numeric.c'),
     (Join-Path $PSScriptRoot 'testodom_main.c')
@@ -58,3 +58,31 @@ $controllerSources = @(
 if ($LASTEXITCODE -ne 0) { throw 'Controller handoff compilation failed' }
 & $controllerExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Controller handoff test failed' }
+
+$driveExecutable = Join-Path $PSScriptRoot 'testdrive_main.exe'
+$driveSources = @(
+    (Join-Path $sourceDirectory 's4_motion_test.c'),
+    (Join-Path $sourceDirectory 's4_diag.c'),
+    (Join-Path $PSScriptRoot 'diag_stub.c'),
+    (Join-Path $sourceDirectory 'imu_numeric.c'),
+    (Join-Path $PSScriptRoot 'testdrive_main.c')
+)
+& gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'motion_stub.h') -DROBOT_MODE=1 -DAPP_TEST=1 -DS4_IMU_USE_MOCK=0 @driveSources -lm -o $driveExecutable
+if ($LASTEXITCODE -ne 0) { throw 'B4 movement test compilation failed' }
+foreach ($scenario in @(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14)) {
+    & $driveExecutable $scenario
+    if ($LASTEXITCODE -ne 0) { throw "B4 movement scenario failed: $scenario" }
+}
+
+$diagnosticExecutable = Join-Path $PSScriptRoot 'testdiag_main.exe'
+$diagnosticSources = @(
+    (Join-Path $sourceDirectory 's4_diag.c'),
+    (Join-Path $sourceDirectory 'imu_numeric.c'),
+    (Join-Path $sourceDirectory 'imu_analysis.c'),
+    (Join-Path $PSScriptRoot 'diag_stub.c'),
+    (Join-Path $PSScriptRoot 'testdiag_main.c')
+)
+& gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'motion_stub.h') -DROBOT_MODE=1 -DAPP_TEST=1 @diagnosticSources -lm -o $diagnosticExecutable
+if ($LASTEXITCODE -ne 0) { throw 'B4 diagnostic compilation failed' }
+& $diagnosticExecutable
+if ($LASTEXITCODE -ne 0) { throw 'B4 diagnostic test failed' }

@@ -232,20 +232,29 @@ filter_reading (imu_processing_t * p_state, const imu_data_t * p_input,
     *p_output = *p_input;
     if (p_state->b_seeded)
     {
+        /* Preserve the configured response per 10 ms, not per arrival.
+         * Accepted intervals are positive and bounded by max_gap_ms.
+         */
+        const uint32_t elapsed =
+            p_input->timestamp_ms - p_state->previous.timestamp_ms;
+        const float32_t alpha =
+            1.0f - powf(1.0f - p_state->config.smoothing_alpha,
+                        (float32_t)elapsed / 10.0f);
+
         p_output->pitch_deg =
             smooth_angle(p_state->previous.pitch_deg, p_input->pitch_deg,
-                         p_state->config.smoothing_alpha);
+                         alpha);
         p_output->roll_deg =
             smooth_angle(p_state->previous.roll_deg, p_input->roll_deg,
-                         p_state->config.smoothing_alpha);
+                         alpha);
         /* Convex combination avoids overflow in (next - old). */
         if ((p_input->b_turn_rate_valid) &&
             (p_state->previous.b_turn_rate_valid))
         {
             p_output->turn_rate_dps =
-                (1.0f - p_state->config.smoothing_alpha) *
+                (1.0f - alpha) *
                     p_state->previous.turn_rate_dps +
-                p_state->config.smoothing_alpha * p_input->turn_rate_dps;
+                alpha * p_input->turn_rate_dps;
         }
     }
 

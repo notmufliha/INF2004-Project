@@ -6,6 +6,7 @@
 #include "gy511.h"
 /* Called only from the sampling task, exclusive owner of I2C0. */
 bool gy511_i2c_open (gy511_bus_t * p_bus);
+bool gy511_i2c_pair (gy511_t * p_sensor);
 #endif
 
 /*** end of file ***/

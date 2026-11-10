@@ -97,6 +97,12 @@ the robot to test impacts. The software does not command motors.
 
 ## Implemented measurements and remaining validation
 
+Real sampling now combines acceleration status/XYZ into one seven-byte read.
+With `S4_IMU_MAG_IDLE_ONLY=1`, magnetic acquisition is deferred while moving or
+without trustworthy B2 standstill feedback, resuming after one second of idle.
+Heading/turn rate therefore print N/A on deferred frames; this is expected,
+not an IMU fault. See [MOTION_TEST.md](MOTION_TEST.md) for the policy and opt-out.
+
 - Acceleration: 100Hz, +/-4g, high-resolution, 2mg/LSB; clipping is rejected.
 - Pitch/roll: accelerometer gravity-vector estimates. Driving acceleration and
   vibration affect them; they are not gyroscope-fused orientation measurements.
@@ -111,8 +117,8 @@ the robot to test impacts. The software does not command motors.
   and a maximum 100ms interval. Without calibration, `b_turn_rate_valid=false` and
   turning classification is disabled. It remains an estimate, not a gyro reading.
 - Hump and impact thresholds still require real-car tests. Hump height and highest
-  height are now estimated from paired encoder travel and pitch when consistency
-  checks pass. Validate against a known-height hump using [HEIGHT.md](HEIGHT.md).
+  height remain unavailable; a validated one-wheel model is still required.
+  See [HEIGHT.md](HEIGHT.md).
 
 Desktop regression command (no board required):
 

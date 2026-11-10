@@ -1,4 +1,120 @@
-# Subsystem 4 — test log
+# Subsystem 4 â€” test log
+
+Module retirement (2026-11-10): removed tracked `imu_mock_test` executable,
+`imu_height.c/.h`, the geometry-only `imu_odom_init()` helper and isolated
+`testhigh_main.c/.h`. Removed height rejection counters and placeholder context;
+retained diagnostics, odometry capture/pairing, mock sources and tests. No roll
+threshold, detector transition, pitch measurement or public event format changes.
+Height remains unavailable. Historical height audits below describe retired code.
+
+Validation: six host test programs passed; native startup/integration tests,
+including 15 movement orchestration scenarios and actual classifier diagnostics,
+passed. Eight ARM C99 configurations and selected BARR-C style checks passed.
+Default USB/Wi-Fi `TEST=1` firmware build passed and generated
+`build_make/mtk3pico_smp1_usb_cdc_wifi_test.uf2`.
+Diagnostic report is now 200 bytes (previously 300); reading/event layouts remain
+128/52 bytes. Physical robot trials were not performed for this cleanup.
+
+Roll-only cleanup (2026-11-10): removed pitch hump state/configuration,
+climb/descent fallback, mode switch and pitch-stage/streak diagnostics. Real
+and mock operation now share roll recognition; pitch measurement/filtering,
+printing and general tilt checks remain. Mock travel is explicitly synthetic.
+The robot task no longer initializes or calls the old pitch height estimator;
+the unused height module and isolated test are now removed (see retirement below). Height remains unavailable.
+Regression tests assert pitch-only profiles cannot generate hump events and
+cover either wheel, trends, holds, failures, timing, rearming and mock recovery.
+Reading/event/height-context remain 128/52/96 bytes; diagnostics now 300 bytes.
+Previous milestone entries below describe historical implementations.
+PASS: seven host programs, native startup/queue/odometry/motion/diagnostics,
+eight ARM profiles, selected BARR-C checks and USB/Wi-Fi TEST=1 UF2 build.
+Physical regression after removal remains pending; roll thresholds and movement
+guards were preserved. No teammate implementation files were changed.
+
+
+B4 roll motion trends (2026-11-05): in roll mode, climbing/peak/descending now
+follow confirmed absolute-roll trends, not pitch. Provisional 0.5deg deadband,
+two meaningful changes for direction, three stable readings for elevated peak;
+two level-return readings report descent before third-reading completion.
+Host tests cover both sides, directional jitter, peak/descent, direct level
+return and retained pitch measurements. Pitch mode remains available.
+Diagnostic roll stage bits added, report=324 bytes. Detection entry/level,
+movement guards, height unavailability and packet sizes remain unchanged.
+PASS: host and startup/integration regressions, eight ARM profiles, optional
+pitch-mode compilation, selected BARR-C checks and USB/Wi-Fi TEST=1 UF2 build.
+Hardware trend/noise validation remains pending.
+
+B4 roll-hump detection (2026-11-05): real mode detects either-side roll excursions
+after a stable moving baseline; two same-side entry readings and three level
+readings complete one event and rearm. Trial thresholds 4deg enter/2deg level are
+configurable in s4_runtime.h, not hardware-validated. Pitch motion remains
+independent; pitch completion cannot emit or cancel a roll hump. Roll mode
+bypasses the pitch height estimator and reports height unavailable.
+PASS: host either-side, single-event/rearm, hysteresis, alternate settings,
+spike/sign reversal rejection, missing baseline, stationary/fault/invalid data,
+encoder holds, roll timeout/wrap and pitch independence regressions.
+PASS: native roll diagnostic capture, startup/controller/odometry/motion tests;
+eight ARM profiles, selected BARR-C checks and USB/Wi-Fi TEST=1 UF2 build.
+Diagnostic report=320 bytes; reading/event/height-context stay 128/52/96 bytes.
+No new source modules or teammate implementation changes. NOT RUN: installed
+car with one wheel, flat-ground false-positive trials, final threshold selection.
+Sampling consistency and one-wheel height accuracy are not claimed fixed.
+
+B4 movement hold (2026-11-04): unchanged paired encoders with fresh, fault-free
+forward context preserve terrain for less than 200ms; held samples cannot add
+confirmations or complete a hump. Progress resumes the sequence; the 200ms bound,
+global terrain timeout and genuine feedback failures cancel it. Diagnostics
+split movement reset reasons; report=304 bytes. Reading/event/height-context
+sizes remain 128/52/96 bytes. Host tests cover held ascent/descent, resumed
+completion, 199/200ms boundary across clock wrap, and each cancellation cause.
+Host/startup integration, eight ARM configurations, selected BARR-C checks and
+USB/Wi-Fi TEST=1 build PASS; UF2 generated. No B2 source or height limits changed.
+Hardware retest remains required.
+
+B4 short-hump recognition (2026-11-04): real-mode level baseline, two samples
+per slope, three samples returning level, forward context and encoder progress.
+Entry remains +/-4 degrees. A short crest may be skipped; isolated or one-sided
+spikes cannot complete a hump. Timing/impact resets discard the candidate.
+Diagnostics separate slope/level confirmation counts and movement resets;
+report=272 bytes, reading/event/height-context remain 128/52/96 bytes.
+Host regressions, native/startup checks, eight ARM profiles, selected BARR-C
+checks and USB/Wi-Fi UF2 build PASS. Physical short-hump and flat-ground runs
+remain pending. Height retains its 25ms gap and other quality limits; no claim
+that hardware timing or peak-height accuracy is fixed.
+
+B4 terrain logic (2026-11-03): independent level/descent streaks; real-mode
+forward context plus encoder progress required; elapsed-time pitch filtering
+shared by detector and height. Overrun yields 1 ms rather than a full period;
+ordinary motion console changes rate limited. Entry remains +/-4 degrees,
+three samples; all height/safety limits retained. Host regression, startup/
+integration, eight ARM profiles, selected BARR-C checks and USB/Wi-Fi UF2 build
+PASS. Physical cadence, false detections and measured-height validation pending.
+
+B4 acceleration priority (2026-11-02): one combined status/XYZ transaction and
+configurable idle-only magnetics added. Heading is unavailable during deferred
+motion frames. Host/native/ARM checks and UF2 build PASS; physical rate/height
+validation remains pending. See [verification](logs/2026-11-02_acceleration_priority.txt).
+
+B4 acceleration pairing (2026-11-02): capture moved to a driver callback just
+after acceleration bytes, before math/magnetic work. Burst-end timestamps and
+separate sensor-read timings added; 10ms pairing bound retained. Native/host/ARM
+checks and USB/Wi-Fi UF2 build PASS; physical validation pending. See
+[verification](logs/2026-11-02_acceleration_pairing.txt).
+
+B4 odometry split (2026-11-02): separate acquisition-age, encoder-error-change
+and clock-failure counts plus phase timings added without relaxing validity.
+Host/native/ARM checks and USB/Wi-Fi build PASS; on-car evidence remains pending.
+See [verification](logs/2026-11-02_odometry_diagnostics.txt).
+
+B4 diagnostic summary (2026-11-02): sample-rate raw/filter extrema, reached stages,
+threshold streaks and named detector/height rejection counters added. See
+[verification](logs/2026-11-02_b4_diagnostics.txt) and the diagnostic section in
+[MOTION_TEST.md](../../app_program/subsystem4/MOTION_TEST.md). Physical validation
+of this diagnostic firmware is NOT RUN.
+
+B4-owned motion test (2026-11-02): fourteen native orchestration cases, existing
+host tests, ARM checks and USB/Wi-Fi UF2 build PASS. Physical execution is NOT RUN.
+See [verification](logs/2026-11-02_b4_motion_test.txt) and
+[instructions](../../app_program/subsystem4/MOTION_TEST.md).
 
 B4 controller handoff (2026-11-01): production queue/transition tests, existing
 host tests, eight startup profiles, eight ARM configurations and changed B4 ARM
@@ -45,7 +161,7 @@ Reading/event layout assertions remain 56/48 bytes. Hardware execution of this
 refactor is not yet verified. Shared legacy naming exceptions are documented in
 `app_program/subsystem4/CODING_STANDARD.md`.
 
-**Subsystem:** Monitor (example)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem4/`
+**Subsystem:** Monitor (example)  Â·  **Student ID:** <student ID>  Â·  **Code:** `app_program/subsystem4/`
 
 See `testing/README.md` for how to run tests and record results.
 
@@ -80,7 +196,7 @@ Define a test here before running it. Test IDs never change.
 | S4-M01 | Height accuracy on the car | Real hump estimate | manual | Traverse known-height humps with calibrated encoders; compare serial and B1 output | Record expected/estimated height and error; acceptance needs the team's agreed tolerance |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
-**manual** = a person observes the result (LED, scope, meter, phone app…).
+**manual** = a person observes the result (LED, scope, meter, phone appâ€¦).
 
 ## Results
 
@@ -88,7 +204,7 @@ Add a new row for every run. Never edit or delete old rows.
 
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
-| YYYY-MM-DD | S4-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+| YYYY-MM-DD | S4-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_â€¦.txt` | |
 | 2026-11-01 | S4-H04 and regressions | Working tree | Codex | PASS | [B2 snapshot checks](logs/2026-11-01_b2_snapshots.txt) | B4-only reader, context-gated height and stationary checks; seven host programs, native startup/adapter/reader and eight ARM configurations; physical validation pending |
 | 2026-11-01 | S4-H02/H03 and regressions | Working tree | Codex | PASS | [height verification](logs/2026-11-01_height.txt) | Seven host programs, native startup/adapter tests and eight ARM configurations; full build blocked by B3; physical S4-M01 not run |
 | 2026-11-01 | S4-H01 and desktop regressions | Working tree | Codex | PASS | [startup verification](logs/2026-11-01_startup.txt) | Eight native startup profiles and eight strict ARM B4 configurations; physical/laptop tests not run; full build blocked by B3 assertion |
