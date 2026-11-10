@@ -18,7 +18,10 @@
 #include "b2_motor.h"
 #include "motor_control.h"
 #include "../robot_config.h"
+#include "../subsystem5/s5_mission.h"
+#if TK_SUPPORT_SMP
 #include <tk/smp.h>
+#endif
 #define B2_SAFETY_HEARTBEAT_MS ROBOT_MOTOR_WATCHDOG_MS
 
 static uint32_t g_stop_generation = 1u;
@@ -100,7 +103,8 @@ void b2_request_forward(void)
      * A clear-path report cannot cancel an
      * unacknowledged STOP.
      */
-    if (g_stop_generation == g_acknowledged_generation)
+    if (g_stop_generation == g_acknowledged_generation &&
+        (!ROBOT_MODE || !ROBOT_ENABLE_BYPASS || s5_mission_enabled()))
     {
         g_clear_heartbeat_ms = now;
         gb_clear_valid = true;
@@ -148,6 +152,7 @@ bool b2_safety_motion_allowed(void)
         (g_stop_generation == g_acknowledged_generation) &&
         (!gb_stop_latched) &&
         (gb_clear_valid);
+    if (ROBOT_MODE && ROBOT_ENABLE_BYPASS && !s5_mission_enabled()) b_allowed = false;
     last = g_clear_heartbeat_ms;
 
     safety_lock_leave(interrupt_status);
@@ -207,6 +212,7 @@ void b2_safety_apply_pwm(
 #if !ROBOT_ENABLE_DRIVE
     b_allowed = false;
 #endif
+    if (ROBOT_MODE && ROBOT_ENABLE_BYPASS && !s5_mission_enabled()) b_allowed = false;
 
     if (!b_allowed)
     {

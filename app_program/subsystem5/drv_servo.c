@@ -19,7 +19,7 @@ uint16_t s5_servo_pulse_us(uint16_t angle_deg)
            ((uint32_t)angle_deg * (S5_MAX_PULSE_US - S5_MIN_PULSE_US)) / 180u);
 }
 
-void s5_servo_init(void)
+bool s5_servo_init(void)
 {
     last_angle_deg = 90u;
     /* Repository's RP2040 clock is 125 MHz. Divider 125 -> 1 MHz tick.
@@ -37,13 +37,14 @@ void s5_servo_init(void)
     tm_printf((UB*)"[S5-SERVO] GP%d PWM slice=%d 50Hz center=1500us init errors=%d,%d,%d,%d,%d\n",
               (int)S5_SERVO_PIN, (int)slice,
               (int)e0, (int)e1, (int)e2, (int)e3, (int)e4);
+    return e0 == E_OK && e1 == E_OK && e2 == E_OK && e3 == E_OK && e4 == E_OK;
 }
 
 /* Gentle, bounded movements: never jump directly across the sensor mount.
  * 3 degree increments every 35ms give the servo time to follow the command.
  * This is a blocking RTOS task operation; it must only run while stopped.
  */
-void s5_servo_angle(uint16_t angle_deg)
+bool s5_servo_angle(uint16_t angle_deg)
 {
     uint16_t target = angle_deg;
     if (target < S5_SAFE_MIN_DEG)
@@ -70,7 +71,7 @@ void s5_servo_angle(uint16_t angle_deg)
         }
         if (pwm_set_cc(S5_SERVO_PIN, s5_servo_pulse_us(next)) != E_OK) {
             tm_printf((UB*)"[S5-SERVO-FAULT] PWM update failed; scan aborted\n");
-            return;
+            return false;
         }
         last_angle_deg = next;
         tk_dly_tsk(S5_SERVO_STEP_DELAY_MS);
@@ -80,4 +81,5 @@ void s5_servo_angle(uint16_t angle_deg)
               (int)S5_SERVO_PIN, (int)target,
               (int)s5_servo_pulse_us(target));
 #endif
+    return target == angle_deg;
 }
