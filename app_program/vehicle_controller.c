@@ -46,39 +46,47 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     set_state(c, ROBOT_SAFE_STOP);
 }
 
-static INT line_follow_steering(const VC_INPUT *in)
+/* Line position as in Pololu QTRSensors readLine(), for two sensors:
+ * weighted average of the calibrated values (index 0 = robot's left sensor
+ * = ADC "centre", index 1 = robot's right sensor = ADC "left"), ignoring
+ * values <= B3_LINE_NOISE_MAX.  When neither sensor is on the line it
+ * returns the extreme on the side the line was last seen (0 or 1000), so
+ * the controller keeps turning back toward it.  Updates the memory. */
+static INT line_position(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
 {
-    /* ADC "left" is mounted on the robot's right; "centre" is on its left.
-     * Positive B2 steering turns right, toward the stronger right sensor. */
-    INT error = (INT)in->left - (INT)in->centre;
-    INT magnitude;
-    INT correction;
+    uint32_t left = in->centre;  /* physically on the robot's left  */
+    uint32_t right = in->left;   /* physically on the robot's right */
+    uint32_t sum = 0u;
+    uint32_t weighted = 0u;
 
-    if (error > B3_LINE_STEER_DEADBAND) {
-        magnitude = error - B3_LINE_STEER_DEADBAND;
-        if (magnitude > (B3_LINE_STEER_ERROR_FULL_SCALE -
-                         B3_LINE_STEER_DEADBAND)) {
-            magnitude = B3_LINE_STEER_ERROR_FULL_SCALE -
-                        B3_LINE_STEER_DEADBAND;
+    if (left > B3_LINE_ACTIVE_MAX) left = B3_LINE_ACTIVE_MAX;
+    if (right > B3_LINE_ACTIVE_MAX) right = B3_LINE_ACTIVE_MAX;
+    if (left >= B3_LINE_ACTIVE_MIN || right >= B3_LINE_ACTIVE_MIN) {
+        if (left > B3_LINE_NOISE_MAX) sum += left;
+        if (right > B3_LINE_NOISE_MAX) {
+            sum += right;
+            weighted += right * 1000u;
         }
-        correction = magnitude * B3_LINE_STEER_MAX /
-            (B3_LINE_STEER_ERROR_FULL_SCALE - B3_LINE_STEER_DEADBAND);
-        return correction;
+        c->line_pos = (INT)(weighted / sum); /* sum > 0: one value > 200 */
+        c->last_line_search_direction =
+            c->line_pos < B3_LINE_POS_CENTRE ? -1 : 1;
+        return c->line_pos;
     }
+    return c->line_pos < B3_LINE_POS_CENTRE ? 0 : 1000;
+}
 
-    if (error < -B3_LINE_STEER_DEADBAND) {
-        magnitude = -error - B3_LINE_STEER_DEADBAND;
-        if (magnitude > (B3_LINE_STEER_ERROR_FULL_SCALE -
-                         B3_LINE_STEER_DEADBAND)) {
-            magnitude = B3_LINE_STEER_ERROR_FULL_SCALE -
-                        B3_LINE_STEER_DEADBAND;
-        }
-        correction = magnitude * B3_LINE_STEER_MAX /
-            (B3_LINE_STEER_ERROR_FULL_SCALE - B3_LINE_STEER_DEADBAND);
-        return -correction;
-    }
+/* PD steering (Pololu 3pi line follower form): error = position - centre,
+ * positive = line to the right = positive B2 steering (turn right). */
+static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    INT error = line_position(c, in) - B3_LINE_POS_CENTRE;
+    INT derivative = c->drive_sent ? error - c->last_error : 0;
+    INT steering = (B3_LINE_KP_X10 * error + B3_LINE_KD_X10 * derivative) / 10;
 
-    return 0;
+    c->last_error = error;
+    if (steering > B3_LINE_STEER_MAX) steering = B3_LINE_STEER_MAX;
+    if (steering < -B3_LINE_STEER_MAX) steering = -B3_LINE_STEER_MAX;
+    return steering;
 }
 
 /* Widening search: sweep 600 ms toward the side the line was last seen,
@@ -167,6 +175,7 @@ static void update_junction_state(VEHICLE_CONTROLLER *c, UB line_flags)
 void vehicle_controller_init(VEHICLE_CONTROLLER *c)
 {
     *c = (VEHICLE_CONTROLLER){0};
+    c->line_pos = B3_LINE_POS_CENTRE;
     c->mode = MODE_AUTO;
     c->speed_percent = 20u;
     c->state = ROBOT_INIT;
@@ -306,26 +315,12 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     if (c->navigation == 0u && line_detected) {
-        bool right_sensor_active = B3_LINE_LEFT_ACTIVE(in->left);
-        bool left_sensor_active = B3_LINE_CENTRE_ACTIVE(in->centre);
-
-        if (left_sensor_active && !right_sensor_active) {
-            c->last_line_search_direction = -1;
-        } else if (right_sensor_active && !left_sensor_active) {
-            c->last_line_search_direction = 1;
-        } else if (right_sensor_active && left_sensor_active) {
-            INT steering = line_follow_steering(in);
-
-            if (steering > 0) {
-                c->last_line_search_direction = 1;
-            } else if (steering < 0) {
-                c->last_line_search_direction = -1;
-            }
-        }
+        (void)line_position(c, in); /* remember which side the line is on */
     }
     if (c->navigation == 0u && !line_detected) {
         uint32_t recovery_elapsed;
         INT direction;
+        INT search_steer = VC_LINE_SEARCH_STEER;
 
         if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
         recovery_elapsed = in->now_ms - c->recovery_ms;
@@ -341,17 +336,26 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
 
         direction = c->last_line_search_direction;
         if (direction == 0) direction = 1;
-        direction = line_search_direction(recovery_elapsed, direction);
+        if (recovery_elapsed < VC_LINE_REACQUIRE_MS) {
+            /* Pololu behaviour: turn hard back toward the last side. */
+            search_steer = B3_LINE_STEER_MAX;
+        } else {
+            /* Not found there: widening sweeps, starting the other way. */
+            direction = line_search_direction(
+                recovery_elapsed - VC_LINE_REACQUIRE_MS, -direction);
+        }
         if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) {
             return;
         }
         command.type = MOTION_CMD_DRIVE;
         command.direction = MOTION_DIR_FORWARD;
-        command.steering_permille = direction * VC_LINE_SEARCH_STEER;
+        command.steering_permille = direction * search_steer;
         command.target_speed_cps = speed / 2;
         if (command.target_speed_cps == 0) command.target_speed_cps = 1;
         command.target_speed_cps = command.target_speed_cps * 1000 /
-            (1000 + VC_LINE_SEARCH_STEER);
+            (1000 + search_steer);
+        c->last_steer = command.steering_permille;
+        c->last_error = direction * B3_LINE_POS_CENTRE;
         apply_wheel_minimum(&command);
         command.safety_generation = in->safety_generation;
         if (motion_send_command(&command) == E_OK) {
@@ -403,10 +407,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
-    /* Always steer proportionally: balanced sensors give zero steering on
-     * their own, so a junction is still crossed straight, while a curve is
-     * followed even when both sensors see the line. */
-    command.steering_permille = line_follow_steering(in);
+    /* PD on the line position: balanced sensors give position 500 and
+     * zero steering, so a junction is still crossed straight, while a curve
+     * is followed even when both sensors see the line. */
+    command.steering_permille = line_follow_steering(c, in);
     /* Smooth steering changes so the car does not jerk between corrections. */
     if (c->drive_sent) {
         if (command.steering_permille > c->last_steer + VC_STEER_SLEW_PER_TICK) {
@@ -456,15 +460,6 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
     }
     c->last_speed = command.target_speed_cps;
-    if (!(in->line_flags & LINE_F_JUNCTION) && !c->junction_latched &&
-        !in->barcode_active) {
-        INT magnitude = command.steering_permille < 0 ?
-            -command.steering_permille : command.steering_permille;
-        if (magnitude < 200) {
-            command.steering_permille += ROBOT_LINE_STEER_TRIM_PERMILLE *
-                (200 - magnitude) / 200;
-        }
-    }
     /* Preserve B2's outer-wheel <=5000 cps constraint in either direction.
      * Only scale when the outer wheel would actually exceed it, so low
      * speeds keep enough inner-wheel speed to avoid B2 stall detection. */

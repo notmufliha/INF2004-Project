@@ -32,3 +32,28 @@ Run `bash testing/subsystem5/run_host_tests.sh` from the repository root.
 - S5-U13 width estimate exists
 
 The tests use **synthetic** sensor/actuator events; no physical robot was tested.
+
+## Bypass and continuation search, 2026-11-10
+
+Source: working tree based on `549442f`, retaining the PD integration.
+
+| ID | Case | Expected result | Host result |
+|---|---|---|---|
+| S5-BYP-01 | Left/right detour, crossing and forward alignment | Confirm line after each side; complete handoff | PASS |
+| S5-BYP-02 | Continuation lies beyond the old predicted crossing window | Continue bounded search and stop on confirmed black | PASS |
+| S5-BYP-03 | Broad line sets junction flag | Accept fresh black samples after departing original line | PASS |
+| S5-BYP-04 | Sensors rotate off tape during forward alignment | Sweep toward line and reconfirm before completion | PASS |
+| S5-BYP-05 | Duplicate snapshots during alignment | Never count same sample twice or complete early | PASS |
+| S5-BYP-06 | No line throughout corridor/alignment sweep | Stop with LINE_TIMEOUT | PASS |
+| S5-BYP-07 | Real B2/B3 adapter through alignment sweep and second obstacle | Track motion IDs, restore clearance, resume, stop again | PASS |
+
+Evidence: [full host transcript](../integration/logs/2026-11-10_162050_host.txt),
+`test_maneuver.c` and `test_navigation.c`. All 16 B5 groups and the full
+requested-subsystem host suite passed. Firmware build succeeded with existing
+newlib syscall warnings. UF2 SHA256:
+`98628CB798C4DCAEE35101810D3C702FC702F72A2FBCE94EF320AF6ED1FEB9E4`.
+
+Hardware results remain pending. The single front sensor does not measure
+hidden obstacle depth or identify which black marking is the original line.
+The course must have the expected continuation in the recovery corridor;
+configured chassis, width, depth, encoder and turn calibration must be validated.

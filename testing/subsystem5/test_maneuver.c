@@ -50,7 +50,7 @@ static void leg(S5ActionType type, float distance, int angle)
     assert(tick().type == S5_ACT_NONE);
     in.motion_terminal = false;
 }
-static void recovery(S5Side side)
+static void recovery(S5Side side, bool rotated_off_line)
 {
     int out = side == S5_SIDE_LEFT ? -90 : 90;
     reset(side);
@@ -77,7 +77,24 @@ static void recovery(S5Side side)
     in.stopped = true;
     assert(tick().type == S5_ACT_STOP);
     assert(m.state == S5_MAN_ALIGN);
+    if (rotated_off_line) in.line_detected = false;
     leg(S5_ACT_TURN, 0.0f, out);
+    assert(m.state == S5_MAN_ALIGN_CHECK);
+    if (rotated_off_line) {
+        in.now_ms += ROBOT_BYPASS_ALIGN_OBSERVE_MS;
+        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? 15 : -15);
+        assert(m.state == S5_MAN_ALIGN_CHECK);
+        in.line_detected = true;
+    }
+    assert(s5_maneuver_step(&m, &in).type == S5_ACT_NONE && m.line_hits == 0u);
+    for (unsigned i = 0u; i < ROBOT_BYPASS_LINE_CONFIRM; ++i) {
+        assert(tick().type == S5_ACT_NONE);
+        if (i + 1u < ROBOT_BYPASS_LINE_CONFIRM) {
+            assert(m.state == S5_MAN_ALIGN_CHECK);
+            assert(s5_maneuver_step(&m, &in).type == S5_ACT_NONE);
+            assert(m.line_hits == i + 1u); /* Same sample cannot complete handoff. */
+        }
+    }
     assert(m.state == S5_MAN_COMPLETE);
 }
 int main(void)
@@ -85,8 +102,10 @@ int main(void)
     S5Profile p;
     S5Action a;
     unsigned i;
-    recovery(S5_SIDE_LEFT);
-    recovery(S5_SIDE_RIGHT);
+    recovery(S5_SIDE_LEFT, false);
+    recovery(S5_SIDE_RIGHT, false);
+    recovery(S5_SIDE_LEFT, true);
+    recovery(S5_SIDE_RIGHT, true);
     reset(S5_SIDE_LEFT);
     p = profile(S5_SIDE_LEFT, 24.0f);
     s5_maneuver_init(&m);
@@ -134,7 +153,11 @@ int main(void)
     m.state = S5_MAN_SEARCH;
     m.left_original_line = true;
     in.line_detected = false;
-    for (i = 0u; i < 15u; ++i) leg(S5_ACT_MOVE, 2.0f, 0);
+    while (m.searched_cm < m.search_limit_cm) {
+        float step = m.search_limit_cm - m.searched_cm;
+        if (step > ROBOT_BYPASS_SEARCH_STEP_CM) step = ROBOT_BYPASS_SEARCH_STEP_CM;
+        leg(S5_ACT_MOVE, step, 0);
+    }
     assert(tick().type == S5_ACT_STOP && m.error == S5_ERR_LINE_TIMEOUT);
     reset(S5_SIDE_LEFT);
     m.state = S5_MAN_SEARCH;
@@ -145,8 +168,39 @@ int main(void)
     assert(m.line_hits == 0u); /* Original line never departed. */
     m.left_original_line = true;
     in.line_junction = true;
-    for (i = 0u; i < 5u; ++i) assert(tick().type == S5_ACT_NONE);
-    assert(m.line_hits == 0u); /* Reject junctions as a recovery target. */
+    assert(tick().type == S5_ACT_NONE);
+    assert(tick().type == S5_ACT_NONE);
+    assert(tick().type == S5_ACT_STOP);
+    assert(m.state == S5_MAN_LINE_STOP); /* A wide black line is a target. */
+
+    reset(S5_SIDE_RIGHT);
+    m.state = S5_MAN_SEARCH;
+    m.left_original_line = true;
+    in.line_detected = false;
+    for (i = 0u; i < 18u; ++i) leg(S5_ACT_MOVE, 2.0f, 0);
+    assert(m.searched_cm > m.lateral_cm + 5.0f);
+    assert(tick().type == S5_ACT_MOVE);
+    assert(s5_maneuver_submitted(&m, next_id++));
+    in.stopped = false;
+    in.line_detected = true;
+    assert(tick().type == S5_ACT_NONE);
+    assert(tick().type == S5_ACT_NONE);
+    assert(tick().type == S5_ACT_STOP && m.state == S5_MAN_LINE_STOP);
+
+    /* Missing tape after heading restoration exhausts a bounded sweep. */
+    reset(S5_SIDE_RIGHT);
+    m.state = S5_MAN_ALIGN_CHECK;
+    m.left_original_line = true;
+    in.line_detected = false;
+    {
+        const int turns[] = {-15, 30, -45, 60, -75, 90};
+        for (i = 0u; i < ROBOT_BYPASS_ALIGN_SWEEPS; ++i) {
+            in.now_ms += ROBOT_BYPASS_ALIGN_OBSERVE_MS;
+            leg(S5_ACT_TURN, 0.0f, turns[i]);
+        }
+        in.now_ms += ROBOT_BYPASS_ALIGN_OBSERVE_MS;
+        assert(tick().type == S5_ACT_STOP && m.error == S5_ERR_LINE_TIMEOUT);
+    }
     s5_maneuver_init(&m);
     assert(s5_maneuver_begin(&m, S5_CMD_REVERSE, NULL, 0.0f, in.now_ms));
     in.rear_clear = false;

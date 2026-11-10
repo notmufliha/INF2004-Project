@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <setjmp.h>
 #include <string.h>
+#include "../../app_program/subsystem3/b3_line_cal.c"
 
 static motion_command_t sent;
 static UINT drives, stops, resets;
@@ -23,6 +24,9 @@ static UINT remote_head, remote_count, task_ticks;
 static uint32_t clock_ms;
 static bool stale_line, stale_imu, delayed_startup;
 static uint32_t snapshot_delay;
+static bool calibrated_startup;
+static B3_LINE_CAL startup_right_cal, startup_left_cal;
+static UINT first_calibrated_drive_tick;
 static jmp_buf task_done;
 ID mbf_remote_cmd = 1, mbf_nav_cmd = 2;
 
@@ -46,6 +50,7 @@ ER motion_send_command(const motion_command_t *command)
         assert(left == 0 || left >= VC_MIN_WHEEL_CPS - 1);
         assert(right == 0 || right >= VC_MIN_WHEEL_CPS - 1);
         assert(left <= 5000 && right <= 5000 && (left > 0 || right > 0));
+        if (calibrated_startup && drives == 0u) first_calibrated_drive_tick = task_ticks;
         ++drives;
     }
     if (command->type == MOTION_CMD_STOP) ++stops;
@@ -81,7 +86,7 @@ ER tk_dly_tsk(INT delay)
 {
     clock_ms += (uint32_t)delay;
     permission = true; /* Simulate fresh B5 authorization after STOP. */
-    if (++task_ticks == 4u) longjmp(task_done, 1);
+    if (++task_ticks == (calibrated_startup ? 8u : 4u)) longjmp(task_done, 1);
     return E_OK;
 }
 INT tk_rcv_mbf(ID id, void *data, TMO timeout)
@@ -97,6 +102,13 @@ ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
     clock_ms += snapshot_delay;
     *state = (B3_STATE){0};
     state->line_flags = LINE_F_DETECTED;
+    if (calibrated_startup) {
+        /* Real low-output calibration feeds the real autostart adapter. */
+        state->ir_left = b3_line_cal_update(&startup_right_cal, task_ticks < 3u ? 140u : 260u);
+        state->ir_centre = b3_line_cal_update(&startup_left_cal, task_ticks < 3u ? 120u : 220u);
+        state->line_flags = B3_LINE_LEFT_ACTIVE(state->ir_left) ||
+            B3_LINE_CENTRE_ACTIVE(state->ir_centre) ? LINE_F_DETECTED : LINE_F_LOST;
+    }
     *sample_ms = (stale_line || (delayed_startup && task_ticks < 2u)) ? clock_ms - 101u : clock_ms;
     return E_OK;
 }
@@ -188,11 +200,11 @@ int main(void)
     assert(!c.running && c.mode == MODE_TEST);
     command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
     step(&c, 20u, B3_NAV_LEFT); assert(c.navigation == 0u);
-    command(&c, RCMD_SPEED, 100u); input.left = 900u; input.centre = 500u;
+    command(&c, RCMD_SPEED, 100u); input.left = 900u; input.centre = 30u;
     settle(&c, 30u);
     assert(sent.steering_permille == B3_LINE_STEER_MAX &&
         left_wheel() <= 5000 && wheel_ok(right_wheel()));
-    input.left = 500u; input.centre = 900u;
+    input.left = 30u; input.centre = 900u;
     step(&c, 20u, 0u); /* steering slews, it does not jump */
     assert(sent.steering_permille == B3_LINE_STEER_MAX - VC_STEER_SLEW_PER_TICK);
     settle(&c, 30u);
@@ -203,10 +215,47 @@ int main(void)
     assert(sent.steering_permille > 0);
     input.left = 700u; input.centre = 700u;
     settle(&c, 30u);
-    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE);
-    assert(!B3_LINE_LEFT_ACTIVE(499u) && !B3_LINE_CENTRE_ACTIVE(499u));
-    assert(B3_LINE_LEFT_ACTIVE(500u) && B3_LINE_CENTRE_ACTIVE(500u));
+    assert(sent.steering_permille == 0);
+    /* Pololu thresholds: on the line above 200. */
+    assert(!B3_LINE_LEFT_ACTIVE(200u) && !B3_LINE_CENTRE_ACTIVE(200u));
+    assert(B3_LINE_LEFT_ACTIVE(201u) && B3_LINE_CENTRE_ACTIVE(201u));
+    /* Pololu position: weighted average, noise (<= 50) ignored, and the
+     * last side held (0 or 1000) once neither sensor sees the line. */
+    {
+        VEHICLE_CONTROLLER p = {0};
+        VC_INPUT v = {0};
+        v.left = 1000u; v.centre = 1000u;
+        assert(line_position(&p, &v) == B3_LINE_POS_CENTRE);
+        v.left = 600u; v.centre = 200u;
+        assert(line_position(&p, &v) == 750);
+        v.left = 900u; v.centre = 50u;
+        assert(line_position(&p, &v) == 1000);
+        v.left = 40u; v.centre = 100u;  /* lost: line was to the right */
+        assert(line_position(&p, &v) == 1000 && p.line_pos == 1000);
+        v.left = 0u; v.centre = 700u;
+        assert(line_position(&p, &v) == 0);
+        v.left = 0u; v.centre = 0u;     /* lost: line was to the left */
+        assert(line_position(&p, &v) == 0 && p.last_line_search_direction == -1);
+    }
     assert(B3_LINE_LEFT_ACTIVE(1000u) && !B3_LINE_LEFT_ACTIVE(1001u));
+    /* PD suppresses a shrinking error and reinforces a growing error.
+     * Restarting a drive must not use an old derivative. */
+    {
+        VEHICLE_CONTROLLER p = {0};
+        VC_INPUT v = {0};
+        v.left = 600u; v.centre = 400u;
+        p.last_error = -500;
+        assert(line_follow_steering(&p, &v) == 160); /* First P only. */
+        p.drive_sent = true;
+        v.left = 550u; v.centre = 450u;
+        assert(line_follow_steering(&p, &v) == 30); /* Approaching centre. */
+        v.left = 650u; v.centre = 350u;
+        assert(line_follow_steering(&p, &v) == 340); /* Moving away. */
+        v.left = 1000u; v.centre = 0u;
+        assert(line_follow_steering(&p, &v) == B3_LINE_STEER_MAX);
+        v.left = 0u; v.centre = 1000u;
+        assert(line_follow_steering(&p, &v) == -B3_LINE_STEER_MAX);
+    }
     input.hump = true; step(&c, 20u, 0u);
     assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
     command(&c, RCMD_SPEED, 0u); step(&c, 20u, 0u);
@@ -223,24 +272,30 @@ int main(void)
     assert(c.last_line_search_direction == 1);
     input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_DRIVE &&
-        sent.steering_permille == VC_LINE_SEARCH_STEER &&
+        sent.steering_permille >= B3_LINE_STEER_MAX && right_wheel() == 0 &&
         sent.target_speed_cps < 2500);
-    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* still turning back right */
+    assert(sent.steering_permille >= B3_LINE_STEER_MAX);
+    step(&c, VC_LINE_REACQUIRE_MS - VC_LINE_SEARCH_SWITCH_MS, 0u);
+    /* not found there: sweep the other way */
     assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
     input.line_flags = LINE_F_DETECTED;
     step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_FOLLOW && c.running);
-    /* Widening sweeps: 600 ms right, 1200 ms left, 1800 ms right. */
+    /* Hard turn back right for VC_LINE_REACQUIRE_MS, then widening
+     * sweeps: 600 ms left, 1200 ms right, 1800 ms left. */
     input.line_flags = LINE_F_LOST;
     step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY &&
-        sent.steering_permille == VC_LINE_SEARCH_STEER);
+        sent.steering_permille >= B3_LINE_STEER_MAX);
+    step(&c, VC_LINE_REACQUIRE_MS, 0u);
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
     step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u);
-    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
-    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* 1200 ms: still left */
-    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
-    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* 1800 ms: back right */
     assert(sent.steering_permille == VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* 1200 ms segment: still right */
+    assert(sent.steering_permille == VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* then back left */
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
     step(&c, VC_RECOVERY_MS, 0u); /* old 3 s limit no longer disarms */
     assert(c.state == ROBOT_LINE_RECOVERY && c.running);
     /* Search exhausted: stopped but still armed. */
@@ -274,7 +329,7 @@ int main(void)
     input.line_flags = LINE_F_LOST;
     step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY &&
-        sent.steering_permille == -VC_LINE_SEARCH_STEER);
+        sent.steering_permille <= -B3_LINE_STEER_MAX && left_wheel() == 0);
 
     /* Curve with BOTH sensors on the line (no junction flag): the car
      * must steer, not drive straight, and slow down for the curve. */
@@ -282,17 +337,13 @@ int main(void)
     input.line_flags = LINE_F_DETECTED;
     input.left = 700u; input.centre = 700u;
     step(&c, 20u, 0u); /* acceleration from standstill is ramped */
-    assert(wheel_ok(left_wheel()) && wheel_ok(right_wheel()) &&
-        left_wheel() > 0 && right_wheel() > 0);
-    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE);
+    assert(sent.target_speed_cps == VC_MIN_WHEEL_CPS);
     settle(&c, 30u);
     INT straight_speed = sent.target_speed_cps;
-    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE && straight_speed == 1000);
-    if (ROBOT_LINE_STEER_TRIM_PERMILLE < 0) assert(left_wheel() < right_wheel());
-    if (ROBOT_LINE_STEER_TRIM_PERMILLE > 0) assert(left_wheel() > right_wheel());
+    assert(sent.steering_permille == 0 && straight_speed == 1000);
     /* Sharp curve at 20%: inner wheel would be far below the minimum, so it
      * stops (pivot) instead of stalling; outer keeps turning; slower. */
-    input.left = 900u; input.centre = 500u; settle(&c, 10u);
+    input.left = 900u; input.centre = 30u; settle(&c, 10u);
     assert(sent.steering_permille > 0 && right_wheel() == 0 &&
         left_wheel() > 0 && sent.target_speed_cps <= straight_speed * 6 / 10);
     /* Moderate curve: inner wheel raised to the sustainable minimum. */
@@ -308,12 +359,12 @@ int main(void)
     assert(sent.target_speed_cps == VC_BARCODE_CPS);
     input.barcode_active = false; settle(&c, 30u);
     assert(sent.target_speed_cps == straight_speed);
-    input.left = 840u; input.centre = 500u; settle(&c, 10u);
+    input.left = 900u; input.centre = 30u; settle(&c, 10u);
     /* Look-ahead hold: back on centre, speed recovers only gradually. */
     input.left = 700u; input.centre = 700u; step(&c, 20u, 0u);
     assert(sent.target_speed_cps < straight_speed * 9 / 10);
     settle(&c, 40u);
-    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE &&
+    assert(sent.steering_permille == 0 &&
         sent.target_speed_cps == straight_speed);
     /* B3 junction rule: both strongly black and balanced only. */
     assert(B3_LINE_IS_JUNCTION(950u, 900u));
@@ -444,6 +495,19 @@ int main(void)
         if (setjmp(task_done) == 0) controller_task(0, NULL);
         assert(scenario == 0u ? drives > 0u : drives == 0u);
     }
+    c = fresh(); (void)c;
+    clock_ms = 20000u;
+    task_ticks = remote_head = remote_count = 0u;
+    stale_line = stale_imu = delayed_startup = false;
+    calibrated_startup = true;
+    first_calibrated_drive_tick = UINT32_MAX;
+    b3_line_cal_init(&startup_right_cal);
+    b3_line_cal_init(&startup_left_cal);
+    permission = true;
+    if (setjmp(task_done) == 0) controller_task(0, NULL);
+    assert(drives > 0u && first_calibrated_drive_tick == 5u);
+    calibrated_startup = false;
+    puts("PASS low-output calibration feeds autostart on third black sample without extra delay");
     assert(vehicle_controller_start() == E_OK);
     /* Small corrections retain their radius even at the startup speed. */
     for (INT steering = -200; steering <= 200; steering += 25) {

@@ -19,9 +19,11 @@
 #define B3_LINE_F_JUNCTION (0x04U)
 /* Line values given to the controller (B3_STATE ir_left / ir_centre) are
  * NORMALISED per sensor by b3_line_cal: 0 = that sensor's white, 1000 = its
- * black.  The dashboard still shows the raw ADC readings.  A sensor is on
- * the line at or above half way between its own white and black. */
-#define B3_LINE_ACTIVE_MIN (500U)
+ * black. The dashboard still shows the raw ADC readings. */
+/* Pololu QTRSensors readLine() thresholds: a sensor is "on the line" above
+ * 200, and values of 50 or less are noise left out of the position. */
+#define B3_LINE_ACTIVE_MIN (201U)
+#define B3_LINE_NOISE_MAX (50U)
 #define B3_LINE_ACTIVE_MAX (1000U)
 #define B3_LINE_LEFT_ACTIVE(norm) \
 	((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN && \
@@ -29,8 +31,18 @@
 #define B3_LINE_CENTRE_ACTIVE(norm) \
 	((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN && \
 	 (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
-#define B3_LINE_STEER_DEADBAND (40)
-#define B3_LINE_STEER_ERROR_FULL_SCALE (400)
+/* Line position (Pololu weighted average): 0 = under the robot's LEFT
+ * sensor (ADC "centre"), 1000 = under its RIGHT sensor (ADC "left"),
+ * B3_LINE_POS_CENTRE = centred.  Off the line it holds the last side. */
+#define B3_LINE_POS_CENTRE (500)
+/* PD gains (Pololu 3pi pattern: P on error = position - centre, D on its
+ * change per 20 ms tick, no deadband), in tenths of permille per count:
+ * steering = (KP * error + KD * (error - last_error)) / 10.
+ * KP 16: the line fully under one sensor (error 500) gives full steer.
+ * CALIBRATE on the course: raise KP if curves are missed, raise KD if the
+ * car weaves (overshoots) on straights. */
+#define B3_LINE_KP_X10 (16)
+#define B3_LINE_KD_X10 (10)
 /* 800 permille: inner wheel at 0.2x, outer at 1.8x (before the 5000 cps
  * outer-wheel limit), so sharp curves can be followed. */
 #define B3_LINE_STEER_MAX (800)
