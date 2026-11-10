@@ -133,12 +133,14 @@ IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
  * bar widths are measured cleanly. */
 #define B3_BARCODE_ACTIVE_US (400000U)
 IMPORT bool b3_barcode_active(void);
-/* Ask the line task to restart sensor calibration (next 20 ms sample).
- * The controller calls this on every START: the car has just been put on
- * the course, so what the sensors saw while it was carried or lifted
- * (lifted sensors read very dark and widen the learned black, after which
- * the real line reads as white and B3 reports LOST until reboot) is
- * discarded. */
+/* Called by the controller on START.  If B3 reports LOST at that moment
+ * although the car has been put on the line, the learned calibration is
+ * wrong (typically: the car was lifted after a safe-stop, lifted sensors
+ * read very dark and widened the learned black, so the real line now reads
+ * as white), and the line task restarts it on its next sample.  A
+ * calibration that sees the line is KEPT: on this robot even black reads
+ * below the provisional raw threshold (TEST_LOG S3-C07), so discarding a
+ * good startup sweep would leave the line invisible. */
 IMPORT void b3_request_recalibration(void);
 
 /**

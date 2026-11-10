@@ -208,9 +208,10 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
-            /* Fresh line calibration on the course (see b3_line_barcode.h):
-             * after a safe-stop the car is usually lifted and put back. */
+            /* B3 restarts its calibration only if it reports LOST now
+             * (see b3_line_barcode.h); a working calibration is kept. */
             b3_request_recalibration();
+            c->line_seen_since_start = false;
         }
         break;
     case RCMD_RESUME:
@@ -336,6 +337,15 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (c->navigation == 0u && line_detected) {
         (void)line_position(c, in); /* remember which side the line is on */
+    }
+    if (line_detected) c->line_seen_since_start = true;
+    if (c->navigation == 0u && !line_detected && !c->line_seen_since_start) {
+        /* Not seen since START (car off the line, or calibration just
+         * restarted): wait in place instead of driving a search.  It
+         * starts following as soon as the line is seen. */
+        stop_motion(c);
+        set_state(c, ROBOT_LINE_RECOVERY);
+        return;
     }
     if (c->navigation == 0u && !line_detected) {
         uint32_t recovery_elapsed;

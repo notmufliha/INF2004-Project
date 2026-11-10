@@ -302,10 +302,12 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
 		if (g_b3_recal_request) {
 			g_b3_recal_request = false;
-			b3_line_cal_init(&left_cal);
-			b3_line_cal_init(&centre_cal);
-			calibration_reported = false;
-			tm_printf((UB *)"[B3-CAL] restarted on START\n");
+			if ((g_b3_state.line_flags & B3_LINE_F_LOST) != 0U) {
+				b3_line_cal_init(&left_cal);
+				b3_line_cal_init(&centre_cal);
+				calibration_reported = false;
+				tm_printf((UB *)"[B3-CAL] LOST at START: calibration restarted, slide the car across the line\n");
+			}
 		}
 		left_norm = b3_line_cal_update(&left_cal, left);
 		centre_norm = b3_line_cal_update(&centre_cal, centre);
