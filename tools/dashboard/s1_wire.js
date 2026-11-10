@@ -140,6 +140,7 @@
     d.motion_name = name(MOTION_STATES, d.motion);
     d.pitch_deg = d.pitch_dd / 10;
     d.obs_d_cm = cm(d.obs_d_cm, DIST_INVALID);
+    d.obs_open_space = d.obs_d_cm === 510; // B5 assumed no target, not a range
     d.obs_w_cm = cm(d.obs_w_cm, WIDTH_INVALID);
     d.obs_lc_cm = cm(d.obs_lc_cm, DIST_INVALID);
     d.obs_rc_cm = cm(d.obs_rc_cm, DIST_INVALID);

@@ -18,6 +18,14 @@ host test S1-H06).
 
 Space bar = E-STOP (when the cursor is not in a text box).
 
+The front panel distinguishes measured returns, **No target (assumed open)**,
+and unavailable readings. Assumed/invalid readings leave chart gaps rather
+than plotting a fabricated 400 cm distance. Width and clearances start as
+not measured until an obstacle profile is produced. Events are historical;
+an old error can remain visible after the live fault chip clears.
+Integrated firmware continues ultrasonic monitoring during STOP/PAUSE.
+Hard-refresh the page after updates so its decoder matches the new firmware.
+
 ## Try it without the car
 
 Open `tools/dashboard/index.html` in a browser and press **Demo data**.  A fake

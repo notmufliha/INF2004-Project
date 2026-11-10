@@ -95,7 +95,12 @@ Current hardware assumptions:
 | B3 digital barcode sensor | GP28 |
 | B4 I2C SDA / SCL | GP4 / GP5 |
 
-B3 currently interprets black as ADC >=301. Its historical channel names
+B3 normalizes each sensor using its observed white/black endpoints once
+at least 64 ADC counts of contrast have been seen. Sweep both sensors over
+white and black while stopped after every reboot. Learned endpoints no longer
+shrink while following or parked; normalized values >=500 mean line-active.
+The dashboard shows raw ADC; USB `[LINE]` shows normalized values.
+Its historical channel names
 are physically reversed: the channel named `left` is mounted on the right.
 Retain that mapping unless the wiring differs. Motor pin definitions now
 actually control the driver. UART0 console/mirroring is rejected in robot

@@ -93,5 +93,35 @@ int main(void)
 	assert(b3_line_cal_update(&centre, 3000U) >= 500U);
 	assert(b3_line_cal_update(&centre, 250U) < 500U);
 	puts("PASS S3-C05 line seen immediately, low and high contrast");
+
+	/* A long straight/bend or a stop must not move the steering reference. */
+	b3_line_cal_init(&left);
+	b3_line_cal_init(&centre);
+	sweep(&left, 700U, 3500U, 1U);
+	sweep(&centre, 200U, 2400U, 1U);
+	a = b3_line_cal_update(&left, 1200U);
+	b = b3_line_cal_update(&centre, 1300U);
+	for (unsigned i = 0U; i < 30000U; ++i) {
+		assert(b3_line_cal_update(&left, 1200U) == a);
+		assert(b3_line_cal_update(&centre, 1300U) == b);
+	}
+	assert(a < 500U);
+	assert(abs((int)b - 500) <= 1);
+	assert(left.white == 700U && left.black == 3500U);
+	assert(centre.white == 200U && centre.black == 2400U);
+	puts("PASS S3-C06 ten minutes on one surface preserves calibration");
+
+	/* Measured black can be below the provisional raw threshold of 300. */
+	b3_line_cal_init(&left);
+	b3_line_cal_init(&centre);
+	sweep(&left, 140U, 260U, 1U);
+	sweep(&centre, 120U, 220U, 1U);
+	assert(b3_line_cal_update(&left, 260U) == 1000U);
+	assert(b3_line_cal_update(&centre, 220U) == 1000U);
+	assert(b3_line_cal_update(&left, 140U) == 0U);
+	assert(b3_line_cal_update(&centre, 120U) == 0U);
+	assert(b3_line_cal_update(&left, 200U) == 500U);
+	assert(b3_line_cal_update(&centre, 170U) == 500U);
+	puts("PASS S3-C07 low-output sensors learn white and black below raw 300");
 	return 0;
 }

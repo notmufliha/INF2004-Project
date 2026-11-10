@@ -33,3 +33,34 @@ Provisional acceptance: steady wheel-speed error within 10% over the validated
 operating range after 1 second, no sustained oscillation, and no control interval
 above 20 ms under full load. Replace these targets with justified team-approved
 values if measurements show a different operating envelope.
+
+## Straight-line trim trial, 2026-11-10
+
+User reports gradual right drift on a straight line. No simultaneous sensor
+and wheel-speed measurements were supplied. Encoder resolution, turn scales
+and PI gains remain unchanged. VC now applies a provisional -25 permille
+steering trim near straight ahead (L=0.975v, R=1.025v in physical-speed targets).
+It fades to zero at 200 permille steering and is disabled at junctions and
+during barcode crossing. `ROBOT_LINE_STEER_TRIM_PERMILLE=0` disables the trial.
+
+The low-speed limiter also preserves gentle steering ratios instead of
+turning both sub-minimum targets into a one-wheel pivot. Host tests cover
+both trim directions, trim disabled, mild steering from -200..200, wheel
+minimums and maximum targets; the full host suite passed.
+[Transcript](../integration/logs/2026-11-10_152135_host.txt).
+
+Physical result pending: after a white/black sensor sweep, measure signed
+lateral deviation in three one-metre straight runs at the same speed, surface,
+payload and battery level. Record normalized IR values and wheel speeds.
+Adjust trim from repeatable results, not by changing encoder geometry.
+
+Follow-up: the user reports slight right drift with the latest image.
+The next trial changes trim from -25 to -40 permille (L=0.960v,
+R=1.040v near centre). Curve fade, junction/barcode exclusions, encoder
+geometry and PI gains are unchanged. Physical tracking remains to be measured.
+
+Further feedback: drift worsened after the -40 trial. Trial trim is now
+disabled (0). A nonzero trim also bypasses `motion_profile_targets()`'s
+zero-steering straight-travel correction, so increasing it did not establish
+sensor direction or actual wheel imbalance. Verify physical channel mapping
+before another directional adjustment.

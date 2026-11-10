@@ -34,7 +34,12 @@
 #define PITCH_MASK     0x3FFU   /* 10 bits */
 #define ERR_MASK       0xFFU
 
-comm_telemetry_t     g_s1_telem;
+comm_telemetry_t     g_s1_telem = {
+    .obs_dist_cm = DIST_INVALID,
+    .obs_width_cm = WIDTH_INVALID,
+    .obs_left_cm = DIST_INVALID,
+    .obs_right_cm = DIST_INVALID
+};
 comm_stats_t         g_s1_stats;
 volatile uint8_t     g_s1_link_state = (uint8_t)COMM_INITIALISING;
 

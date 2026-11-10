@@ -79,6 +79,15 @@
 #define ROBOT_FORWARD_PWM 500u /* 50% initial floor drive; calibrate for load and supply */
 #define ROBOT_MOTOR_WATCHDOG_MS 350u
 #define ROBOT_MOTOR_PERIOD_MS 20u
+/* Neutral by default. Nonzero trim disables B2's zero-steering straight
+ * correction and made the reported drift worse. Verify sensor/motor
+ * mapping before using any measured trim. */
+#ifndef ROBOT_LINE_STEER_TRIM_PERMILLE
+#define ROBOT_LINE_STEER_TRIM_PERMILLE 0
+#endif
+#if ROBOT_LINE_STEER_TRIM_PERMILLE < -100 || ROBOT_LINE_STEER_TRIM_PERMILLE > 100
+#error "Line steering trim must stay within +/-100 permille"
+#endif
 #define ROBOT_BOOT_DELAY_MS 2000u
 
 /* Optional wheels-UP BOOT motor verification: set 1, rebuild and flash ONLY when

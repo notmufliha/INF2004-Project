@@ -34,6 +34,9 @@
 #define S5_ECHO_PWM_B_HIGH_MODE (1u << 4u)
 #define S5_ECHO_TIMEOUT_US 45000u
 #define S5_ECHO_LATE_FALL_US 15000u
+#define S5_MIN_TRIGGER_GAP_US 65000u
+static uint32_t last_trigger_us;
+static bool have_trigger;
 
 /* RP2040 1MHz timer, used only to bound polling; not to measure pulse. */
 static uint32_t now_us(void) { return (uint32_t)in_w(TIMER_TIMERAWL); }
@@ -63,6 +66,7 @@ const char *s5_echo_status_name(S5EchoStatus status)
 
 bool s5_ultrasonic_init(void)
 {
+    have_trigger = false;
     /* The sensor must work independently of motor initialization order. */
     clr_w(0x4000c000u, 1u << 14u); /* RESETS_RESET: PWM */
     uint32_t reset_started = now_us();
@@ -107,6 +111,11 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
     UINT trigger_irq;
     bool saw_high = false;
 
+    /* Enforce spacing at the hardware boundary, including warmup, scans,
+     * retries and a restarted mission. Caller delays alone do not cover
+     * every transition and can retrigger during a no-target timeout. */
+    while (have_trigger && !expired(last_trigger_us, S5_MIN_TRIGGER_GAP_US)) { }
+
     /* A stuck-high pin is not a valid echo. */
     start = now_us();
     while (gpio_get_val(S5_ECHO_PIN)) {
@@ -129,6 +138,8 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
      * remain preemptible; hardware PWM captures their duration. */
     DI(trigger_irq);
     gpio_set_val(S5_TRIG_PIN, 1u);
+    last_trigger_us = now_us();
+    have_trigger = true;
     start = now_us();
     while (!expired(start, 12u)) { }
     gpio_set_val(S5_TRIG_PIN, 0u);

@@ -45,4 +45,12 @@ for number in range(1, 10):
 # are decoded independently and are not controlled by B5.
 assert wire.fault_names(0x08) == ['NO_ECHO']
 assert wire.fault_names(0x00) == ['none']
+for value, assumed in ((400, False), (510, True), (511, False)):
+    decoded = wire.decode_telemetry(wire.pack(wire.TELEMETRY, {
+        'ver': wire.WIRE_VERSION, 'obs_d_cm': value,
+        'obs_w_cm': 127, 'obs_lc_cm': 511, 'obs_rc_cm': 511,
+    }))
+    assert decoded['obs_open_space'] is assumed
+    if assumed:
+        assert 'OPEN_SPACE_ASSUMED' in wire.describe('telemetry', decoded)
 print('[HOST TEST] B5 laptop wire decode: PASS (3 actions, invalid, 9 errors, faults)')

@@ -747,14 +747,6 @@ static void live_controller_mode(void)
         float cm = 0.0f;
         SYSTIM cycle_start = {0}, cycle_end;
         S5EchoReading reading;
-        if (!s5_mission_enabled()) {
-            s5_navigation_pause();
-            s5_controller_init(&c);
-            coarse_ready = fine_ready = stop_requested = false;
-            s5_mission_publish(S5_MISSION_FOLLOW);
-            tk_dly_tsk(S5_ECHO_GAP_MS);
-            continue;
-        }
         if (tk_get_tim(&cycle_start) != E_OK) emergency_halt("system clock unavailable");
         /* Sensor always faces forward outside scans. Monitoring continues
          * during movement. Repeated invalid readings fail closed. */
@@ -768,14 +760,16 @@ static void live_controller_mode(void)
                          (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) !=
                           COMM_CM_INVALID);
         in.front_cm = in.front_valid ? cm : 0.0f;
-        comm_set_obstacle_dist(in.front_valid ?
+        comm_set_obstacle_dist(reading.status == S5_ECHO_OPEN_SPACE ?
+                               COMM_FRONT_OPEN_SPACE_CM : in.front_valid ?
                                s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
                                COMM_CM_INVALID);
         if (cycle_start.lo - last_log_ms >= 1000u) {
             last_log_ms = cycle_start.lo;
-            tm_printf((UB*)"[S5-LIVE] state=%s echo=%s cm_x100=%d nav_error=%s\n",
+            tm_printf((UB*)"[S5-LIVE] state=%s echo=%s cm_x100=%d pulse_us=%d nav_error=%s\n",
                       s5_state_name(c.state), s5_echo_status_name(reading.status),
-                      (int)(cm * 100.0f), s5_error_name(s5_navigation_error()));
+                      (int)(cm * 100.0f), (int)reading.pulse_us,
+                      s5_error_name(s5_navigation_error()));
         }
         if (in.front_valid)
         {
@@ -787,10 +781,20 @@ static void live_controller_mode(void)
             fault_raise(FAULT_NO_ECHO);
             if (!sensor_unavailable)
             {
-                (void)comm_report_error(ERR_S5_NO_ECHO,
-                                        S5_FRONT_ANGLE_DETAIL);
+                (void)comm_report_error(ERR_S5_NO_ECHO, (UH)reading.status);
                 sensor_unavailable = true;
             }
+        }
+        /* STOP/PAUSE must revoke motion but keep sensing and telemetry
+         * running. Previously the dashboard repeated the last distance
+         * indefinitely after a mission stop, even after a sensor fault. */
+        if (!s5_mission_enabled()) {
+            s5_navigation_pause();
+            s5_controller_init(&c);
+            coarse_ready = fine_ready = stop_requested = false;
+            s5_mission_publish(s5_bridge_ready() ? S5_MISSION_FOLLOW : S5_MISSION_FAULT);
+            tk_dly_tsk(S5_ECHO_GAP_MS);
+            continue;
         }
         s5_navigation_tick(in.front_valid, cm, c.state == S5_FOLLOW);
         if (s5_navigation_error() != S5_ERR_NONE) {

@@ -1,17 +1,18 @@
 # Buddy 3 line and barcode module
 
 `b3_line_barcode.c` / `b3_line_barcode.h` add a separate Buddy 3 module in
-the current Subsystem 3 folder. The existing sample consumer is intentionally
-left intact; `app_main.c` is a shared integration point and does not start
-the Buddy 3 tasks yet.
+the current Subsystem 3 folder. The integrated robot startup starts the
+Buddy 3 tasks and the Vehicle Controller consumes their samples.
 
 ## What the module does
 
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
 - Auto-calibrates each sensor (`b3_line_cal.c`): it learns that sensor's own
-  white and black readings (widening at once, slowly forgetting old extremes,
-  never narrower than 300 counts; starts from 100..500, whose midpoint is the
-  team's tested raw threshold of 300, and only widens from there) and normalises to 0 = white .. 1000 =
+  white and black readings. Sweep both surfaces after each reboot; once
+  measured contrast reaches 64 counts, measured endpoints replace the
+  provisional 100..500 defaults. Endpoints widen but never shrink during a run,
+  so a pause or long curve cannot shift the steering reference.
+  It normalises to 0 = white .. 1000 =
   black. The controller receives normalised values; the dashboard still shows
   raw ADC. This removes the bias between two sensors of different
   sensitivity, and a grey floor beside the course no longer reads as line.
@@ -73,7 +74,8 @@ the Buddy 3 tasks yet.
    and `subsystem3_start()` lifecycle currently do not call either function.
 5. Before a run, slide the car across the line once or twice so each sensor
    sees white and black; calibration then settles on the course. Check on the
-   dashboard that black reads at least ~300 counts above white.
+   dashboard that black reads at least 64 counts above white and that
+   stationary noise is clearly smaller than that contrast.
    The steering deadband and correction scale are initial tuning values; test
    with the wheels raised and adjust them only after confirming turn direction.
 

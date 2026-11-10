@@ -41,15 +41,11 @@ static bool stop_motor(void)
 static void fault_stop(S5Error error)
 {
     navigation_error = error;
+    tm_printf((UB*)"[S5-NAV-FAULT] error=%d; movement stopped\n", (int)error);
     mode = NAV_FAULT;
     s5_maneuver_abort(&maneuver, error);
     (void)stop_motor();
     comm_set_robot_state(ROBOT_SAFE_STOP);
-}
-static bool read_line(B3_STATE *line, uint32_t *sample, uint32_t now)
-{
-    return b3_get_timed_state(line, sample) == E_OK &&
-           now - *sample <= ROBOT_BYPASS_LINE_MAX_AGE_MS;
 }
 static bool ready(void)
 {
@@ -144,7 +140,7 @@ bool s5_navigation_stopped(void)
 {
     uint32_t now;
     motion_status_snapshot_t status;
-    return now_ms(&now) && motion_get_status(&status) == E_OK &&
+    return motion_get_status(&status) == E_OK && now_ms(&now) &&
            now - status.sample_time_ms <= 200u && status.physically_stopped &&
            !b2_safety_stop_requested() && b2_motor_is_stopped();
 }
@@ -156,15 +152,22 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     motion_status_snapshot_t status;
     uint32_t sample = 0u;
     S5Action action;
+    ER line_error;
+    ER motion_error;
     if (!ready()) { (void)stop_motor(); return; }
-    if (!now_ms(&in.now_ms) || motion_get_status(&status) != E_OK ||
+    motion_error = motion_get_status(&status);
+    line_error = b3_get_timed_state(&line, &sample);
+    /* Read time after snapshots: mutex waits can allow a newer sample.
+     * Using an earlier clock wrapped its age and latched a false fault. */
+    if (!now_ms(&in.now_ms) || motion_error != E_OK ||
         in.now_ms - status.sample_time_ms > 200u ||
         status.status == MOTION_STATUS_FAULT || status.status == MOTION_STATUS_TIMEOUT ||
         (fault_get() & (FAULT_MOTOR_STALL | FAULT_ENCODER))) {
         fault_stop(S5_ERR_MOTION_TIMEOUT);
         return;
     }
-    in.line_valid = read_line(&line, &sample, in.now_ms);
+    in.line_valid = line_error == E_OK &&
+        in.now_ms - sample <= ROBOT_BYPASS_LINE_MAX_AGE_MS;
     in.line_sample_ms = sample;
     in.line_detected = (line.line_flags & B3_LINE_F_DETECTED) != 0u;
     in.line_junction = (line.line_flags & B3_LINE_F_JUNCTION) != 0u;

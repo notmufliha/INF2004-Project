@@ -114,6 +114,15 @@ static void apply_wheel_minimum(motion_command_t *command)
         return;
     }
     if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 1000) return;
+    if (magnitude <= 200) {
+        /* Preserve gentle corrections at startup. The old limiter made
+         * v=100, s=-25 into a full pivot because both wheels were below
+         * their sustainable speed. Scale the base instead of the radius. */
+        command->target_speed_cps =
+            (VC_MIN_WHEEL_CPS * 1000 + (1000 - magnitude) - 1) /
+            (1000 - magnitude);
+        return;
+    }
     outer /= 1000;
     if (outer < VC_MIN_WHEEL_CPS) outer = VC_MIN_WHEEL_CPS;
     if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 500) {
@@ -447,6 +456,15 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
     }
     c->last_speed = command.target_speed_cps;
+    if (!(in->line_flags & LINE_F_JUNCTION) && !c->junction_latched &&
+        !in->barcode_active) {
+        INT magnitude = command.steering_permille < 0 ?
+            -command.steering_permille : command.steering_permille;
+        if (magnitude < 200) {
+            command.steering_permille += ROBOT_LINE_STEER_TRIM_PERMILLE *
+                (200 - magnitude) / 200;
+        }
+    }
     /* Preserve B2's outer-wheel <=5000 cps constraint in either direction.
      * Only scale when the outer wheel would actually exceed it, so low
      * speeds keep enough inner-wheel speed to avoid B2 stall detection. */
@@ -515,8 +533,17 @@ static void controller_task(INT stacd, void *exinf)
             if (tk_rcv_mbf(mbf_nav_cmd, &next, TMO_POL) != (INT)sizeof(next)) break;
             if (nav == 0u && was_running && c.running && !stop_barrier) nav = next;
         }
-        in.line_valid = b3_get_timed_state(&line, &line_ms) == E_OK &&
-            now.lo - line_ms <= VC_LINE_MAX_AGE_MS;
+        in.line_valid = b3_get_timed_state(&line, &line_ms) == E_OK;
+        in.motion_valid = motion_get_status(&in.motion) == E_OK;
+        /* Read time after producer snapshots, including mutex waits. A
+         * freshly published sample must never look UINT32_MAX ms old. */
+        if (tk_get_tim(&now) != E_OK) {
+            safe_stop(&c);
+            tk_dly_tsk(VC_PERIOD_MS);
+            continue;
+        }
+        in.now_ms = now.lo;
+        in.line_valid = in.line_valid && now.lo - line_ms <= VC_LINE_MAX_AGE_MS;
         if (in.line_valid) {
             in.left = (UH)line.ir_left;
             in.centre = (UH)line.ir_centre;
@@ -528,7 +555,7 @@ static void controller_task(INT stacd, void *exinf)
         in.hazard = hazard || imu.b_sudden_impact ||
             imu.roll_deg > 25.0f || imu.roll_deg < -25.0f ||
             imu.pitch_deg > 40.0f || imu.pitch_deg < -40.0f;
-        in.motion_valid = motion_get_status(&in.motion) == E_OK &&
+        in.motion_valid = in.motion_valid &&
             now.lo - in.motion.sample_time_ms <= VC_MOTION_MAX_AGE_MS;
         in.clearance = b2_safety_motion_allowed();
         in.safety_generation = b2_safety_stop_generation();
