@@ -7,11 +7,12 @@ stability and accuracy. Do not report preliminary gains as experimentally tuned.
 | Parameter | Initial value | Validation |
 |---|---:|---|
 | Period | 10 ms | Record maximum interval under Wi-Fi/sensor load |
-| P gain | 0.002 PWM-percent per count/s | Pending |
+| P gain | 0.006 PWM-percent per count/s (was 0.002) | Pending |
 | I gain | 0.005 PWM-percent per count | Pending |
 | Integral bound | +/-10 PWM-percent | Pending |
 | Output bound | 0..35 percent | Pending |
-| Base output | 20 percent | Measure motor deadband first |
+| Feed-forward | 15 + 0.004 x target counts/s percent (was fixed 20) | Measure loaded deadband (15) and PWM at a known speed (slope) |
+| Static-friction kick | +8 percent after 100 ms without encoder progress | Check it frees a stuck wheel without lurching |
 | Speed history | 100 ms | Check transient response and quantization |
 | Straight correction | 2 (mm/s)/mm, capped at 25% base speed | Pending |
 | Approach zone | Final 30 mm per wheel | Measure overshoot |

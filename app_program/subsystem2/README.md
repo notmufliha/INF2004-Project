@@ -123,6 +123,11 @@ limited by the requested speed. These are preliminary tuning constants.
 - MOVE/TURN deadline: TIMEOUT / DURATION.
 - No progress in the expected direction on either commanded wheel:
   FAULT / STALL after 500 ms (5000 ms below 5 mm/s). This latches a safety STOP.
+  Before that, a commanded wheel with no progress for 100 ms gets an extra
+  8% PWM kick to break static friction. Wheel PWM is feed-forward
+  (15% + 0.004% per count/s of target) plus the PI correction, so a steering
+  change splits the wheel PWMs immediately. A wheel commanded to 0 is never
+  reported as stalled.
 - Encoder movement continues for 1500 ms after PWM removal:
   FAULT / STOPPING.
 - Buddy 5 STOP, lost clearance or stale generation: CANCELLED / SAFETY.
