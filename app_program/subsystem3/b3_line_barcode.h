@@ -133,6 +133,13 @@ IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
  * bar widths are measured cleanly. */
 #define B3_BARCODE_ACTIVE_US (400000U)
 IMPORT bool b3_barcode_active(void);
+/* Ask the line task to restart sensor calibration (next 20 ms sample).
+ * The controller calls this on every START: the car has just been put on
+ * the course, so what the sensors saw while it was carried or lifted
+ * (lifted sensors read very dark and widen the learned black, after which
+ * the real line reads as white and B3 reports LOST until reboot) is
+ * discarded. */
+IMPORT void b3_request_recalibration(void);
 
 /**
  * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.

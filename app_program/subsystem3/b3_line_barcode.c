@@ -257,6 +257,13 @@ static void b3_invalidate_line(void)
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
+static volatile bool g_b3_recal_request;
+
+EXPORT void b3_request_recalibration(void)
+{
+	g_b3_recal_request = true;
+}
+
 EXPORT void b3_line_task(INT stacd, void *exinf)
 {
 	uint16_t left;
@@ -293,6 +300,13 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
+		if (g_b3_recal_request) {
+			g_b3_recal_request = false;
+			b3_line_cal_init(&left_cal);
+			b3_line_cal_init(&centre_cal);
+			calibration_reported = false;
+			tm_printf((UB *)"[B3-CAL] restarted on START\n");
+		}
 		left_norm = b3_line_cal_update(&left_cal, left);
 		centre_norm = b3_line_cal_update(&centre_cal, centre);
 		flags = 0U;

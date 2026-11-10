@@ -6,6 +6,12 @@
 #include <stdbool.h>
 
 #define VC_PERIOD_MS 20u
+/* Speed at power-up, in percent (B2: 50 counts/s per percent).  Both line
+ * sensors sit on the line when centred, so the car only learns it is off
+ * centre when a sensor reaches the line edge and must correct within the
+ * sensor gap: slower is more accurate.  12% = 600 counts/s (was 20%).
+ * The dashboard SPEED command still changes it at run time. */
+#define VC_DEFAULT_SPEED_PERCENT 12u
 #define VC_LINE_MAX_AGE_MS 100u
 #define VC_IMU_MAX_AGE_MS 1500u /* B4 publishes a quiet snapshot every second. */
 #define VC_MOTION_MAX_AGE_MS 100u
