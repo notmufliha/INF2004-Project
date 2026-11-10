@@ -12,6 +12,8 @@
 
 /* WARNING: Validate the 20 ms period against sensor response and car speed. */
 #define B3_LINE_UPDATE_MS (20U)
+/* ADC conversions averaged per sensor per 20 ms line sample. */
+#define B3_ADC_OVERSAMPLE (8U)
 #define B3_NAV_QUEUE_LENGTH (8U)
 
 #define B3_LINE_F_DETECTED (0x01U)
@@ -35,6 +37,12 @@
  * sensor (ADC "centre"), 1000 = under its RIGHT sensor (ADC "left"),
  * B3_LINE_POS_CENTRE = centred.  Off the line it holds the last side. */
 #define B3_LINE_POS_CENTRE (500)
+/* The remembered line side (for recovery) only changes when the line is
+ * clearly to one side: |position - centre| >= this.  With both sensors on
+ * the line, a centred car reads position 500, which used to count as
+ * "right" on every sample: the car forgot a left-hand curve as soon as it
+ * was centred, and searched right whenever the line was then lost. */
+#define B3_LINE_SIDE_LEVEL (100)
 /* Steering for THIS robot's sensor layout: the line is wider than the
  * sensor gap, so both sensors read black when centred and the only
  * steering signal appears when one of them reaches a line edge.  The car

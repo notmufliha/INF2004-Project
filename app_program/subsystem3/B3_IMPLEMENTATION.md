@@ -32,7 +32,13 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
   `503ed6e` gave only ~270 permille with one sensor half off the line, and
   the car ran off at curves. The weighted position (0 left, 500 centre,
   1000 right, values <=50 ignored) is still kept to remember which side the
-  line was last seen on, for recovery.
+  line was last seen on, for recovery. That side only changes when the line
+  is clearly to one side (|position - 500| >= 100): a centred car reads 500
+  with both sensors on black, which used to count as "right" on every
+  sample, so a left-hand curve was forgotten and the search turned right.
+- Each 20 ms line sample averages 8 back-to-back ADC conversions per
+  sensor (`B3_ADC_OVERSAMPLE`), so one noisy conversion cannot steer. At
+  full steer the car slows to half speed (`VC_CURVE_MIN_PERMILLE` 500).
   The ADC named `left` is physically on the robot's right, and the ADC named
   `centre` is physically on its left. Similar readings drive straight; a
   stronger right sensor steers right and a stronger left sensor steers left.

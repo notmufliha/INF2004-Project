@@ -27,7 +27,7 @@
  * The slowdown follows the hardest recent steering and relaxes by
  * VC_CURVE_DECAY_PER_TICK each 20 ms tick, so the car stays slow through
  * the whole curve instead of speeding up between corrections. */
-#define VC_CURVE_MIN_PERMILLE 600
+#define VC_CURVE_MIN_PERMILLE 500 /* half speed at full steer */
 #define VC_CURVE_DECAY_PER_TICK 40
 /* Smoothness: steering may change by at most this much per 20 ms tick
  * (0 to full 800 in about 0.1 s), and speed may rise by at most
