@@ -97,6 +97,8 @@ INT tk_rcv_mbf(ID id, void *data, TMO timeout)
     return sizeof(REMOTE_CMD);
 }
 bool b3_barcode_active(void) { return false; }
+static UINT recal_requests;
+void b3_request_recalibration(void) { ++recal_requests; }
 ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
     clock_ms += snapshot_delay;
@@ -343,6 +345,10 @@ int main(void)
     assert(sent.target_speed_cps == VC_MIN_WHEEL_CPS);
     settle(&c, 30u);
     INT straight_speed = sent.target_speed_cps;
+    assert(sent.steering_permille == 0 && straight_speed == (INT)VC_DEFAULT_SPEED_PERCENT * 50);
+    /* The wheel-minimum cases below are defined at 20% (dashboard SPEED). */
+    command(&c, RCMD_SPEED, 20u); settle(&c, 30u);
+    straight_speed = sent.target_speed_cps;
     assert(sent.steering_permille == 0 && straight_speed == 1000);
     /* Sharp curve at 20%: inner wheel would be far below the minimum, so it
      * stops (pivot) instead of stalling; outer keeps turning; slower. */
@@ -522,6 +528,23 @@ int main(void)
         assert(gentle.target_speed_cps * (1000 - (steering < 0 ? -steering : steering)) /
             1000 >= VC_MIN_WHEEL_CPS);
     }
+    /* Every START restarts B3 calibration (car lifted after a safe-stop
+     * must not keep an in-air black level), including a repeat START. */
+    c = fresh(); recal_requests = 0u;
+    command(&c, RCMD_START, 0u); assert(recal_requests == 1u);
+    command(&c, RCMD_STOP, 0u); command(&c, RCMD_START, 0u);
+    assert(recal_requests == 2u && c.running);
+    command(&c, RCMD_MODE, MODE_TEST); command(&c, RCMD_START, 0u);
+    assert(recal_requests == 2u); /* TEST mode START is refused */
+    /* Default speed: gentle search sweeps keep both wheels turning. */
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.left = 900u; input.centre = 100u; input.line_flags = LINE_F_DETECTED;
+    settle(&c, 30u);
+    input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
+    step(&c, VC_LINE_REACQUIRE_MS, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY &&
+        sent.steering_permille == -VC_LINE_SEARCH_STEER &&
+        wheel_ok(left_wheel()) && left_wheel() > 0 && right_wheel() > 0);
     puts("PASS: controller commands, curves, B5 handoff, boot readiness, hazards and task adapter");
     return 0;
 }

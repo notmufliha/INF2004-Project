@@ -194,7 +194,7 @@ void vehicle_controller_init(VEHICLE_CONTROLLER *c)
     *c = (VEHICLE_CONTROLLER){0};
     c->line_pos = B3_LINE_POS_CENTRE;
     c->mode = MODE_AUTO;
-    c->speed_percent = 20u;
+    c->speed_percent = VC_DEFAULT_SPEED_PERCENT;
     c->state = ROBOT_INIT;
     stop_motion(c);
     set_state(c, ROBOT_IDLE);
@@ -208,6 +208,9 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
+            /* Fresh line calibration on the course (see b3_line_barcode.h):
+             * after a safe-stop the car is usually lifted and put back. */
+            b3_request_recalibration();
         }
         break;
     case RCMD_RESUME:
@@ -371,6 +374,16 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (command.target_speed_cps == 0) command.target_speed_cps = 1;
         command.target_speed_cps = command.target_speed_cps * 1000 /
             (1000 + search_steer);
+        if (search_steer < B3_LINE_STEER_MAX) {
+            /* A gentle sweep stays a sweep at low speed: never so slow
+             * that the inner wheel drops below the sustainable minimum
+             * (it would then pivot).  The hard reacquire turn may pivot. */
+            INT minimum = (VC_MIN_WHEEL_CPS * 1000 + 999 - search_steer) /
+                (1000 - search_steer);
+            if (command.target_speed_cps < minimum) {
+                command.target_speed_cps = minimum;
+            }
+        }
         c->last_steer = command.steering_permille;
         c->last_error = direction * B3_LINE_POS_CENTRE;
         apply_wheel_minimum(&command);
