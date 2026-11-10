@@ -238,21 +238,24 @@ int main(void)
         assert(line_position(&p, &v) == 0 && p.last_line_search_direction == -1);
     }
     assert(B3_LINE_LEFT_ACTIVE(1000u) && !B3_LINE_LEFT_ACTIVE(1001u));
-    /* PD suppresses a shrinking error and reinforces a growing error.
-     * Restarting a drive must not use an old derivative. */
+    /* Edge steering for this robot (both sensors on black when centred):
+     * nothing while both read black, full correction as soon as one
+     * sensor is ~40% onto the white, in the right direction. */
     {
         VEHICLE_CONTROLLER p = {0};
         VC_INPUT v = {0};
-        v.left = 600u; v.centre = 400u;
-        p.last_error = -500;
-        assert(line_follow_steering(&p, &v) == 160); /* First P only. */
-        p.drive_sent = true;
-        v.left = 550u; v.centre = 450u;
-        assert(line_follow_steering(&p, &v) == 30); /* Approaching centre. */
-        v.left = 650u; v.centre = 350u;
-        assert(line_follow_steering(&p, &v) == 340); /* Moving away. */
-        v.left = 1000u; v.centre = 0u;
+        v.left = 1000u; v.centre = 1000u;          /* centred */
+        assert(line_follow_steering(&p, &v) == 0);
+        v.left = 1000u; v.centre = 970u;           /* noise: deadband */
+        assert(line_follow_steering(&p, &v) == 0);
+        v.left = 1000u; v.centre = 780u;           /* left sensor at edge */
+        assert(line_follow_steering(&p, &v) == 400);
+        v.left = 1000u; v.centre = 500u;           /* left half off: full */
         assert(line_follow_steering(&p, &v) == B3_LINE_STEER_MAX);
+        assert(p.last_line_search_direction == 1); /* line is to the right */
+        v.left = 500u; v.centre = 1000u;           /* right half off */
+        assert(line_follow_steering(&p, &v) == -B3_LINE_STEER_MAX);
+        assert(p.last_line_search_direction == -1);
         v.left = 0u; v.centre = 1000u;
         assert(line_follow_steering(&p, &v) == -B3_LINE_STEER_MAX);
     }

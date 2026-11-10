@@ -22,14 +22,21 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
   therefore detects raw 301 immediately, before any sweep history exists.
   It reports `DETECTED` if either sensor is active and
   `LOST` if neither is.
-- While following, uses weighted line position and PD steering from commit
-  `503ed6e` on `line-follow-pd`, integrated into the current robot branch.
+- While following, steers on the normalised difference right - left. On
+  this robot the line is wider than the sensor gap: both sensors read black
+  when centred, and the only steering signal appears when one of them
+  reaches a line edge, with just the sensor gap left before the line is
+  lost. So the correction is immediate and strong: a 40-count deadband,
+  then proportional up to full steer (800 permille) at a 400-count
+  difference (the team's original mapping). The weighted-position PD from
+  `503ed6e` gave only ~270 permille with one sensor half off the line, and
+  the car ran off at curves. The weighted position (0 left, 500 centre,
+  1000 right, values <=50 ignored) is still kept to remember which side the
+  line was last seen on, for recovery.
   The ADC named `left` is physically on the robot's right, and the ADC named
   `centre` is physically on its left. Similar readings drive straight; a
   stronger right sensor steers right and a stronger left sensor steers left.
-  Values <=50 are excluded as noise from the weighted position (0 left,
-  500 centre, 1000 right). Steering is `(16*error + 10*delta_error)/10`,
-  capped at 800 permille. Steering applies whenever
+  Steering applies whenever
   the line is detected, including when both sensors see it. The car slows on
   curves (down to 60% at full steer) and only speeds back up gradually.
 - If line flags report `LOST`, the controller first steers hard toward the
@@ -81,7 +88,8 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
    sees white and black; calibration then settles on the course. Check on the
    dashboard that black reads at least 64 counts above white and that
    stationary noise is clearly smaller than that contrast.
-   The PD gains are initial tuning values; test
+   `B3_LINE_STEER_ERROR_FULL_SCALE` (400) is the tuning knob: lower it if
+   curves are missed, raise it if the car weaves on straights; test
    with the wheels raised and adjust them only after confirming turn direction.
 
 ## Code 39 barcode behavior
