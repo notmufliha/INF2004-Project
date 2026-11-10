@@ -17,7 +17,7 @@
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)
 #define B3_LINE_ACTIVE_MIN (301U)
-#define B3_LINE_ACTIVE_MAX (3999U)
+#define B3_LINE_ACTIVE_MAX (4100U)
 #define B3_LINE_LEFT_ACTIVE(raw) \
 	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
 	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)

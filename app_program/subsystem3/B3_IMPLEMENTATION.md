@@ -8,7 +8,7 @@ the Buddy 3 tasks yet.
 ## What the module does
 
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
-- Treats readings from 301 through 3999 on either GP26/left or GP27/centre as
+- Treats readings from 301 through 4100 on either GP26/left or GP27/centre as
   line-active. It reports `DETECTED` if either sensor is active, `LOST` if
   neither is active, and `JUNCTION` if both are active.
 - While following, adjusts steering proportionally to the raw ADC difference.
@@ -60,7 +60,7 @@ the Buddy 3 tasks yet.
    starting tasks and `b3_start()` from core 0. The sample `subsystem3_init()`
    and `subsystem3_start()` lifecycle currently do not call either function.
 5. Test ADC readings with the actual line sensors and floor. Readings at or
-   below 300 or above 3999 count as inactive; verify that white-surface readings
+   below 300 or above 4100 count as inactive; verify that white-surface readings
    stay outside the active range before relying on line-loss detection.
    The steering deadband and correction scale are initial tuning values; test
    with the wheels raised and adjust them only after confirming turn direction.
