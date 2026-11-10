@@ -108,22 +108,6 @@ static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     return steering;
 }
 
-/* Widening search: sweep 600 ms toward the side the line was last seen,
- * then 1200 ms the other way, 1800 ms back, and so on.  Each reversal
- * crosses the starting heading and swings further out than the last. */
-static INT line_search_direction(uint32_t elapsed_ms, INT first_direction)
-{
-    uint32_t segment_ms = VC_LINE_SEARCH_SWITCH_MS;
-    INT direction = first_direction;
-
-    while (elapsed_ms >= segment_ms) {
-        elapsed_ms -= segment_ms;
-        segment_ms += VC_LINE_SEARCH_SWITCH_MS;
-        direction = -direction;
-    }
-    return direction;
-}
-
 /* Convert the requested curve into wheel speeds the motors can hold.
  * B2 drives left = v(1+s), right = v(1-s) with s in permille. */
 static void apply_wheel_minimum(motion_command_t *command)
@@ -217,6 +201,11 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
             /* B3 restarts its calibration only if it reports LOST now
              * (see b3_line_barcode.h); a working calibration is kept. */
             b3_request_recalibration();
+            /* B2 latches stall/encoder faults until reboot, and every step
+             * safe-stops while one is set, so START could never restart the
+             * car after a stall.  START is the operator's acknowledgement:
+             * clear them; B2 raises them again at once if still present. */
+            fault_clear(FAULT_MOTOR_STALL | FAULT_ENCODER);
             c->line_seen_since_start = false;
         }
         break;
@@ -355,51 +344,31 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (c->navigation == 0u && !line_detected) {
         uint32_t recovery_elapsed;
-        INT direction;
-        INT search_steer = VC_LINE_SEARCH_STEER;
+        INT direction = c->last_line_search_direction;
 
         if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
         recovery_elapsed = in->now_ms - c->recovery_ms;
         set_state(c, ROBOT_LINE_RECOVERY);
-        if (recovery_elapsed >= VC_LINE_SEARCH_MS) {
-            /* Search exhausted: stop but stay armed.  Line following
+        if (direction == 0 || recovery_elapsed >= VC_LINE_REACQUIRE_MS) {
+            /* No clear side to turn to, or not found there: stop, still
+             * armed, instead of sweeping across the course.  Following
              * resumes by itself once B3 sees the line again (e.g. the car
-             * is put back on it); no new START is needed.  Dashboard STOP,
-             * faults and stale data still disarm as before. */
+             * is put back on it).  STOP, faults and stale data still
+             * disarm as before. */
             stop_motion(c);
             return;
-        }
-
-        direction = c->last_line_search_direction;
-        if (direction == 0) direction = 1;
-        if (recovery_elapsed < VC_LINE_REACQUIRE_MS) {
-            /* Pololu behaviour: turn hard back toward the last side. */
-            search_steer = B3_LINE_STEER_MAX;
-        } else {
-            /* Not found there: widening sweeps, starting the other way. */
-            direction = line_search_direction(
-                recovery_elapsed - VC_LINE_REACQUIRE_MS, -direction);
         }
         if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) {
             return;
         }
+        /* Pivot toward the side the line was last clearly on, close to
+         * where it was lost; the outer wheel runs at the set speed so the
+         * car turns far enough in VC_LINE_REACQUIRE_MS. */
         command.type = MOTION_CMD_DRIVE;
         command.direction = MOTION_DIR_FORWARD;
-        command.steering_permille = direction * search_steer;
-        command.target_speed_cps = speed / 2;
-        if (command.target_speed_cps == 0) command.target_speed_cps = 1;
-        command.target_speed_cps = command.target_speed_cps * 1000 /
-            (1000 + search_steer);
-        if (search_steer < B3_LINE_STEER_MAX) {
-            /* A gentle sweep stays a sweep at low speed: never so slow
-             * that the inner wheel drops below the sustainable minimum
-             * (it would then pivot).  The hard reacquire turn may pivot. */
-            INT minimum = (VC_MIN_WHEEL_CPS * 1000 + 999 - search_steer) /
-                (1000 - search_steer);
-            if (command.target_speed_cps < minimum) {
-                command.target_speed_cps = minimum;
-            }
-        }
+        command.steering_permille = direction * B3_LINE_STEER_MAX;
+        command.target_speed_cps = speed * 1000 / (1000 + B3_LINE_STEER_MAX);
+        if (command.target_speed_cps < 1) command.target_speed_cps = 1;
         c->last_steer = command.steering_permille;
         c->last_error = direction * B3_LINE_POS_CENTRE;
         apply_wheel_minimum(&command);

@@ -16,12 +16,11 @@
 #define VC_IMU_MAX_AGE_MS 1500u /* B4 publishes a quiet snapshot every second. */
 #define VC_MOTION_MAX_AGE_MS 100u
 #define VC_RECOVERY_MS 3000u
-#define VC_LINE_SEARCH_SWITCH_MS 600u /* first sweep; each later sweep is 600 ms longer */
-#define VC_LINE_SEARCH_MS 8000u /* then hold, still armed, until the line returns */
-#define VC_LINE_SEARCH_STEER 250
-/* Line just lost: first turn hard toward the side it was last seen (what
- * Pololu's saturated position + PD does) for this long, then sweep. */
-#define VC_LINE_REACQUIRE_MS 1000u
+/* Line lost while following: pivot toward the side it was last clearly
+ * on for at most this long (about 60 degrees at the default speed), then
+ * stop and wait, still armed.  No wide sweeps: they drove the car across
+ * the course ("moving randomly"). */
+#define VC_LINE_REACQUIRE_MS 3000u
 #define VC_JUNCTION_CONFIRM_SAMPLES 3u
 /* Curve speed: at full steer the base speed drops to VC_CURVE_MIN_PERMILLE.
  * The slowdown follows the hardest recent steering and relaxes by
