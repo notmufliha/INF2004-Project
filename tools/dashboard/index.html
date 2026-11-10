@@ -139,6 +139,7 @@ svg.chart { width: 100%; height: 150px; display: block; }
     <svg class="chart" id="dist-chart" role="img" aria-label="Front obstacle distance, last 60 seconds"></svg>
     <dl class="kv">
       <dt>Front</dt><dd id="o-d">–</dd>
+      <dt>Echo status</dt><dd id="o-echo">not received</dd>
       <dt>Width</dt><dd id="o-w">–</dd>
       <dt>Clearance L / R</dt><dd id="o-lr">–</dd>
     </dl>
@@ -184,7 +185,8 @@ svg.chart { width: 100%; height: 150px; display: block; }
   </section>
 
   <section class="card wide">
-    <h2>Events</h2>
+    <h2>Events (history)</h2>
+    <p class="note">Past errors remain here after recovery. Fault chips above show the latest reported fault mask.</p>
     <div class="log" id="events"></div>
   </section>
 </main>
@@ -243,7 +245,10 @@ function drawChart(svg, series, unit) {
   const pad = { l: 44, r: 8, t: 8, b: 20 };
   const t1 = now() / 1000, t0 = t1 - HISTORY_S;
   let lo = Infinity, hi = -Infinity;
-  for (const s of series) for (const p of s.data) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
+  for (const s of series) for (const p of s.data) {
+    if (p.v === null || !Number.isFinite(p.v)) continue;
+    lo = Math.min(lo, p.v); hi = Math.max(hi, p.v);
+  }
   if (!isFinite(lo)) { lo = 0; hi = 1; }
   lo = Math.min(lo, 0); if (hi - lo < 1) hi = lo + 1;
   { // tidy axis: 3 steps of 1, 2, 2.5 or 5 x 10^n
@@ -262,8 +267,14 @@ function drawChart(svg, series, unit) {
   out += `<text x="${pad.l}" y="${h - 4}" font-size="11" fill="${css.getPropertyValue("--muted")}">-60 s</text>`;
   out += `<text x="${w - pad.r}" y="${h - 4}" text-anchor="end" font-size="11" fill="${css.getPropertyValue("--muted")}">now</text>`;
   for (const s of series) {
-    const pts = s.data.filter((p) => p.t >= t0).map((p) => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`);
-    if (pts.length > 1) out += `<polyline fill="none" stroke="${css.getPropertyValue(s.color)}" stroke-width="2" stroke-linejoin="round" points="${pts.join(" ")}" />`;
+    let drawing = false;
+    const path = s.data.filter((p) => p.t >= t0).map((p) => {
+      if (p.v === null || !Number.isFinite(p.v)) { drawing = false; return ""; }
+      const command = drawing ? "L" : "M";
+      drawing = true;
+      return `${command}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`;
+    }).join(" ");
+    if (path) out += `<path fill="none" stroke="${css.getPropertyValue(s.color)}" stroke-width="2" stroke-linejoin="round" d="${path}" />`;
   }
   out += `<line class="xh" y1="${pad.t}" y2="${h - pad.b}" stroke="${css.getPropertyValue("--muted")}" visibility="hidden" />`;
   out += `<rect x="${pad.l}" y="0" width="${w - pad.l - pad.r}" height="${h}" fill="transparent" />`;
@@ -274,7 +285,10 @@ function drawChart(svg, series, unit) {
     const lines = [];
     for (const s of series) {
       let best = null;
-      for (const p of s.data) if (!best || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+      for (const p of s.data) {
+        if (p.v !== null && Number.isFinite(p.v) &&
+            (!best || Math.abs(p.t - t) < Math.abs(best.t - t))) best = p;
+      }
       if (best && Math.abs(best.t - t) < 2) lines.push(`${s.name}: ${best.v} ${unit}`);
     }
     const xh = svg.querySelector(".xh");
@@ -309,7 +323,7 @@ function onTelemetry(d) {
   state.lastTelem = d; state.lastTelemAt = now();
   const t = now() / 1000;
   state.speed.push({ t, l: d.spd_l, r: d.spd_r });
-  if (d.obs_d_cm !== null) state.dist.push({ t, v: d.obs_d_cm });
+  state.dist.push({ t, v: d.obs_open_space ? null : d.obs_d_cm });
   $("t-state").textContent = d.state_name;
   $("t-gap").textContent = state.gaps;
   renderFaults(d.faults);
@@ -323,7 +337,9 @@ function onTelemetry(d) {
   $("imu").textContent = d.motion_name;
   $("pitch").textContent = `${d.pitch_deg.toFixed(1)}°`;
   $("hump").textContent = d.hump_valid ? `${d.hump_last_mm} / ${d.hump_peak_mm} mm` : "not measured";
-  $("o-d").textContent = fmtCm(d.obs_d_cm);
+  $("o-d").textContent = d.obs_open_space ? "No target (assumed open)" : fmtCm(d.obs_d_cm);
+  $("o-echo").textContent = d.obs_open_space ? "No measured distance; open-space policy" :
+    d.obs_d_cm === null ? "Unavailable / not measured" : "Measured return";
   $("o-w").textContent = d.obs_w_cm === null ? "not measured" : `${d.obs_w_cm} cm`;
   $("o-lr").textContent = `${fmtCm(d.obs_lc_cm)} / ${fmtCm(d.obs_rc_cm)}`;
   redraw();
@@ -350,7 +366,13 @@ function onEvent(d) {
   if (d.type === 0) text += `${d.code_name} → ${d.nav_name}`;
   else if (d.type === 1) text += d.valid ? `height ${d.height_mm} mm, peak ${d.peak_mm} mm` : "height not measured";
   else if (d.type === 2) text += `front ${fmtCm(d.d_cm)}, width ${d.w_cm === null ? "?" : d.w_cm + " cm"}, L ${fmtCm(d.lc_cm)}, R ${fmtCm(d.rc_cm)} → ${d.action_name}`;
-  else text += `${d.err_text} (detail ${d.detail})`;
+  else {
+    text += `${d.err_text} (detail ${d.detail})`;
+    if (d.err === 161 && d.detail >= 1 && d.detail <= 5) {
+      text += " — " + ["", "ECHO stuck high", "no rising edge", "no falling edge",
+        "pulse too short / electrical glitch", "out of range"][d.detail];
+    }
+  }
   log($("events"), text);
 }
 function onAck(d) {

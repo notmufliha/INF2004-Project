@@ -42,6 +42,7 @@ static uint32_t next_id = 10u;
 static uint32_t generation = 1u;
 static unsigned faults, stop_calls, drive_calls, move_calls, turn_calls;
 static bool allowed, line_valid = true, jam_queue;
+static uint32_t snapshot_delay;
 static B3_STATE line_state = {3000u, 1000u, B3_LINE_F_DETECTED};
 static motion_status_snapshot_t status = {MOTION_STATUS_IDLE, 100u, 0u, true};
 static motion_status_snapshot_t result;
@@ -66,6 +67,7 @@ static void comm_set_robot_state(int state) { (void)state; }
 static void tm_printf(UB *fmt, ...) { (void)fmt; }
 static ER b3_get_timed_state(B3_STATE *out, uint32_t *sample)
 {
+    clock_ms += snapshot_delay;
     *out = line_state;
     *sample = clock_ms;
     return line_valid ? E_OK : E_OBJ;
@@ -155,6 +157,11 @@ int main(void)
     assert(drive_calls == 0u);
     assert(s5_navigation_has_line_reference());
     assert(s5_navigation_stopped() && allowed); /* VC owns DRIVE. */
+    snapshot_delay = 5u; /* Producer ran while snapshot mutex was acquired. */
+    clock_ms += 65u;
+    s5_navigation_tick(true, 120.0f, true);
+    assert(s5_navigation_error() == S5_ERR_NONE && allowed);
+    snapshot_delay = 0u;
     clock_ms += 65u;
     s5_navigation_tick(true, 40.0f, true);
     assert(allowed && drive_calls == 0u); /* Continue through hysteresis band. */

@@ -8,30 +8,30 @@
  * different sensitivity, which with raw values looks like a permanent
  * "line on one side" and steers the car off the course.
  *
- * The range widens immediately to any lighter or darker reading and slowly
- * forgets old extremes (B3_CAL_FORGET_PER_SAMPLE per sample) so it settles
- * on the real course, but never narrows below B3_CAL_MIN_SPAN.
+ * Sweep each sensor over white and black before driving. Once the observed
+ * contrast reaches B3_CAL_MIN_SPAN, use the measured endpoints. Endpoints
+ * widen when new extremes are observed; they never drift while parked on
+ * one surface. Reboot and repeat the sweep when lighting or the course changes.
  */
 #ifndef B3_LINE_CAL_H
 #define B3_LINE_CAL_H
 
 #include <stdint.h>
 
-/* Starting range until the sensor has seen the course.  Its midpoint is
- * the team's tested raw threshold (300).  The range starts NARROW on
- * purpose: widening to a darker or lighter reading is instant, while
- * narrowing is slow, so a too-wide default (e.g. black 3000) made sensors
- * whose black reads ~1000 report LINE LOST for tens of seconds. */
+/* Provisional range before a white/black sweep. One stationary surface
+ * cannot establish sensor polarity or calibrated contrast. */
 #define B3_CAL_DEFAULT_WHITE (100U)
 #define B3_CAL_DEFAULT_BLACK (500U)
-/* Smallest raw span kept between learned white and black. */
-#define B3_CAL_MIN_SPAN (300U)
-#define B3_CAL_FORGET_PER_SAMPLE (1U)
+/* Requiring 300 raw counts prevented low-output sensors learning from a
+ * sweep. Verify this minimum contrast exceeds actual course noise. */
+#define B3_CAL_MIN_SPAN (64U)
 #define B3_CAL_FULL_SCALE (1000U)
 
 typedef struct {
 	uint16_t white;
 	uint16_t black;
+	uint16_t observed_min;
+	uint16_t observed_max;
 } B3_LINE_CAL;
 
 void b3_line_cal_init(B3_LINE_CAL *cal);

@@ -37,6 +37,8 @@ typedef unsigned UINT;
 #define tm_printf(...) ((void)0)
 static uint32_t regs[1024], clock_us, triggered_at, width;
 static bool triggered, stuck;
+static uint32_t last_fire;
+static bool fired;
 static uint32_t in_w(uint32_t address) {
     if (address == TIMER_TIMERAWL) return clock_us++;
     if (address == 0x4000c008u) return 1u << 14u;
@@ -54,7 +56,11 @@ static void clr_w(uint32_t a, uint32_t v) {
 static void gpio_set_pin(unsigned p, unsigned m) { (void)p; (void)m; }
 static void gpio_set_val(unsigned p, unsigned v) {
     (void)p;
-    if (v) { triggered = true; triggered_at = clock_us; }
+    if (v) {
+        if (fired) assert((uint32_t)(clock_us - last_fire) >= 65000u);
+        fired = true; last_fire = clock_us;
+        triggered = true; triggered_at = clock_us;
+    }
 }
 static unsigned gpio_get_val(unsigned p) {
     (void)p;
@@ -94,6 +100,10 @@ int main(void) {
     assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
     triggered = false; width = 70000u;
     assert(s5_ultrasonic_read_front().status == S5_ECHO_NO_FALL);
+    for (unsigned i = 0; i < 12u; ++i) {
+        triggered = false; width = i % 3u == 0u ? 0u : i % 3u == 1u ? 38000u : 55000u;
+        assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
+    }
     assert(read_width(1500u).status == S5_ECHO_OK); /* Recovers on next fresh pulse. */
     triggered = false; stuck = true;
     assert(s5_ultrasonic_read_detailed().status == S5_ECHO_STUCK_HIGH);

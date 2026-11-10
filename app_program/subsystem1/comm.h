@@ -133,6 +133,9 @@ typedef enum
 #define COMM_DIST_MAX_CM    510U   /* [9]  distances, clearances, 1 cm   */
 #define COMM_WIDTH_MAX_CM   126U   /* [7]  obstacle width, 1 cm          */
 #define COMM_CM_INVALID     0xFFFFU /* "no echo / not measured"          */
+/* Front telemetry only: B5 ranges end at 400 cm. Keep assumed open space
+ * distinct from an actual range without increasing the 9-bit payload. */
+#define COMM_FRONT_OPEN_SPACE_CM 510U
 
 /* Widths of the fields that hold signed values (two's complement). */
 #define COMM_SPEED_BITS     14U

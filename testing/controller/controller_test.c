@@ -22,6 +22,7 @@ static REMOTE_CMD remote_queue[8];
 static UINT remote_head, remote_count, task_ticks;
 static uint32_t clock_ms;
 static bool stale_line, stale_imu, delayed_startup;
+static uint32_t snapshot_delay;
 static jmp_buf task_done;
 ID mbf_remote_cmd = 1, mbf_nav_cmd = 2;
 
@@ -93,6 +94,7 @@ INT tk_rcv_mbf(ID id, void *data, TMO timeout)
 bool b3_barcode_active(void) { return false; }
 ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
+    clock_ms += snapshot_delay;
     *state = (B3_STATE){0};
     state->line_flags = LINE_F_DETECTED;
     *sample_ms = (stale_line || (delayed_startup && task_ticks < 2u)) ? clock_ms - 101u : clock_ms;
@@ -201,7 +203,7 @@ int main(void)
     assert(sent.steering_permille > 0);
     input.left = 700u; input.centre = 700u;
     settle(&c, 30u);
-    assert(sent.steering_permille == 0);
+    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE);
     assert(!B3_LINE_LEFT_ACTIVE(499u) && !B3_LINE_CENTRE_ACTIVE(499u));
     assert(B3_LINE_LEFT_ACTIVE(500u) && B3_LINE_CENTRE_ACTIVE(500u));
     assert(B3_LINE_LEFT_ACTIVE(1000u) && !B3_LINE_LEFT_ACTIVE(1001u));
@@ -280,10 +282,14 @@ int main(void)
     input.line_flags = LINE_F_DETECTED;
     input.left = 700u; input.centre = 700u;
     step(&c, 20u, 0u); /* acceleration from standstill is ramped */
-    assert(sent.target_speed_cps == VC_MIN_WHEEL_CPS);
+    assert(wheel_ok(left_wheel()) && wheel_ok(right_wheel()) &&
+        left_wheel() > 0 && right_wheel() > 0);
+    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE);
     settle(&c, 30u);
     INT straight_speed = sent.target_speed_cps;
-    assert(sent.steering_permille == 0 && straight_speed == 1000);
+    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE && straight_speed == 1000);
+    if (ROBOT_LINE_STEER_TRIM_PERMILLE < 0) assert(left_wheel() < right_wheel());
+    if (ROBOT_LINE_STEER_TRIM_PERMILLE > 0) assert(left_wheel() > right_wheel());
     /* Sharp curve at 20%: inner wheel would be far below the minimum, so it
      * stops (pivot) instead of stalling; outer keeps turning; slower. */
     input.left = 900u; input.centre = 500u; settle(&c, 10u);
@@ -307,7 +313,7 @@ int main(void)
     input.left = 700u; input.centre = 700u; step(&c, 20u, 0u);
     assert(sent.target_speed_cps < straight_speed * 9 / 10);
     settle(&c, 40u);
-    assert(sent.steering_permille == 0 &&
+    assert(sent.steering_permille == ROBOT_LINE_STEER_TRIM_PERMILLE &&
         sent.target_speed_cps == straight_speed);
     /* B3 junction rule: both strongly black and balanced only. */
     assert(B3_LINE_IS_JUNCTION(950u, 900u));
@@ -412,17 +418,19 @@ int main(void)
 
     /* Execute the real task adapter: stop dominates queued START; stale
      * producer timestamps never authorize movement, even with fresh reads. */
-    for (UINT scenario = 0u; scenario < 4u; ++scenario) {
+    for (UINT scenario = 0u; scenario < 5u; ++scenario) {
         c = fresh(); (void)c;
         clock_ms = 1000u + scenario * 1000u;
         task_ticks = remote_head = 0u; remote_count = scenario == 1u ? 2u : 1u;
         remote_queue[0] = (REMOTE_CMD){0}; remote_queue[0].type = scenario == 1u ? RCMD_ESTOP : RCMD_START;
         remote_queue[1] = (REMOTE_CMD){0}; remote_queue[1].type = RCMD_START;
         stale_line = scenario == 2u; stale_imu = scenario == 3u;
+        snapshot_delay = scenario == 4u ? 5u : 0u;
         permission = true;
         if (setjmp(task_done) == 0) controller_task(0, NULL);
-        assert(scenario == 0u ? drives > 0u : drives == 0u);
+        assert(scenario == 0u || scenario == 4u ? drives > 0u : drives == 0u);
     }
+    snapshot_delay = 0u;
     /* Autostart survives delayed first samples, without a remote START.
      * An explicit STOP or a bad IMU still prevents boot motion. */
     for (UINT scenario = 0u; scenario < 3u; ++scenario) {
@@ -437,6 +445,16 @@ int main(void)
         assert(scenario == 0u ? drives > 0u : drives == 0u);
     }
     assert(vehicle_controller_start() == E_OK);
+    /* Small corrections retain their radius even at the startup speed. */
+    for (INT steering = -200; steering <= 200; steering += 25) {
+        motion_command_t gentle = {0};
+        gentle.target_speed_cps = 100;
+        gentle.steering_permille = steering;
+        apply_wheel_minimum(&gentle);
+        assert(gentle.steering_permille == steering);
+        assert(gentle.target_speed_cps * (1000 - (steering < 0 ? -steering : steering)) /
+            1000 >= VC_MIN_WHEEL_CPS);
+    }
     puts("PASS: controller commands, curves, B5 handoff, boot readiness, hazards and task adapter");
     return 0;
 }

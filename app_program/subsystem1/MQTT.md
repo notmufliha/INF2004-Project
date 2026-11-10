@@ -72,6 +72,19 @@ before the field wraps, and the decoder (`Unwrap24`) rebuilds the full total
 anyway, because consecutive frames (≤ 10 s apart → ≤ 50,000 counts) always
 differ by far less than 2²³.
 
+**Front no-target policy.** In integrated B5 telemetry, distance code **510**
+means `OPEN_SPACE_ASSUMED`, not 510 cm. Real B5 distances are 0..400 cm;
+511 remains invalid/not measured. Python/JavaScript decoders expose
+`obs_open_space`; their raw `obs_d_cm` remains 510 for protocol inspection.
+The dashboard labels the assumption and leaves a gap in the measured-distance
+chart. Clearance and obstacle-event fields retain their existing interpretation.
+An assumed no-target return cannot diagnose a disconnected ECHO wire.
+
+Integrated B5 no-echo error details 1..5 now identify the raw failure:
+1 stuck high, 2 no rise, 3 no fall, 4 short/glitch, 5 out of range. Legacy
+detail 45 means front angle/2. With open-space policy enabled, no rise and
+completed out-of-range returns are assumed open and do not raise this error.
+
 ### Event — header 33 bits + body
 
 Header: ver 3 · **type 2** (0 barcode, 1 hump, 2 obstacle, 3 error) · seq 8 · time 20 (0.1 s).
