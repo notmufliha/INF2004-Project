@@ -79,6 +79,22 @@ static INT line_follow_steering(const VC_INPUT *in)
     return 0;
 }
 
+/* Widening search: sweep 600 ms toward the side the line was last seen,
+ * then 1200 ms the other way, 1800 ms back, and so on.  Each reversal
+ * crosses the starting heading and swings further out than the last. */
+static INT line_search_direction(uint32_t elapsed_ms, INT first_direction)
+{
+    uint32_t segment_ms = VC_LINE_SEARCH_SWITCH_MS;
+    INT direction = first_direction;
+
+    while (elapsed_ms >= segment_ms) {
+        elapsed_ms -= segment_ms;
+        segment_ms += VC_LINE_SEARCH_SWITCH_MS;
+        direction = -direction;
+    }
+    return direction;
+}
+
 static void update_junction_state(VEHICLE_CONTROLLER *c, UB line_flags)
 {
     bool junction = (line_flags & LINE_F_JUNCTION) != 0u &&
@@ -262,16 +278,18 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
         recovery_elapsed = in->now_ms - c->recovery_ms;
         set_state(c, ROBOT_LINE_RECOVERY);
-        if (recovery_elapsed >= VC_RECOVERY_MS) {
-            safe_stop(c);
+        if (recovery_elapsed >= VC_LINE_SEARCH_MS) {
+            /* Search exhausted: stop but stay armed.  Line following
+             * resumes by itself once B3 sees the line again (e.g. the car
+             * is put back on it); no new START is needed.  Dashboard STOP,
+             * faults and stale data still disarm as before. */
+            stop_motion(c);
             return;
         }
 
         direction = c->last_line_search_direction;
         if (direction == 0) direction = 1;
-        if (((recovery_elapsed / VC_LINE_SEARCH_SWITCH_MS) & 1u) != 0u) {
-            direction = -direction;
-        }
+        direction = line_search_direction(recovery_elapsed, direction);
         if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) {
             return;
         }
