@@ -10,7 +10,8 @@
 #define VC_IMU_MAX_AGE_MS 1500u /* B4 publishes a quiet snapshot every second. */
 #define VC_MOTION_MAX_AGE_MS 100u
 #define VC_RECOVERY_MS 3000u
-#define VC_LINE_SEARCH_SWITCH_MS 600u
+#define VC_LINE_SEARCH_SWITCH_MS 600u /* first sweep; each later sweep is 600 ms longer */
+#define VC_LINE_SEARCH_MS 8000u /* then hold, still armed, until the line returns */
 #define VC_LINE_SEARCH_STEER 250
 #define VC_JUNCTION_CONFIRM_SAMPLES 3u
 #define VC_JUNCTION_RELEASE_SAMPLES 3u

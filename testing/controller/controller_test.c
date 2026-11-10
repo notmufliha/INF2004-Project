@@ -195,11 +195,36 @@ int main(void)
     input.line_flags = LINE_F_DETECTED;
     step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_FOLLOW && c.running);
+    /* Widening sweeps: 600 ms right, 1200 ms left, 1800 ms right. */
     input.line_flags = LINE_F_LOST;
     step(&c, 20u, 0u);
-    assert(c.state == ROBOT_LINE_RECOVERY);
-    step(&c, VC_RECOVERY_MS, 0u);
-    assert(c.state == ROBOT_SAFE_STOP && !c.running);
+    assert(c.state == ROBOT_LINE_RECOVERY &&
+        sent.steering_permille == VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u);
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* 1200 ms: still left */
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* 1800 ms: back right */
+    assert(sent.steering_permille == VC_LINE_SEARCH_STEER);
+    step(&c, VC_RECOVERY_MS, 0u); /* old 3 s limit no longer disarms */
+    assert(c.state == ROBOT_LINE_RECOVERY && c.running);
+    /* Search exhausted: stopped but still armed. */
+    step(&c, VC_LINE_SEARCH_MS, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY && c.running &&
+        sent.type == MOTION_CMD_STOP);
+    UINT held_drives = drives;
+    step(&c, 1000u, 0u); step(&c, 1000u, 0u);
+    assert(drives == held_drives && c.running);
+    /* Line back under the car: follows again without a new START. */
+    input.line_flags = LINE_F_DETECTED;
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_FOLLOW && c.running &&
+        sent.type == MOTION_CMD_DRIVE);
+    /* Dashboard STOP while holding still disarms. */
+    input.line_flags = LINE_F_LOST;
+    step(&c, 20u, 0u); step(&c, VC_LINE_SEARCH_MS, 0u);
+    command(&c, RCMD_STOP, 0u); step(&c, 20u, 0u);
+    assert(!c.running);
 
     c = fresh(); command(&c, RCMD_START, 0u);
     input.line_flags = LINE_F_LOST;

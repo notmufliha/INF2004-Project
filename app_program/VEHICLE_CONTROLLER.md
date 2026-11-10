@@ -37,10 +37,13 @@ clearance: B5 must provide a fresh authorization following every safety STOP.
 States use the existing B1 wire enum: INIT, IDLE, LINE_FOLLOW, NAV_COMMAND,
 HUMP, OBSTACLE_SCAN, LINE_RECOVERY and SAFE_STOP. OBSTACLE_AVOID is reserved;
 physical bypass remains disabled. On lost clearance the controller stops and
-waits for B5. Hump observations halve the following speed. Fresh line loss stops
-in LINE_RECOVERY for at most three seconds. During recovery the car creeps
-forward at half speed with 25% steering toward the side the line was last
-seen, reversing the sweep every 600 ms. Timeout disarms in SAFE_STOP. PAUSE during a turn discards that turn rather than
+waits for B5. Hump observations halve the following speed. On line loss the
+car enters LINE_RECOVERY and searches for up to 8 seconds: it creeps forward
+at half speed with 25% steering, first toward the side the line was last
+seen, in widening sweeps (600 ms, then 1200 ms the other way, 1800 ms back,
+and so on). If the line is not found it stops but stays armed, and resumes
+line following by itself as soon as B3 sees the line again; no new START is
+needed. Dashboard STOP/ESTOP, faults and stale data still disarm. PAUSE during a turn discards that turn rather than
 blindly replaying it on RESUME.
 
 B3's timestamped snapshot must be at most 100 ms old, B2 feedback at most
