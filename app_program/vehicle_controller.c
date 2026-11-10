@@ -422,6 +422,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         command.target_speed_cps = speed;
     }
     if (command.target_speed_cps < 1) command.target_speed_cps = 1;
+    /* Steady and slow across a barcode (slowing applies at once). */
+    if (in->barcode_active && command.target_speed_cps > VC_BARCODE_CPS) {
+        command.target_speed_cps = VC_BARCODE_CPS;
+    }
     /* Gentle acceleration, also from standstill; slowing applies at once. */
     {
         INT previous = c->drive_sent ? c->last_speed : 0;
@@ -503,6 +507,7 @@ static void controller_task(INT stacd, void *exinf)
             in.centre = (UH)line.ir_centre;
             in.line_flags = (UB)line.line_flags;
         }
+        in.barcode_active = b3_barcode_active();
         in.imu_valid = imu.b_valid && now.lo - imu.timestamp_ms <= VC_IMU_MAX_AGE_MS;
         in.hump = imu.b_hump_detected;
         in.hazard = hazard || imu.b_sudden_impact ||

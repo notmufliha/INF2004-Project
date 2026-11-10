@@ -5,6 +5,7 @@
 #ifndef B3_LINE_BARCODE_H
 #define B3_LINE_BARCODE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "../app.h"
@@ -16,27 +17,35 @@
 #define B3_LINE_F_DETECTED (0x01U)
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)
-#define B3_LINE_ACTIVE_MIN (301U)
-#define B3_LINE_ACTIVE_MAX (4100U)
-#define B3_LINE_LEFT_ACTIVE(raw) \
-	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
-	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
-#define B3_LINE_CENTRE_ACTIVE(raw) \
-	((uint16_t)(raw) >= B3_LINE_ACTIVE_MIN && \
-	 (uint16_t)(raw) <= B3_LINE_ACTIVE_MAX)
-#define B3_LINE_STEER_DEADBAND (50)
-#define B3_LINE_STEER_ERROR_FULL_SCALE (500)
+/* Line values given to the controller (B3_STATE ir_left / ir_centre) are
+ * NORMALISED per sensor by b3_line_cal: 0 = that sensor's white, 1000 = its
+ * black.  The dashboard still shows the raw ADC readings.  A sensor is on
+ * the line at or above half way between its own white and black. */
+#define B3_LINE_ACTIVE_MIN (500U)
+#define B3_LINE_ACTIVE_MAX (1000U)
+#define B3_LINE_LEFT_ACTIVE(norm) \
+	((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN && \
+	 (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
+#define B3_LINE_CENTRE_ACTIVE(norm) \
+	((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN && \
+	 (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
+#define B3_LINE_STEER_DEADBAND (40)
+#define B3_LINE_STEER_ERROR_FULL_SCALE (400)
 /* 800 permille: inner wheel at 0.2x, outer at 1.8x (before the 5000 cps
  * outer-wheel limit), so sharp curves can be followed. */
 #define B3_LINE_STEER_MAX (800)
 /* A junction (cross line) puts BOTH sensors on solid black, reading about
- * equally.  Merely "both above 300" is normal line following, not a
- * junction; treating it as one forced the car straight on every curve.
- * CALIBRATE: read the dashboard IR values with both sensors over a junction
- * and set B3_LINE_JUNCTION_MIN a little below the lower of the two. */
-#define B3_LINE_JUNCTION_MIN (3500U)
-#define B3_LINE_JUNCTION_BALANCE (300)
-#define B3_LINE_IS_JUNCTION(left, centre) 	((uint16_t)(left) >= B3_LINE_JUNCTION_MIN && 	 (uint16_t)(centre) >= B3_LINE_JUNCTION_MIN && 	 (uint16_t)(left) <= B3_LINE_ACTIVE_MAX && 	 (uint16_t)(centre) <= B3_LINE_ACTIVE_MAX && 	 ((int)(left) - (int)(centre)) <= B3_LINE_JUNCTION_BALANCE && 	 ((int)(centre) - (int)(left)) <= B3_LINE_JUNCTION_BALANCE)
+ * equally (normalised).  Merely both "on the line" is normal following, not
+ * a junction; treating it as one forced the car straight on every curve. */
+#define B3_LINE_JUNCTION_MIN (800U)
+#define B3_LINE_JUNCTION_BALANCE (150)
+#define B3_LINE_IS_JUNCTION(left, centre) \
+	((uint16_t)(left) >= B3_LINE_JUNCTION_MIN && \
+	 (uint16_t)(centre) >= B3_LINE_JUNCTION_MIN && \
+	 (uint16_t)(left) <= B3_LINE_ACTIVE_MAX && \
+	 (uint16_t)(centre) <= B3_LINE_ACTIVE_MAX && \
+	 ((int)(left) - (int)(centre)) <= B3_LINE_JUNCTION_BALANCE && \
+	 ((int)(centre) - (int)(left)) <= B3_LINE_JUNCTION_BALANCE)
 
 typedef enum {
 	B3_BARCODE_NONE = 0,
@@ -101,6 +110,11 @@ IMPORT ER b3_start(void);
 IMPORT ER b3_get_state(B3_STATE *state);
 /* Timestamp is updated only after both ADC reads succeed. E_OBJ until then. */
 IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
+/* True while the barcode sensor is crossing bars (an edge within the last
+ * B3_BARCODE_ACTIVE_US); the controller then holds a slow, steady speed so
+ * bar widths are measured cleanly. */
+#define B3_BARCODE_ACTIVE_US (400000U)
+IMPORT bool b3_barcode_active(void);
 
 /**
  * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.
