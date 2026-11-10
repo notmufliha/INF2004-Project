@@ -7,16 +7,64 @@
 #ifndef ROBOT_MODE
 #define ROBOT_MODE 1
 #endif
-/* Keep the robot level/still while B4 obtains its startup calibration. */
+/* Keep the integrated B4 calibration gate. */
 #define ROBOT_IMU_STARTUP_TIMEOUT_MS 30000
+#ifndef ROBOT_AUTOSTART
+#define ROBOT_AUTOSTART 1
+#endif
+/* VC follows the line; Buddy 5 owns encoder-controlled bypass/recovery. */
+#define ROBOT_FORWARD_STOP_MODE 0 /* VC owns normal line-following DRIVE. */
+/* Open-space policy requested for forward driving. NO_RISE means assume
+ * no target, NOT verified clearance. A disconnected ECHO wire looks the
+ * same and cannot be detected by this single-sensor policy. Set 0 for
+ * strict stop-on-missing-echo behavior. See the separate scan policy below. */
+#ifndef ROBOT_NO_TARGET_FORWARD
+#define ROBOT_NO_TARGET_FORWARD 1
+#endif
+/* Apply the same explicit open-space assumption to scan boundary rays.
+ * A missing/disconnected sensor cannot be distinguished from no target.
+ * Set both policies to 0 to require real return echoes throughout. */
+#ifndef ROBOT_NO_TARGET_SCAN
+#define ROBOT_NO_TARGET_SCAN 1
+#endif
 #ifndef ROBOT_ENABLE_DRIVE
 #define ROBOT_ENABLE_DRIVE 1
 #endif
-/* Real autonomous bypass requires working B2 encoder feedback and B3 line
- * sensing, measured robot geometry, and independent path safety checks.
- * The uploaded team project does not contain those working interfaces.
- */
-#define ROBOT_ENABLE_BYPASS 0
+/* Start by following the line, avoid a profiled obstacle, then reacquire
+ * the line and resume following. Can be overridden with -D for bench builds. */
+#ifndef ROBOT_ENABLE_BYPASS
+#define ROBOT_ENABLE_BYPASS 1
+#endif
+#ifndef ROBOT_BYPASS_CALIBRATED
+/* Calibration evidence flag only; enabling the requested autonomous profile
+ * does not certify the provisional physical measurements below. */
+#define ROBOT_BYPASS_CALIBRATED 0
+#endif
+/* This is an explicit course constraint, NOT an ultrasonic depth estimate.
+ * Autonomous mode requires measured obstacles no deeper than this bound. */
+#define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
+#define ROBOT_BYPASS_SPEED_CPS 600
+#define ROBOT_BYPASS_REVERSE_CM 8.0f
+#define ROBOT_BYPASS_SEARCH_STEP_CM 2.0f
+#define ROBOT_BYPASS_SEARCH_EXTRA_CM 10.0f
+#define ROBOT_BYPASS_MAX_LEG_CM 150.0f
+#define ROBOT_BYPASS_LEG_TIMEOUT_MS 60000u
+#define ROBOT_BYPASS_TOTAL_TIMEOUT_MS 180000u
+#define ROBOT_BYPASS_LINE_MAX_AGE_MS 100u
+#define ROBOT_BYPASS_LINE_CONFIRM 3u
+#define ROBOT_BYPASS_LINE_WINDOW_CM 5.0f
+#define ROBOT_BYPASS_MIN_TURN_CM 20.0f
+
+/* Visible ultrasonic silhouette only; centimetres. Measure chassis before
+ * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse. */
+#define ROBOT_SCAN_SAFE_MIN_DEG 70u
+#define ROBOT_SCAN_SAFE_MAX_DEG 110u
+#define ROBOT_OBSTACLE_SMALL_CM 10.0f
+#define ROBOT_OBSTACLE_MAX_BYPASS_CM 30.0f
+#define ROBOT_CHASSIS_HALF_WIDTH_CM 8.0f
+#define ROBOT_CHASSIS_HALF_LENGTH_CM 10.0f
+#define ROBOT_SENSOR_FORWARD_OFFSET_CM 0.0f
+#define ROBOT_OBSTACLE_MARGIN_CM 8.0f
 
 /* Pin pairs for M1 and M2 on Maker Pi Pico Base.
  * M1 forward defaults to GP9, M2 forward defaults to GP10, following the
@@ -29,7 +77,7 @@
 #define ROBOT_MOTOR_R_REV_PIN 11u
 #define ROBOT_PWM_TOP 999u
 #define ROBOT_FORWARD_PWM 500u /* 50% initial floor drive; calibrate for load and supply */
-#define ROBOT_MOTOR_WATCHDOG_MS 1200u
+#define ROBOT_MOTOR_WATCHDOG_MS 350u
 #define ROBOT_MOTOR_PERIOD_MS 20u
 #define ROBOT_BOOT_DELAY_MS 2000u
 
@@ -39,7 +87,7 @@
  * use with wheels on the floor. Restore to 0 before driving on the floor.
  */
 #define ROBOT_WHEELS_UP_MOTOR_TEST 0
-#define ROBOT_ENCODER_DIAGNOSTICS 1
+#define ROBOT_ENCODER_DIAGNOSTICS 0
 /* Guarded B2 command tests: 0=off, 1=forward 10cm, 2=reverse 10cm,
  * 3=straight DRIVE 1s then STOP, 4=left 90deg, 5=right 90deg, 6=all.
  * Requires ROBOT_ENABLE_DRIVE=1 and valid Buddy 5 clearance.
@@ -57,13 +105,9 @@
  * Close reading stops immediately; 3 close readings trigger scanning.
  * Three readings >= RELEASE_CM allow forward motion again.
  */
-/* User-requested near-field echo suppression.  Echoes <= 5 cm are
- * discarded from obstacle profiling AND forward ranging; they are NOT
- * evidence of a clear path. If no other valid measurements remain, stop.
- * WARNING: A real obstacle closer than 5 cm will also be ignored as a
- * distance sample. Never drive unless another independent valid reading
- * confirms a clear path. */
-#define ROBOT_IGNORE_ECHO_AT_OR_BELOW_CM 5.0f
+/* Keep valid near-field echoes: they mean CLOSE, not a missing sensor.
+ * The driver separately rejects pulses below its measurable range. */
+#define ROBOT_IGNORE_ECHO_AT_OR_BELOW_CM 0.0f
 /* Known repeatable echoes in the user's clear-area log (centimetres).
  * Suppress ONLY these narrow bands, rather than treating them as a clear
  * path. WARNING: real objects at these ranges become unobservable to this
@@ -86,9 +130,8 @@
  * Invalid readings keep motors stopped, but do not reinitialize hardware
  * or repeatedly print [S5-RECOVER] messages.
  */
-/* Quiet operational logging. 0: state changes and scan summary only.
- * No diagnostic mode or raw-echo diagnostic stream is compiled. */
-#define ROBOT_VERBOSE_SENSOR_LOG 0
+/* B5 raw echo diagnostics on USB CDC, including rejected samples. */
+#define ROBOT_VERBOSE_SENSOR_LOG 1
 /* Five separated pings, requiring at least 3 agreeing valid distances.
  * This rejects one-off 5.8 cm / 24.2 cm cross-talk echoes. */
 #define ROBOT_ECHO_SAMPLES 5u
@@ -101,24 +144,15 @@
 /* A short second attempt helps transient echoes, never turns a timeout
  * into a fabricated clear distance. */
 #define ROBOT_SCAN_RETRY_DELAY_MS 120u
-/* "Nothing within range": the echo pulse outlasts the 30 ms capture
- * window (ECHO_NO_FALL) or measures beyond 400 cm (OUT_OF_RANGE).  With 1,
- * such a ping counts as a clear reading at ROBOT_FAR_CLEAR_CM so the car
- * can drive in open space or toward a distant obstacle.  A sensor that
- * never answers (NO_RISE), a stuck-high pin or a glitch pulse is still a
- * fault and keeps the motors stopped.  WARNING: a soft or steeply angled
- * object that returns no echo also reads as clear.  Set 0 for the old
- * fail-closed behaviour (stop whenever no echo returns). */
-#ifndef ROBOT_NO_ECHO_MEANS_CLEAR
-#define ROBOT_NO_ECHO_MEANS_CLEAR 1
-#endif
-#define ROBOT_FAR_CLEAR_CM 400.0f
 #define ROBOT_STOP_CM 35.0f
 #define ROBOT_RELEASE_CM 45.0f
 #define ROBOT_CLEAR_CONFIRM 3u
 #define ROBOT_STOP_SETTLE_MS 250u
 
-#if ROBOT_ENABLE_BYPASS
-#error "Physical bypass needs encoder, IR and geometry calibration; not yet available in uploaded project."
+#if ROBOT_ENABLE_BYPASS && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || !ROBOT_MODE)
+#error "B5 autonomous mode needs ROBOT_MODE=1 and exclusive motor ownership: disable motor tests."
+#endif
+#if ROBOT_SCAN_SAFE_MIN_DEG > 70u || ROBOT_SCAN_SAFE_MAX_DEG < 110u || ROBOT_SCAN_SAFE_MAX_DEG > 180u
+#error "Servo limits must contain the five-ray 70..110 degree coarse scan."
 #endif
 #endif

@@ -13,12 +13,15 @@ static motion_status_snapshot_t result;
 static bool result_ready;
 static ROBOT_STATE published;
 static bool permission = true;
+static S5MissionState obstacle_state = S5_MISSION_FOLLOW;
+S5MissionState s5_mission_state(void) { return obstacle_state; }
+void s5_mission_enable(bool allow) { (void)allow; }
 static uint32_t generation = 1u;
 static VC_INPUT input;
 static REMOTE_CMD remote_queue[8];
 static UINT remote_head, remote_count, task_ticks;
 static uint32_t clock_ms;
-static bool stale_line, stale_imu;
+static bool stale_line, stale_imu, delayed_startup;
 static jmp_buf task_done;
 ID mbf_remote_cmd = 1, mbf_nav_cmd = 2;
 
@@ -92,7 +95,7 @@ ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
     *state = (B3_STATE){0};
     state->line_flags = LINE_F_DETECTED;
-    *sample_ms = stale_line ? clock_ms - 101u : clock_ms;
+    *sample_ms = (stale_line || (delayed_startup && task_ticks < 2u)) ? clock_ms - 101u : clock_ms;
     return E_OK;
 }
 ER imu_vc_receive(imu_notice_t *notice, TMO timeout)
@@ -376,6 +379,37 @@ int main(void)
     input.now_ms = UINT32_MAX - 10u; step(&c, 0u, 0u); step(&c, 20u, 0u);
     assert(drives == 2u);
 
+    /* Avoidance owns motor commands until the line/heading handoff. */
+    c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
+    {
+        UINT prior_drives = drives, prior_stops = stops;
+        input.obstacle_active = true;
+        input.clearance = false;
+        input.line_flags = LINE_F_LOST;
+        for (UINT i = 0u; i < 10u; ++i) step(&c, 20u, B3_NAV_RIGHT);
+        assert(drives == prior_drives && stops == prior_stops && c.running);
+        assert(c.navigation == 0u && c.pending_navigation == B3_NAV_NONE);
+        input.obstacle_active = false;
+        input.clearance = true;
+        input.line_flags = LINE_F_DETECTED;
+        step(&c, 20u, 0u);
+        assert(drives == prior_drives + 1u && c.running);
+    }
+    for (UINT failure = 0u; failure < 6u; ++failure) {
+        c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
+        input.obstacle_active = true;
+        step(&c, 20u, 0u);
+        permission = true;
+        if (failure == 0u) input.hazard = true;
+        if (failure == 1u) input.obstacle_fault = true;
+        if (failure == 2u) command(&c, RCMD_STOP, 0u);
+        if (failure == 3u) command(&c, RCMD_ESTOP, 0u);
+        if (failure == 4u) command(&c, RCMD_PAUSE, 0u);
+        if (failure == 5u) command(&c, RCMD_SPEED, 0u);
+        step(&c, 20u, 0u);
+        assert(!permission);
+    }
+
     /* Execute the real task adapter: stop dominates queued START; stale
      * producer timestamps never authorize movement, even with fresh reads. */
     for (UINT scenario = 0u; scenario < 4u; ++scenario) {
@@ -389,7 +423,20 @@ int main(void)
         if (setjmp(task_done) == 0) controller_task(0, NULL);
         assert(scenario == 0u ? drives > 0u : drives == 0u);
     }
+    /* Autostart survives delayed first samples, without a remote START.
+     * An explicit STOP or a bad IMU still prevents boot motion. */
+    for (UINT scenario = 0u; scenario < 3u; ++scenario) {
+        c = fresh(); (void)c;
+        clock_ms = 10000u + scenario * 1000u;
+        task_ticks = remote_head = 0u;
+        remote_count = scenario == 1u ? 1u : 0u;
+        remote_queue[0] = (REMOTE_CMD){0}; remote_queue[0].type = RCMD_STOP;
+        stale_line = false; stale_imu = scenario == 2u; delayed_startup = true;
+        permission = true;
+        if (setjmp(task_done) == 0) controller_task(0, NULL);
+        assert(scenario == 0u ? drives > 0u : drives == 0u);
+    }
     assert(vehicle_controller_start() == E_OK);
-    puts("PASS: controller commands, DRIVE cadence, hazards, navigation, wrap and task adapter");
+    puts("PASS: controller commands, curves, B5 handoff, boot readiness, hazards and task adapter");
     return 0;
 }

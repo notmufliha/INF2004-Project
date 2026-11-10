@@ -54,7 +54,9 @@ static uint16_t g_telem_seq       = 0U;
 static uint8_t  g_event_seq       = 0U;
 static uint16_t g_heartbeat_seq   = 0U;
 static bool     gb_ever_connected = false;
+#if TM_MQTT
 static uint32_t g_wifi_down_since = 0U; /* 0 = WiFi is up */
+#endif
 static uint8_t  g_frame[COMM_PAYLOAD_MAX]; /* this task only */
 
 static uint32_t          time_ds (uint32_t now_ms);

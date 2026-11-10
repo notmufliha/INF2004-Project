@@ -8,6 +8,10 @@
 #include <stdint.h>
 #include "encoder_control.h"
 #include "../gpio_irq_dispatch.h"
+#include "../robot_config.h"
+#if ROBOT_MODE && TM_CONSOLE_UART
+#error "UART0 uses GP0/GP1, which belong to the left encoder. Build CONSOLE=usb_cdc CRASH_REPORT=0."
+#endif
 #if TK_SUPPORT_SMP
 
 #include <tk/smp.h>
