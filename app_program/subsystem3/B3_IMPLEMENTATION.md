@@ -45,10 +45,16 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
   Steering applies whenever
   the line is detected, including when both sensors see it. The car slows on
   curves (down to 60% at full steer) and only speeds back up gradually.
-- If line flags report `LOST`, the controller first steers hard toward the
-  last seen side for one second, then searches in widening sweeps for up
-  to 8 seconds, then stops but stays armed until the line is seen again.
-  It never searches without fresh ultrasonic clearance.
+- If line flags report `LOST` while following, the controller pivots
+  toward the side the line was last clearly on for up to 3 s (about 60
+  degrees at the default speed), then stops but stays armed until the line
+  is seen again. There are no wide sweeps: they drove the car across the
+  course. With no clear side (line lost straight ahead) it stops at once.
+  It never searches a line not seen since START, and never without fresh
+  ultrasonic clearance.
+- START clears B2's latched stall/encoder faults. They were cleared only
+  at boot, and the controller safe-stops while one is set, so after a
+  stall the car could not be restarted without a reboot.
 - `JUNCTION` means both sensors read at least `B3_LINE_JUNCTION_MIN` (800
   normalised) and within `B3_LINE_JUNCTION_BALANCE` (150) of each other. Both
   sensors merely on the line is normal following, not a junction.

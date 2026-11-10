@@ -37,6 +37,8 @@ void b2_request_stop(void) { permission = false; ++generation; }
 bool b2_safety_motion_allowed(void) { return permission; }
 uint32_t b2_safety_stop_generation(void) { return generation; }
 UB fault_get(void) { return 0u; }
+static uint32_t cleared_faults;
+void fault_clear(uint32_t bits) { cleared_faults |= bits; }
 ER motion_speed_from_percent(INT percent, INT *speed) { *speed = percent * 50; return E_OK; }
 ER motion_send_command(const motion_command_t *command)
 {
@@ -292,32 +294,18 @@ int main(void)
     assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_DRIVE &&
         sent.steering_permille >= B3_LINE_STEER_MAX && right_wheel() == 0 &&
         sent.target_speed_cps < 2500);
-    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* still turning back right */
-    assert(sent.steering_permille >= B3_LINE_STEER_MAX);
-    step(&c, VC_LINE_REACQUIRE_MS - VC_LINE_SEARCH_SWITCH_MS, 0u);
-    /* not found there: sweep the other way */
-    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_REACQUIRE_MS / 2u, 0u); /* still pivoting right */
+    assert(sent.steering_permille >= B3_LINE_STEER_MAX && right_wheel() == 0);
     input.line_flags = LINE_F_DETECTED;
     step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_FOLLOW && c.running);
-    /* Hard turn back right for VC_LINE_REACQUIRE_MS, then widening
-     * sweeps: 600 ms left, 1200 ms right, 1800 ms left. */
+    /* Pivot back right for VC_LINE_REACQUIRE_MS only, then stop: no
+     * sweeps that drive the car across the course. */
     input.line_flags = LINE_F_LOST;
     step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY &&
         sent.steering_permille >= B3_LINE_STEER_MAX);
     step(&c, VC_LINE_REACQUIRE_MS, 0u);
-    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
-    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u);
-    assert(sent.steering_permille == VC_LINE_SEARCH_STEER);
-    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* 1200 ms segment: still right */
-    assert(sent.steering_permille == VC_LINE_SEARCH_STEER);
-    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* then back left */
-    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
-    step(&c, VC_RECOVERY_MS, 0u); /* old 3 s limit no longer disarms */
-    assert(c.state == ROBOT_LINE_RECOVERY && c.running);
-    /* Search exhausted: stopped but still armed. */
-    step(&c, VC_LINE_SEARCH_MS, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY && c.running &&
         sent.type == MOTION_CMD_STOP);
     UINT held_drives = drives;
@@ -330,7 +318,7 @@ int main(void)
         sent.type == MOTION_CMD_DRIVE);
     /* Dashboard STOP while holding still disarms. */
     input.line_flags = LINE_F_LOST;
-    step(&c, 20u, 0u); step(&c, VC_LINE_SEARCH_MS, 0u);
+    step(&c, 20u, 0u); step(&c, VC_LINE_REACQUIRE_MS, 0u);
     command(&c, RCMD_STOP, 0u); step(&c, 20u, 0u);
     assert(!c.running);
 
@@ -549,15 +537,21 @@ int main(void)
     assert(recal_requests == 2u && c.running);
     command(&c, RCMD_MODE, MODE_TEST); command(&c, RCMD_START, 0u);
     assert(recal_requests == 2u); /* TEST mode START is refused */
-    /* Default speed: gentle search sweeps keep both wheels turning. */
+    /* Lost with no clear side ever seen (e.g. a straight then the line
+     * ends): stop at once rather than guess a direction. */
     c = fresh(); command(&c, RCMD_START, 0u);
-    input.left = 900u; input.centre = 100u; input.line_flags = LINE_F_DETECTED;
+    input.left = 1000u; input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
     settle(&c, 30u);
-    input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
-    step(&c, VC_LINE_REACQUIRE_MS, 0u);
-    assert(c.state == ROBOT_LINE_RECOVERY &&
-        sent.steering_permille == -VC_LINE_SEARCH_STEER &&
-        wheel_ok(left_wheel()) && left_wheel() > 0 && right_wheel() > 0);
+    assert(c.last_line_search_direction == 0);
+    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY && c.running &&
+        sent.type == MOTION_CMD_STOP);
+    /* START clears B2's latched stall/encoder faults (operator restart). */
+    c = fresh(); cleared_faults = 0u;
+    command(&c, RCMD_START, 0u);
+    assert((cleared_faults & (FAULT_MOTOR_STALL | FAULT_ENCODER)) ==
+        (FAULT_MOTOR_STALL | FAULT_ENCODER));
     /* LOST at START (car off the line, or B3 just restarted a bad
      * calibration): wait in place, never drive a search for a line not
      * yet seen; follow once seen; only then does losing it search. */
@@ -568,7 +562,8 @@ int main(void)
         UINT before = drives;
         for (UINT i = 0u; i < 100u; ++i) step(&c, 20u, 0u);
         assert(drives == before && c.running && c.state == ROBOT_LINE_RECOVERY);
-        input.line_flags = LINE_F_DETECTED; input.left = input.centre = 900u;
+        input.line_flags = LINE_F_DETECTED;
+        input.left = 900u; input.centre = 300u; /* clearly to the right */
         step(&c, 20u, 0u);
         assert(drives == before + 1u && c.state == ROBOT_LINE_FOLLOW);
         input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
