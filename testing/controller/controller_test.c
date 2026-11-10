@@ -241,7 +241,31 @@ int main(void)
     assert(c.state == ROBOT_LINE_RECOVERY &&
         sent.steering_permille == -VC_LINE_SEARCH_STEER);
 
+    /* Curve with BOTH sensors on the line (no junction flag): the car
+     * must steer, not drive straight, and slow down for the curve. */
     c = fresh(); command(&c, RCMD_START, 0u);
+    input.line_flags = LINE_F_DETECTED;
+    input.left = 3000u; input.centre = 3000u; step(&c, 20u, 0u);
+    INT straight_speed = sent.target_speed_cps;
+    assert(sent.steering_permille == 0);
+    input.left = 3400u; input.centre = 2900u; step(&c, 20u, 0u);
+    assert(sent.steering_permille == B3_LINE_STEER_MAX &&
+        sent.target_speed_cps <= straight_speed * 55 / 100 &&
+        sent.target_speed_cps * (1000 - sent.steering_permille) / 1000 >= 90);
+    /* Look-ahead hold: back on centre, speed recovers only gradually. */
+    input.left = 3000u; input.centre = 3000u; step(&c, 20u, 0u);
+    assert(sent.steering_permille == 0 &&
+        sent.target_speed_cps < straight_speed * 9 / 10);
+    for (UINT tick = 0u; tick < 30u; ++tick) step(&c, 20u, 0u);
+    assert(sent.target_speed_cps == straight_speed);
+    /* B3 junction rule: both strongly black and balanced only. */
+    assert(B3_LINE_IS_JUNCTION(3900u, 3800u));
+    assert(!B3_LINE_IS_JUNCTION(3000u, 1000u));
+    assert(!B3_LINE_IS_JUNCTION(4000u, 3500u - 1u));
+    assert(!B3_LINE_IS_JUNCTION(4095u, 3600u));
+
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.left = 3800u; input.centre = 3800u;
     input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
     step(&c, 20u, 0u);
     assert(!c.junction_latched && sent.steering_permille == 0 &&

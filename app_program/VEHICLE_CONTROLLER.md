@@ -60,15 +60,19 @@ precede submission. The exact B2 command result must indicate successful
 completion and physical standstill. Failed/cancelled moves stop the mission.
 Navigation messages received while idle, paused or already executing another
 segment are discarded. LINE_ONLY ignores navigation. B3 decodes Code 39
-barcodes (`b3_code39.c`): `A` queues STRAIGHT and `Z` queues RIGHT; other
-symbols are ignored. A queued command waits for a confirmed junction and the
+barcodes (`b3_code39.c`) read in either direction: `A` queues STRAIGHT and
+`Z` queues RIGHT; other symbols are ignored. A queued command waits for a confirmed junction and the
 car slows to 75% while one is pending.
 
 Two-sensor steering is proportional: the difference between the two line
-sensors, ignoring the first 50 ADC codes, sets up to 50% steering toward the
-stronger side. A sensor counts as on the line between 301 and 4100 ADC codes.
-The base speed is limited so the outer wheel never exceeds B2's 5000 counts/s
-limit. Sensor thresholds, steering direction/gain, junction travel and turn
+sensors, ignoring the first 50 ADC codes, sets up to 80% steering toward the
+stronger side. It applies whenever the line is detected, including at a
+junction (balanced sensors give zero steering on their own). Curve speed:
+the base speed drops in proportion to the hardest recent steering, down to
+50% at full steer, and recovers over about 0.4 s after the curve
+(`VC_CURVE_MIN_PERMILLE`, `VC_CURVE_DECAY_PER_TICK`). A sensor counts as on the line between 301 and 4100 ADC codes.
+The base speed is reduced only when the outer wheel would otherwise exceed
+B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn
 accuracy must be calibrated on the actual track. B5's physical avoidance
 bridge is not implemented: on an obstacle the car stops and waits.
 

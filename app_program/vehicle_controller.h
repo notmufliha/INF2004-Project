@@ -14,6 +14,12 @@
 #define VC_LINE_SEARCH_MS 8000u /* then hold, still armed, until the line returns */
 #define VC_LINE_SEARCH_STEER 250
 #define VC_JUNCTION_CONFIRM_SAMPLES 3u
+/* Curve speed: at full steer the base speed drops to VC_CURVE_MIN_PERMILLE.
+ * The slowdown follows the hardest recent steering and relaxes by
+ * VC_CURVE_DECAY_PER_TICK each 20 ms tick, so the car stays slow through
+ * the whole curve instead of speeding up between corrections. */
+#define VC_CURVE_MIN_PERMILLE 500
+#define VC_CURVE_DECAY_PER_TICK 40
 #define VC_JUNCTION_RELEASE_SAMPLES 3u
 
 typedef struct {
@@ -32,6 +38,7 @@ typedef struct {
     bool running, paused, estop, stopped, drive_sent;
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
     INT last_line_search_direction;
+    INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
     UINT junction_enter_samples, junction_clear_samples;
     bool junction_latched;
     UB navigation, pending_navigation;
