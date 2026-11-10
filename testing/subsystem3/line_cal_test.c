@@ -80,5 +80,18 @@ int main(void)
 		       B3_CAL_FULL_SCALE);
 	}
 	puts("PASS S3-C04 output bounded");
+
+	/* S3-C05: low-contrast sensor (white 150, black 800) reads the line
+	 * from the very first black sample, without any learning delay. */
+	b3_line_cal_init(&left);
+	assert(b3_line_cal_update(&left, 150U) < 500U);
+	assert(b3_line_cal_update(&left, 800U) >= 500U);
+	assert(b3_line_cal_update(&left, 150U) < 500U);
+	/* Typical high-contrast sensor (white 250, black 3000), first pass. */
+	b3_line_cal_init(&centre);
+	assert(b3_line_cal_update(&centre, 250U) < 500U);
+	assert(b3_line_cal_update(&centre, 3000U) >= 500U);
+	assert(b3_line_cal_update(&centre, 250U) < 500U);
+	puts("PASS S3-C05 line seen immediately, low and high contrast");
 	return 0;
 }
