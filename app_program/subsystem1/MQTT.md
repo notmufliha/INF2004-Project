@@ -55,7 +55,7 @@ bits to a whole byte. Every frame starts with a 3-bit wire **version = 1**.
 | 10–11 | IR left, centre | 12 each | raw ADC 0–4095 | B3 |
 | 12 | IR right | 1 | digital 0/1 | B3 |
 | 13 | line flags | 3 | bit0 detected, bit1 lost, bit2 junction | B3 |
-| 14 | last barcode | 3 | 0 none, 1–4 = A–D | B3 |
+| 14 | last barcode | 3 | 0 none, 1–4 = A–D, 5 = Z | B3 |
 | 15 | last nav | 3 | 0–4: NONE LEFT RIGHT STRAIGHT UTURN | B3 |
 | 16 | motion state | 3 | B4's `imu_motion_state_t` 0–7 | B4 |
 | 17 | pitch | 10 s | ±511 = ±51.1° (0.1° steps) | B4 |
@@ -78,7 +78,7 @@ Header: ver 3 · **type 2** (0 barcode, 1 hump, 2 obstacle, 3 error) · seq 8 ·
 
 | Type | Body | Total |
 |---|---|---|
-| barcode | code 3 (1–4 = A–D) · nav 3 | 39 bits → 5 B |
+| barcode | code 3 (1–4 = A–D, 5 = Z) · nav 3 | 39 bits → 5 B |
 | hump | valid 1 · height 7 (mm) · peak 7 (mm) | 48 bits → 6 B |
 | obstacle | distance 9 · width 7 · left 9 · right 9 (cm, all-ones = invalid) · action 3 (NONE STOP CONTINUE LEFT RIGHT REVERSE) | 70 bits → 9 B |
 | error | code 8 · detail 8 | 49 bits → 7 B |
