@@ -1,0 +1,24 @@
+B4 per-attempt diagnostic summary (2026-11-02)
+
+PASS: selected BARR-C style checks.
+PASS: existing seven host regression programs; reading/event sizes unchanged
+      at 116/52 bytes. Height context now 96 bytes (one 4-byte reason field).
+PASS: eight strict ARM C99 configurations (robot/demo, mock/real, test/normal).
+PASS: native startup, B2 feedback, odometry and controller-queue suites.
+PASS: fifteen motion-orchestration scenarios, including collector creation
+      failure aborting without submitting movement.
+PASS: actual classifier/height diagnostics for a known synthetic complete hump,
+      raw/filter extrema, invalid angles, threshold streaks and reached stages.
+PASS: named roll/dynamic/timing/sequence/encoder/reverse rejections, all four
+      detector reset reasons and detected-hump/failed-height-closure separation.
+PASS: begin/end lifecycle, disabled capture, empty report, frozen output,
+      balanced native locks and printing outside the lock.
+PASS: USB/Wi-Fi make TEST=1 -j8, GCC 10.3.1 with Pico SDK 2.3.1; UF2 generated.
+
+Collector report: 180 bytes, plus fixed lock/bookkeeping and a final stack copy.
+No raw sample history or extra event queue. Normal builds have no collector.
+No thresholds/formula changed; real-data height roll limit remains 10 degrees.
+
+NOT RUN: updated UF2 on the car; real SMP timing/contention, sensor accuracy,
+real hump recognition and physical height accuracy require new serial evidence.
+Native FastLock stand-ins verify use/pairing, not the real SMP implementation.

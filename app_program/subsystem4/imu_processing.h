@@ -8,7 +8,7 @@
 
 typedef struct
 {
-    float32_t smoothing_alpha; /* (0,1], 1 disables smoothing. */
+    float32_t smoothing_alpha; /* Weight per 10 ms; 1 disables smoothing. */
     uint32_t  failure_samples;
     uint32_t  recovery_samples;
     uint32_t  max_gap_ms;

@@ -8,6 +8,8 @@
 #include <stddef.h>
 
 #define GY511_AXIS_COUNT 3
+#define GY511_ACCEL_BYTES 6U
+#define GY511_IDLE_SETTLE_MS 1000U
 
 #define ACC_ADDR 0x19U
 #define MAG_ADDR 0x1EU
@@ -15,6 +17,7 @@
 #define RAD_TO_DEG 57.295779513f
 
 static int32_t axis_index (int32_t axis);
+static bool    magnetic_allowed (gy511_t * p_sensor, const imu_data_t * p_data);
 
 static int32_t signed_word (uint8_t high, uint8_t low);
 
@@ -31,6 +34,15 @@ static void calculate_heading (gy511_t * p_sensor, imu_data_t * p_data,
 
 static void read_magnetic_field (gy511_t * p_sensor, imu_data_t * p_data,
                                  float32_t norm, uint32_t timestamp_ms);
+static gy511_result_t acceleration_bytes (gy511_t *    p_sensor,
+                                          imu_data_t * p_data,
+                                          uint8_t      p_bytes[6]);
+static bool           magnetic_bytes (gy511_t * p_sensor, imu_data_t * p_data,
+                                      uint8_t p_bytes[6], uint32_t * p_time_ms);
+static bool           read_clock (gy511_t * p_sensor, uint32_t * p_time_ms);
+static void           read_duration (gy511_t * p_sensor, imu_data_t * p_data,
+                                     uint32_t begin_ms, uint32_t end_ms,
+                                     bool b_time_valid, bool b_acceleration);
 
 /** @brief Supply the default robot-axis map and calibration values. */
 void
@@ -147,10 +159,52 @@ gy511_read (gy511_t * p_sensor, uint32_t timestamp_ms, imu_data_t * p_data)
 
     if (GY511_OK == result)
     {
-        read_magnetic_field(p_sensor, p_data, norm, timestamp_ms);
+        if (magnetic_allowed(p_sensor, p_data))
+        {
+            read_magnetic_field(p_sensor, p_data, norm, p_data->timestamp_ms);
+        }
+        else
+        {
+            p_data->odometry_time_valid |= IMU_READ_MAG_DEFERRED;
+        }
+    }
+
+    if ((GY511_OK != result) && (NULL != p_data))
+    {
+        p_data->b_odometry_valid = false;
+        p_data->odometry_reasons |= IMU_ODOM_REASON_INPUT;
     }
 
     return result;
+}
+
+/** @brief Install sampling-task hooks after sensor initialization. */
+bool
+gy511_set_capture (gy511_t * p_sensor, const gy511_capture_t * p_capture)
+{
+    if ((NULL == p_sensor) || (!p_sensor->b_ready) || (NULL == p_capture) ||
+        (NULL == p_capture->p_clock) || (NULL == p_capture->p_pair))
+    {
+        return false;
+    }
+
+    p_sensor->capture = *p_capture;
+    return true;
+}
+
+/** @brief Configure the sampling-task policy without retaining old headings. */
+bool
+gy511_set_magnetic_idle_only (gy511_t * p_sensor, bool b_enabled)
+{
+    if ((NULL == p_sensor) || (!p_sensor->b_ready))
+    {
+        return false;
+    }
+
+    p_sensor->b_magnetic_idle_only = b_enabled;
+    p_sensor->b_idle_seen          = false;
+    p_sensor->b_have_heading       = false;
+    return true;
 }
 
 /** @brief Convert a validated signed axis number to a zero-based index. */
@@ -183,7 +237,6 @@ static gy511_result_t
 read_acceleration (gy511_t * p_sensor, uint32_t timestamp_ms,
                    imu_data_t * p_data, float32_t * p_norm)
 {
-    uint8_t   status;
     uint8_t   bytes[6];
     float32_t accel[3];
     float32_t robot[3];
@@ -201,22 +254,11 @@ read_acceleration (gy511_t * p_sensor, uint32_t timestamp_ms,
         return GY511_ERROR;
     }
 
-    gy511_bus_t * p_bus = &p_sensor->bus;
+    gy511_result_t result = acceleration_bytes(p_sensor, p_data, bytes);
 
-    if (!p_bus->p_read(p_bus->p_context, ACC_ADDR, 0x27U, &status, 1U))
+    if (GY511_OK != result)
     {
-        return GY511_ERROR;
-    }
-
-    /* Widening a status byte to uint32_t is exact before masking. */
-    if (0U == ((uint32_t)status & 0x08U))
-    {
-        return GY511_NO_DATA;
-    }
-
-    if (!p_bus->p_read(p_bus->p_context, ACC_ADDR, 0xA8U, bytes, 6U))
-    {
-        return GY511_ERROR;
+        return result;
     }
 
     for (int32_t index = 0; index < GY511_AXIS_COUNT; ++index)
@@ -337,17 +379,13 @@ static void
 read_magnetic_field (gy511_t * p_sensor, imu_data_t * p_data, float32_t norm,
                      uint32_t timestamp_ms)
 {
-    uint8_t       status;
-    uint8_t       bytes[6];
-    float32_t     mag[3];
-    gy511_bus_t * p_bus = &p_sensor->bus;
+    uint8_t   bytes[6];
+    float32_t mag[3];
 
     /* Magnetometer runs at 75 Hz. No fresh magnetic sample is not an IMU fault.
      */
     /* Widening the received status byte to uint32_t is exact. */
-    if ((!p_bus->p_read(p_bus->p_context, MAG_ADDR, 0x09U, &status, 1U)) ||
-        (0U == ((uint32_t)status & 1U)) ||
-        (!p_bus->p_read(p_bus->p_context, MAG_ADDR, 0x03U, bytes, 6U)))
+    if (!magnetic_bytes(p_sensor, p_data, bytes, &timestamp_ms))
     {
         return;
     }
@@ -387,6 +425,173 @@ read_magnetic_field (gy511_t * p_sensor, imu_data_t * p_data, float32_t norm,
     p_data->b_magnetic_valid = true;
 
     calculate_heading(p_sensor, p_data, norm, field, timestamp_ms);
+}
+
+/** @brief Read contiguous status/XYZ and pair before float calculations. */
+static gy511_result_t
+acceleration_bytes (gy511_t * p_sensor, imu_data_t * p_data, uint8_t p_bytes[6])
+{
+    uint8_t       packet[GY511_ACCEL_BYTES + 1U];
+    uint32_t      before   = 0U;
+    uint32_t      after    = 0U;
+    gy511_bus_t * p_bus    = &p_sensor->bus;
+    bool          b_before = read_clock(p_sensor, &before);
+
+    /* DS7202: SUB(7) auto-increments; 0x27 status precedes XYZ 0x28..0x2D. */
+    bool b_read  = p_bus->p_read(p_bus->p_context, ACC_ADDR, 0xA7U, packet,
+                                 GY511_ACCEL_BYTES + 1U);
+    bool b_after = read_clock(p_sensor, &after);
+
+    read_duration(p_sensor, p_data, before, after, b_before && b_after, true);
+
+    if (!b_read)
+    {
+        return GY511_ERROR;
+    }
+
+    if (0U == ((uint32_t)packet[0] & 0x08U))
+    {
+        return GY511_NO_DATA;
+    }
+
+    for (uint32_t index = 0U; index < GY511_ACCEL_BYTES; ++index)
+    {
+        p_bytes[index] = packet[index + 1U];
+    }
+
+    const bool b_time_valid =
+        b_before && b_after && ((after - before) <= UINT32_MAX / 2U);
+
+    if (b_time_valid)
+    {
+        /* Software read-completion time; hardware conversion time is unknown.
+         */
+        p_data->timestamp_ms = after;
+    }
+
+    if (NULL != p_sensor->capture.p_pair)
+    {
+        p_sensor->capture.p_pair(p_sensor->capture.p_context, p_data, before,
+                                 after, b_time_valid);
+    }
+
+    /* A failed read-duration probe must remain visible after pairing reset. */
+    if ((NULL != p_sensor->capture.p_clock) &&
+        ((!b_before) || (!b_after) || ((after - before) > UINT32_MAX / 2U)))
+    {
+        p_data->odometry_reasons |= IMU_ODOM_REASON_PROBE;
+    }
+
+    return GY511_OK;
+}
+
+/** @brief Only fresh idle feedback authorizes blocking magnetic reads. */
+static bool
+magnetic_allowed (gy511_t * p_sensor, const imu_data_t * p_data)
+{
+    if (!p_sensor->b_magnetic_idle_only)
+    {
+        return true;
+    }
+
+    const imu_motion_t * p_motion = &p_data->motion;
+    const bool b_idle = (p_motion->b_valid) && (p_motion->b_stopped) &&
+                        (!p_motion->b_running) && (!p_motion->b_fault) &&
+                        (0 == p_motion->left_speed_cps) &&
+                        (0 == p_motion->right_speed_cps) &&
+                        ((p_data->timestamp_ms - p_motion->timestamp_ms) <=
+                         IMU_MOTION_MAX_AGE_MS);
+
+    if (!b_idle)
+    {
+        p_sensor->b_idle_seen = false;
+    }
+    else if (!p_sensor->b_idle_seen)
+    {
+        p_sensor->b_idle_seen   = true;
+        p_sensor->idle_since_ms = p_data->timestamp_ms;
+    }
+    else if ((p_data->timestamp_ms - p_sensor->idle_since_ms) >=
+             GY511_IDLE_SETTLE_MS)
+    {
+        return true;
+    }
+    else
+    {
+        /* Hold off during initial standstill to protect final hump samples. */
+    }
+
+    p_sensor->b_have_heading = false;
+    return false;
+}
+
+/** @brief Measure optional magnetic I2C work separately from acceleration. */
+static bool
+magnetic_bytes (gy511_t * p_sensor, imu_data_t * p_data, uint8_t p_bytes[6],
+                uint32_t * p_time_ms)
+{
+    uint8_t       status   = 0U;
+    uint32_t      before   = 0U;
+    uint32_t      after    = 0U;
+    gy511_bus_t * p_bus    = &p_sensor->bus;
+    bool          b_before = read_clock(p_sensor, &before);
+    bool          b_read =
+        (p_bus->p_read(p_bus->p_context, MAG_ADDR, 0x09U, &status, 1U)) &&
+        (0U != ((uint32_t)status & 1U)) &&
+        (p_bus->p_read(p_bus->p_context, MAG_ADDR, 0x03U, p_bytes, 6U));
+    bool b_after = read_clock(p_sensor, &after);
+
+    read_duration(p_sensor, p_data, before, after, b_before && b_after, false);
+
+    if (b_before && b_after && ((after - before) <= UINT32_MAX / 2U))
+    {
+        *p_time_ms = after;
+    }
+
+    return b_read;
+}
+
+/** @brief Keep the portable sensor decoder independent of the RTOS clock. */
+static bool
+read_clock (gy511_t * p_sensor, uint32_t * p_time_ms)
+{
+    return (NULL != p_sensor->capture.p_clock) &&
+           (p_sensor->capture.p_clock(p_sensor->capture.p_context, p_time_ms));
+}
+
+/** @brief Store bounded read timings without manufacturing an unknown duration.
+ */
+static void
+read_duration (gy511_t * p_sensor, imu_data_t * p_data, uint32_t begin_ms,
+               uint32_t end_ms, bool b_time_valid, bool b_acceleration)
+{
+    if (NULL == p_sensor->capture.p_clock)
+    {
+        return;
+    }
+
+    const uint32_t elapsed = end_ms - begin_ms;
+
+    if ((!b_time_valid) || (elapsed > UINT32_MAX / 2U))
+    {
+        p_data->odometry_reasons |= IMU_ODOM_REASON_PROBE;
+        return;
+    }
+
+    /* Values above uint16_t range retain a lower bound, not a wrapped value. */
+    const uint16_t duration =
+        (elapsed > UINT16_MAX) ? UINT16_MAX : (uint16_t)elapsed;
+
+    if (b_acceleration)
+    {
+        p_data->acceleration_read_ms = duration;
+        p_data->odometry_time_valid |= IMU_READ_TIME_ACCEL;
+    }
+    else
+    {
+        p_data->magnetic_read_ms = duration;
+        p_data->odometry_time_valid |= IMU_READ_TIME_MAG;
+    }
 }
 
 /*** end of file ***/

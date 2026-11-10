@@ -14,6 +14,9 @@
 
 static imu_mock_scenario_t g_current_scenario;
 static uint32_t            g_mock_timestamp_ms;
+static int32_t             g_mock_counts;
+
+static void apply_scenario (imu_data_t * p_data);
 
 /** @brief Reset the mock clock and select the stationary scenario. */
 void
@@ -21,6 +24,7 @@ imu_mock_init (void)
 {
     g_current_scenario  = IMU_MOCK_STATIONARY;
     g_mock_timestamp_ms = 0U;
+    g_mock_counts = 0;
 }
 
 /** @brief Select the next synthetic motion or fault scenario. */
@@ -52,6 +56,12 @@ imu_mock_read (imu_data_t * p_data)
     p_data->turn_rate_dps = 0.0f;
 
     p_data->b_valid = true;
+    /* Explicit synthetic travel is confined to this mock driver. */
+    p_data->b_odometry_valid = true;
+    p_data->encoder_left = p_data->encoder_right = g_mock_counts;
+    p_data->motion.b_valid = true;
+    p_data->motion.b_forward = true;
+    p_data->motion.timestamp_ms = g_mock_timestamp_ms;
     p_data->b_turn_rate_valid =
         true; /* Mock explicitly supplies a synthetic rate. */
     p_data->b_magnetic_valid     = false;
@@ -62,10 +72,34 @@ imu_mock_read (imu_data_t * p_data)
     p_data->magnetic_z_ut        = 0.0f;
     p_data->heading_deg          = 0.0f;
 
+    apply_scenario(p_data);
+
+    if (fabsf(p_data->roll_deg) > 0.0f)
+    {
+        p_data->accel_y = IMU_GRAVITY_MS2 *
+            sinf(p_data->roll_deg * 0.01745329252f);
+        p_data->accel_z = IMU_GRAVITY_MS2 *
+            cosf(p_data->roll_deg * 0.01745329252f);
+    }
+    if ((p_data->motion.b_forward) && (g_mock_counts < INT32_MAX))
+    {
+        ++g_mock_counts;
+    }
+    g_mock_timestamp_ms += IMU_MOCK_PERIOD_MS;
+
+    return p_data->b_valid;
+}
+
+/** @brief Apply the selected synthetic sensor and movement scenario. */
+static void
+apply_scenario (imu_data_t * p_data)
+{
     switch (g_current_scenario)
     {
         case IMU_MOCK_STATIONARY:
             /* Robot is stationary on level ground. */
+            p_data->motion.b_forward = false;
+            p_data->motion.b_stopped = true;
         break;
 
         case IMU_MOCK_ACCELERATING:
@@ -76,21 +110,25 @@ imu_mock_read (imu_data_t * p_data)
         case IMU_MOCK_TURNING:
             /* Robot turning at 45 degrees/second. */
             p_data->turn_rate_dps = 45.0f;
+            p_data->motion.b_forward = false;
+            p_data->motion.b_turning = true;
         break;
 
         case IMU_MOCK_CLIMBING_HUMP:
-            /* Robot tilted upward. */
-            p_data->pitch_deg = 12.0f;
+            /* One side rises during the scripted one-second ascent. */
+            p_data->roll_deg = 4.0f +
+                8.0f * (float32_t)(g_mock_timestamp_ms % 1000U) / 1000.0f;
         break;
 
         case IMU_MOCK_HUMP_PEAK:
             /* Robot reaching the top of a hump. */
-            p_data->pitch_deg = 0.0f;
+            p_data->roll_deg = 12.0f;
         break;
 
         case IMU_MOCK_DESCENDING_HUMP:
-            /* Robot tilted downward. */
-            p_data->pitch_deg = -12.0f;
+            /* The same side lowers toward level without changing sign. */
+            p_data->roll_deg = 12.0f *
+                (1.0f - (float32_t)(g_mock_timestamp_ms % 1000U) / 1000.0f);
         break;
 
         case IMU_MOCK_SUDDEN_IMPACT:
@@ -115,9 +153,6 @@ imu_mock_read (imu_data_t * p_data)
         break;
     }
 
-    g_mock_timestamp_ms += IMU_MOCK_PERIOD_MS;
-
-    return p_data->b_valid;
 }
 
 /*** end of file ***/

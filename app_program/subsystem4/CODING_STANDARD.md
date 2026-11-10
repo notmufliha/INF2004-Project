@@ -1,5 +1,11 @@
 # B4 BARR-C:2018 audit
 
+2026-11-10 cleanup: removed pitch hump state, mode switches and inactive
+runtime height integration. Both real and mock classifiers use roll only.
+Pitch remains a measurement. Current checks are listed in TEST_LOG.md; the
+height-module audit below is historical: the unused height module and its isolated test are now removed.
+Diagnostics and mock tests remain; current diagnostic report size is 200 bytes. Historical sizes below are milestone records.
+
 2026-11-01 snapshot update: the B4-owned `imu_motion` module consumes the existing
 B2 read API. Its public header exposes only B4 fixed-width data and bool flags;
 kernel/B2 enums stay inside the adapter with documented validation casts.
@@ -150,3 +156,10 @@ The private queue ID is initialized before tasks start. Payload-size checks
 bound kernel size conversions. Native startup queue stubs deliberately retain
 kernel ABI function names. Selected automated checks do not establish complete
 BARR-C compliance or replace semantic and concurrency review.
+
+The B4 diagnostic collector follows the same profile. It uses fixed-size
+counters and a kernel FastLock for test-task/analysis-task access, copies a
+frozen report, and prints outside the lock. Detector/height reason fields are
+per-call metadata; thresholds and the estimation formula are unchanged.
+Native tests check lifecycle, reported reasons and lock pairing. Real SMP
+scheduler timing and updated on-car results remain to be validated.

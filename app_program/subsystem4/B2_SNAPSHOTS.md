@@ -30,16 +30,12 @@ a healthy movement indication.
 
 The normalized context travels in the same queue message as the IMU and encoder
 capture. The analysis task does not attach today's B2 status to an older queued
-IMU sample. The existing paired raw encoder counts still calculate height:
-B2's command-relative travel never replaces those counts, so command-distance
-resets cannot create a false height jump.
-
-Production height estimation now requires fresh, nonfaulted forward context or
-a stopped baseline. Reverse, turn, unknown, stale or unavailable context cancels
-the current traversal. A stopped report inconsistent with more than 0.05 cm
-wheel travel in one step is also rejected. The previously accepted maximum
-survives. Isolated mathematical tests may disable this dependency using
-`b_require_motion=false`; `imu_odom_init()` enables it for the actual car.
+IMU sample. Paired raw encoder counts validate forward progress for roll
+detection; B2 command-relative distance is not used as a replacement.
+Fresh, nonfaulted forward context and timely paired counts are required.
+Reverse, turning, stopped, stale or unavailable context cancels a candidate.
+Brief unchanged counts hold confirmations; 200 ms without progress cancels it.
+The retired pitch-height module no longer consumes these snapshots.
 
 Fresh nonfaulted B2 physical-stop feedback can confirm `stationary` when the
 IMU classifier otherwise has no motion evidence. Quiet IMU data alone remains
@@ -55,8 +51,11 @@ it does not assume ownership of a B2 fault or command a speed change/stop.
 ## Interface and memory
 
 B4's normalized context is 36 bytes in the checked native layout. The reading
-payload grows from 80 to 116 bytes; event payload remains 52 bytes. The eight
-reading messages require an additional 288 bytes of kernel queue storage.
+payload originally grew from 80 to 116 bytes with B2 context. Odometry diagnostic
+metadata and sensor-read timings add twelve bytes, making the current reading
+128 bytes; the event stays 52 bytes. Eight reading messages use 1,056 bytes of
+aligned kernel storage: 384 bytes more than the original 80-byte reading,
+excluding control blocks.
 Queues use sizeof with a 128-byte compile-time payload bound. This is not a
 measurement of whole-firmware RAM or maximum call-stack usage.
 

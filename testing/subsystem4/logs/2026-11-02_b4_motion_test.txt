@@ -1,0 +1,21 @@
+B4-owned forward integration test (2026-11-02)
+
+Configuration: real robot APP_TEST only; 50 cm forward, 500 encoder counts/s.
+B2 automatic motion test disabled in robot_config.h. B2/B5 sources unchanged.
+
+PASS: selected BARR-C checks.
+PASS: all eight strict ARM C99 configurations.
+PASS: existing native startup profiles, B2 snapshots, odometry, controller queue.
+PASS: fourteen executions of the production B4 movement orchestrator:
+  0 success with height; 1 lost clearance; 2 IMU fault; 3 stale IMU;
+  4 stale B2; 5 rejected command; 6 timeout; 7 completion with height unavailable;
+  8 clock failure; 9 initial clearance timeout; 10 impact; 11 excessive roll;
+  12 replaced command; 13 cancelled result.
+Each case verifies a safety STOP request and no repeat movement on another call.
+PASS: existing seven host regression programs.
+PASS: make TEST=1 -j8 using Arm GCC 10.3.1 and Pico SDK 2.3.1.
+Generated: build_make/mtk3pico_smp1_usb_cdc_wifi_test.uf2.
+
+NOT RUN: new firmware on the physical robot. Distance accuracy, height accuracy,
+real timing and real hazard detection are not established by desktop tests.
+Use app_program/subsystem4/MOTION_TEST.md before flashing this movement test.

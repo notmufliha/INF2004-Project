@@ -1,13 +1,17 @@
 /** @file imu_odom.h
- * @brief Adapt B2's real encoder calibration and counts to B4 readings.
+ * @brief Adapt B2's real encoder counts and timing to B4 readings.
  */
 #ifndef IMU_ODOM_H
 #define IMU_ODOM_H
 
-#include "imu_height.h"
+#include "imu.h"
 
-bool imu_odom_init (imu_height_t * p_height);
 void imu_odom_capture (imu_data_t * p_data);
+/* Called after a successful acceleration burst, before decoding validity is
+ * known. Bound the burst-plus-encoder interval and retain burst-end timestamp.
+ */
+void imu_odom_pair (imu_data_t * p_data, uint32_t begin_ms, uint32_t end_ms,
+                    bool b_time_valid);
 
 #endif
 

@@ -21,6 +21,37 @@
 #define S4_PRI_IMU_ANALYSIS 19
 #define S4_IMU_PERIOD_MS 10U
 #define S4_IMU_QUEUE_DEPTH 8
+
+/* Provisional roll thresholds; validate against flat-ground noise. */
+#ifndef S4_ROLL_HUMP_ENTER_DEG
+#define S4_ROLL_HUMP_ENTER_DEG 4.0f
+#endif
+#ifndef S4_ROLL_HUMP_LEVEL_DEG
+#define S4_ROLL_HUMP_LEVEL_DEG 2.0f
+#endif
+#ifndef S4_ROLL_HUMP_TREND_DEG
+#define S4_ROLL_HUMP_TREND_DEG 0.5f
+#endif
+
+/* Prioritize hump sampling; 0 restores full magnetic reads and their delays. */
+#ifndef S4_IMU_MAG_IDLE_ONLY
+#define S4_IMU_MAG_IDLE_ONLY 1
+#endif
+#if (S4_IMU_MAG_IDLE_ONLY != 0) && (S4_IMU_MAG_IDLE_ONLY != 1)
+#error S4_IMU_MAG_IDLE_ONLY must be 0 or 1
+#endif
+
+/* Physical integration test, enabled for real robot APP_TEST builds here.
+ * Keep the route clear; disable before normal controller operation.
+ */
+#ifndef S4_MOTION_TEST_ENABLE
+#define S4_MOTION_TEST_ENABLE 1
+#endif
+#define S4_MOTION_TEST_DISTANCE_CM 50U
+#define S4_MOTION_TEST_SPEED_CPS 500
+#define S4_MOTION_TEST_BOOT_MS 5000U
+#define S4_MOTION_TEST_ACTIVE                                                  \
+    (S4_MOTION_TEST_ENABLE && ROBOT_MODE && APP_TEST && (!S4_IMU_USE_MOCK))
 /* Kernel message buffer uses a four-byte length header and aligned payload. */
 
 extern volatile ID gh_imu_data_buffer;

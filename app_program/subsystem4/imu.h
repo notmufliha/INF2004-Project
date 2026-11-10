@@ -22,6 +22,22 @@ typedef enum
     IMU_MOTION_UNKNOWN
 } imu_motion_state_t;
 
+/* B4 capture diagnostics; reasons can coexist and are not B2 fault codes. */
+#define IMU_ODOM_REASON_INPUT 0x01U
+#define IMU_ODOM_REASON_LEFT 0x02U
+#define IMU_ODOM_REASON_RIGHT 0x04U
+#define IMU_ODOM_REASON_AGE 0x08U
+#define IMU_ODOM_REASON_CLOCK 0x10U
+#define IMU_ODOM_REASON_PROBE 0x20U
+#define IMU_ODOM_REASON_COUNT 6U
+#define IMU_ODOM_TIME_AGE 0x01U
+#define IMU_ODOM_TIME_ENCODER 0x02U
+#define IMU_ODOM_TIME_CONTEXT 0x04U
+#define IMU_ODOM_TIME_ALL 0x07U
+#define IMU_READ_TIME_ACCEL 0x08U
+#define IMU_READ_TIME_MAG 0x10U
+#define IMU_READ_MAG_DEFERRED 0x20U
+
 /* Processed IMU measurements. */
 typedef struct
 {
@@ -56,6 +72,19 @@ typedef struct
     uint32_t     encoder_right_errors;
     bool         b_odometry_valid;
     imu_motion_t motion;
+
+    /* Millisecond timings saturate at UINT16_MAX; flags identify available
+     * measurements. The real pairing window starts before the acceleration
+     * burst; timestamp_ms retains burst completion, not final encoder time.
+     * Pair metadata adds eight bytes; sensor-read durations add four more.
+     */
+    uint16_t odometry_age_ms;
+    uint16_t odometry_encoder_ms;
+    uint16_t odometry_context_ms;
+    uint8_t  odometry_reasons;
+    uint8_t  odometry_time_valid;
+    uint16_t acceleration_read_ms;
+    uint16_t magnetic_read_ms;
 } imu_data_t;
 
 /* Motion and terrain analysis results. */

@@ -10,8 +10,8 @@
 #include "s4_runtime.h"
 #include "imu_analysis.h"
 #include "imu_processing.h"
-#include "imu_odom.h"
 #include "imu_vc.h"
+#include "s4_diag.h"
 #include "../subsystem1/subsystem1.h"
 #if S4_IMU_USE_MOCK
 #include "imu_demo.h"
@@ -50,7 +50,8 @@ static volatile uint32_t g_sample_sequence;
 
 static INT  console_integer (float32_t value);
 static H    telemetry_integer (float32_t value);
-static void report_hump (const imu_event_t * p_event);
+static void report_hump (const imu_event_t * p_event, uint32_t sequence);
+static bool initialise_analysis (imu_analysis_t * p_analysis);
 
 #if !S4_IMU_USE_MOCK
 static bool initialise_hardware (imu_hardware_state_t * p_state,
@@ -73,6 +74,9 @@ static void print_readings (const imu_data_t *  p_data,
 
 static bool receive_reading (imu_data_t * p_data, TMO timeout_ms);
 
+static void publish_controller (imu_event_t *                   p_event,
+                                const imu_processing_health_t * p_health,
+                                uint32_t                        timestamp_ms);
 static void report_fault (const imu_processing_health_t * p_health,
                           uint32_t                        timestamp_ms);
 
@@ -140,10 +144,11 @@ task_imu_sampling_task (INT stacd, void * p_exinf)
 #else
             bool b_publish = hardware_read(now.lo, &data);
 #endif
-            /* Use actual RTOS time, not the mock's synthetic sample count. */
+#if S4_IMU_USE_MOCK
+            /* Only mock frames need replacement of their synthetic time.
+             * Real frames already carry the acceleration burst-end timestamp.
+             */
             data.timestamp_ms = now.lo;
-#if !S4_IMU_USE_MOCK
-            imu_odom_capture(&data);
 #endif
 
             if (!publish_reading(&data, b_publish, &dropped))
@@ -164,12 +169,12 @@ task_imu_sampling_task (INT stacd, void * p_exinf)
         }
 
         /* Deadline scheduling avoids adding processing time to each period.
-         * On overrun skip catch-up bursts and yield for a full period. */
+         * On overrun skip catch-up bursts and yield for the minimum delay. */
         /* Modular unsigned intervals avoid an out-of-range signed cast. */
         if ((0U == (deadline - now.lo)) ||
             ((deadline - now.lo) >= (UINT32_MAX / 2U)))
         {
-            deadline = now.lo + S4_IMU_PERIOD_MS;
+            deadline = now.lo + 1U;
         }
 
         /* The scheduling branch bounds the delay to a positive short interval.
@@ -190,14 +195,12 @@ void
 task_imu_analysis_task (INT stacd, void * p_exinf)
 {
     imu_analysis_t          analysis;
-    imu_analysis_config_t   config;
     imu_data_t              data;
     imu_data_t              processed;
     imu_processing_t        processing;
     imu_processing_config_t processing_config;
     imu_processing_health_t health;
     imu_event_t             event;
-    imu_height_t            height;
     imu_motion_state_t      previous        = IMU_MOTION_UNKNOWN;
     bool                    b_have_previous = false;
     bool                    b_warned        = false;
@@ -207,18 +210,16 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
     (void)stacd;
     (void)p_exinf;
 
-    imu_analysis_default_config(&config);
     imu_processing_default_config(&processing_config);
 
-    if ((!imu_processing_init(&processing, &processing_config)) ||
-        (!imu_odom_init(&height)))
+    if (!imu_processing_init(&processing, &processing_config))
     {
-        tm_printf((UB *)"[B4] ERROR: processing/geometry configuration\n");
+        tm_printf((UB *)"[B4] ERROR: processing configuration\n");
         tk_ext_tsk();
         return;
     }
 
-    if (!imu_analysis_init(&analysis, &config))
+    if (!initialise_analysis(&analysis))
     {
         tm_printf((UB *)"[B4] ERROR: analysis configuration failed\n");
         tk_ext_tsk();
@@ -242,18 +243,12 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
          */
         bool b_analysed = imu_analysis_process(&analysis, &processed, &event);
 
-        imu_height_process(&height, &data, &event);
+        /* No one-wheel height estimator is connected; availability is false. */
+#if APP_TEST
+        s4_diag_record(&data, &processed, &analysis, &event);
+#endif
 
-        event.timestamp_ms       = data.timestamp_ms;
-        event.b_sensor_fault     = health.b_fault_active;
-        event.b_sensor_recovered = health.b_recovered;
-
-        ER notice_error          = imu_vc_publish(&event);
-
-        if ((notice_error < E_OK) && (E_TMOUT != notice_error))
-        {
-            CHECK(notice_error, "B4 controller notice");
-        }
+        publish_controller(&event, &health, data.timestamp_ms);
 
         if ((!b_analysed) || (!b_usable))
         {
@@ -288,24 +283,63 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
     }
 }
 
+/** @brief Select the real detector without changing portable mock defaults. */
+static bool
+initialise_analysis (imu_analysis_t * p_analysis)
+{
+    imu_analysis_config_t config;
+
+    imu_analysis_default_config(&config);
+#if !S4_IMU_USE_MOCK
+    config.roll_enter_deg = S4_ROLL_HUMP_ENTER_DEG;
+    config.roll_level_deg = S4_ROLL_HUMP_LEVEL_DEG;
+    config.roll_trend_deg = S4_ROLL_HUMP_TREND_DEG;
+#endif
+    if (!imu_analysis_init(p_analysis, &config))
+    {
+        return false;
+    }
+    tm_printf((UB *)"[B4] Hump mode=ROLL; thresholds provisional; "
+                    "roll height=N/A\n");
+    return true;
+}
+
+/** @brief Publish controller state after diagnostic capture has observed it. */
+static void
+publish_controller (imu_event_t *                   p_event,
+                    const imu_processing_health_t * p_health,
+                    uint32_t                        timestamp_ms)
+{
+    p_event->timestamp_ms       = timestamp_ms;
+    p_event->b_sensor_fault     = p_health->b_fault_active;
+    p_event->b_sensor_recovered = p_health->b_recovered;
+
+    ER error = imu_vc_publish(p_event);
+
+    if ((error < E_OK) && (E_TMOUT != error))
+    {
+        CHECK(error, "B4 controller notice");
+    }
+}
+
 /** @brief Report accepted estimates or explicitly unavailable hump heights. */
 static void
-report_hump (const imu_event_t * p_event)
+report_hump (const imu_event_t * p_event, uint32_t sequence)
 {
     if (p_event->b_height_valid)
     {
-        tm_printf((UB *)"[B4] Hump estimate=%d Highest=%d mm\n",
+        tm_printf((UB *)"[B4 #%u] Hump estimate=%d Highest=%d mm\n", sequence,
                   console_integer(p_event->hump_peak_cm * 10.0f),
                   console_integer(p_event->highest_hump_cm * 10.0f));
     }
     else if (p_event->b_highest_hump_valid)
     {
-        tm_printf((UB *)"[B4] Hump estimate=N/A Highest=%d mm\n",
+        tm_printf((UB *)"[B4 #%u] Hump estimate=N/A Highest=%d mm\n", sequence,
                   console_integer(p_event->highest_hump_cm * 10.0f));
     }
     else
     {
-        tm_printf((UB *)"[B4] Hump estimate=N/A Highest=N/A\n");
+        tm_printf((UB *)"[B4 #%u] Hump estimate=N/A Highest=N/A\n", sequence);
     }
 
     /* Retain B1's validity flag and discard the best-effort queue result. */
@@ -406,7 +440,10 @@ initialise_hardware (imu_hardware_state_t * p_state, uint32_t now_ms)
      * XYZ.
      */
     if ((!gy511_i2c_open(&bus)) ||
-        (!gy511_init(&p_state->sensor, &bus, &config)))
+        (!gy511_init(&p_state->sensor, &bus, &config)) ||
+        (!gy511_i2c_pair(&p_state->sensor)) ||
+        (!gy511_set_magnetic_idle_only(&p_state->sensor,
+                                       0 != S4_IMU_MAG_IDLE_ONLY)))
     {
         tm_printf((UB *)"[B4] GY-511 not ready: check power/wiring; retry "
                         "in 1 s\n");
@@ -585,56 +622,63 @@ print_readings (const imu_data_t * p_data, const imu_event_t * p_event)
          IMU_MOTION_MAX_AGE_MS))
     {
         /* Captured int32_t speeds fit the verified kernel INT ABI exactly. */
-        tm_printf((UB *)"[B4] B2 speed L=%d R=%d counts/s\n",
+        tm_printf((UB *)"[B4 #%u] B2 speed L=%d R=%d counts/s\n",
+                  p_data->sample_sequence,
                   (INT)p_data->motion.left_speed_cps,
                   (INT)p_data->motion.right_speed_cps);
     }
     else
     {
-        tm_printf((UB *)"[B4] B2 motion context=N/A\n");
+        tm_printf((UB *)"[B4 #%u] B2 motion context=N/A\n",
+                  p_data->sample_sequence);
     }
 
-    tm_printf((UB *)"[B4] Tilt Pitch=%d Roll=%d deg Detected=%s\n",
+    tm_printf((UB *)"[B4 #%u] Tilt Pitch=%d Roll=%d deg Detected=%s\n",
+              p_data->sample_sequence,
               console_integer(p_event->pitch_deg),
               console_integer(p_event->roll_deg),
               p_event->b_tilt_detected ? "yes" : "no");
-    tm_printf((UB *)"[B4] Accel X=%d Y=%d Z=%d mg\n",
+    tm_printf((UB *)"[B4 #%u] Accel X=%d Y=%d Z=%d mg\n",
+              p_data->sample_sequence,
               console_integer(p_data->accel_x * 1000.0f / 9.81f),
               console_integer(p_data->accel_y * 1000.0f / 9.81f),
               console_integer(p_data->accel_z * 1000.0f / 9.81f));
 
     if (p_event->b_heading_valid)
     {
-        tm_printf((UB *)"[B4] Heading=%d deg Calibrated=%s\n",
+        tm_printf((UB *)"[B4 #%u] Heading=%d deg Calibrated=%s\n",
+                  p_data->sample_sequence,
                   console_integer(p_event->heading_deg),
                   p_event->b_heading_calibrated ? "yes" : "no");
     }
     else
     {
-        tm_printf((UB *)"[B4] Heading=N/A\n");
+        tm_printf((UB *)"[B4 #%u] Heading=N/A\n", p_data->sample_sequence);
     }
 
     if (p_event->b_turn_rate_valid)
     {
-        tm_printf((UB *)"[B4] TurnRate=%d deg/s\n",
+        tm_printf((UB *)"[B4 #%u] TurnRate=%d deg/s\n",
+                  p_data->sample_sequence,
                   console_integer(p_event->turn_rate_dps));
     }
     else
     {
-        tm_printf((UB *)"[B4] TurnRate=N/A\n");
+        tm_printf((UB *)"[B4 #%u] TurnRate=N/A\n", p_data->sample_sequence);
     }
 #ifndef NDEBUG
 #if S4_IMU_LOG_RAW_MAG
     if (p_data->b_magnetic_valid)
     {
-        tm_printf((UB *)"[B4] Mag X=%d Y=%d Z=%d uT\n",
+        tm_printf((UB *)"[B4 #%u] Mag X=%d Y=%d Z=%d uT\n",
+                  p_data->sample_sequence,
                   console_integer(p_data->magnetic_x_ut),
                   console_integer(p_data->magnetic_y_ut),
                   console_integer(p_data->magnetic_z_ut));
     }
     else
     {
-        tm_printf((UB *)"[B4] Mag=N/A\n");
+        tm_printf((UB *)"[B4 #%u] Mag=N/A\n", p_data->sample_sequence);
     }
 #endif
 #endif
@@ -719,9 +763,13 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
     if ((!(*pb_have_previous)) || (p_event->motion_state != (*p_previous)) ||
         (p_event->b_hump_completed) || b_report_due)
     {
-        if ((!(*pb_have_previous)) || (p_event->motion_state != (*p_previous)))
+        if ((b_report_due) || (p_event->b_hump_completed) ||
+            (p_event->b_sudden_impact) ||
+            ((p_event->motion_state >= IMU_MOTION_CLIMBING_HUMP) &&
+             (p_event->motion_state <= IMU_MOTION_DESCENDING_HUMP) &&
+             (p_event->motion_state != (*p_previous))))
         {
-            tm_printf((UB *)"[B4] Motion=%s\n",
+            tm_printf((UB *)"[B4 #%u] Motion=%s\n", p_data->sample_sequence,
                       motion_name(p_event->motion_state));
         }
 
@@ -733,7 +781,7 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
 
         if (p_event->b_hump_completed)
         {
-            report_hump(p_event);
+            report_hump(p_event, p_data->sample_sequence);
         }
 
         /* Motion values are the shared 0..7 enum; the byte cast is exact. */

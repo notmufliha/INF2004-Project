@@ -158,6 +158,7 @@ read_fake (void * p_ctx, uint8_t addr, uint8_t reg, uint8_t * p_data,
 
     if ((0x19U == addr) && (count > 1U))
     {
+        assert((0xA7U == reg) && (7U == count));
         /* Exact byte-to-word widening avoids signed integer promotion. */
         assert(0U != ((uint32_t)reg & 0x80U));
     }

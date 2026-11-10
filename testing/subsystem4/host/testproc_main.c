@@ -23,6 +23,7 @@ static bool step (void);
 
 static void test_filter (void);
 static void test_faults (void);
+static void test_elapsed_filter (void);
 
 /** @brief Main. */
 int
@@ -30,6 +31,7 @@ main (void)
 {
     test_filter();
     test_faults();
+    test_elapsed_filter();
     puts("All IMU processing tests passed.");
     return 0;
 }
@@ -163,6 +165,26 @@ step (void)
     g_raw.timestamp_ms += 10U;
     return imu_processing_process(&g_state, &g_raw, g_raw.timestamp_ms, &g_out,
                                   &g_health);
+}
+
+/** @brief Equal elapsed time has equal response despite arrival intervals. */
+static void
+test_elapsed_filter (void)
+{
+    reset();
+    assert(step());
+    g_raw.pitch_deg = 12.0f;
+    assert(step());
+    assert(step());
+    const float32_t regular = g_out.pitch_deg;
+
+    reset();
+    assert(step());
+    g_raw.pitch_deg = 12.0f;
+    g_raw.timestamp_ms += 10U;
+    assert(step());
+    assert(imu_test_support_near(regular, g_out.pitch_deg));
+    puts("PASS: elapsed-time filter response at 10ms and 20ms intervals");
 }
 
 /*** end of file ***/

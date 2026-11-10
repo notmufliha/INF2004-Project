@@ -37,19 +37,20 @@ main (void)
     /* Test 4: Climbing hump */
     imu_mock_set_scenario(IMU_MOCK_CLIMBING_HUMP);
     assert(imu_mock_read(&data));
-    assert(imu_test_support_near(data.pitch_deg, 12.0f));
+    assert((data.roll_deg >= 4.0f) && (data.roll_deg <= 12.0f));
+    assert(imu_test_support_near(data.pitch_deg, 0.0f));
     printf("Test 4 PASSED: Climbing hump\n");
 
     /* Test 5: Hump peak */
     imu_mock_set_scenario(IMU_MOCK_HUMP_PEAK);
     assert(imu_mock_read(&data));
-    assert(imu_test_support_near(data.pitch_deg, 0.0f));
+    assert(imu_test_support_near(data.roll_deg, 12.0f));
     printf("Test 5 PASSED: Hump peak\n");
 
     /* Test 6: Descending hump */
     imu_mock_set_scenario(IMU_MOCK_DESCENDING_HUMP);
     assert(imu_mock_read(&data));
-    assert(imu_test_support_near(data.pitch_deg, -12.0f));
+    assert((data.roll_deg >= 0.0f) && (data.roll_deg <= 12.0f));
     printf("Test 6 PASSED: Descending hump\n");
 
     /* Test 7: Sudden impact */

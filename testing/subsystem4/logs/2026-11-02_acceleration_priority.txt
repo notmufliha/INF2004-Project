@@ -1,0 +1,27 @@
+B4 acceleration-priority acquisition (2026-11-02)
+
+Change: combine accelerometer status and XYZ into one seven-byte 0xA7 read.
+Real startup enables configurable idle-only magnetic reads, after one second
+of fresh non-running standstill feedback. Deferred frames expose unavailable
+magnetic/heading/turn-rate fields and reset heading derivative history.
+
+PASS: all seven host programs, including status/XYZ offsets, freshness,
+      conversion, clipping and calibrated magnetic derivative regression tests.
+PASS: actual decoder/odometry native integration with one acceleration request;
+      10ms bound, slow bursts, failures, missing data and clock wrap retained.
+PASS: idle policy suppresses magnetic transactions during motion, faults and
+      unknown B2 context; respects the one-second settle and clock wrap;
+      resumes fresh heading with unavailable first derivative; full-mode opt-out.
+PASS: deferred-frame aggregation and read-timing diagnostics, report=264 bytes.
+PASS: startup profiles, B2 snapshots, controller queue, 15 motion scenarios.
+PASS: eight ARM C99 configurations and selected BARR-C checks.
+PASS: make TEST=1 -j8 USB/Wi-Fi build, GCC 10.3.1, Pico SDK 2.3.1; UF2 generated.
+
+Reading/event/height-context sizes remain 128/52/96 bytes. No B2, B5 or shared
+I2C driver source changes. No pitch, roll, timing, sequence or safety limits
+relaxed. Driver protocol checked against ST DS7202 auto-increment and register
+map: https://www.st.com/resource/en/datasheet/lsm303dlhc.pdf .
+
+NOT RUN: updated UF2 on robot. Actual cadence and reduced sample_timing
+rejections need new diagnostics. Heading while moving is intentionally N/A
+with priority mode; this is not simultaneous high-rate compass acquisition.

@@ -2,14 +2,20 @@
 
 B4 now consumes B2's existing motion snapshots without editing B2. See
 [B2_SNAPSHOTS.md](B2_SNAPSHOTS.md) for freshness checks, measured speed/travel,
-height gating and tests.
+movement validation and tests.
+
+Real startup currently uses provisional **roll-based one-wheel hump detection**.
+Climbing/descending follows absolute-roll trends; pitch remains
+measured and printed. See [MOTION_TEST.md](MOTION_TEST.md)
+for adjustable thresholds, rearming and either-wheel/flat-ground validation.
+Roll crossings report height unavailable. The pitch hump state machine and its
+fallback switch have been removed from real and mock operation. The unused pitch-height module and its isolated test have been removed; see [HEIGHT.md](HEIGHT.md).
 
 ## B1 integration after the merge
 
 B4 reports motion and pitch through `comm_set_imu()`, raises/clears `FAULT_IMU`
 on fault/recovery, and reports completed humps through `comm_report_hump()`.
-Real paired encoder/pitch readings now feed the [height estimator](HEIGHT.md).
-Rejected or missing odometry keeps height explicitly unavailable.
+No height estimator is currently implemented.
 Telemetry conversions clamp to the signed 16-bit B1 range before narrowing.
 
 With `ROBOT_MODE=1`, startup initializes B1 and B2, then starts B4 before starting
@@ -83,7 +89,7 @@ make TEST=1 -j8
 ```
 
 Flash the matching USB/WiFi `.uf2` using BOOTSEL as described in the root README,
-then open the USB serial port at 115200 baud. In mock mode, watch for `[B4] Motion=` lines:
+then open the USB serial port at 115200 baud. In mock mode, watch `[B4 #...]` motion lines:
 unknown/quiet, accelerating, turning, climbing, peak, descending, hump completed,
 and suspected-impact. The cycle repeats every eight seconds. Height is explicitly
 reported as unavailable. A long impact interval is intentional for this demo.
@@ -159,10 +165,11 @@ if ((imu_mock_read(&data)) &&
 
 ## Behaviour and limits
 
-- Three consecutive qualifying samples confirm terrain transitions by default.
-  Slope entry is 8 degrees; level exit is 3 degrees. All defaults are provisional.
-- Hump sequence: level, climbing, peak, descending, level. A climb may transition
-  directly to descending if no level peak samples are captured.
+- Roll-only defaults are provisional: 4 degrees entry, 2 degrees level and a
+  0.5-degree trend deadband. Two same-side readings start an excursion after a
+  three-reading moving-level baseline; three level readings complete it.
+- Climbing/peak/descending follow absolute-roll trends. Neither negative pitch
+  nor negative roll alone means descending. Pitch remains measured and filtered.
 - `b_hump_detected` identifies an active or just-completed sequence;
   `b_hump_completed` is true only on the reading completing the traversal.
 - Impact takes precedence and cancels an in-progress hump. Invalid data, duplicate
@@ -179,16 +186,18 @@ if ((imu_mock_read(&data)) &&
   provide calibrated readings. Gravity compensation and
   real vibration/impact trials remain necessary; these tests do not establish
   collision-detection reliability.
-- Height uses real encoder travel and raw pitch after a confirmed full traversal.
-  It is a consistency-checked estimate, not a direct measurement. Highest accepted
-  height persists until reboot/context initialization. See [HEIGHT.md](HEIGHT.md)
-  for rejection rules, preliminary calibration and physical-validation limits.
+- Height remains unavailable. The retired pitch-height estimator does not
+  model one-wheel roll crossings. See [HEIGHT.md](HEIGHT.md).
 
 ## Next integration steps
+
+For the B4-owned forward movement integration test, configuration and expected
+output, see [MOTION_TEST.md](MOTION_TEST.md). It uses B2's public API and retains
+B5 clearance checks; disable it for normal controller operation.
 
 Verify communication with the installed sensor, actual pins, mounting map and
 startup calibration using HARDWARE.md. Collect real-car trials to tune thresholds.
 Agree event ownership, overflow handling, fault reporting, and run-reset behaviour
 with the Vehicle Controller owner. Reconcile proposed priorities with the kernel's
-reserved priorities before starting the tasks. Validate the height method against
+reserved priorities before starting the tasks. Develop and validate a suitable one-wheel height model against
 known humps and record real timing and detection measurements.
