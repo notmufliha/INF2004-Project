@@ -63,7 +63,10 @@ The USB-only image cannot connect to the dashboard.
    rebuild if necessary. Wrong resolution produces unequal physical speeds.
 2. Slide the course under each IR sensor at its actual operating height so
    each sees white and solid black several times. Do this after every reboot,
-   with the robot stopped and wheels raised. Black must produce the higher
+   with the robot stopped and motor power off. Hold each surface under each
+   sensor for at least 0.1 seconds, without changing sensor height. Look for
+   `[B3-CAL] learned GP26 white=... black=...; GP27 white=... black=...`.
+   Black must produce the higher
    raw ADC reading; measured contrast must be at least 64 counts and clearly
    greater than the stationary noise on each surface. Opposite
    polarity or inadequate contrast needs correction before a floor test.
@@ -97,12 +100,13 @@ The USB-only image cannot connect to the dashboard.
    Steering constants are in `b3_line_barcode.h`; change one at a time and
    repeat the same course. Minimum sustainable wheel speed is provisional
    (`VC_MIN_WHEEL_CPS`), so low percentages still have a speed floor.
-   `ROBOT_LINE_STEER_TRIM_PERMILLE=0` is the neutral default. The -25/-40
-   trials worsened reported drift and have been disabled. Nonzero steering
-   also disables B2's straight-wheel-travel correction. Confirm physical
-   sensor, encoder and motor mapping before applying measured trim.
-5. Remove the line briefly: recovery should search toward the last seen side,
-   reverse in widening sweeps, then stop after eight seconds. It stays armed
+   This image uses the weighted-position PD controller from `line-follow-pd`.
+   The fixed trim trials have been removed. `B3_LINE_KP_X10` and
+   `B3_LINE_KD_X10` are the PD tuning settings; verify physical sensor,
+   encoder and motor mapping before tuning gains.
+5. Remove the line briefly: recovery should first steer hard toward the last
+   seen side for one second, then alternate in widening sweeps and stop after
+   eight seconds total. It stays armed
    and may resume when a line reappears. Send STOP before repositioning it.
 6. Test Code 39 A and Z in both travel orientations. A queues STRAIGHT and Z
    queues RIGHT; the action executes at a confirmed junction. Check the event
@@ -129,6 +133,15 @@ The USB-only image cannot connect to the dashboard.
    bounded travel, line reacquisition and resumed following. An unobservable
    route or exhausted search must stop. Do not score simulation as a physical
    bypass pass.
+   The sequence is: STOP -> coarse/fine profile -> turn out -> lateral
+   offset -> turn forward -> pass the depth bound -> turn inward -> search
+   across the black line -> STOP -> face forward -> confirm line -> resume PD.
+   Search continues up to 40 cm past the predicted crossing, in 2 cm legs.
+   If the alignment turn moves the sensors off the tape, a bounded
+   +/-15/30/45-degree heading sweep tries to reacquire it before resuming.
+   Watch `[S5-ROUTE]` for the selected side and planned distances, and
+   `[S5-MOVE]` for each encoder-tracked leg. No line or no clear route means
+   STOP, not unlimited travel.
 6. During bypass test PAUSE, STOP and E-STOP separately. Each must stop actual
    motion; RESUME must not release E-STOP. Reverse requires an independent
    rear-clearance provider and remains unavailable without one.

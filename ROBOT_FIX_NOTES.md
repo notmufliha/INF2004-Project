@@ -5,7 +5,7 @@ feedback, B3 line samples and B4 IMU data are fresh. B4 must first finish its
 level/still calibration. B5 then requires three clear front readings and an
 established line reference before it releases motor permission.
 
-The vehicle controller keeps the existing proportional steering, curve
+The vehicle controller uses weighted line-position PD steering, curve
 slowdown, widening line search and bidirectional Code 39 decoding. B5 owns
 obstacle bypass and its line recovery; B2 remains the only motor PWM owner.
 
@@ -44,9 +44,14 @@ second. Repeated `[ROBOT] STARTUP FAILED` means a subsystem failed to start.
    obstacle location, width and lateral clearance.
 4. Select a clear side. Turn out, offset sideways, restore the travel heading,
    pass the configured obstacle-depth bound, then turn toward the original line.
-5. Search in bounded 2 cm legs. Require fresh, distinct line samples near the
-   expected crossing, stop, restore the original heading and return control to
-   the VC. Fresh front clearance is required again before following resumes.
+5. Turn toward the line and search in bounded 2 cm legs, continuing up to
+   40 cm beyond the predicted crossing. After leaving the original line,
+   accept three fresh black detections anywhere in that corridor, including
+   broad tape that sets the junction flag. Stop and restore forward heading.
+6. Reconfirm the line while stopped. If rotation moved the sensors off it,
+   sweep headings +/-15, +/-30 and +/-45 degrees relative to the restored
+   heading. Three fresh detections complete the handoff to PD line following.
+   Fresh front clearance is required again before following resumes.
 
 Every movement uses its own B2 command result, not elapsed time alone. STOP,
 ESTOP, PAUSE, zero speed, stale inputs, IMU hazards and motor faults can stop
@@ -98,7 +103,12 @@ Current hardware assumptions:
 B3 normalizes each sensor using its observed white/black endpoints once
 at least 64 ADC counts of contrast have been seen. Sweep both sensors over
 white and black while stopped after every reboot. Learned endpoints no longer
-shrink while following or parked; normalized values >=500 mean line-active.
+shrink while following or parked; normalized values >=201 mean line-active.
+Three overlapping samples confirm calibration extremes and reject isolated
+spikes. Until the range is learned, the PD branch fallback is 220..620 raw
+ADC, with raw 301 as the first line-active reading. This fallback is not
+measured calibration for a particular robot. `[B3-CAL] learned ...` prints
+both sensors' first accepted ranges after a sweep.
 The dashboard shows raw ADC; USB `[LINE]` shows normalized values.
 Its historical channel names
 are physically reversed: the channel named `left` is mounted on the right.

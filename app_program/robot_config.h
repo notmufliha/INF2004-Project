@@ -46,13 +46,19 @@
 #define ROBOT_BYPASS_SPEED_CPS 600
 #define ROBOT_BYPASS_REVERSE_CM 8.0f
 #define ROBOT_BYPASS_SEARCH_STEP_CM 2.0f
-#define ROBOT_BYPASS_SEARCH_EXTRA_CM 10.0f
+/* Search across the predicted line and up to 40 cm beyond it, to allow
+ * a curved/displaced continuation. This remains a bounded recovery. */
+#define ROBOT_BYPASS_SEARCH_EXTRA_CM 40.0f
 #define ROBOT_BYPASS_MAX_LEG_CM 150.0f
 #define ROBOT_BYPASS_LEG_TIMEOUT_MS 60000u
 #define ROBOT_BYPASS_TOTAL_TIMEOUT_MS 180000u
 #define ROBOT_BYPASS_LINE_MAX_AGE_MS 100u
 #define ROBOT_BYPASS_LINE_CONFIRM 3u
-#define ROBOT_BYPASS_LINE_WINDOW_CM 5.0f
+/* After restoring forward heading, observe the line then scan headings
+ * +/-15, +/-30, +/-45 degrees if the sensors rotated off the tape. */
+#define ROBOT_BYPASS_ALIGN_OBSERVE_MS 300u
+#define ROBOT_BYPASS_ALIGN_STEP_DEG 15
+#define ROBOT_BYPASS_ALIGN_SWEEPS 6u
 #define ROBOT_BYPASS_MIN_TURN_CM 20.0f
 
 /* Visible ultrasonic silhouette only; centimetres. Measure chassis before
@@ -79,15 +85,6 @@
 #define ROBOT_FORWARD_PWM 500u /* 50% initial floor drive; calibrate for load and supply */
 #define ROBOT_MOTOR_WATCHDOG_MS 350u
 #define ROBOT_MOTOR_PERIOD_MS 20u
-/* Neutral by default. Nonzero trim disables B2's zero-steering straight
- * correction and made the reported drift worse. Verify sensor/motor
- * mapping before using any measured trim. */
-#ifndef ROBOT_LINE_STEER_TRIM_PERMILLE
-#define ROBOT_LINE_STEER_TRIM_PERMILLE 0
-#endif
-#if ROBOT_LINE_STEER_TRIM_PERMILLE < -100 || ROBOT_LINE_STEER_TRIM_PERMILLE > 100
-#error "Line steering trim must stay within +/-100 permille"
-#endif
 #define ROBOT_BOOT_DELAY_MS 2000u
 
 /* Optional wheels-UP BOOT motor verification: set 1, rebuild and flash ONLY when

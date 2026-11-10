@@ -85,6 +85,9 @@ static bool request(S5Command command, const S5Profile *profile)
     s5_maneuver_init(&maneuver);
     if (!s5_maneuver_begin(&maneuver, command, profile,
                            ROBOT_BYPASS_MAX_DEPTH_CM, now)) return false;
+    tm_printf((UB*)"[S5-ROUTE] side=%d offset_cm_x100=%d pass_cm_x100=%d search_limit_cm_x100=%d\n",
+              (int)maneuver.side, (int)(maneuver.lateral_cm * 100.0f),
+              (int)(maneuver.pass_cm * 100.0f), (int)(maneuver.search_limit_cm * 100.0f));
     mode = command == S5_CMD_REVERSE ? NAV_REVERSE : NAV_AVOID;
     comm_set_robot_state(ROBOT_OBSTACLE_AVOID);
     return true;

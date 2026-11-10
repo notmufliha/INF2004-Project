@@ -13,6 +13,9 @@
 #define VC_LINE_SEARCH_SWITCH_MS 600u /* first sweep; each later sweep is 600 ms longer */
 #define VC_LINE_SEARCH_MS 8000u /* then hold, still armed, until the line returns */
 #define VC_LINE_SEARCH_STEER 250
+/* Line just lost: first turn hard toward the side it was last seen (what
+ * Pololu's saturated position + PD does) for this long, then sweep. */
+#define VC_LINE_REACQUIRE_MS 1000u
 #define VC_JUNCTION_CONFIRM_SAMPLES 3u
 /* Curve speed: at full steer the base speed drops to VC_CURVE_MIN_PERMILLE.
  * The slowdown follows the hardest recent steering and relaxes by
@@ -53,7 +56,9 @@ typedef struct {
     UINT speed_percent;
     bool running, paused, estop, stopped, drive_sent;
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
-    INT last_line_search_direction;
+    INT last_line_search_direction; /* -1 left / +1 right: last line side */
+    INT line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */
+    INT last_error; /* previous PD error, for the derivative term */
     INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
     INT last_steer, last_speed; /* last DRIVE sent, for smoothing */
     UINT junction_enter_samples, junction_clear_samples;

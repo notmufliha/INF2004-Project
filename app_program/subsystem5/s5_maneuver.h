@@ -6,7 +6,8 @@
 typedef enum {
     S5_MAN_IDLE, S5_MAN_TURN_OUT, S5_MAN_OFFSET, S5_MAN_FORWARD,
     S5_MAN_PASS, S5_MAN_TURN_IN, S5_MAN_SEARCH, S5_MAN_LINE_STOP,
-    S5_MAN_ALIGN, S5_MAN_COMPLETE, S5_MAN_FAILED, S5_MAN_BACK
+    S5_MAN_ALIGN, S5_MAN_COMPLETE, S5_MAN_FAILED, S5_MAN_BACK,
+    S5_MAN_ALIGN_CHECK
 } S5ManeuverState;
 typedef enum { S5_ACT_NONE, S5_ACT_STOP, S5_ACT_MOVE,
                S5_ACT_TURN } S5ActionType;
@@ -42,6 +43,8 @@ typedef struct {
     uint32_t pending_id;
     uint32_t last_line_ms;
     unsigned line_hits;
+    unsigned alignment_step;
+    int alignment_heading_deg;
     bool left_original_line;
     bool issuing;
 } S5Maneuver;

@@ -10,25 +10,30 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
 - Auto-calibrates each sensor (`b3_line_cal.c`): it learns that sensor's own
   white and black readings. Sweep both surfaces after each reboot; once
   measured contrast reaches 64 counts, measured endpoints replace the
-  provisional 100..500 defaults. Endpoints widen but never shrink during a run,
+  provisional 220..620 defaults. Three overlapping samples confirm each
+  extreme, so a single spike is ignored without splitting a real surface
+  across block boundaries. Endpoints widen but never shrink during a run,
   so a pause or long curve cannot shift the steering reference.
   It normalises to 0 = white .. 1000 =
   black. The controller receives normalised values; the dashboard still shows
   raw ADC. This removes the bias between two sensors of different
   sensitivity, and a grey floor beside the course no longer reads as line.
-- A sensor is line-active at normalised 500 or more (half way between its
-  own white and black). It reports `DETECTED` if either sensor is active and
+- A sensor is line-active at normalised 201 or more. The provisional fallback
+  therefore detects raw 301 immediately, before any sweep history exists.
+  It reports `DETECTED` if either sensor is active and
   `LOST` if neither is.
-- While following, adjusts steering proportionally to the normalised difference.
+- While following, uses weighted line position and PD steering from commit
+  `503ed6e` on `line-follow-pd`, integrated into the current robot branch.
   The ADC named `left` is physically on the robot's right, and the ADC named
   `centre` is physically on its left. Similar readings drive straight; a
   stronger right sensor steers right and a stronger left sensor steers left.
-  A 40-point deadband filters small differences, with steering capped at
-  800 permille, reached at a 400-point difference. Steering applies whenever
+  Values <=50 are excluded as noise from the weighted position (0 left,
+  500 centre, 1000 right). Steering is `(16*error + 10*delta_error)/10`,
+  capped at 800 permille. Steering applies whenever
   the line is detected, including when both sensors see it. The car slows on
   curves (down to 60% at full steer) and only speeds back up gradually.
-- If line flags report `LOST`, the controller searches at half the selected
-  speed, initially toward the last detected side, in widening sweeps for up
+- If line flags report `LOST`, the controller first steers hard toward the
+  last seen side for one second, then searches in widening sweeps for up
   to 8 seconds, then stops but stays armed until the line is seen again.
   It never searches without fresh ultrasonic clearance.
 - `JUNCTION` means both sensors read at least `B3_LINE_JUNCTION_MIN` (800
@@ -76,7 +81,7 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
    sees white and black; calibration then settles on the course. Check on the
    dashboard that black reads at least 64 counts above white and that
    stationary noise is clearly smaller than that contrast.
-   The steering deadband and correction scale are initial tuning values; test
+   The PD gains are initial tuning values; test
    with the wheels raised and adjust them only after confirming turn direction.
 
 ## Code 39 barcode behavior

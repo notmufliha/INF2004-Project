@@ -268,6 +268,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	ER error;
 	B3_LINE_CAL left_cal;
 	B3_LINE_CAL centre_cal;
+	bool calibration_reported = false;
 
 	(void)stacd;
 	(void)exinf;
@@ -308,6 +309,13 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		/* Controller gets normalised values; dashboard gets raw ADC. */
 		b3_set_line_state(left_norm, centre_norm, right, flags);
 		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
+		if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
+		    b3_line_cal_ready(&centre_cal)) {
+			calibration_reported = true;
+			tm_printf((UB *)"[B3-CAL] learned GP26 white=%d black=%d; GP27 white=%d black=%d\n",
+				  (int)left_cal.white, (int)left_cal.black,
+				  (int)centre_cal.white, (int)centre_cal.black);
+		}
 		b3_delay(B3_LINE_UPDATE_MS);
 	}
 }

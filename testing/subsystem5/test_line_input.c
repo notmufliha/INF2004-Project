@@ -98,9 +98,9 @@ int main(void)
     assert(b3_start() == E_OBJ);
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
-    /* B3_STATE carries per-sensor normalised values (b3_line_cal): with the
-     * default 100..500 range, raw 200 -> ~250 and raw 3000 -> 1000. */
-    assert(out.ir_left >= 240u && out.ir_left <= 260u &&
+    /* Before a sweep the PD branch fallback is 220..620: raw 200 is
+     * white; raw 3000 is black. Neither needs a long adaptation delay. */
+    assert(out.ir_left == 0u &&
            out.ir_centre == 1000u && timestamp == 100u);
     assert(out.line_flags == B3_LINE_F_DETECTED);
     fail_channel = 1;

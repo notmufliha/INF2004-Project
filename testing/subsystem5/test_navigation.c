@@ -46,7 +46,7 @@ static uint32_t snapshot_delay;
 static B3_STATE line_state = {3000u, 1000u, B3_LINE_F_DETECTED};
 static motion_status_snapshot_t status = {MOTION_STATUS_IDLE, 100u, 0u, true};
 static motion_status_snapshot_t result;
-static int last_turn, last_direction;
+static int last_turn, last_direction, last_angle;
 static float last_move;
 static ER tk_get_tim(SYSTIM *t) { t->lo = clock_ms; return E_OK; }
 void b2_request_stop(void)
@@ -107,7 +107,8 @@ static ER issue(uint32_t *id)
 }
 static ER motion_turn_degrees(INT angle, INT speed, int direction, uint32_t *id)
 {
-    assert(angle == 90 && speed > 0);
+    assert(angle > 0 && angle <= 90 && speed > 0);
+    last_angle = angle;
     last_turn = direction;
     ++turn_calls;
     return issue(id);
@@ -206,7 +207,14 @@ int main(void)
     tick(120.0f); /* STOP confirmed */
     tick(120.0f); /* Restore original heading */
     assert(turn_calls == 4u && last_turn == MOTION_TURN_LEFT);
+    line_state.line_flags = 0u; /* Sensors rotate off the crossing. */
     finish_leg();
+    assert(!s5_bridge_line_found());
+    for (unsigned i = 0u; i < 6u; ++i) tick(120.0f);
+    assert(turn_calls == 5u && last_angle == 15 && last_turn == MOTION_TURN_RIGHT);
+    finish_leg();
+    line_state.line_flags = B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION;
+    for (unsigned i = 0u; i < ROBOT_BYPASS_LINE_CONFIRM; ++i) tick(120.0f);
     assert(s5_bridge_line_found());
     assert(s5_bridge_request(S5_CMD_RESUME, &p));
     assert(!s5_bridge_line_found());
@@ -221,7 +229,7 @@ int main(void)
     assert(s5_bridge_request(S5_CMD_STOP, &p));
     assert(s5_bridge_request(S5_CMD_GO_LEFT, &p));
     tick(25.0f);
-    assert(turn_calls == 5u); /* A new avoidance cycle is armed. */
+    assert(turn_calls == 6u); /* A new avoidance cycle is armed. */
     line_valid = false;
     tick(120.0f);
     assert(!s5_bridge_ready() && !allowed);
