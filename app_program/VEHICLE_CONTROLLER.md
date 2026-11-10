@@ -38,9 +38,9 @@ States use the existing B1 wire enum: INIT, IDLE, LINE_FOLLOW, NAV_COMMAND,
 HUMP, OBSTACLE_SCAN, LINE_RECOVERY and SAFE_STOP. OBSTACLE_AVOID is reserved;
 physical bypass remains disabled. On lost clearance the controller stops and
 waits for B5. Hump observations halve the following speed. Fresh line loss stops
-in LINE_RECOVERY for at most three seconds; the current recovery policy waits
-for detection and does not perform an uncalibrated moving search. Timeout
-disarms in SAFE_STOP. PAUSE during a turn discards that turn rather than
+in LINE_RECOVERY for at most three seconds. During recovery the car creeps
+forward at half speed with 25% steering toward the side the line was last
+seen, reversing the sweep every 600 ms. Timeout disarms in SAFE_STOP. PAUSE during a turn discards that turn rather than
 blindly replaying it on RESUME.
 
 B3's timestamped snapshot must be at most 100 ms old, B2 feedback at most
@@ -56,15 +56,24 @@ AUTO consumes B3 navigation messages: LEFT/RIGHT turn 90 degrees, UTURN turns
 precede submission. The exact B2 command result must indicate successful
 completion and physical standstill. Failed/cancelled moves stop the mission.
 Navigation messages received while idle, paused or already executing another
-segment are discarded. LINE_ONLY ignores navigation. B3's barcode decoder is
-still disabled until the team configures the actual barcode protocol.
+segment are discarded. LINE_ONLY ignores navigation. B3 decodes Code 39
+barcodes (`b3_code39.c`): `A` queues STRAIGHT and `Z` queues RIGHT; other
+symbols are ignored. A queued command waits for a confirmed junction and the
+car slows to 75% while one is pending.
 
-Two-sensor steering is deliberately provisional: left-only detection applies
-35% left steering, centre/junction detection goes straight. The base speed is
-limited so the outer wheel never exceeds B2's 5000 counts/s limit. Sensor
-thresholds, steering direction/gain, junction travel and turn accuracy must be
-calibrated on the actual track. This controller does not complete B3's barcode
-protocol or B5's physical avoidance bridge.
+Two-sensor steering is proportional: the difference between the two line
+sensors, ignoring the first 50 ADC codes, sets up to 50% steering toward the
+stronger side. A sensor counts as on the line between 301 and 4100 ADC codes.
+The base speed is limited so the outer wheel never exceeds B2's 5000 counts/s
+limit. Sensor thresholds, steering direction/gain, junction travel and turn
+accuracy must be calibrated on the actual track. B5's physical avoidance
+bridge is not implemented: on an obstacle the car stops and waits.
+
+B5 clearance: an ultrasonic ping that returns nothing within range (echo
+longer than the 30 ms window, or beyond 400 cm) counts as clear at 400 cm when
+`ROBOT_NO_ECHO_MEANS_CLEAR` is 1 (the default in `robot_config.h`), so the car
+can drive in open space. A sensor that never responds is still a NO_ECHO fault
+and keeps the car stopped. Set it to 0 to stop whenever no echo returns.
 
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File
 testing/controller/run_tests.ps1` from the project root. Tests execute the real
