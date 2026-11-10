@@ -545,6 +545,24 @@ int main(void)
     assert(c.state == ROBOT_LINE_RECOVERY &&
         sent.steering_permille == -VC_LINE_SEARCH_STEER &&
         wheel_ok(left_wheel()) && left_wheel() > 0 && right_wheel() > 0);
+    /* LOST at START (car off the line, or B3 just restarted a bad
+     * calibration): wait in place, never drive a search for a line not
+     * yet seen; follow once seen; only then does losing it search. */
+    c = fresh();
+    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
+    command(&c, RCMD_START, 0u);
+    {
+        UINT before = drives;
+        for (UINT i = 0u; i < 100u; ++i) step(&c, 20u, 0u);
+        assert(drives == before && c.running && c.state == ROBOT_LINE_RECOVERY);
+        input.line_flags = LINE_F_DETECTED; input.left = input.centre = 900u;
+        step(&c, 20u, 0u);
+        assert(drives == before + 1u && c.state == ROBOT_LINE_FOLLOW);
+        input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
+        step(&c, 20u, 0u);
+        assert(drives == before + 2u && c.state == ROBOT_LINE_RECOVERY &&
+            sent.type == MOTION_CMD_DRIVE);
+    }
     puts("PASS: controller commands, curves, B5 handoff, boot readiness, hazards and task adapter");
     return 0;
 }

@@ -62,7 +62,8 @@ typedef struct {
     UINT speed_percent;
     bool running, paused, estop, stopped, drive_sent;
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
-    INT last_line_search_direction; /* -1 left / +1 right: last line side */
+    INT last_line_search_direction;
+    bool line_seen_since_start; /* never search for a line not yet seen */ /* -1 left / +1 right: last line side */
     INT line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */
     INT last_error; /* previous PD error, for the derivative term */
     INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
