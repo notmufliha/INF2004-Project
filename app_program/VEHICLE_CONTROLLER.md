@@ -60,8 +60,9 @@ precede submission. The exact B2 command result must indicate successful
 completion and physical standstill. Failed/cancelled moves stop the mission.
 Navigation messages received while idle, paused or already executing another
 segment are discarded. LINE_ONLY ignores navigation. B3 decodes Code 39
-barcodes (`b3_code39.c`) read in either direction: `A` queues STRAIGHT and
-`Z` queues RIGHT; other symbols are ignored. A queued command waits for a confirmed junction and the
+barcodes (`b3_code39.c`, full Code 39 set) read in either direction; the
+`b3_routes` table maps `A` to STRAIGHT and `Z` to RIGHT; other letters are
+logged and ignored. A queued command waits for a confirmed junction and the
 car slows to 75% while one is pending.
 
 Two-sensor steering is proportional: the difference between the two line
@@ -77,7 +78,7 @@ No DRIVE asks a wheel to run between 0 and `VC_MIN_WHEEL_CPS` (300 counts/s,
 about 25 mm/s; calibrate on the car): a curve's inner wheel a little below it
 is raised to it, far below it is set to 0 so the car pivots around that wheel,
 keeping the outer wheel's speed. This prevents B2 stall faults on curves and
-at low dashboard speeds. A sensor counts as on the line between 301 and 4100 ADC codes.
+at low dashboard speeds. Line values are normalised per sensor by B3 (0 = white, 1000 = black); a sensor is on the line at 500 or more. While a barcode is under the sensor the speed is held at `VC_BARCODE_CPS` (500 counts/s).
 The base speed is reduced only when the outer wheel would otherwise exceed
 B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn
 accuracy must be calibrated on the actual track. B5's physical avoidance

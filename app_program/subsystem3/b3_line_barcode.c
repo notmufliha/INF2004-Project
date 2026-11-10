@@ -4,6 +4,7 @@
  */
 #include "b3_line_barcode.h"
 #include "b3_code39.h"
+#include "b3_line_cal.h"
 
 #include <stdbool.h>
 
@@ -41,6 +42,21 @@ static volatile uint8_t g_edge_head;
 static volatile uint8_t g_edge_tail;
 static volatile uint8_t g_edge_pending;
 static volatile uint8_t g_edge_overflow;
+/* Time of the latest GP28 edge, for "barcode in progress". */
+static volatile uint32_t g_last_edge_us;
+static volatile uint8_t g_edge_seen;
+
+/* Route table: which decoded letter queues which junction action.
+ * Every letter is decoded and logged on the serial console; only letters
+ * listed here act.  The dashboard can display A, B, C, D and Z. */
+static const struct {
+	char letter;
+	uint8_t barcode;
+	uint8_t nav;
+} b3_routes[] = {
+	{ 'A', B3_BARCODE_A, B3_NAV_STRAIGHT },
+	{ 'Z', B3_BARCODE_Z, B3_NAV_RIGHT },
+};
 static ID g_adc_device;
 static uint8_t g_b3_started;
 
@@ -57,6 +73,8 @@ static uint8_t b3_take_overflow(void);
 static void b3_process_edge(const B3_EDGE *edge,
 			    B3_CODE39_DECODER *decoder);
 static void b3_publish_barcode(uint8_t barcode, uint8_t nav);
+static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder);
+static void b3_log_reject(const B3_CODE39_DECODER *decoder);
 static void b3_delay(uint32_t delay_ms);
 
 /**
@@ -225,12 +243,18 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 {
 	uint16_t left;
 	uint16_t centre;
+	uint16_t left_norm;
+	uint16_t centre_norm;
 	uint8_t right;
 	uint8_t flags;
 	ER error;
+	B3_LINE_CAL left_cal;
+	B3_LINE_CAL centre_cal;
 
 	(void)stacd;
 	(void)exinf;
+	b3_line_cal_init(&left_cal);
+	b3_line_cal_init(&centre_cal);
 
 	for (;;) {
 		error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &left);
@@ -248,18 +272,21 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
+		left_norm = b3_line_cal_update(&left_cal, left);
+		centre_norm = b3_line_cal_update(&centre_cal, centre);
 		flags = 0U;
-		if (B3_LINE_LEFT_ACTIVE(left) ||
-		    B3_LINE_CENTRE_ACTIVE(centre)) {
+		if (B3_LINE_LEFT_ACTIVE(left_norm) ||
+		    B3_LINE_CENTRE_ACTIVE(centre_norm)) {
 			flags |= B3_LINE_F_DETECTED;
 		} else {
 			flags |= B3_LINE_F_LOST;
 		}
-		if (B3_LINE_IS_JUNCTION(left, centre)) {
+		if (B3_LINE_IS_JUNCTION(left_norm, centre_norm)) {
 			flags |= B3_LINE_F_JUNCTION;
 		}
 
-		b3_set_line_state(left, centre, right, flags);
+		/* Controller gets normalised values; dashboard gets raw ADC. */
+		b3_set_line_state(left_norm, centre_norm, right, flags);
 		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
 		b3_delay(B3_LINE_UPDATE_MS);
 	}
@@ -279,17 +306,23 @@ EXPORT void b3_barcode_task(INT stacd, void *exinf)
 	(void)exinf;
 
 	for (;;) {
-		if (g_edge_pending == 0U) {
-			b3_delay(B3_BARCODE_TASK_POLL_MS);
-			continue;
+		char symbol;
+
+		if (g_edge_pending != 0U) {
+			if (b3_take_overflow() != 0U) {
+				b3_code39_reset(&decoder);
+				tm_printf((UB *)"[B3] GP28 edge queue overflow; barcode discarded\n");
+			}
+			while (b3_pop_edge(&edge)) {
+				b3_process_edge(&edge, &decoder);
+			}
 		}
-		if (b3_take_overflow() != 0U) {
-			b3_code39_reset(&decoder);
-			tm_printf((UB *)"[B3] GP28 edge queue overflow; barcode discarded\n");
+		/* Confirm the final element once it has outlasted the chatter
+		 * filter, so the last bar decodes without another edge. */
+		if (b3_code39_poll(&decoder, B3_TIMER_RAWL, &symbol)) {
+			b3_handle_symbol(symbol, &decoder);
 		}
-		while (b3_pop_edge(&edge)) {
-			b3_process_edge(&edge, &decoder);
-		}
+		b3_log_reject(&decoder);
 		b3_delay(B3_BARCODE_TASK_POLL_MS);
 	}
 }
@@ -379,6 +412,8 @@ static void b3_gpio_irq_handler(UINT intno)
 		g_edge_overflow = 1U;
 	} else {
 		g_edge_queue[g_edge_head].timestamp_us = B3_TIMER_RAWL;
+		g_last_edge_us = g_edge_queue[g_edge_head].timestamp_us;
+		g_edge_seen = 1U;
 		g_edge_queue[g_edge_head].level = (uint8_t)
 			((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
 		g_edge_head = next_head;
@@ -424,22 +459,60 @@ static void b3_process_edge(const B3_EDGE *edge,
 			    B3_CODE39_DECODER *decoder)
 {
 	char symbol;
-	uint8_t barcode;
-	uint8_t nav;
 
-	if (!b3_code39_feed(decoder, edge->level, edge->timestamp_us, &symbol)) {
-		return;
+	if (b3_code39_feed(decoder, edge->level, edge->timestamp_us, &symbol)) {
+		b3_handle_symbol(symbol, decoder);
 	}
-	if (symbol == 'A') {
-		barcode = B3_BARCODE_A;
-		nav = B3_NAV_STRAIGHT;
-	} else if (symbol == 'Z') {
-		barcode = B3_BARCODE_Z;
-		nav = B3_NAV_RIGHT;
-	} else {
-		return;
+}
+
+static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
+{
+	static const char *const nav_names[] = {
+		"NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"
+	};
+	size_t index;
+
+	for (index = 0U; index < sizeof(b3_routes) / sizeof(b3_routes[0]);
+	     ++index) {
+		if (b3_routes[index].letter == symbol) {
+			tm_printf((UB *)"[B3] barcode *%c* read %s -> %s at next junction\n",
+				  symbol, decoder->last_reversed != 0U ?
+				  "(reversed)" : "(forward)",
+				  nav_names[b3_routes[index].nav]);
+			b3_publish_barcode(b3_routes[index].barcode,
+					   b3_routes[index].nav);
+			return;
+		}
 	}
-	b3_publish_barcode(barcode, nav);
+	tm_printf((UB *)"[B3] barcode *%c* read %s; not in route table, ignored\n",
+		  symbol, decoder->last_reversed != 0U ? "(reversed)" : "(forward)");
+}
+
+static void b3_log_reject(const B3_CODE39_DECODER *decoder)
+{
+	static const char *const reasons[] = {
+		"none",
+		"bars not clearly wide/narrow (dirty strip, speed change or sensor threshold)",
+		"not a Code 39 character",
+		"gap between characters wrong",
+		"stop character missing"
+	};
+	static uint16_t logged = 0U;
+
+	if (decoder->reject_count != logged) {
+		logged = decoder->reject_count;
+		tm_printf((UB *)"[B3] barcode after start '*' rejected: %s (payload '%c')\n",
+			  decoder->last_reject < 5U ?
+			  reasons[decoder->last_reject] : "?",
+			  decoder->last_reject_char != '\0' ?
+			  decoder->last_reject_char : '?');
+	}
+}
+
+EXPORT bool b3_barcode_active(void)
+{
+	return g_edge_seen != 0U &&
+		(uint32_t)(B3_TIMER_RAWL - g_last_edge_us) < B3_BARCODE_ACTIVE_US;
 }
 
 static void b3_publish_barcode(uint8_t barcode, uint8_t nav)
