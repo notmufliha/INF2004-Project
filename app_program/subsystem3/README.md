@@ -5,12 +5,10 @@ receives bounded sample messages from Subsystem 2, updates shared statistics,
 returns the sample block and producer slot, and sends a short report to
 Subsystem 4 every five samples.
 
-It also contains a separate Buddy 3 line/barcode module in
-`b3_line_barcode.c` / `b3_line_barcode.h`. The existing sample consumer remains
-the active integration example; the B3 module is not started by `app_main.c`
-until the team agrees on the shared startup and Vehicle Controller queue
-interfaces. See [B3_IMPLEMENTATION.md](./B3_IMPLEMENTATION.md) for setup,
-queue, threshold, and barcode protocol details.
+It also contains the Buddy 3 line/barcode module in `b3_line_barcode.c` /
+`b3_line_barcode.h`. The integrated robot startup runs this module and the
+Vehicle Controller consumes its samples. See [B3_IMPLEMENTATION.md](./B3_IMPLEMENTATION.md)
+for setup, queue, threshold, and barcode protocol details.
 
 ## Task and objects
 
@@ -52,9 +50,10 @@ invocation. Follow the root README for toolchain, flash, and console steps.
 
 ## Design review alignment
 
-The supplied Week 6 design review assigns Buddy 3 to analogue IR line
-following (GP26/GP27), digital right-side barcode sensing (GP28), junction and
-line-loss reporting, and navigation command generation. It proposes a 20 ms
-line update interval and timestamped barcode edge capture. The confirmed
-barcode format is Code 39; B3 decodes the `*A*` and `*Z*` payloads as straight
-and right navigation commands.
+The supplied Week 6 design review originally assigned Buddy 3 to analogue IR
+line following. The current implementation reads digital comparator outputs
+on GP26/GP27, uses GP28 for digital right-side barcode sensing, and reports
+junction and line-loss states. It uses a 20 ms line update interval and
+timestamped barcode edge capture. The confirmed barcode format is Code 39;
+B3 decodes the `*A*` and `*Z*` payloads as straight and right navigation
+commands.

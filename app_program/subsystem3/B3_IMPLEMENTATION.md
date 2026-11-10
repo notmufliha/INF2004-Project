@@ -6,29 +6,22 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
 
 ## What the module does
 
-- Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
-- Auto-calibrates each sensor (`b3_line_cal.c`): it learns that sensor's own
-  white and black readings. Sweep both surfaces after each reboot; once
-  measured contrast reaches 64 counts, measured endpoints replace the
-  provisional 220..620 defaults. Three overlapping samples confirm each
-  extreme, so a single spike is ignored without splitting a real surface
-  across block boundaries. Endpoints widen but never shrink during a run,
-  so a pause or long curve cannot shift the steering reference.
-  It normalises to 0 = white .. 1000 =
-  black. The controller receives normalised values; the dashboard still shows
-  raw ADC. This removes the bias between two sensors of different
-  sensitivity, and a grey floor beside the course no longer reads as line.
-- A sensor is line-active at normalised 201 or more. The provisional fallback
-  therefore detects raw 301 immediately, before any sweep history exists.
-  It reports `DETECTED` if either sensor is active and
-  `LOST` if neither is.
+- Reads digital comparator outputs GP26/GP27 every 20 ms. The default polarity
+  is active-low (`B3_LINE_ACTIVE_LEVEL=0`): black is reported as 1000 and
+  white as 0. Override `B3_LINE_ACTIVE_LEVEL` to `1` at build time if the
+  installed modules assert HIGH over black. Adjust each sensor's comparator
+  potentiometer so it switches cleanly at the course edge. The controller and
+  dashboard receive these binary 0/1000 values; no ADC calibration sweep is
+  required.
+- Reports `DETECTED` if either sensor sees black and `LOST` if neither does.
+  GP27 is physically on the robot's left, and GP26 is physically on its right.
 - While following, uses weighted line position and PD steering from commit
   `503ed6e` on `line-follow-pd`, integrated into the current robot branch.
-  The ADC named `left` is physically on the robot's right, and the ADC named
-  `centre` is physically on its left. Similar readings drive straight; a
-  stronger right sensor steers right and a stronger left sensor steers left.
-  Values <=50 are excluded as noise from the weighted position (0 left,
-  500 centre, 1000 right). Steering is `(16*error + 10*delta_error)/10`,
+  GP26 named `left` is physically on the robot's right, and GP27 named
+  `centre` is physically on its left. Equal readings drive straight; a line
+  under only the right sensor steers right and under only the left sensor
+  steers left. The weighted position is 0 left, 500 centre, or 1000 right.
+  Steering is `(16*error + 10*delta_error)/10`,
   capped at 800 permille. Steering applies whenever
   the line is detected, including when both sensors see it. The car slows on
   curves (down to 60% at full steer) and only speeds back up gradually.
@@ -48,7 +41,8 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
   interrupts through the shared `app_gpio_irq_dispatch()` subscriber.
 - The GP28 callback only timestamps and records edge levels in a bounded
   ring, sets the pending/overflow flags, and acknowledges GP28's edge bits.
-  It does not call the ADC, decode a barcode, print, or send a kernel message.
+  It does not sample the line sensors, decode a barcode, print, or send a
+  kernel message.
 - A separate task drains GP28 edges and decodes the Code 39 widths, then
   pushes valid `uint8_t` navigation command values to `mbf_nav_cmd` with
   `tk_snd_mbf(..., TMO_POL)`. μT-Kernel's message buffer serializes concurrent
@@ -61,10 +55,9 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
 
 ## Integration steps
 
-1. Agree and claim GP26, GP27, GP28 and the ADC peripheral in `TEAM.md`.
-   This change enables ADC pin initialization for channels 0 and 1 in
-   `device/adc/sysdepend/rp2040/adc_cnf_sysdep.h`. Channel 2 / GP28 remains
-   disabled because GP28 is a digital interrupt input in this module.
+1. Agree and claim GP26, GP27, and GP28 in `TEAM.md`. GP26/GP27 are configured
+   as digital inputs for the line sensors; GP28 is the digital barcode
+   interrupt input.
 2. The Vehicle Controller must receive one `uint8_t` from `mbf_nav_cmd`.
    Values are 0 none, 1 left, 2 right, 3 straight, 4 U-turn. The queue is
    created by `b3_init()`; receive with `tk_rcv_mbf(mbf_nav_cmd, &command,
@@ -77,12 +70,13 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
    its telemetry mutex and event queue exist; then call `b3_init()` before
    starting tasks and `b3_start()` from core 0. The sample `subsystem3_init()`
    and `subsystem3_start()` lifecycle currently do not call either function.
-5. Before a run, slide the car across the line once or twice so each sensor
-   sees white and black; calibration then settles on the course. Check on the
-   dashboard that black reads at least 64 counts above white and that
-   stationary noise is clearly smaller than that contrast.
-   The PD gains are initial tuning values; test
-   with the wheels raised and adjust them only after confirming turn direction.
+5. Before a run, lift the drive wheels and move each line sensor across white
+   and black. Confirm its digital output changes state at the line edge and
+   that the dashboard reports black as 1000. If it reports black as 0, build
+   with `B3_LINE_ACTIVE_LEVEL=1`. Verify that a line under the left sensor
+   commands a left correction and a line under the right sensor commands a
+   right correction before running on the course. Tune the comparator
+   potentiometers and PD gains only after confirming turn direction.
 
 ## Code 39 barcode behavior
 

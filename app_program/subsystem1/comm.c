@@ -90,7 +90,7 @@ comm_set_motion (int32_t speed_l_cps, int32_t speed_r_cps, int32_t enc_l,
     }
 }
 
-/** @brief Line sensors: raw ADC 0..4095, right sensor digital (B3). */
+/** @brief Binary line sensors (0/1000); right barcode sensor digital (B3). */
 void
 comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
                uint8_t flags)

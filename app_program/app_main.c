@@ -249,7 +249,7 @@ robot_startup_complete:
                       (int)status.status, (int)status.fault, (int)status.physically_stopped,
                       (int)status.left_encoder_counts, (int)status.right_encoder_counts);
         if (b3_get_timed_state(&line, &sample) == E_OK)
-            tm_printf((UB*)"[LINE] GP26=%d GP27=%d flags=%d black_min=%d\n",
+            tm_printf((UB*)"[LINE] GP26=%d GP27=%d flags=%d active_min=%d\n",
                       (int)line.ir_left, (int)line.ir_centre,
                       (int)line.line_flags, (int)B3_LINE_ACTIVE_MIN);
     }

@@ -127,7 +127,7 @@ typedef enum
 /* Field limits, bits on the wire in brackets.  B2 checks that
  * COMM_SPEED_MAX is defined to detect this binary interface. */
 #define COMM_SPEED_MAX      8191   /* [14 signed] counts/s; B2 max 5000 */
-#define COMM_IR_MAX         4095U  /* [12] raw ADC                       */
+#define COMM_IR_MAX         4095U  /* [12] line value; B3 uses 0 or 1000 */
 #define COMM_PITCH_MAX      511    /* [10 signed] 0.1 deg (+-51.1 deg)   */
 #define COMM_HUMP_MAX_MM    126U   /* [7]  0.1 cm = 1 mm resolution      */
 #define COMM_DIST_MAX_CM    510U   /* [9]  distances, clearances, 1 cm   */
@@ -181,7 +181,7 @@ typedef struct
     UINT robot_state  : 4;  /* comm_robot_state_t              */
     UINT line_flags   : 3;  /* LINE_F_xxx                      */
     UINT ir_right     : 1;  /* digital 0/1                     */
-    UINT ir_left      : 12; /* raw ADC 0..4095                 */
+    UINT ir_left      : 12; /* B3 line value: 0 or 1000        */
     UINT ir_centre    : 12;
 
     UINT speed_left   : 14; /* counts/s, two's complement      */

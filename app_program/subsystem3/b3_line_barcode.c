@@ -4,7 +4,6 @@
  */
 #include "b3_line_barcode.h"
 #include "b3_code39.h"
-#include "b3_line_cal.h"
 
 #include <stdbool.h>
 
@@ -12,8 +11,8 @@
 #include "../subsystem1/subsystem1.h"
 
 #define B3_BARCODE_PIN (28U)
-#define B3_ADC_LEFT_CHANNEL (0)
-#define B3_ADC_CENTRE_CHANNEL (1)
+#define B3_LINE_LEFT_PIN (26U)
+#define B3_LINE_CENTRE_PIN (27U)
 #define B3_EDGE_QUEUE_LENGTH (64U)
 #define B3_MBF_MSG_OVERHEAD (8U)
 #define B3_STATE_LOCK_TIMEOUT_MS (5)
@@ -63,14 +62,12 @@ static const struct {
 	{ 'A', B3_BARCODE_A, B3_NAV_STRAIGHT },
 	{ 'Z', B3_BARCODE_Z, B3_NAV_RIGHT },
 };
-static ID g_adc_device;
 static uint8_t g_b3_started;
 
 EXPORT ID mbf_nav_cmd;
 EXPORT ID mtx_b3_state;
 
 static void b3_gpio_irq_handler(UINT intno);
-static ER b3_read_adc(uint8_t channel, uint16_t *value);
 static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
 			      uint8_t flags);
 static void b3_set_barcode_state(uint8_t barcode, uint8_t nav);
@@ -84,7 +81,7 @@ static void b3_log_reject(const B3_CODE39_DECODER *decoder);
 static void b3_delay(uint32_t delay_ms);
 
 /**
- * @brief Create the ADC handle, navigation queue, and state mutex.
+ * @brief Create the navigation queue and state mutex.
  * @return E_OK on success or the first μT-Kernel error.
  */
 EXPORT ER b3_init(void)
@@ -97,22 +94,12 @@ EXPORT ER b3_init(void)
 		return E_OBJ;
 	}
 
-	g_adc_device = tk_opn_dev((CONST UB *)"adca", TD_READ);
-	if (g_adc_device < E_OK) {
-		return (ER)g_adc_device;
-	}
-
 	cmbf.mbfatr = TA_TFIFO;
 	cmbf.bufsz = (SZ)(B3_NAV_QUEUE_LENGTH *
 			  (sizeof(uint8_t) + B3_MBF_MSG_OVERHEAD));
 	cmbf.maxmsz = (INT)sizeof(uint8_t);
 	mbf_nav_cmd = tk_cre_mbf(&cmbf);
 	if (mbf_nav_cmd < E_OK) {
-		error = tk_cls_dev(g_adc_device, 0);
-		if (error < E_OK) {
-			CHECK(error, "B3 ADC close after queue error");
-		}
-		g_adc_device = 0;
 		return (ER)mbf_nav_cmd;
 	}
 
@@ -126,13 +113,8 @@ EXPORT ER b3_init(void)
 			if (cleanup_error < E_OK) {
 				CHECK(cleanup_error, "B3 queue cleanup");
 			}
-			cleanup_error = tk_cls_dev(g_adc_device, 0);
-			if (cleanup_error < E_OK) {
-				CHECK(cleanup_error, "B3 ADC cleanup");
-			}
 		}
 		mbf_nav_cmd = 0;
-		g_adc_device = 0;
 		return error;
 	}
 
@@ -153,7 +135,7 @@ EXPORT ER b3_init(void)
 }
 
 /**
- * @brief Configure GP28 and start the line-sampling and barcode tasks.
+ * @brief Configure GP26/GP27/GP28 and start line/barcode tasks.
  * @return E_OK on success or an initialization/task-start error.
  */
 EXPORT ER b3_start(void)
@@ -162,8 +144,7 @@ EXPORT ER b3_start(void)
 	ID task_id;
 	const uint32_t pin_mask = (uint32_t)1U << B3_BARCODE_PIN;
 
-	if ((mbf_nav_cmd <= 0) || (mtx_b3_state <= 0) ||
-	    (g_adc_device < E_OK)) {
+	if ((mbf_nav_cmd <= 0) || (mtx_b3_state <= 0)) {
 		return E_OBJ;
 	}
 	if (g_b3_started != 0U) {
@@ -175,6 +156,16 @@ EXPORT ER b3_start(void)
 		return E_CTX;
 	}
 #endif
+
+	error = gpio_set_pin(B3_LINE_LEFT_PIN, GPIO_MODE_IN);
+	if (error != E_OK) {
+		return error;
+	}
+
+	error = gpio_set_pin(B3_LINE_CENTRE_PIN, GPIO_MODE_IN);
+	if (error != E_OK) {
+		return error;
+	}
 
 	error = gpio_set_pin(B3_BARCODE_PIN, GPIO_MODE_IN);
 	if (error != E_OK) {
@@ -244,60 +235,37 @@ EXPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
     return error;
 }
 
-static void b3_invalidate_line(void)
-{
-    if (tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS) == E_OK) {
-        g_line_sample_valid = false;
-        (void)tk_unl_mtx(mtx_b3_state);
-    }
-}
-
 /**
- * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.
+ * @brief Sample digital line inputs GP26/GP27 and publish line telemetry.
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
 EXPORT void b3_line_task(INT stacd, void *exinf)
 {
-	uint16_t left;
-	uint16_t centre;
+	uint32_t gpio_input;
 	uint16_t left_norm;
 	uint16_t centre_norm;
 	uint8_t right;
 	uint8_t flags;
-	ER error;
-	B3_LINE_CAL left_cal;
-	B3_LINE_CAL centre_cal;
-	bool calibration_reported = false;
+	bool left_active;
+	bool centre_active;
 
 	(void)stacd;
 	(void)exinf;
-	b3_line_cal_init(&left_cal);
-	b3_line_cal_init(&centre_cal);
 
 	for (;;) {
-		error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &left);
-		if (error != E_OK) {
-			CHECK(error, "B3 GP26 ADC read");
-            b3_invalidate_line();
-			b3_delay(B3_LINE_UPDATE_MS);
-			continue;
-		}
-
-		error = b3_read_adc(B3_ADC_CENTRE_CHANNEL, &centre);
-		if (error != E_OK) {
-			CHECK(error, "B3 GP27 ADC read");
-            b3_invalidate_line();
-			b3_delay(B3_LINE_UPDATE_MS);
-			continue;
-		}
-
-		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-		left_norm = b3_line_cal_update(&left_cal, left);
-		centre_norm = b3_line_cal_update(&centre_cal, centre);
+		gpio_input = B3_SIO_GPIO_IN;
+		left_active = ((gpio_input >> B3_LINE_LEFT_PIN) & 1U) ==
+			B3_LINE_ACTIVE_LEVEL;
+		centre_active = ((gpio_input >> B3_LINE_CENTRE_PIN) & 1U) ==
+			B3_LINE_ACTIVE_LEVEL;
+		right = (uint8_t)((gpio_input >> B3_BARCODE_PIN) & 1U);
+		left_norm = left_active ?
+			(uint16_t)B3_LINE_ACTIVE_MAX : 0U;
+		centre_norm = centre_active ?
+			(uint16_t)B3_LINE_ACTIVE_MAX : 0U;
 		flags = 0U;
-		if (B3_LINE_LEFT_ACTIVE(left_norm) ||
-		    B3_LINE_CENTRE_ACTIVE(centre_norm)) {
+		if (left_active || centre_active) {
 			flags |= B3_LINE_F_DETECTED;
 		} else {
 			flags |= B3_LINE_F_LOST;
@@ -306,16 +274,9 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 			flags |= B3_LINE_F_JUNCTION;
 		}
 
-		/* Controller gets normalised values; dashboard gets raw ADC. */
+		/* Digital readings are represented as 0 (white) or 1000 (black). */
 		b3_set_line_state(left_norm, centre_norm, right, flags);
-		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
-		if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
-		    b3_line_cal_ready(&centre_cal)) {
-			calibration_reported = true;
-			tm_printf((UB *)"[B3-CAL] learned GP26 white=%d black=%d; GP27 white=%d black=%d\n",
-				  (int)left_cal.white, (int)left_cal.black,
-				  (int)centre_cal.white, (int)centre_cal.black);
-		}
+		comm_set_line(left_norm, centre_norm, (UB)right, (UB)flags);
 		b3_delay(B3_LINE_UPDATE_MS);
 	}
 }
@@ -353,29 +314,6 @@ EXPORT void b3_barcode_task(INT stacd, void *exinf)
 		b3_log_reject(&decoder);
 		b3_delay(B3_BARCODE_TASK_POLL_MS);
 	}
-}
-
-static ER b3_read_adc(uint8_t channel, uint16_t *value)
-{
-	uint32_t adc_word = 0U;
-	SZ actual_size = 0;
-	ER result;
-
-	if (value == NULL) {
-		return E_PAR;
-	}
-
-	result = tk_srea_dev(g_adc_device, (W)channel, &adc_word, 1U,
-			     &actual_size);
-	if (result != E_OK) {
-		return result;
-	}
-	if (actual_size != 1 || adc_word > 4095U) {
-		return E_IO;
-	}
-
-	*value = (uint16_t)(adc_word & 0x0FFFU);
-	return E_OK;
 }
 
 static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,

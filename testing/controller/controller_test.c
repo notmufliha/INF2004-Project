@@ -5,7 +5,6 @@
 #include <stdarg.h>
 #include <setjmp.h>
 #include <string.h>
-#include "../../app_program/subsystem3/b3_line_cal.c"
 
 static motion_command_t sent;
 static UINT drives, stops, resets;
@@ -24,9 +23,8 @@ static UINT remote_head, remote_count, task_ticks;
 static uint32_t clock_ms;
 static bool stale_line, stale_imu, delayed_startup;
 static uint32_t snapshot_delay;
-static bool calibrated_startup;
-static B3_LINE_CAL startup_right_cal, startup_left_cal;
-static UINT first_calibrated_drive_tick;
+static bool digital_startup;
+static UINT first_digital_drive_tick;
 static jmp_buf task_done;
 ID mbf_remote_cmd = 1, mbf_nav_cmd = 2;
 
@@ -50,7 +48,7 @@ ER motion_send_command(const motion_command_t *command)
         assert(left == 0 || left >= VC_MIN_WHEEL_CPS - 1);
         assert(right == 0 || right >= VC_MIN_WHEEL_CPS - 1);
         assert(left <= 5000 && right <= 5000 && (left > 0 || right > 0));
-        if (calibrated_startup && drives == 0u) first_calibrated_drive_tick = task_ticks;
+        if (digital_startup && drives == 0u) first_digital_drive_tick = task_ticks;
         ++drives;
     }
     if (command->type == MOTION_CMD_STOP) ++stops;
@@ -86,7 +84,7 @@ ER tk_dly_tsk(INT delay)
 {
     clock_ms += (uint32_t)delay;
     permission = true; /* Simulate fresh B5 authorization after STOP. */
-    if (++task_ticks == (calibrated_startup ? 8u : 4u)) longjmp(task_done, 1);
+    if (++task_ticks == (digital_startup ? 8u : 4u)) longjmp(task_done, 1);
     return E_OK;
 }
 INT tk_rcv_mbf(ID id, void *data, TMO timeout)
@@ -102,10 +100,10 @@ ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
     clock_ms += snapshot_delay;
     *state = (B3_STATE){0};
     state->line_flags = LINE_F_DETECTED;
-    if (calibrated_startup) {
-        /* Real low-output calibration feeds the real autostart adapter. */
-        state->ir_left = b3_line_cal_update(&startup_right_cal, task_ticks < 3u ? 140u : 260u);
-        state->ir_centre = b3_line_cal_update(&startup_left_cal, task_ticks < 3u ? 120u : 220u);
+    if (digital_startup) {
+        /* Digital sensors report black together after the line is acquired. */
+        state->ir_left = task_ticks < 3u ? 0u : B3_LINE_ACTIVE_MAX;
+        state->ir_centre = task_ticks < 3u ? 0u : B3_LINE_ACTIVE_MAX;
         state->line_flags = B3_LINE_LEFT_ACTIVE(state->ir_left) ||
             B3_LINE_CENTRE_ACTIVE(state->ir_centre) ? LINE_F_DETECTED : LINE_F_LOST;
     }
@@ -499,15 +497,13 @@ int main(void)
     clock_ms = 20000u;
     task_ticks = remote_head = remote_count = 0u;
     stale_line = stale_imu = delayed_startup = false;
-    calibrated_startup = true;
-    first_calibrated_drive_tick = UINT32_MAX;
-    b3_line_cal_init(&startup_right_cal);
-    b3_line_cal_init(&startup_left_cal);
+    digital_startup = true;
+    first_digital_drive_tick = UINT32_MAX;
     permission = true;
     if (setjmp(task_done) == 0) controller_task(0, NULL);
-    assert(drives > 0u && first_calibrated_drive_tick == 5u);
-    calibrated_startup = false;
-    puts("PASS low-output calibration feeds autostart on third black sample without extra delay");
+    assert(drives > 0u && first_digital_drive_tick <= 4u);
+    digital_startup = false;
+    puts("PASS digital line inputs feed autostart as soon as the line is acquired");
     assert(vehicle_controller_start() == E_OK);
     /* Small corrections retain their radius even at the startup speed. */
     for (INT steering = -200; steering <= 200; steering += 25) {

@@ -17,11 +17,12 @@
 #define B3_LINE_F_DETECTED (0x01U)
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)
-/* Line values given to the controller (B3_STATE ir_left / ir_centre) are
- * NORMALISED per sensor by b3_line_cal: 0 = that sensor's white, 1000 = its
- * black. The dashboard still shows the raw ADC readings. */
-/* Pololu QTRSensors readLine() thresholds: a sensor is "on the line" above
- * 200, and values of 50 or less are noise left out of the position. */
+/* GP26/GP27 are digital comparator outputs. Most modules drive LOW over
+ * black; override this to 1 if the installed modules are active-high. */
+#ifndef B3_LINE_ACTIVE_LEVEL
+#define B3_LINE_ACTIVE_LEVEL (0U)
+#endif
+/* Controller/dashboard values: 0 = white, 1000 = black. */
 #define B3_LINE_ACTIVE_MIN (201U)
 #define B3_LINE_NOISE_MAX (50U)
 #define B3_LINE_ACTIVE_MAX (1000U)
@@ -31,8 +32,8 @@
 #define B3_LINE_CENTRE_ACTIVE(norm) \
 	((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN && \
 	 (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
-/* Line position (Pololu weighted average): 0 = under the robot's LEFT
- * sensor (ADC "centre"), 1000 = under its RIGHT sensor (ADC "left"),
+/* Line position: 0 = under the robot's LEFT sensor (GP27/"centre"),
+ * 1000 = under its RIGHT sensor (GP26/"left"),
  * B3_LINE_POS_CENTRE = centred.  Off the line it holds the last side. */
 #define B3_LINE_POS_CENTRE (500)
 /* PD gains (Pololu 3pi pattern: P on error = position - centre, D on its
@@ -100,13 +101,13 @@ IMPORT ID mbf_nav_cmd;
 IMPORT ID mtx_b3_state;
 
 /**
- * @brief Create the ADC handle, navigation queue, and state mutex.
+ * @brief Create the navigation queue and state mutex.
  * @return E_OK on success or the first μT-Kernel error.
  */
 IMPORT ER b3_init(void);
 
 /**
- * @brief Configure GP28 and start the line-sampling and barcode tasks.
+ * @brief Configure GP26/GP27/GP28 and start line/barcode tasks.
  * @return E_OK on success or an initialization/task-start error.
  *
  * Call from core 0 after b3_init(). The navigation consumer must receive
@@ -120,7 +121,7 @@ IMPORT ER b3_start(void);
  * @return E_OK on success, E_PAR for a null pointer, otherwise a kernel error.
  */
 IMPORT ER b3_get_state(B3_STATE *state);
-/* Timestamp is updated only after both ADC reads succeed. E_OBJ until then. */
+/* Timestamp is updated after each successful line sample. E_OBJ until then. */
 IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
 /* True while the barcode sensor is crossing bars (an edge within the last
  * B3_BARCODE_ACTIVE_US); the controller then holds a slow, steady speed so
@@ -129,7 +130,7 @@ IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
 IMPORT bool b3_barcode_active(void);
 
 /**
- * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.
+ * @brief Sample digital line inputs GP26/GP27 and publish line telemetry.
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */

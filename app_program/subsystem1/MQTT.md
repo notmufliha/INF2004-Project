@@ -52,7 +52,7 @@ bits to a whole byte. Every frame starts with a 3-bit wire **version = 1**.
 | 5 | faults | 8 | shared fault bitmask (`fault_flags.h`) | all |
 | 6–7 | speed L, R | 14 s each | ±8191 counts/s (B2 max is 5000) | B2 |
 | 8–9 | encoder L, R | 24 s each | low 24 bits of B2's total; the laptop unwraps | B2 |
-| 10–11 | IR left, centre | 12 each | raw ADC 0–4095 | B3 |
+| 10–11 | IR left, centre | 12 each | digital line value: 0 white, 1000 black | B3 |
 | 12 | IR right | 1 | digital 0/1 | B3 |
 | 13 | line flags | 3 | bit0 detected, bit1 lost, bit2 junction | B3 |
 | 14 | last barcode | 3 | 0 none, 1–4 = A–D, 5 = Z | B3 |

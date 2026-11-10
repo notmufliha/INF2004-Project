@@ -14,10 +14,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Code 39 compilation failed' }
 & $code39Binary
 if ($LASTEXITCODE -ne 0) { throw 'Code 39 tests failed' }
 
-$lineBinary = Join-Path $env:TEMP 'inf2004-line-cal-test.exe'
-& gcc -std=c11 -Wall -Wextra -Werror "-I$code39Include" `
-    (Join-Path $PSScriptRoot '../subsystem3/line_cal_test.c') `
-    (Join-Path $code39Include 'b3_line_cal.c') -o $lineBinary
-if ($LASTEXITCODE -ne 0) { throw 'Line calibration compilation failed' }
+$lineBinary = Join-Path $env:TEMP 'inf2004-digital-line-test.exe'
+& gcc -std=c11 -mno-ms-bitfields -Wall -Wextra -Werror "-I$code39Include" `
+    (Join-Path $PSScriptRoot '../subsystem5/test_line_input.c') `
+    (Join-Path $code39Include 'b3_code39.c') -o $lineBinary
+if ($LASTEXITCODE -ne 0) { throw 'Digital line input compilation failed' }
 & $lineBinary
-if ($LASTEXITCODE -ne 0) { throw 'Line calibration tests failed' }
+if ($LASTEXITCODE -ne 0) { throw 'Digital line input tests failed' }
