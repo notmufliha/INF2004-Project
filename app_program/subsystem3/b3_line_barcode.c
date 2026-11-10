@@ -71,6 +71,7 @@ EXPORT ID mtx_b3_state;
 
 static void b3_gpio_irq_handler(UINT intno);
 static ER b3_read_adc(uint8_t channel, uint16_t *value);
+static ER b3_read_adc_avg(uint8_t channel, uint16_t *value);
 static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
 			      uint8_t flags);
 static void b3_set_barcode_state(uint8_t barcode, uint8_t nav);
@@ -283,7 +284,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	b3_line_cal_init(&centre_cal);
 
 	for (;;) {
-		error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &left);
+		error = b3_read_adc_avg(B3_ADC_LEFT_CHANNEL, &left);
 		if (error != E_OK) {
 			CHECK(error, "B3 GP26 ADC read");
             b3_invalidate_line();
@@ -291,7 +292,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 			continue;
 		}
 
-		error = b3_read_adc(B3_ADC_CENTRE_CHANNEL, &centre);
+		error = b3_read_adc_avg(B3_ADC_CENTRE_CHANNEL, &centre);
 		if (error != E_OK) {
 			CHECK(error, "B3 GP27 ADC read");
             b3_invalidate_line();
@@ -391,6 +392,29 @@ static ER b3_read_adc(uint8_t channel, uint16_t *value)
 	}
 
 	*value = (uint16_t)(adc_word & 0x0FFFU);
+	return E_OK;
+}
+
+/* Average B3_ADC_OVERSAMPLE back-to-back conversions: one reading per
+ * 20 ms tick let a single noisy sample steer the car. */
+static ER b3_read_adc_avg(uint8_t channel, uint16_t *value)
+{
+	uint32_t sum = 0U;
+	uint16_t sample = 0U;
+	uint32_t i;
+	ER result;
+
+	if (value == NULL) {
+		return E_PAR;
+	}
+	for (i = 0U; i < B3_ADC_OVERSAMPLE; i++) {
+		result = b3_read_adc(channel, &sample);
+		if (result != E_OK) {
+			return result;
+		}
+		sum += sample;
+	}
+	*value = (uint16_t)((sum + (B3_ADC_OVERSAMPLE / 2U)) / B3_ADC_OVERSAMPLE);
 	return E_OK;
 }
 

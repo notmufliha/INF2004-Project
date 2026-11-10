@@ -238,6 +238,19 @@ int main(void)
         assert(line_position(&p, &v) == 0);
         v.left = 0u; v.centre = 0u;     /* lost: line was to the left */
         assert(line_position(&p, &v) == 0 && p.last_line_search_direction == -1);
+        /* Hysteresis: centred (both on black) keeps the last clear side;
+         * it used to flip to "right" on every centred sample. */
+        v.left = 1000u; v.centre = 1000u;
+        assert(line_position(&p, &v) == B3_LINE_POS_CENTRE &&
+            p.last_line_search_direction == -1);
+        v.left = 560u; v.centre = 440u; /* slightly right, inside the band */
+        (void)line_position(&p, &v);
+        assert(p.last_line_search_direction == -1);
+        v.left = 0u; v.centre = 0u;     /* lost after centring: still left */
+        assert(line_position(&p, &v) == 0);
+        v.left = 1000u; v.centre = 300u; /* clearly right */
+        (void)line_position(&p, &v);
+        assert(p.last_line_search_direction == 1);
     }
     assert(B3_LINE_LEFT_ACTIVE(1000u) && !B3_LINE_LEFT_ACTIVE(1001u));
     /* Edge steering for this robot (both sensors on black when centred):

@@ -68,11 +68,17 @@ static INT line_position(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             weighted += right * 1000u;
         }
         c->line_pos = (INT)(weighted / sum); /* sum > 0: one value > 200 */
-        c->last_line_search_direction =
-            c->line_pos < B3_LINE_POS_CENTRE ? -1 : 1;
+        if (c->line_pos <= B3_LINE_POS_CENTRE - B3_LINE_SIDE_LEVEL) {
+            c->last_line_search_direction = -1;
+        } else if (c->line_pos >= B3_LINE_POS_CENTRE + B3_LINE_SIDE_LEVEL) {
+            c->last_line_search_direction = 1;
+        } else {
+            /* Near centre: keep the side the line was last clearly on. */
+        }
         return c->line_pos;
     }
-    return c->line_pos < B3_LINE_POS_CENTRE ? 0 : 1000;
+    return c->last_line_search_direction < 0 ? 0 :
+        (c->last_line_search_direction > 0 ? 1000 : B3_LINE_POS_CENTRE);
 }
 
 /* PD steering (Pololu 3pi line follower form): error = position - centre,
