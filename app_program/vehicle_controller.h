@@ -27,6 +27,8 @@
  * (0 to full 800 in about 0.1 s), and speed may rise by at most
  * VC_SPEED_RISE_PER_TICK counts/s per tick.  Slowing down is immediate. */
 #define VC_STEER_SLEW_PER_TICK 150
+/* First-order filtering of ADC difference; 2 = responsive, 3 = smoother. */
+#define VC_LINE_ERROR_FILTER_DIV 2
 #define VC_SPEED_RISE_PER_TICK 100
 /* CALIBRATE: slowest wheel speed (counts/s) the loaded motors hold without
  * stalling; about 25 mm/s.  A curve's inner wheel is never asked to run
@@ -58,7 +60,9 @@ typedef struct {
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
     INT last_line_search_direction; /* -1 left / +1 right: last line side */
     INT line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */
-    INT last_error; /* previous PD error, for the derivative term */
+    INT last_error; /* last raw line difference, for diagnostics */
+    INT filtered_line_error;
+    bool filtered_line_valid;
     INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
     INT last_steer, last_speed; /* last DRIVE sent, for smoothing */
     UINT junction_enter_samples, junction_clear_samples;
