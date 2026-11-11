@@ -18,10 +18,17 @@ const element = id => { if (!elements.has(id)) elements.set(id, new Element()); 
 const document = { getElementById: element, documentElement: new Element(),
   createElement: () => new Element(), createTextNode: text => ({ textContent: text }),
   querySelectorAll: () => [] };
+const intervals = [];
+let clock = 1000000;
+class FakeDate extends Date {
+  constructor(...a) { super(...(a.length ? a : [clock])); }
+  static now() { return clock; }
+}
 const context = vm.createContext({ window: { S1Wire: W }, document,
   localStorage: { getItem: () => null, setItem() {} },
   matchMedia: () => ({ matches: false }), addEventListener() {},
-  setInterval() {}, clearInterval() {}, getComputedStyle: () => ({ getPropertyValue: () => "black" }) });
+  setInterval(fn) { intervals.push(fn); }, clearInterval() {},
+  Date: FakeDate, getComputedStyle: () => ({ getPropertyValue: () => "black" }) });
 const html = fs.readFileSync(path.join(__dirname, "../../../tools/dashboard/index.html"), "utf8");
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
 function telemetry(distance, seq) {
@@ -49,4 +56,44 @@ context.event = { type: 3, seq: 1, type_name: "error", err: 161, detail: 3, err_
 vm.runInContext("onEvent(event)", context);
 assert(element("events").children[0].children[1].textContent.includes("no falling edge"));
 assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY, { ver: 1, obs_d_cm: 400 })).obs_open_space, false);
+
+// Every command button: publish one 3-byte frame on <prefix>/cmd, and the
+// car's ack (or a missing ack) shows up in the command log.
+const lastLog = () => element("acks").children[0].children[1].textContent;
+const published = [];
+element("prefix").value = "inf2004/g25/car";
+context.fake = { connected: true, publish: (t, f, o) => published.push({ t, f, o }) };
+vm.runInContext("state.client = fake", context);
+const buttons = ["START", "PAUSE", "RESUME", "STOP", "ESTOP", "SPEED 40",
+  "MODE LINE", "RESET_PEAK", "PING", "STATUS"];
+buttons.forEach((text, i) => {
+  context.text = text;
+  vm.runInContext("send(text)", context);
+  const sent = published.at(-1);
+  assert.equal(sent.t, "inf2004/g25/car/cmd");
+  assert.equal(sent.f.length, 3);
+  assert.equal(sent.o.qos, 1);
+  const [cmd] = W.unpack(W.COMMAND, sent.f);
+  assert.equal(cmd.cmd, W.COMMANDS[text.split(" ")[0]], text);
+  assert.equal(cmd.seq, i);
+  context.ack = W.decode("cmd/ack", W.pack(W.ACK, { ver: 1, seq: i, cmd: cmd.cmd, ok: 1,
+    result: text === "PING" ? 1 : text === "STATUS" ? 2 : 0 }));
+  clock += 40;
+  vm.runInContext("onAck(ack)", context);
+  assert(lastLog().includes(`${text.split(" ")[0]} OK`), lastLog());
+});
+assert.equal(element("mode-now").textContent, "mode: LINE");
+// No ack: reported after the timeout instead of silence.
+vm.runInContext("send('PAUSE')", context);
+clock += 3500; intervals.forEach(fn => fn());
+assert(lastLog().includes("PAUSE: NO REPLY"), lastLog());
+// Car known offline: warned at send time.
+context.st = { online: 0 };
+vm.runInContext("onStatus(st)", context);
+vm.runInContext("send('STOP')", context);
+assert(lastLog().includes("OFFLINE"), lastLog());
+vm.runInContext("state.client = null", context);
+vm.runInContext("send('STOP')", context);
+assert(lastLog().includes("not connected"), lastLog());
+console.log("PASS dashboard commands: every button publishes the right 3-byte frame, acks, no-reply and offline reported");
 console.log("PASS dashboard handlers: measured/assumed/invalid echo, profile availability, chart gaps, faults/state and diagnostics");
