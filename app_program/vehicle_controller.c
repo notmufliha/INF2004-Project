@@ -12,9 +12,12 @@
 
 static void set_state(VEHICLE_CONTROLLER *c, ROBOT_STATE state)
 {
+    /* Always publish: B5 also writes the telemetry state (obstacle legs),
+     * so a state equal to our cached one may still be stale on the
+     * dashboard, e.g. IDLE after PAUSE while it still shows AVOID. */
+    comm_set_robot_state(state);
     if (c->state != state) {
         c->state = state;
-        comm_set_robot_state(state);
         tm_printf((UB *)"[VC] state=%d\n", (INT)state);
     }
 }
@@ -208,6 +211,11 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
+            /* B2 latches stall/encoder faults until reboot and every step
+             * safe-stops while one is set, so after one stall no dashboard
+             * command could move the car again.  START is the operator's
+             * acknowledgement: clear them; B2 re-raises them if still real. */
+            fault_clear(FAULT_MOTOR_STALL | FAULT_ENCODER);
         }
         break;
     case RCMD_RESUME:

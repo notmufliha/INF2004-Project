@@ -191,6 +191,7 @@ svg.chart { width: 100%; height: 150px; display: block; }
     <div class="btnrow">
       <select id="mode" aria-label="Run mode"><option>AUTO</option><option>LINE</option><option>TEST</option></select>
       <button id="send-mode">Set mode</button>
+      <span id="mode-now" class="note">mode: AUTO (boot default)</span>
       <button data-cmd="RESET_PEAK">Reset peak</button>
       <button data-cmd="PING">Ping</button>
       <button data-cmd="STATUS">Status</button>
@@ -199,6 +200,7 @@ svg.chart { width: 100%; height: 150px; display: block; }
       <input id="raw" type="text" placeholder="e.g. TELEM 300" aria-label="Command text">
       <button id="send-raw">Send</button>
     </div>
+    <p class="note">PAUSE holds the car, RESUME continues only after PAUSE. STOP and Set mode end the run: press Start again. In TEST mode Start is ignored (motors off). E-STOP needs Start to release. "OK" means the car's controller received the command.</p>
     <div class="log" id="acks"></div>
   </section>
 
@@ -217,7 +219,7 @@ const $ = (id) => document.getElementById(id);
 const HISTORY_S = 60;
 const state = { client: null, demo: null, seq: 0, lastTelem: null, lastTelemAt: 0,
   lastHbAt: 0, telemMs: 500, gaps: 0, encL: new W.Unwrap24(), encR: new W.Unwrap24(),
-  speed: [], dist: [], pendingAck: {} };
+  speed: [], dist: [], pendingAck: {}, carOnline: null, mode: null };
 
 /* ---------- theme ---------- */
 $("theme").onclick = () => {
@@ -389,9 +391,10 @@ function onStatus(d) {
   if (!("link" in d)) { // retained 1-byte online / Last Will
     badge($("car"), d.online ? "car: online" : "car: OFFLINE (last will)",
       d.online ? "var(--good)" : "var(--critical)");
+    state.carOnline = !!d.online;
     return;
   }
-  state.lastHbAt = now(); state.telemMs = d.telem_ms;
+  state.lastHbAt = now(); state.telemMs = d.telem_ms; state.carOnline = true;
   badge($("car"), d.demo ? "car: online (demo data)" : "car: online", "var(--good)");
   $("t-link").textContent = d.link_name;
   $("t-ip").textContent = `ip ${d.ip_str}`;
@@ -419,9 +422,13 @@ function onEvent(d) {
 }
 function onAck(d) {
   const sent = state.pendingAck[d.seq];
-  const rtt = sent ? ` · ${now() - sent} ms` : "";
+  const rtt = sent ? ` · ${now() - sent.at} ms` : "";
   delete state.pendingAck[d.seq];
   log($("acks"), `#${d.seq} ${d.cmd_name} ${d.ok ? "OK" : "REJECTED"}: ${d.result_text}${rtt}`);
+  if (d.ok && sent && sent.mode !== undefined) {
+    state.mode = sent.mode;
+    $("mode-now").textContent = `mode: ${sent.mode}`;
+  }
 }
 function handle(kind, bytes) {
   try {
@@ -444,16 +451,31 @@ setInterval(() => {
 }, 500);
 
 /* ---------- commands ---------- */
+const ACK_TIMEOUT_MS = 3000;
 function send(text) {
   let frame;
   try { frame = W.encodeCommand(text, state.seq); } catch (e) { log($("acks"), `not sent: ${e.message}`); return; }
   const seq = state.seq; state.seq = (state.seq + 1) & 0xFF;
-  state.pendingAck[seq] = now();
+  const verb = text.trim().toUpperCase();
+  const entry = { at: now(), text: verb };
+  if (verb.startsWith("MODE ")) entry.mode = verb.slice(5).trim();
   if (state.demo) state.demo.command(frame);
   else if (state.client && state.client.connected) state.client.publish(`${$("prefix").value}/cmd`, frame, { qos: 1 });
-  else { log($("acks"), "not connected"); return; }
-  log($("acks"), `→ #${seq} ${text.toUpperCase()}`);
+  else { log($("acks"), "not connected to the broker: press Connect first"); return; }
+  state.pendingAck[seq] = entry;
+  log($("acks"), `→ #${seq} ${verb}` +
+    (state.carOnline === false && !state.demo ? " (car is OFFLINE: it will not receive this)" : ""));
 }
+/* Every command is acked by the car within ~0.5 s; say so when one is not,
+ * instead of leaving the button looking dead. */
+setInterval(() => {
+  for (const [seq, entry] of Object.entries(state.pendingAck)) {
+    if (now() - entry.at < ACK_TIMEOUT_MS) continue;
+    delete state.pendingAck[seq];
+    log($("acks"), `#${seq} ${entry.text}: NO REPLY from the car after ${ACK_TIMEOUT_MS / 1000} s ` +
+      "(car offline, wrong topic prefix, or car not on the broker's network)");
+  }
+}, 500);
 document.querySelectorAll("button[data-cmd]").forEach((b) => (b.onclick = () => send(b.dataset.cmd)));
 $("speed").oninput = () => ($("speed-v").textContent = $("speed").value + "%");
 $("send-speed").onclick = () => send(`SPEED ${$("speed").value}`);

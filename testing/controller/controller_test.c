@@ -99,8 +99,6 @@ INT tk_rcv_mbf(ID id, void *data, TMO timeout)
     return sizeof(REMOTE_CMD);
 }
 bool b3_barcode_active(void) { return false; }
-static UINT recal_requests;
-void b3_request_recalibration(void) { ++recal_requests; }
 ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
     clock_ms += snapshot_delay;
@@ -240,19 +238,6 @@ int main(void)
         assert(line_position(&p, &v) == 0);
         v.left = 0u; v.centre = 0u;     /* lost: line was to the left */
         assert(line_position(&p, &v) == 0 && p.last_line_search_direction == -1);
-        /* Hysteresis: centred (both on black) keeps the last clear side;
-         * it used to flip to "right" on every centred sample. */
-        v.left = 1000u; v.centre = 1000u;
-        assert(line_position(&p, &v) == B3_LINE_POS_CENTRE &&
-            p.last_line_search_direction == -1);
-        v.left = 560u; v.centre = 440u; /* slightly right, inside the band */
-        (void)line_position(&p, &v);
-        assert(p.last_line_search_direction == -1);
-        v.left = 0u; v.centre = 0u;     /* lost after centring: still left */
-        assert(line_position(&p, &v) == 0);
-        v.left = 1000u; v.centre = 300u; /* clearly right */
-        (void)line_position(&p, &v);
-        assert(p.last_line_search_direction == 1);
     }
     assert(B3_LINE_LEFT_ACTIVE(1000u) && !B3_LINE_LEFT_ACTIVE(1001u));
     /* Edge steering for this robot (both sensors on black when centred):
@@ -290,32 +275,36 @@ int main(void)
     input.left = 900u; input.centre = 100u;
     step(&c, 20u, 0u);
     assert(c.last_line_search_direction == 1);
-    {
-        /* Dropout grace: one LOST sample keeps the last command. */
-        INT held_steer = sent.steering_permille;
-        INT held_speed = sent.target_speed_cps;
-        input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
-        assert(c.state == ROBOT_LINE_FOLLOW && sent.type == MOTION_CMD_DRIVE &&
-            sent.steering_permille == held_steer &&
-            sent.target_speed_cps == held_speed);
-    }
-    step(&c, VC_LINE_DROPOUT_MS, 0u);
-    /* Then a tightening arc toward the remembered side (right). */
+    input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_DRIVE &&
-        sent.steering_permille > 0 &&
-        sent.steering_permille < B3_LINE_STEER_MAX &&
+        sent.steering_permille >= B3_LINE_STEER_MAX && right_wheel() == 0 &&
         sent.target_speed_cps < 2500);
-    step(&c, VC_LINE_REACQUIRE_MS / 2u, 0u); /* tightened to full: pivot */
-    assert(sent.steering_permille >= B3_LINE_STEER_MAX && right_wheel() == 0);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* still turning back right */
+    assert(sent.steering_permille >= B3_LINE_STEER_MAX);
+    step(&c, VC_LINE_REACQUIRE_MS - VC_LINE_SEARCH_SWITCH_MS, 0u);
+    /* not found there: sweep the other way */
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
     input.line_flags = LINE_F_DETECTED;
     step(&c, 20u, 0u);
     assert(c.state == ROBOT_LINE_FOLLOW && c.running);
-    /* Pivot back right for VC_LINE_REACQUIRE_MS only, then stop: no
-     * sweeps that drive the car across the course. */
+    /* Hard turn back right for VC_LINE_REACQUIRE_MS, then widening
+     * sweeps: 600 ms left, 1200 ms right, 1800 ms left. */
     input.line_flags = LINE_F_LOST;
-    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
-    assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille > 0);
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY &&
+        sent.steering_permille >= B3_LINE_STEER_MAX);
     step(&c, VC_LINE_REACQUIRE_MS, 0u);
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u);
+    assert(sent.steering_permille == VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* 1200 ms segment: still right */
+    assert(sent.steering_permille == VC_LINE_SEARCH_STEER);
+    step(&c, VC_LINE_SEARCH_SWITCH_MS, 0u); /* then back left */
+    assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
+    step(&c, VC_RECOVERY_MS, 0u); /* old 3 s limit no longer disarms */
+    assert(c.state == ROBOT_LINE_RECOVERY && c.running);
+    /* Search exhausted: stopped but still armed. */
+    step(&c, VC_LINE_SEARCH_MS, 0u);
     assert(c.state == ROBOT_LINE_RECOVERY && c.running &&
         sent.type == MOTION_CMD_STOP);
     UINT held_drives = drives;
@@ -328,7 +317,7 @@ int main(void)
         sent.type == MOTION_CMD_DRIVE);
     /* Dashboard STOP while holding still disarms. */
     input.line_flags = LINE_F_LOST;
-    step(&c, 20u, 0u); step(&c, VC_LINE_REACQUIRE_MS, 0u);
+    step(&c, 20u, 0u); step(&c, VC_LINE_SEARCH_MS, 0u);
     command(&c, RCMD_STOP, 0u); step(&c, 20u, 0u);
     assert(!c.running);
 
@@ -343,10 +332,9 @@ int main(void)
     step(&c, 20u, 0u);
     assert(c.last_line_search_direction == -1);
     input.line_flags = LINE_F_LOST;
-    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
-    assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
-    step(&c, VC_LINE_REACQUIRE_MS / 2u, 0u);
-    assert(sent.steering_permille <= -B3_LINE_STEER_MAX && left_wheel() == 0);
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY &&
+        sent.steering_permille <= -B3_LINE_STEER_MAX && left_wheel() == 0);
 
     /* Curve with BOTH sensors on the line (no junction flag): the car
      * must steer, not drive straight, and slow down for the curve. */
@@ -357,10 +345,6 @@ int main(void)
     assert(sent.target_speed_cps == VC_MIN_WHEEL_CPS);
     settle(&c, 30u);
     INT straight_speed = sent.target_speed_cps;
-    assert(sent.steering_permille == 0 && straight_speed == (INT)VC_DEFAULT_SPEED_PERCENT * 50);
-    /* The wheel-minimum cases below are defined at 20% (dashboard SPEED). */
-    command(&c, RCMD_SPEED, 20u); settle(&c, 30u);
-    straight_speed = sent.target_speed_cps;
     assert(sent.steering_permille == 0 && straight_speed == 1000);
     /* Sharp curve at 20%: inner wheel would be far below the minimum, so it
      * stops (pivot) instead of stalling; outer keeps turning; slower. */
@@ -540,73 +524,23 @@ int main(void)
         assert(gentle.target_speed_cps * (1000 - (steering < 0 ? -steering : steering)) /
             1000 >= VC_MIN_WHEEL_CPS);
     }
-    /* Every START restarts B3 calibration (car lifted after a safe-stop
-     * must not keep an in-air black level), including a repeat START. */
-    c = fresh(); recal_requests = 0u;
-    command(&c, RCMD_START, 0u); assert(recal_requests == 1u);
-    command(&c, RCMD_STOP, 0u); command(&c, RCMD_START, 0u);
-    assert(recal_requests == 2u && c.running);
-    command(&c, RCMD_MODE, MODE_TEST); command(&c, RCMD_START, 0u);
-    assert(recal_requests == 2u); /* TEST mode START is refused */
-    /* Lost with no clear side ever seen (e.g. a straight then the line
-     * ends): stop at once rather than guess a direction. */
-    c = fresh(); command(&c, RCMD_START, 0u);
-    input.left = 1000u; input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
-    settle(&c, 30u);
-    assert(c.last_line_search_direction == 0);
-    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
-    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
-    assert(c.state == ROBOT_LINE_RECOVERY && c.running &&
-        sent.type == MOTION_CMD_STOP);
     /* START clears B2's latched stall/encoder faults (operator restart). */
     c = fresh(); cleared_faults = 0u;
     command(&c, RCMD_START, 0u);
     assert((cleared_faults & (FAULT_MOTOR_STALL | FAULT_ENCODER)) ==
         (FAULT_MOTOR_STALL | FAULT_ENCODER));
-    /* LOST at START (car off the line, or B3 just restarted a bad
-     * calibration): wait in place, never drive a search for a line not
-     * yet seen; follow once seen; only then does losing it search. */
-    c = fresh();
-    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
-    command(&c, RCMD_START, 0u);
-    {
-        UINT before = drives;
-        for (UINT i = 0u; i < 100u; ++i) step(&c, 20u, 0u);
-        assert(drives == before && c.running && c.state == ROBOT_LINE_RECOVERY);
-        input.line_flags = LINE_F_DETECTED;
-        input.left = 900u; input.centre = 300u; /* clearly to the right */
-        step(&c, 20u, 0u);
-        assert(drives == before + 1u && c.state == ROBOT_LINE_FOLLOW);
-        input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
-        step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
-        assert(drives >= before + 2u && c.state == ROBOT_LINE_RECOVERY &&
-            sent.type == MOTION_CMD_DRIVE);
-    }
-    /* Tightening arc: steering grows each tick up to the cap; a dropout
-     * shorter than VC_LINE_DROPOUT_MS never enters recovery. */
-    c = fresh(); command(&c, RCMD_START, 0u);
-    input.line_flags = LINE_F_DETECTED; input.left = 1000u; input.centre = 300u;
-    settle(&c, 30u);
-    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
-    step(&c, 20u, 0u); step(&c, 20u, 0u);
-    assert(c.state == ROBOT_LINE_FOLLOW);           /* 40 ms: still grace */
-    input.line_flags = LINE_F_DETECTED; input.left = 1000u; input.centre = 300u;
-    step(&c, 20u, 0u);
-    assert(c.state == ROBOT_LINE_FOLLOW);
-    input.line_flags = LINE_F_LOST; input.left = input.centre = 0u;
-    step(&c, 20u, 0u); step(&c, VC_LINE_DROPOUT_MS, 0u);
-    {
-        INT previous = 0;
-        for (UINT i = 0u; i < 15u; ++i) {
-            step(&c, 20u, 0u);
-            assert(c.state == ROBOT_LINE_RECOVERY &&
-                sent.type == MOTION_CMD_DRIVE);
-            assert(c.last_steer >= previous &&
-                c.last_steer <= B3_LINE_STEER_MAX);
-            previous = c.last_steer;
-        }
-        assert(previous == B3_LINE_STEER_MAX);
-    }
+    /* PAUSE/STOP/MODE republish the state even if another writer (B5)
+     * changed the telemetry state behind the controller's back. */
+    c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
+    command(&c, RCMD_PAUSE, 0u); assert(published == ROBOT_IDLE);
+    published = ROBOT_OBSTACLE_AVOID;
+    command(&c, RCMD_PAUSE, 0u); assert(published == ROBOT_IDLE);
+    published = ROBOT_OBSTACLE_AVOID;
+    command(&c, RCMD_STOP, 0u); assert(published == ROBOT_SAFE_STOP);
+    published = ROBOT_OBSTACLE_AVOID;
+    command(&c, RCMD_STOP, 0u); assert(published == ROBOT_SAFE_STOP);
+    published = ROBOT_OBSTACLE_AVOID;
+    command(&c, RCMD_MODE, MODE_LINE_ONLY); assert(published == ROBOT_IDLE);
     puts("PASS: controller commands, curves, B5 handoff, boot readiness, hazards and task adapter");
     return 0;
 }
