@@ -19,6 +19,9 @@
 #define B3_LINE_RAW_LOW_IS_BLACK (1U)
 #define B3_LINE_RAW_BLACK_MAX (1500U)
 #define B3_LINE_RAW_WHITE_MIN (1999U)
+/* ADC readings below this floor are treated as no line, regardless of the
+ * configured sensor polarity or normalization range. */
+#define B3_LINE_RAW_LOST_BELOW (300U)
 
 #define B3_NAV_QUEUE_LENGTH (8U)
 
@@ -26,8 +29,7 @@
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)
 /* Line values given to the controller (B3_STATE ir_left / ir_centre) are
- * NORMALISED per sensor by b3_line_cal: 0 = that sensor's white, 1000 = its
- * black. The dashboard still shows the raw ADC readings. */
+ * normalized to 0 = off-line and 1000 = black. The dashboard shows raw ADC. */
 /* Pololu QTRSensors readLine() thresholds: a sensor is "on the line" above
  * 200, and values of 50 or less are noise left out of the position. */
 #define B3_LINE_ACTIVE_MIN (201U)

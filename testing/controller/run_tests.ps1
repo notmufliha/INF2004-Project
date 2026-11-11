@@ -21,3 +21,10 @@ $lineBinary = Join-Path $env:TEMP 'inf2004-line-cal-test.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Line calibration compilation failed' }
 & $lineBinary
 if ($LASTEXITCODE -ne 0) { throw 'Line calibration tests failed' }
+
+$lineInputBinary = Join-Path $env:TEMP 'inf2004-line-input-test.exe'
+& gcc -std=c11 -mno-ms-bitfields -Wall -Wextra -Werror -Wno-cast-function-type `
+    (Join-Path $PSScriptRoot '..\subsystem5\test_line_input.c') -o $lineInputBinary
+if ($LASTEXITCODE -ne 0) { throw 'Line input compilation failed' }
+& $lineInputBinary
+if ($LASTEXITCODE -ne 0) { throw 'Line input tests failed' }
