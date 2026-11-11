@@ -243,7 +243,7 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
          */
         bool b_analysed = imu_analysis_process(&analysis, &processed, &event);
 
-        /* No one-wheel height estimator is connected; availability is false. */
+        /* Completed roll events include the one-wheel geometric estimate. */
 #if APP_TEST
         s4_diag_record(&data, &processed, &analysis, &event);
 #endif
@@ -290,6 +290,7 @@ initialise_analysis (imu_analysis_t * p_analysis)
     imu_analysis_config_t config;
 
     imu_analysis_default_config(&config);
+    config.wheel_track_mm = S4_WHEEL_TRACK_MM;
 #if !S4_IMU_USE_MOCK
     config.roll_enter_deg = S4_ROLL_HUMP_ENTER_DEG;
     config.roll_level_deg = S4_ROLL_HUMP_LEVEL_DEG;
@@ -300,7 +301,7 @@ initialise_analysis (imu_analysis_t * p_analysis)
         return false;
     }
     tm_printf((UB *)"[B4] Hump mode=ROLL; thresholds provisional; "
-                    "roll height=N/A\n");
+                    "height uses tyre centre spacing and peak roll\n");
     return true;
 }
 

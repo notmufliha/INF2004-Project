@@ -1,5 +1,12 @@
 # B4 BARR-C:2018 audit
 
+2026-11-10 roll-height addition: the existing analysis module now tracks the
+level baseline, peak relative roll and session maximum. Completed crossings
+estimate height using measured 110 mm tyre spacing; the retired pitch module
+remains removed. Functions remain below the selected checker length limit,
+geometry configuration rejects nonfinite/nonpositive values, and public
+reading/event layouts are unchanged. See HEIGHT.md for model assumptions.
+
 2026-11-10 cleanup: removed pitch hump state, mode switches and inactive
 runtime height integration. Both real and mock classifiers use roll only.
 Pitch remains a measurement. Current checks are listed in TEST_LOG.md; the

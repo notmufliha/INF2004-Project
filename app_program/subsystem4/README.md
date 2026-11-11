@@ -8,14 +8,14 @@ Real startup currently uses provisional **roll-based one-wheel hump detection**.
 Climbing/descending follows absolute-roll trends; pitch remains
 measured and printed. See [MOTION_TEST.md](MOTION_TEST.md)
 for adjustable thresholds, rearming and either-wheel/flat-ground validation.
-Roll crossings report height unavailable. The pitch hump state machine and its
+Completed roll crossings estimate one-wheel height using 110 mm tyre spacing. The pitch hump state machine and its
 fallback switch have been removed from real and mock operation. The unused pitch-height module and its isolated test have been removed; see [HEIGHT.md](HEIGHT.md).
 
 ## B1 integration after the merge
 
 B4 reports motion and pitch through `comm_set_imu()`, raises/clears `FAULT_IMU`
 on fault/recovery, and reports completed humps through `comm_report_hump()`.
-No height estimator is currently implemented.
+Roll height estimation runs within the analysis task; see HEIGHT.md.
 Telemetry conversions clamp to the signed 16-bit B1 range before narrowing.
 
 With `ROBOT_MODE=1`, startup initializes B1 and B2, then starts B4 before starting
@@ -47,7 +47,7 @@ The stub preserves external kernel/task ABI names; it is not firmware code.
 For the end-to-end hardware check, boot level/still and confirm the waiting
 message is followed by calibration/recovery and the robot-started message.
 Verify laptop pitch/motion against serial output, then verify IMU fault/recovery
-with the drive disabled. Completed humps must still show height as unavailable.
+with the drive disabled. Completed mock humps report synthetic roll-height estimates.
 These physical/laptop checks have not been performed by the desktop tests.
 
 See [CODING_STANDARD.md](CODING_STANDARD.md) for B4's BARR-C cleanup scope,
@@ -61,7 +61,7 @@ and checks the magnetic H43 ID plus configuration readback before use.
 The mock demo described below is available only by setting
 `S4_IMU_USE_MOCK` to `1` in `s4_runtime.h`. With the default `0`, TEST=1 runs
 S4-U16 (real calibrated readings) instead of mock-only S4-U11/S4-U14.
-Mock height remains unavailable. Heading is an uncalibrated magnetic estimate by
+Mock height is a synthetic geometric estimate. Heading is an uncalibrated magnetic estimate by
 default; turn rate remains unavailable until magnetic calibration is configured.
 The sections below describe the retained mock demo and processing policy.
 
@@ -186,8 +186,8 @@ if ((imu_mock_read(&data)) &&
   provide calibrated readings. Gravity compensation and
   real vibration/impact trials remain necessary; these tests do not establish
   collision-detection reliability.
-- Height remains unavailable. The retired pitch-height estimator does not
-  model one-wheel roll crossings. See [HEIGHT.md](HEIGHT.md).
+- Completed crossings estimate one-wheel height using 110 mm tyre spacing.
+  Physical accuracy is unvalidated; see [HEIGHT.md](HEIGHT.md).
 
 ## Next integration steps
 

@@ -7,11 +7,16 @@
 #include <stddef.h>
 
 #define IMU_GRAVITY_MS2 (9.81f)
+#define IMU_DEGREES_TO_RADIANS (0.01745329252f)
 
 static void reset_sequence (imu_analysis_t * p_analysis, uint32_t reason);
 static void reset_roll (imu_analysis_t * p_analysis);
 static void expire_roll (imu_analysis_t * p_analysis, uint32_t now_ms);
 static void update_roll_motion (imu_analysis_t * p_analysis, float32_t roll);
+static void track_roll_height (imu_analysis_t * p_analysis,
+                               const imu_data_t * p_data, bool b_level);
+static void complete_height (imu_analysis_t * p_analysis,
+                             imu_event_t * p_event);
 static void update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                          imu_event_t * p_event);
 static void analyse_terrain (imu_analysis_t * p_analysis,
@@ -34,7 +39,7 @@ imu_analysis_default_config (imu_analysis_config_t * p_config)
     {
         *p_config = (imu_analysis_config_t){8.0f, 1.0f, 15.0f, 6.0f,
                                             3U, 100U, 10000U,
-                                            4.0f, 2.0f, 0.5f};
+                                            4.0f, 2.0f, 0.5f, 110.0f};
     }
 }
 
@@ -51,6 +56,8 @@ imu_analysis_init (imu_analysis_t *              p_analysis,
         (!isfinite(p_config->roll_enter_deg)) ||
         (!isfinite(p_config->roll_level_deg)) ||
         (!isfinite(p_config->roll_trend_deg)) ||
+        (!isfinite(p_config->wheel_track_mm)) ||
+        (p_config->wheel_track_mm <= 0.0f) ||
         (p_config->roll_trend_deg <= 0.0f) ||
         (p_config->roll_trend_deg > p_config->roll_enter_deg) ||
         (p_config->roll_level_deg < 0.0f) ||
@@ -142,6 +149,8 @@ imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
     p_event->b_heading_valid      = p_data->b_heading_valid;
     p_event->b_heading_calibrated = p_data->b_heading_calibrated;
     p_event->b_valid              = true;
+    p_event->highest_hump_cm = p_analysis->highest_hump_cm;
+    p_event->b_highest_hump_valid = p_analysis->b_highest_hump_valid;
     p_event->b_tilt_detected =
         (fabsf(p_data->pitch_deg) >= p_analysis->config.tilt_deg) ||
         (fabsf(p_data->roll_deg) >= p_analysis->config.tilt_deg);
@@ -159,6 +168,8 @@ imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
     }
 
     analyse_terrain(p_analysis, p_data, p_event);
+    p_event->highest_hump_cm = p_analysis->highest_hump_cm;
+    p_event->b_highest_hump_valid = p_analysis->b_highest_hump_valid;
     classify_motion(p_analysis, p_data, p_event, magnitude);
     return true;
 }
@@ -277,6 +288,8 @@ reset_roll (imu_analysis_t * p_analysis)
     p_analysis->roll_direction = 0;
     p_analysis->roll_trend_count = 0U;
     p_analysis->roll_stable_count = 0U;
+    p_analysis->roll_baseline_deg = 0.0f;
+    p_analysis->roll_peak_deg = 0.0f;
 }
 
 /** @brief Bound an active roll episode even while encoder progress pauses. */
@@ -342,6 +355,58 @@ update_roll_motion (imu_analysis_t * p_analysis, float32_t roll)
     }
 }
 
+/** @brief Track baseline and excursion independently of detector decisions. */
+static void
+track_roll_height (imu_analysis_t * p_analysis, const imu_data_t * p_data,
+                   bool b_level)
+{
+    if (IMU_ROLL_UNARMED == p_analysis->roll_state)
+    {
+        if (b_level)
+        {
+            p_analysis->roll_baseline_deg +=
+                (p_data->roll_deg - p_analysis->roll_baseline_deg) /
+                (float32_t)(p_analysis->roll_count + 1U);
+        }
+        else
+        {
+            p_analysis->roll_baseline_deg = 0.0f;
+        }
+    }
+    else
+    {
+        const float32_t excursion = fabsf(p_data->roll_deg -
+                                          p_analysis->roll_baseline_deg);
+        if ((IMU_ROLL_READY == p_analysis->roll_state) &&
+            ((0U == p_analysis->roll_count) ||
+             ((p_data->roll_deg >= 0.0f) != p_analysis->b_roll_positive)))
+        {
+            p_analysis->roll_peak_deg = excursion;
+        }
+        else
+        {
+            p_analysis->roll_peak_deg =
+                fmaxf(p_analysis->roll_peak_deg, excursion);
+        }
+    }
+}
+
+/** @brief Estimate wheel height difference after a one-wheel crossing. */
+static void
+complete_height (imu_analysis_t * p_analysis, imu_event_t * p_event)
+{
+    if (p_analysis->roll_peak_deg <= 90.0f)
+    {
+        p_event->hump_peak_cm =
+            (p_analysis->config.wheel_track_mm / 10.0f) *
+            sinf(p_analysis->roll_peak_deg * IMU_DEGREES_TO_RADIANS);
+        p_event->b_height_valid = true;
+        p_analysis->highest_hump_cm =
+            fmaxf(p_analysis->highest_hump_cm, p_event->hump_peak_cm);
+        p_analysis->b_highest_hump_valid = true;
+    }
+}
+
 /** @brief Confirm either-side roll excursions with a stable return to level. */
 static void
 update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
@@ -356,6 +421,7 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
         return;
     }
 
+    track_roll_height(p_analysis, p_data, b_level);
     switch (p_analysis->roll_state)
     {
         case IMU_ROLL_UNARMED:
@@ -410,6 +476,7 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                 p_analysis->roll_state = IMU_ROLL_READY;
                 p_analysis->roll_count = 0U;
                 p_event->b_hump_completed = true;
+                complete_height(p_analysis, p_event);
                 p_analysis->roll_terrain = IMU_TERRAIN_LEVEL;
             }
         break;

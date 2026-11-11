@@ -62,7 +62,7 @@ main (void)
                            (IMU_MOTION_DESCENDING_HUMP == event.motion_state);
             completions += event.b_hump_completed ? 1U : 0U;
             impacts += event.b_sudden_impact ? 1U : 0U;
-            assert(!event.b_height_valid);
+            assert(event.b_height_valid == event.b_hump_completed);
         }
     }
 
