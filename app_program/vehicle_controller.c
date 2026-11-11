@@ -276,6 +276,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         (in->faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU)) ||
         in->motion.status == MOTION_STATUS_FAULT ||
         in->motion.status == MOTION_STATUS_TIMEOUT) {
+        tm_printf((UB *)"[VC-STOP-REASON] motion_valid=%d imu_valid=%d hazard=%d obstacle_fault=%d faults=%d motion_status=%d\n",
+                  (INT)in->motion_valid, (INT)in->imu_valid, (INT)in->hazard,
+                  (INT)in->obstacle_fault, (INT)in->faults, (INT)in->motion.status);
         safe_stop(c);
         return;
     }
@@ -285,6 +288,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     if (!in->line_valid) {
+        tm_printf((UB *)"[VC-STOP-REASON] line data invalid/stale\n");
         safe_stop(c);
         return;
     }
