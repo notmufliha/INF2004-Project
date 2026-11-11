@@ -101,7 +101,7 @@ event_matches (const imu_event_t * p_event, bool b_wait_hump,
     if (b_wait_hump)
     {
         return (p_event->b_valid) && (p_event->b_hump_completed) &&
-               (!p_event->b_height_valid);
+               (p_event->b_height_valid);
     }
 
     return (p_event->b_valid) && (!p_event->b_sensor_fault);

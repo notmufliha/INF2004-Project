@@ -1,5 +1,17 @@
 # Subsystem 4 â€” test log
 
+Roll-height estimate (2026-11-10): implemented within imu_analysis, using
+110 mm tyre centre spacing and the sine of peak roll relative to the level
+baseline. Tests cover both sides, a 1-degree baseline, a short first peak,
+30 degrees -> 55 mm, configurable spacing, session maximum persistence,
+cancelled crossings, invalid spacing and excursions beyond the model bound.
+Six host programs and the native integration/diagnostic suite passed, including
+15 movement orchestration cases. Eight ARM C99 configurations and selected
+BARR-C style checks passed. Physical height accuracy is not yet validated.
+Detector thresholds and public reading/event layouts are unchanged.
+USB/Wi-Fi TEST=1 firmware build passed and regenerated
+`build_make/mtk3pico_smp1_usb_cdc_wifi_test.uf2`.
+
 Module retirement (2026-11-10): removed tracked `imu_mock_test` executable,
 `imu_height.c/.h`, the geometry-only `imu_odom_init()` helper and isolated
 `testhigh_main.c/.h`. Removed height rejection counters and placeholder context;

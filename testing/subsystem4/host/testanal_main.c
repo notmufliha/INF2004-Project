@@ -29,6 +29,7 @@ static void test_roll_crossings (void);
 static void test_roll_guards (void);
 static void test_roll_pitch_independence (void);
 static void test_roll_motion_trends (void);
+static void test_roll_height (void);
 
 /** @brief Run classification, timing, movement and roll regressions. */
 int
@@ -42,6 +43,7 @@ main (void)
     test_roll_guards();
     test_roll_pitch_independence();
     test_roll_motion_trends();
+    test_roll_height();
     puts("All roll-only IMU analysis tests passed.");
     return 0;
 }
@@ -272,7 +274,8 @@ test_roll_crossings (void)
         assert(!roll_feed(0.0f, 2U).b_hump_completed);
         imu_event_t event = roll_feed(0.0f, 1U);
         assert(event.b_hump_completed);
-        assert(!event.b_height_valid);
+        assert(event.b_height_valid);
+        assert(fabsf(event.hump_peak_cm - 1.149813f) < 0.001f);
         assert(!roll_feed(0.0f, TEST_ROLL_SETTLED).b_hump_completed);
         roll_feed(-sides[index] * 6.0f, IMU_ROLL_CONFIRM_SAMPLES);
         assert(roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
@@ -286,7 +289,7 @@ test_roll_crossings (void)
     assert(!roll_feed(2.0f, TEST_SHORT_SETTLE).b_hump_completed);
     assert(roll_feed(1.0f, TEST_SHORT_SETTLE).b_hump_completed);
     puts("PASS: either-wheel roll, hysteresis, stable return, single event, "
-         "rearm and unavailable height");
+         "rearm and geometric height");
 }
 
 /** @brief Noise, missing baselines, pauses and faults cannot fake crossings. */
@@ -422,6 +425,54 @@ test_roll_motion_trends (void)
          "deadband noise rejection and short return to level");
     g_config.roll_trend_deg = 0.0f;
     assert(!imu_analysis_init(&g_analysis, &g_config));
+}
+
+/** @brief Verify geometry, baseline, peak retention and rejected episodes. */
+static void
+test_roll_height (void)
+{
+    short_reset();
+    roll_feed(1.0f, TEST_SHORT_BASELINE);
+    roll_feed(31.0f, 1U);
+    roll_feed(12.0f, 1U);
+    assert(!roll_feed(5.0f, 1U).b_height_valid);
+    imu_event_t event = roll_feed(1.0f, TEST_SHORT_SETTLE);
+    assert((event.b_hump_completed) && (event.b_height_valid));
+    assert(fabsf(event.hump_peak_cm - 5.5f) < 0.001f);
+    assert(event.b_highest_hump_valid);
+    assert(fabsf(event.highest_hump_cm - 5.5f) < 0.001f);
+    roll_feed(-9.0f, IMU_ROLL_CONFIRM_SAMPLES);
+    event = roll_feed(1.0f, TEST_SHORT_SETTLE);
+    assert(event.b_height_valid);
+    assert(fabsf(event.hump_peak_cm - 1.91013f) < 0.001f);
+    assert(fabsf(event.highest_hump_cm - 5.5f) < 0.001f);
+    event = roll_feed(1.0f, 1U);
+    assert((!event.b_height_valid) && (event.b_highest_hump_valid));
+    roll_feed(20.0f, IMU_ROLL_CONFIRM_SAMPLES);
+    g_short_data.motion.b_fault = true;
+    event = roll_feed(1.0f, 1U);
+    assert((!event.b_hump_completed) && (!event.b_height_valid));
+    assert(event.b_highest_hump_valid);
+    short_reset();
+    roll_feed(0.0f, TEST_SHORT_BASELINE);
+    roll_feed(100.0f, IMU_ROLL_CONFIRM_SAMPLES);
+    event = roll_feed(0.0f, TEST_SHORT_SETTLE);
+    assert((event.b_hump_completed) && (!event.b_height_valid));
+    assert(!event.b_highest_hump_valid);
+    g_config.wheel_track_mm = 0.0f;
+    assert(!imu_analysis_init(&g_analysis, &g_config));
+    g_config.wheel_track_mm = NAN;
+    assert(!imu_analysis_init(&g_analysis, &g_config));
+    short_reset();
+    g_config.wheel_track_mm = 220.0f;
+    assert(imu_analysis_init(&g_analysis, &g_config));
+    roll_feed(0.0f, TEST_SHORT_BASELINE);
+    roll_feed(-30.0f, IMU_ROLL_CONFIRM_SAMPLES);
+    event = roll_feed(0.0f, TEST_SHORT_SETTLE);
+    assert(event.b_height_valid);
+    assert(fabsf(event.hump_peak_cm - 11.0f) < 0.001f);
+    puts("PASS: roll height geometry, offset, first peak, maximum, fault "
+         "and model bounds");
 }
 
 /*** end of file ***/

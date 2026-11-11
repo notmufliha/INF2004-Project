@@ -19,6 +19,7 @@ typedef struct
     float32_t roll_enter_deg; /* Provisional one-wheel excursion threshold. */
     float32_t roll_level_deg; /* Hysteresis for baseline and return to level. */
     float32_t roll_trend_deg; /* Meaningful absolute-roll change, degrees. */
+    float32_t wheel_track_mm; /* Tyre centre spacing; one-wheel model. */
 } imu_analysis_config_t;
 
 typedef enum
@@ -74,6 +75,10 @@ typedef struct
     int8_t                 roll_direction;
     uint32_t               roll_trend_count;
     uint32_t               roll_stable_count;
+    float32_t              roll_baseline_deg;
+    float32_t              roll_peak_deg;
+    float32_t              highest_hump_cm;
+    bool                   b_highest_hump_valid;
 } imu_analysis_t;
 
 void imu_analysis_default_config (imu_analysis_config_t * p_config);
@@ -86,7 +91,9 @@ bool imu_analysis_init (imu_analysis_t *              p_analysis,
  * NULL, invalid/nonfinite data or bad timing reset the terrain sequence.
  * Hump and climb/peak/descent events use roll only; pitch remains measured.
  * Forward movement, a level baseline, two same-side excursion readings and
- * confirmation_samples returning level are required. Height is unavailable.
+ * confirmation_samples returning level are required. Completed height uses
+ * wheel_track_mm * sin(peak roll relative to the level baseline). This assumes
+ * one wheel stays on level ground and both tyres maintain contact.
  * Brief no-pulse intervals hold the state without advancing confirmation;
  * 200ms without progress and invalid movement context cancel the episode.
  */

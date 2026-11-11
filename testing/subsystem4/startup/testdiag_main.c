@@ -285,13 +285,13 @@ test_roll_report (void)
         g_raw.accel_z = 9.81f * cosf(profile[index] * 0.01745329252f);
         g_filtered = g_raw;
         assert(imu_analysis_process(&g_analysis, &g_filtered, &g_event));
-        assert(!g_event.b_height_valid);
+        assert(g_event.b_height_valid == g_event.b_hump_completed);
         s4_diag_record(&g_raw, &g_filtered, &g_analysis, &g_event);
     }
     assert(E_OK == s4_diag_end(&report));
     assert(1U == report.roll_candidates);
     assert(1U == report.completions);
-    assert(0U == report.accepted_heights);
+    assert(1U == report.accepted_heights);
     assert(0U != (report.roll_stages & (1U << IMU_TERRAIN_CLIMBING)));
     assert(0U != (report.roll_stages & (1U << IMU_TERRAIN_DESCENDING)));
     s4_diag_print(&report);

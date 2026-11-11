@@ -1,25 +1,33 @@
-# Height estimation status
+# One-wheel hump height estimate
 
-The current robot detects one-wheel humps from roll. Height and highest height
-are unavailable because a validated one-wheel height model is not implemented.
-Pitch is still measured, filtered and printed; it does not drive hump detection
-or climbing/peak/descending classification.
+Completed roll crossings now estimate peak wheel height difference:
+`height_mm = wheel_track_mm * sin(peak_relative_roll)`.
+The measured tyre centre spacing is **110 mm**, configured by
+`S4_WHEEL_TRACK_MM` in `s4_runtime.h`. The analysis default is also 110 mm.
 
-The old pitch hump state machine and its fallback switch have been removed.
-The robot analysis task no longer initializes or calls the pitch/wheel-path
-height estimator. There is no setting that restores pitch hump detection.
+The mean roll of the existing progressing level-baseline readings supplies the
+reference. The largest absolute excursion is retained from the first entry
+confirmation through the active crossing. Either wheel is supported. Existing
+roll thresholds, forward checks and completion rules are unchanged.
 
-## Retired pitch-height module
+Height becomes valid only on a completed event. Interrupted crossings do not
+publish a height. Excursions above 90 degrees leave height unavailable.
+The highest completed estimate persists through detector resets until analysis
+initialization/reboot. Existing centimetre event fields carry estimates; console
+and B1 paths convert them to millimetres. Public reading/event layouts stay the
+same. Diagnostics count accepted estimates.
 
-The unused `imu_height.c/.h`, its isolated test and the geometry-only
-`imu_odom_init()` helper have been removed. Git history retains the old math.
-The old tracked `imu_mock_test` executable has also been removed; mock source
-and tests remain available through the host test script.
+## Assumptions and validation
 
-Encoder acquisition and timing checks remain in `imu_odom` for roll detection
-and diagnostics. Public height availability fields remain for integration,
-but current robot hump events report height unavailable.
+One wheel must stay on level ground while the other crosses the hump, with both
+tyres maintaining contact. This estimates wheel height difference, not directly
+the surface height. Tyre deformation, chassis flex, acceleration, filtering and
+sparse samples affect accuracy. It does not model both wheels rising together.
 
-A future one-wheel estimator needs a suitable geometric model, measured wheel
-track and validation against known heights before reporting valid estimates.
-See [MOTION_TEST.md](MOTION_TEST.md) for the active roll detector and trials.
+Test both wheel sides against a ruler-measured hump. Start level and return to
+level before the movement test stops. Compare the printed `Hump estimate` over
+repeated trials. Host tests verify math and event handling; physical accuracy
+remains unvalidated. For reference, 30 degrees with 110 mm spacing gives 55 mm.
+
+The retired pitch-height module stays removed. This model lives within
+`imu_analysis.c`; it adds no new module. Mock heights use synthetic readings.

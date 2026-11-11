@@ -22,6 +22,11 @@
 #define S4_IMU_PERIOD_MS 10U
 #define S4_IMU_QUEUE_DEPTH 8
 
+/* Measured centre-to-centre tyre spacing, not the gap between tyres. */
+#ifndef S4_WHEEL_TRACK_MM
+#define S4_WHEEL_TRACK_MM 110.0f
+#endif
+
 /* Provisional roll thresholds; validate against flat-ground noise. */
 #ifndef S4_ROLL_HUMP_ENTER_DEG
 #define S4_ROLL_HUMP_ENTER_DEG 4.0f

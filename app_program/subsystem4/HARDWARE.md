@@ -117,7 +117,8 @@ not an IMU fault. See [MOTION_TEST.md](MOTION_TEST.md) for the policy and opt-ou
   and a maximum 100ms interval. Without calibration, `b_turn_rate_valid=false` and
   turning classification is disabled. It remains an estimate, not a gyro reading.
 - Hump and impact thresholds still require real-car tests. Hump height and highest
-  height remain unavailable; a validated one-wheel model is still required.
+  height use a roll-based model with measured 110 mm tyre spacing. Validate
+  accuracy against a ruler-measured hump.
   See [HEIGHT.md](HEIGHT.md).
 
 Desktop regression command (no board required):

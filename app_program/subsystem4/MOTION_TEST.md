@@ -38,11 +38,9 @@ descending. A short direct drop to level reports descent on the second level
 reading, then completes on the third. Pitch is still measured and printed, but
 does not override roll motion labels. There is no pitch-based hump or motion-classification fallback.
 
-Roll completion is detection only. Height and highest height are unavailable
-in this mode because the retained pitch/wheel-path estimator does not model a
-one-wheel crossing. The old pitch detector and mode switch have been removed.
-Portable mocks now exercise the same roll detector using explicitly simulated
-travel and sideways tilt. The unused pitch-height module has been removed.
+Completed roll crossings estimate height using peak relative roll and 110 mm
+tyre spacing. See [HEIGHT.md](HEIGHT.md) for assumptions and validation. The
+retired pitch-height module remains removed.
 
 After flashing, expect `Hump mode=ROLL` at startup. Repeat with either wheel
 crossing the hump and on flat ground with ordinary starts/stops. Each full roll
@@ -98,12 +96,13 @@ Expected messages include:
 [B4-TEST] Armed: forward 50 cm at 500 counts/s; ...
 [B4-TEST] Waiting for B5 clearance, B2 standstill and fresh B4 readings ...
 [B4-TEST] START id=...
-[B4-TEST] MOTION PASS error=0 humps=1 valid_heights=0; STOP requested. ...
+[B4-TEST] MOTION PASS error=0 humps=1 valid_heights=1; STOP requested. ...
 ```
 
 `MOTION PASS` means B2 reported successful command completion and physical
 standstill. It does not establish hump detection. `humps=0` is expected on flat
-ground. Current roll events report height unavailable and `valid_heights=0`.
+ground. Completed roll events report geometric estimates; `valid_heights` counts
+accepted estimates, not confirmed measurement accuracy.
 Full pitch/roll, heading and terrain reports continue separately. Place the
 hump early enough to return to level before the drive ends. This test does not
 calibrate magnetic heading or provide gyroscope data.
