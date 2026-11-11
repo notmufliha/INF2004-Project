@@ -29,6 +29,7 @@ static void stop_motion(VEHICLE_CONTROLLER *c)
         if (motion_send_command(&stop) == E_OK) c->stopped = true;
     }
     c->drive_sent = false;
+    c->filtered_line_valid = false;
 }
 
 static void safe_stop(VEHICLE_CONTROLLER *c)
@@ -83,8 +84,21 @@ static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
      * Positive difference: the left sensor is coming off the line on its
      * side, so the line lies to the right: steer right (positive). */
     INT error = (INT)in->left - (INT)in->centre;
-    INT magnitude = error < 0 ? -error : error;
+    INT magnitude;
     INT steering = 0;
+
+    /* IIR on the sensor difference: ignore isolated ADC jumps while
+     * retaining strong corrections on sustained edges. Re-prime after STOP
+     * and recovery instead of letting old steering leak into a new run. */
+    if (!c->filtered_line_valid || !c->drive_sent) {
+        c->filtered_line_error = error;
+        c->filtered_line_valid = true;
+    } else {
+        c->filtered_line_error +=
+            (error - c->filtered_line_error) / VC_LINE_ERROR_FILTER_DIV;
+    }
+    magnitude = c->filtered_line_error < 0 ?
+        -c->filtered_line_error : c->filtered_line_error;
 
     (void)line_position(c, in); /* keep the last-seen side for recovery */
     if (magnitude > B3_LINE_STEER_DEADBAND) {
@@ -96,7 +110,7 @@ static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         }
         steering = magnitude * B3_LINE_STEER_MAX /
             (B3_LINE_STEER_ERROR_FULL_SCALE - B3_LINE_STEER_DEADBAND);
-        if (error < 0) steering = -steering;
+        if (c->filtered_line_error < 0) steering = -steering;
     }
     c->last_error = error;
     return steering;
@@ -120,7 +134,7 @@ static INT line_search_direction(uint32_t elapsed_ms, INT first_direction)
 
 /* Convert the requested curve into wheel speeds the motors can hold.
  * B2 drives left = v(1+s), right = v(1-s) with s in permille. */
-static void apply_wheel_minimum(motion_command_t *command)
+static void apply_wheel_minimum(motion_command_t *command, bool allow_pivot)
 {
     INT steering = command->steering_permille;
     INT magnitude = steering < 0 ? -steering : steering;
@@ -146,15 +160,18 @@ static void apply_wheel_minimum(motion_command_t *command)
     }
     outer /= 1000;
     if (outer < VC_MIN_WHEEL_CPS) outer = VC_MIN_WHEEL_CPS;
-    if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 500) {
-        inner = VC_MIN_WHEEL_CPS;      /* raise to the sustainable minimum */
+    if (allow_pivot && inner < (int64_t)VC_MIN_WHEEL_CPS * 500) {
+        inner = 0; /* deliberate lost-line recovery may pivot */
     } else {
-        inner = 0;                     /* pivot around the inner wheel */
+        /* During normal line following, do not abruptly cut the inner
+         * wheel to zero: the sharp moving->pivot transition is jerky. */
+        inner = VC_MIN_WHEEL_CPS;
     }
     if (outer <= inner) {
-        /* Both wheels would sit at the minimum and the turn would be lost
-         * (or the inner wheel left in the stall zone): pivot instead. */
-        inner = 0;
+        /* Normal tracking should never pivot merely because speed is low.
+         * Only the explicit recovery manoeuvre may pivot in place. */
+        if (allow_pivot) inner = 0;
+        else outer = inner;
     }
     command->target_speed_cps = (INT)((outer + inner) / 2);
     magnitude = (INT)((outer - inner) * 1000 / (outer + inner));
@@ -372,8 +389,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         command.target_speed_cps = command.target_speed_cps * 1000 /
             (1000 + search_steer);
         c->last_steer = command.steering_permille;
+        c->filtered_line_valid = false;
         c->last_error = direction * B3_LINE_POS_CENTRE;
-        apply_wheel_minimum(&command);
+        apply_wheel_minimum(&command, true);
         command.safety_generation = in->safety_generation;
         if (motion_send_command(&command) == E_OK) {
             c->stopped = false;
@@ -489,7 +507,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
     }
     if (in->hump) command.target_speed_cps /= 2;
-    apply_wheel_minimum(&command);
+    apply_wheel_minimum(&command, false);
+    /* Slew from the steering actually requested of B2, not the intermediate
+     * pre-wheel-floor value. */
+    c->last_steer = command.steering_permille;
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {
         c->stopped = false;

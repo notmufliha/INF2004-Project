@@ -241,6 +241,17 @@ bool b3_code39_feed(B3_CODE39_DECODER *decoder, uint8_t level,
     if (decoder == NULL || symbol == NULL || level > 1U) {
         return false;
     }
+    /* The first edge of a new barcode must not be appended to an old
+     * partial character left over from a previous interrupted crossing. */
+    if (decoder->have_level != 0U &&
+        timestamp_us - (decoder->have_pending ? decoder->pending_us :
+                        decoder->run_start_us) > B3_CODE39_SCAN_TIMEOUT_US) {
+        reset_candidate(decoder);
+        decoder->have_pending = 0U;
+        /* Keep the prior sensor level so the new edge can still mark
+         * the first bar, rather than losing the barcode's first edge. */
+        decoder->run_start_us = timestamp_us;
+    }
     if (decoder->have_level == 0U) {
         decoder->current_level = level;
         decoder->run_start_us = timestamp_us;
