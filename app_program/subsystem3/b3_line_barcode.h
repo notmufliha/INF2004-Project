@@ -12,6 +12,14 @@
 
 /* WARNING: Validate the 20 ms period against sensor response and car speed. */
 #define B3_LINE_UPDATE_MS (20U)
+/* Track tuning: raw 12-bit ADC remains 0..4095 for telemetry.
+ * This setting interprets the dark line as LOW ADC, with transition fully
+ * white at 1999 and fully black at 1500. Change polarity if measured
+ * black readings are HIGHER than white readings. */
+#define B3_LINE_RAW_LOW_IS_BLACK (1U)
+#define B3_LINE_RAW_BLACK_MAX (1500U)
+#define B3_LINE_RAW_WHITE_MIN (1999U)
+
 #define B3_NAV_QUEUE_LENGTH (8U)
 
 #define B3_LINE_F_DETECTED (0x01U)
