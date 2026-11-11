@@ -1,3 +1,7 @@
+> Current autonomous firmware: see [ROBOT_FIX_NOTES.md](ROBOT_FIX_NOTES.md) for building, flashing and calibration.
+> Step-by-step checks for subsystems 1, 2, 3 and 5: [ROBOT_TEST_STEPS.md](ROBOT_TEST_STEPS.md).
+> Supplied briefing requirements and evidence status: [BRIEFING_COMPLIANCE.md](BRIEFING_COMPLIANCE.md).
+
 # micro T-Kernel 3.0 project for Raspberry Pi Pico W
 
 A starting point for your project: micro T-Kernel 3.0 running on **both cores**

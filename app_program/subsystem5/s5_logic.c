@@ -16,7 +16,7 @@ static float s5_sin_deg(float degrees)
     return x * (1.0f - x2 / 6.0f + x2*x2 / 120.0f - x2*x2*x2 / 5040.0f);
 }
 
-static float s5_cos_deg(float degrees) { return s5_sin_deg(90.0f - degrees); }
+static float s5_cos_deg(float degrees) { return s5_sin_deg(90.0f - s5_abs(degrees)); }
 
 void s5_make_fine_angles(uint16_t center_deg, uint16_t out[S5_SCAN_COUNT])
 {
@@ -26,16 +26,16 @@ void s5_make_fine_angles(uint16_t center_deg, uint16_t out[S5_SCAN_COUNT])
     {
         return;
     }
-    if (center < 30)
+    if (center < (int)ROBOT_SCAN_SAFE_MIN_DEG + 10)
     {
-        center = 30;
+        center = (int)ROBOT_SCAN_SAFE_MIN_DEG + 10;
     }
-    if (center > 150)
+    if (center > (int)ROBOT_SCAN_SAFE_MAX_DEG - 10)
     {
-        center = 150;
+        center = (int)ROBOT_SCAN_SAFE_MAX_DEG - 10;
     }
     for (i = 0; i < S5_SCAN_COUNT; ++i)
-        out[i] = (uint16_t)(center + (i - 2) * 10);
+        out[i] = (uint16_t)(center + (i - 2) * 5);
 }
 
 static S5Command change(S5Controller *c, S5State next, S5Command action);
@@ -173,18 +173,41 @@ S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side)
     }
     p.left_boundary_deg = left_angle;
     p.right_boundary_deg = right_angle;
-    p.center_x_cm = p.nearest_cm *
-        s5_sin_deg((float)p.nearest_angle_deg - 90.0f);
+    p.center_x_cm = (left_x + right_x) * 0.5f;
     p.center_y_cm = p.nearest_cm *
         s5_sin_deg(90.0f - s5_abs((float)p.nearest_angle_deg - 90.0f));
     p.required_lateral_clearance_cm = p.estimated_width_cm * 0.5f +
         S5_CHASSIS_HALF_WIDTH_CM + S5_EXTRA_MARGIN_CM;
+    p.size = p.estimated_width_cm <= ROBOT_OBSTACLE_SMALL_CM ? S5_SIZE_SMALL :
+             p.estimated_width_cm <= ROBOT_OBSTACLE_MAX_BYPASS_CM ? S5_SIZE_LARGE :
+             S5_SIZE_OVERSIZED;
     p.valid = true;
     return p;
 }
 
-/* Heuristic clearance screen for simulation. Actual traversability must
-   be validated by motion sensing and continuous obstacle measurements. */
+S5Profile s5_profile_from_scans(const S5Scan *coarse, const S5Scan *fine, S5Side side)
+{
+    S5Profile p = s5_estimate_profile(fine, side);
+    int i, first = -1, last = -1;
+    if (p.valid || !fine) return p;
+    for (i = 0; i < S5_SCAN_COUNT; ++i) {
+        if (!valid_range(&fine->points[i]) || fine->points[i].angle_deg > 180u ||
+            (i && fine->points[i].angle_deg <= fine->points[i - 1].angle_deg))
+            return p;
+        if (fine->points[i].distance_cm < S5_CLEAR_CM) {
+            if (first < 0) first = i;
+            last = i;
+        }
+    }
+    if (first < 0 || last - first < 1 || (first != 0 && last != S5_SCAN_COUNT - 1))
+        return p;
+    for (i = first; i <= last; ++i)
+        if (fine->points[i].distance_cm >= S5_CLEAR_CM) return p;
+    return s5_estimate_profile(coarse, side);
+}
+
+/* Clearance screening is a recommendation. Execution additionally checks
+   live sensing, encoder completion and the validated course geometry. */
 static float side_clearance(const S5Scan *scan, S5Side side)
 {
     int a = side == S5_SIDE_LEFT ? 0 : 3;
@@ -196,9 +219,46 @@ static float side_clearance(const S5Scan *scan, S5Side side)
         return 0.0f;
     return s5_min(scan->points[a].distance_cm, scan->points[a+1].distance_cm);
 }
-static bool side_has_room(const S5Scan *scan, S5Side side, float required)
+/* Project each side ray onto the lateral axis. Radial distance alone
+ * overstates room, especially for rays close to the forward axis. */
+static float lateral_room(const S5Scan *scan, S5Side side)
 {
-    return side_clearance(scan, side) >= required;
+    int a = side == S5_SIDE_LEFT ? 0 : 3;
+    float room = S5_MAX_RANGE_CM;
+    int i;
+    if (side_clearance(scan, side) <= 0.0f) return 0.0f;
+    for (i = a; i < a + 2; ++i) {
+        float angle = (float)scan->points[i].angle_deg - 90.0f;
+        if ((side == S5_SIDE_LEFT && (angle >= 0.0f || angle < -90.0f)) ||
+            (side == S5_SIDE_RIGHT && (angle <= 0.0f || angle > 90.0f)))
+            return 0.0f;
+        room = s5_min(room, scan->points[i].distance_cm * s5_abs(s5_sin_deg(angle)));
+    }
+    return room;
+}
+S5Side s5_plan_bypass(S5Profile *p, const S5Scan *coarse)
+{
+    float left, right;
+    bool l, r;
+    if (!p) return S5_SIDE_NONE;
+    p->bypass_side = S5_SIDE_NONE;
+    p->left_clearance_cm = side_clearance(coarse, S5_SIDE_LEFT);
+    p->right_clearance_cm = side_clearance(coarse, S5_SIDE_RIGHT);
+    if (!p->valid || !(p->estimated_width_cm > 0.0f) ||
+        p->estimated_width_cm > ROBOT_OBSTACLE_MAX_BYPASS_CM ||
+        !(p->center_x_cm >= -S5_MAX_RANGE_CM && p->center_x_cm <= S5_MAX_RANGE_CM))
+        return S5_SIDE_NONE;
+    p->required_lateral_clearance_cm = p->estimated_width_cm * 0.5f +
+                                      S5_CHASSIS_HALF_WIDTH_CM + S5_EXTRA_MARGIN_CM;
+    left = lateral_room(coarse, S5_SIDE_LEFT);
+    right = lateral_room(coarse, S5_SIDE_RIGHT);
+    /* Account for an obstacle offset from the robot's forward axis. */
+    l = left > 0.0f && left >= p->required_lateral_clearance_cm - p->center_x_cm;
+    r = right > 0.0f && right >= p->required_lateral_clearance_cm + p->center_x_cm;
+    if (l && (!r || left + p->center_x_cm >= right - p->center_x_cm))
+        p->bypass_side = S5_SIDE_LEFT;
+    else if (r) p->bypass_side = S5_SIDE_RIGHT;
+    return p->bypass_side;
 }
 S5Command s5_controller_step(S5Controller *c, const S5Input *in)
 {
@@ -212,14 +272,14 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
     }
     switch (c->state) {
     case S5_FOLLOW:
-        if (!in->front_valid || in->front_cm <= 0.0f ||
+        if (!in->front_valid || !(in->front_cm > 0.0f) ||
             in->front_cm > S5_MAX_RANGE_CM) {
             if (++c->invalid_front_count >= S5_FRONT_INVALID_LIMIT)
                 return fail(c, S5_ERR_FRONT_SENSOR);
             return S5_CMD_NONE;
         }
         c->invalid_front_count = 0;
-        if (in->front_cm < S5_STOP_CM)
+        if (in->front_cm <= S5_STOP_CM)
             return change(c, S5_WAIT_STOP, S5_CMD_STOP);
         return S5_CMD_NONE;
     case S5_WAIT_STOP:
@@ -234,8 +294,6 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
         if (in->coarse_ready) {
             c->last_coarse = in->coarse;
             c->side = s5_choose_side(&in->coarse);
-            if (c->side == S5_SIDE_NONE)
-                return reverse_or_fail(c, S5_ERR_NO_CLEAR_ROUTE);
             /* Fine scan focuses on the nearest detected coarse point. */
             if (in->coarse.nearest_index >= 0 &&
                 in->coarse.nearest_index < S5_SCAN_COUNT)
@@ -248,22 +306,18 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
         return S5_CMD_NONE;
     case S5_FINE:
         if (in->fine_ready) {
-            c->profile = s5_estimate_profile(&in->fine, c->side);
+            c->profile = s5_profile_from_scans(&c->last_coarse, &in->fine, c->side);
             if (!c->profile.valid)
             {
                 return fail(c, S5_ERR_FINE_SCAN);
             }
-            /* Both coarse and fine scans must be fresh and valid. */
-            c->profile.left_clearance_cm = side_clearance(&c->last_coarse, S5_SIDE_LEFT);
-            c->profile.right_clearance_cm = side_clearance(&c->last_coarse, S5_SIDE_RIGHT);
-            if (!side_has_room(&c->last_coarse, c->side,
-                               c->profile.required_lateral_clearance_cm)) {
-                S5Side other = c->side == S5_SIDE_LEFT ? S5_SIDE_RIGHT : S5_SIDE_LEFT;
-                if (side_has_room(&c->last_coarse, other,
-                                  c->profile.required_lateral_clearance_cm)) c->side = other;
-                else return reverse_or_fail(c, S5_ERR_INSUFFICIENT_CLEARANCE);
+            c->side = s5_plan_bypass(&c->profile, &c->last_coarse);
+            if (c->side == S5_SIDE_NONE) {
+                if (c->profile.size == S5_SIZE_OVERSIZED)
+                    return fail(c, S5_ERR_INSUFFICIENT_CLEARANCE);
+                return reverse_or_fail(c, s5_choose_side(&c->last_coarse) == S5_SIDE_NONE ?
+                                       S5_ERR_NO_CLEAR_ROUTE : S5_ERR_INSUFFICIENT_CLEARANCE);
             }
-            c->profile.bypass_side = c->side;
             return change(c, S5_AVOID,
                           c->side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT);
         }

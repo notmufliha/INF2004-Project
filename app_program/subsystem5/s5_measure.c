@@ -42,7 +42,7 @@ static bool agreeing(float first, float second)
 
 /* Three pairwise-agreeing readings are needed within five separated pings.
  * Do not use a median of invalid or inconsistent measurements as clearance. */
-static bool measure_one_batch(float *out_cm)
+static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close)
 {
     float values[ROBOT_ECHO_SAMPLES];
     uint8_t count = 0u;
@@ -52,6 +52,7 @@ static bool measure_one_batch(float *out_cm)
     bool found = false;
     float best_spread = 401.0f;
     float best_cm = 0.0f;
+    bool close_echo = false;
 
     if (out_cm == NULL)
     {
@@ -61,9 +62,27 @@ static bool measure_one_batch(float *out_cm)
     *out_cm = 0.0f;
     for (i = 0u; i < ROBOT_ECHO_SAMPLES; ++i)
     {
-        S5EchoReading reading = s5_ultrasonic_read_detailed();
+        S5EchoReading reading = forward ? s5_ultrasonic_read_front() :
+                                         s5_ultrasonic_read_detailed();
+        if (reading.status == S5_ECHO_OK && reading.cm > 0.0f &&
+            reading.cm <= ROBOT_STOP_CM) close_echo = true;
+#if ROBOT_VERBOSE_SENSOR_LOG
+        tm_printf((UB*)"[S5-ECHO] ping=%d/%d status=%s pulse_us=%d cm_x100=%d suppressed=%d\n",
+                  (int)(i + 1u), (int)ROBOT_ECHO_SAMPLES,
+                  s5_echo_status_name(reading.status), (int)reading.pulse_us,
+                  (int)(reading.cm * 100.0f),
+                  (int)s5_echo_suppressed_cm(reading.cm));
+#endif
 
-        if ((reading.status == S5_ECHO_OK) &&
+        /* A real close reading overrides the no-target assumption, even
+         * if other pings in this batch miss the obstacle. */
+        if (stop_on_close && reading.status == S5_ECHO_OK &&
+            reading.cm > 0.0f && reading.cm <= ROBOT_STOP_CM) {
+            *out_cm = reading.cm;
+            return true;
+        }
+        if ((reading.status == S5_ECHO_OK ||
+             (forward && reading.status == S5_ECHO_OPEN_SPACE)) &&
             !s5_echo_suppressed_cm(reading.cm))
         {
             values[count] = reading.cm;
@@ -79,6 +98,11 @@ static bool measure_one_batch(float *out_cm)
 
     if (count < ROBOT_ECHO_REQUIRED_AGREEING)
     {
+#if ROBOT_VERBOSE_SENSOR_LOG
+        tm_printf((UB*)"[S5-BATCH] invalid: usable=%d/%d; need=%d\n",
+                  (int)count, (int)ROBOT_ECHO_SAMPLES,
+                  (int)ROBOT_ECHO_REQUIRED_AGREEING);
+#endif
         return false;
     }
 
@@ -125,8 +149,11 @@ static bool measure_one_batch(float *out_cm)
         }
     }
 
-    if (!found)
+    if (!found || (close_echo && best_cm > ROBOT_STOP_CM))
     {
+#if ROBOT_VERBOSE_SENSOR_LOG
+        tm_printf((UB*)"[S5-BATCH] invalid: usable echoes disagree\n");
+#endif
         return false;
     }
 
@@ -134,7 +161,7 @@ static bool measure_one_batch(float *out_cm)
     return true;
 }
 
-bool s5_measure_stable_cm(float *out_cm)
+static bool measure_stable(float *out_cm, bool forward, bool stop_on_close)
 {
     uint8_t attempt;
 
@@ -146,7 +173,7 @@ bool s5_measure_stable_cm(float *out_cm)
     *out_cm = 0.0f;
     for (attempt = 0u; attempt < ROBOT_ECHO_BATCH_ATTEMPTS; ++attempt)
     {
-        if (measure_one_batch(out_cm))
+        if (measure_one_batch(out_cm, forward, stop_on_close))
         {
             return true;
         }
@@ -158,4 +185,95 @@ bool s5_measure_stable_cm(float *out_cm)
     }
 
     return false;
+}
+
+bool s5_measure_stable_cm(float *out_cm) { return measure_stable(out_cm, false, false); }
+bool s5_measure_front_cm(float *out_cm) { return measure_stable(out_cm, true, true); }
+bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false); }
+
+/* Chatter protection: an invalid or close moving echo still stops the
+ * motors immediately. A cluster of such events imposes a timed hold,
+ * but unlike V2 it can recover without a reboot after the sensor proves
+ * it is healthy again with consecutive multi-echo clear batches. */
+void s5_guard_stop_history_init(S5GuardStopHistory *history)
+{
+    if (history != NULL)
+    {
+        history->window_start_ms = 0u;
+        history->hold_start_ms = 0u;
+        history->last_clear_ms = 0u;
+        history->stop_count = 0u;
+        history->clear_batches = 0u;
+        history->locked = false;
+    }
+}
+
+bool s5_guard_stop_history_record(S5GuardStopHistory *history,
+                                  uint32_t now_ms)
+{
+    if (history == NULL)
+    {
+        return true; /* Missing safety state must never grant motion. */
+    }
+    history->clear_batches = 0u;
+    if (history->locked)
+    {
+        return true;
+    }
+    if ((history->stop_count == 0u) ||
+        ((uint32_t)(now_ms - history->window_start_ms) >
+         S5_GUARD_STOP_WINDOW_MS))
+    {
+        history->window_start_ms = now_ms;
+        history->stop_count = 1u;
+    }
+    else if (history->stop_count < S5_GUARD_STOP_LIMIT)
+    {
+        ++history->stop_count;
+    }
+    if (history->stop_count >= S5_GUARD_STOP_LIMIT)
+    {
+        history->locked = true;
+        history->hold_start_ms = now_ms;
+        history->clear_batches = 0u;
+    }
+    return history->locked;
+}
+
+void s5_guard_stop_history_unclear(S5GuardStopHistory *history)
+{
+    if (history != NULL)
+    {
+        history->clear_batches = 0u;
+    }
+}
+
+bool s5_guard_stop_history_clear(S5GuardStopHistory *history,
+                                 uint32_t now_ms)
+{
+    if (history == NULL || !history->locked)
+    {
+        return false;
+    }
+    if (history->clear_batches != 0u &&
+        (uint32_t)(now_ms - history->last_clear_ms) >
+            S5_GUARD_REARM_MAX_GAP_MS)
+    {
+        history->clear_batches = 0u;
+    }
+    history->last_clear_ms = now_ms;
+    if (history->clear_batches < S5_GUARD_REARM_CLEAR_BATCHES)
+    {
+        ++history->clear_batches;
+    }
+    if ((uint32_t)(now_ms - history->hold_start_ms) <
+            S5_GUARD_COOLDOWN_MS ||
+        history->clear_batches < S5_GUARD_REARM_CLEAR_BATCHES)
+    {
+        return false;
+    }
+    /* A full hold and fresh clear batches: re-arm once. The next failure
+     * still forces an immediate STOP and starts a new observation window. */
+    s5_guard_stop_history_init(history);
+    return true;
 }

@@ -23,3 +23,45 @@ flashed to the Pico W. This firmware uses a `.uf2` image, not `sysmain.exe`.
 
 No hardware test results have been recorded in this change. Add one row for
 each actual run with date, tested commit, tester, result, and saved evidence.
+
+## Calibration host checks, 2026-11-10
+
+The integrated robot now runs the B3 line/barcode implementation. The sample
+consumer checks above describe the legacy demonstration profile.
+
+| ID | Check | Expected result |
+|---|---|---|
+| S3-C01 | Different sensor sensitivities | Equal normalized surfaces |
+| S3-C02 | Grey floor after a white/black sweep | Below line threshold |
+| S3-C03 | Parked on black | Contrast retained; white recognized immediately |
+| S3-C04 | 12-bit ADC range | Output stays within 0..1000 |
+| S3-C05 | Low/high contrast first passage | Black recognized immediately |
+| S3-C06 | 30,000 identical samples after a sweep | Endpoints and normalized values remain fixed |
+| S3-C07 | White/black ranges below provisional raw threshold 300 | Both sensors normalize white/black to 0/1000 after sweep |
+
+| Date | Test IDs | Source | Tester | Result | Evidence |
+|---|---|---|---|---|---|
+| 2026-11-10 | S3-C01 through S3-C06 | Working tree based on `62467ca5a8e84b14ebbcc3d1cef91a188af7dbb2`, including calibration changes | Codex host runner | PASS | [Transcript](../integration/logs/2026-11-10_143429_host.txt) |
+
+No physical line-tracking result is claimed. See `ROBOT_TEST_STEPS.md` at the
+project root for calibration, direction checks and controlled floor testing.
+
+| Date | Test IDs | Source | Tester | Result | Evidence |
+|---|---|---|---|---|---|
+| 2026-11-10 | S3-C01 through S3-C07; VC/B5 snapshot timing | Working tree based on `62467ca5a8e84b14ebbcc3d1cef91a188af7dbb2`, including 64-count learning and clock-after-snapshot fixes | Codex host runner | PASS | [Transcript](../integration/logs/2026-11-10_150149_host.txt) |
+
+## PD branch calibration, 2026-11-10
+
+The imported `line-follow-pd` calibration uses separate `S3-PD-C*` IDs to
+preserve the historical cases above. Tested source: `robot-fixes` base
+`549442f` plus the PD integration and rolling-window calibration fixes.
+
+| IDs | Coverage | Result | Evidence |
+|---|---|---|---|
+| S3-PD-C01..C05 | Sensitivity normalization, floor/black distinction, retained range, bounds, first-sample fallback | PASS (host) | [Transcript](../integration/logs/2026-11-10_155401_host.txt) |
+| S3-PD-C06..C07 | No drift on white; isolated spike rejected | PASS (host) | Same transcript |
+| S3-PD-C08 | Low-output line learned after three black samples at each window phase | PASS (host) | Same transcript |
+| S3-PD-C09..C10 | Immediate provisional threshold; stationary noise does not claim calibration | PASS (host) | Same transcript |
+
+See [integration notes](../integration/PD_CALIBRATION_2026-11-10.md) for the
+controller startup regression and outstanding physical calibration.

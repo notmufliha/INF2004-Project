@@ -19,9 +19,23 @@
 #define PID_SETTLE_MS 100
 #define PID_SETTLE_TIMEOUT_MS 1500
 #define PID_WINDOW_SIZE 10
-#define PID_BASE_PWM 20.0f
+/* Feed-forward: PWM = PID_MIN_MOVE_PWM + PID_FF_PWM_PER_CPS * target, plus
+ * the PI correction.  The old fixed 20% base meant every wheel started at the
+ * same PWM whatever its target, so steering (one wheel faster, one slower)
+ * only took effect as the slow integral caught up, and slow wheels drifted
+ * into the motor deadband and stalled.  These values give ~19% at the
+ * default 1000 counts/s, close to the old base, and reach PID_MAX_PWM at
+ * 5000 counts/s.  CALIBRATE: PID_MIN_MOVE_PWM = lowest PWM that keeps a
+ * loaded wheel turning; slope from the PWM needed at a known speed. */
+#define PID_MIN_MOVE_PWM 15.0f
+#define PID_FF_PWM_PER_CPS 0.004f
 #define PID_MAX_PWM 35
-#define PID_KP 0.002f
+#define PID_KP 0.006f
+/* Static friction: a commanded wheel that has not moved for
+ * PID_KICK_AFTER_MS gets PID_KICK_PWM extra until it moves, well before the
+ * 500 ms stall fault. */
+#define PID_KICK_PWM 8.0f
+#define PID_KICK_AFTER_MS 100
 #define PID_KI 0.005f
 #define PID_I_LIMIT 10.0f
 #define PID_PI 3.14159265f
@@ -332,15 +346,21 @@ static void pid_guard(pid_state_t *state)
 }
 
 static INT pid_wheel_pwm(float target_cps, float measured_cps,
-    float *integral, float dt)
+    float *integral, float dt, bool stuck)
 {
     float error;
     float output;
     float candidate;
+    float base;
     if (target_cps <= 0.0f)
     {
         *integral = 0.0f;
         return 0;
+    }
+    base = PID_MIN_MOVE_PWM + PID_FF_PWM_PER_CPS * target_cps;
+    if (stuck)
+    {
+        base += PID_KICK_PWM;
     }
     error = target_cps - measured_cps;
     candidate = *integral + PID_KI * error * dt;
@@ -352,14 +372,14 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
     {
         candidate = -PID_I_LIMIT;
     }
-    output = PID_BASE_PWM + PID_KP * error + candidate;
+    output = base + PID_KP * error + candidate;
     /* Conditional integration prevents winding further into saturation. */
     if (!((output > PID_MAX_PWM && error > 0.0f) ||
           (output < 0.0f && error < 0.0f)))
     {
         *integral = candidate;
     }
-    output = PID_BASE_PWM + PID_KP * error + *integral;
+    output = base + PID_KP * error + *integral;
     if (output > PID_MAX_PWM)
     {
         return PID_MAX_PWM;
@@ -426,9 +446,11 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
             state->right_history[old]) * 1000.0f / elapsed;
     }
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
-        left_cps * state->left_sign, &state->left_integral, dt);
+        left_cps * state->left_sign, &state->left_integral, dt,
+        state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS);
     right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
-        right_cps * state->right_sign, &state->right_integral, dt);
+        right_cps * state->right_sign, &state->right_integral, dt,
+        state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS);
     state->left_history[slot] = state->left_now;
     state->right_history[slot] = state->right_now;
     state->time_history[slot] = state->now_ms;

@@ -46,11 +46,11 @@
 #error S4_IMU_MAG_IDLE_ONLY must be 0 or 1
 #endif
 
-/* Physical integration test, enabled for real robot APP_TEST builds here.
- * Keep the route clear; disable before normal controller operation.
+/* Optional physical integration test; disabled for controller operation.
+ * Enable only for isolated real robot APP_TEST trials with a clear route.
  */
 #ifndef S4_MOTION_TEST_ENABLE
-#define S4_MOTION_TEST_ENABLE 1
+#define S4_MOTION_TEST_ENABLE 0
 #endif
 #define S4_MOTION_TEST_DISTANCE_CM 50U
 #define S4_MOTION_TEST_SPEED_CPS 500
@@ -70,6 +70,7 @@ extern volatile ID gh_imu_test_events;
 #define S4_LED_TOGGLE_REPORTS 6U
 #define FLG_ALARM 0x0001U         /* Set by the private alarm callback. */
 #define S4_IMU_READY_FLAG 0x0004U /* Fresh, accepted analysis is available. */
+#define S4_RESET_PEAK_FLAG 0x0008U
 
 /* Private to subsystem 4. */
 extern volatile ID gh_monitor_alarm;

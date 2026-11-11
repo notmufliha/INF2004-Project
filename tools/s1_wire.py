@@ -29,7 +29,7 @@ MOTION_STATES = ["STATIONARY", "ACCELERATING", "TURNING", "CLIMBING_HUMP",
                  "HUMP_PEAK", "DESCENDING_HUMP", "SUDDEN_IMPACT", "UNKNOWN"]
 NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"]
 AVOID = ["NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"]
-BARCODES = ["-", "A", "B", "C", "D"]
+BARCODES = ["-", "A", "B", "C", "D", "Z"]
 EVENT_TYPES = ["barcode", "hump", "obstacle", "error"]
 MODES = ["AUTO", "LINE", "TEST"]
 
@@ -183,6 +183,7 @@ def decode_telemetry(data):
     d["motion_name"] = _name(MOTION_STATES, d["motion"])
     d["pitch_deg"] = d["pitch_dd"] / 10
     d["obs_d_cm"] = _cm(d["obs_d_cm"])
+    d["obs_open_space"] = d["obs_d_cm"] == 510  # Front-only assumed no-target code
     d["obs_w_cm"] = _cm(d["obs_w_cm"], WIDTH_INVALID)
     d["obs_lc_cm"] = _cm(d["obs_lc_cm"])
     d["obs_rc_cm"] = _cm(d["obs_rc_cm"])
@@ -308,7 +309,8 @@ class Unwrap24:
 def describe(kind, d):
     """One readable line for the console."""
     if kind == "telemetry":
-        obs = "-" if d["obs_d_cm"] is None else f"{d['obs_d_cm']}cm"
+        obs = ("OPEN_SPACE_ASSUMED" if d.get("obs_open_space") else
+               "-" if d["obs_d_cm"] is None else f"{d['obs_d_cm']}cm")
         hump = (f"{d['hump_last_mm']}/{d['hump_peak_mm']}mm" if d["hump_valid"]
                 else "n/a")
         return (f"#{d['seq']} t={d['t_s']:.1f}s {d['state_name']} "

@@ -48,32 +48,32 @@ fixed.
 | Pin | Owner | Used for |
 |---|---|---|
 | GP23, GP24, GP25, GP29 | *reserved* | Pico W radio |
-| GP0 | | (taken whenever the team builds with `CRASH_REPORT=1`) |
-| GP1 | | (taken whenever the team builds with `CRASH_REPORT=1`) |
-| GP2 | | |
-| GP3 | | |
+| GP0 | B2 | Left encoder A; UART0 console disabled |
+| GP1 | B2 | Left encoder B; UART0 console disabled |
+| GP2 | B2 | Right encoder A |
+| GP3 | B2 | Right encoder B |
 | GP4 | B4 | GY-511 I2C0 SDA |
 | GP5 | B4 | GY-511 I2C0 SCL |
 | GP6 | | |
 | GP7 | | |
-| GP8 | | |
-| GP9 | | |
-| GP10 | | |
-| GP11 | | |
-| GP12 | | |
+| GP8 | B2 | Left motor reverse |
+| GP9 | B2 | Left motor forward |
+| GP10 | B2 | Right motor forward |
+| GP11 | B2 | Right motor reverse |
+| GP12 | B5 | Servo PWM slice 6 |
 | GP13 | | |
 | GP14 | | |
 | GP15 | | |
-| GP16 | | |
-| GP17 | | |
+| GP16 | B5 | Ultrasonic TRIG |
+| GP17 | B5 | Ultrasonic ECHO, PWM slice 0 B input |
 | GP18 | | |
 | GP19 | S1 | WiFi/MQTT link-status LED (LED + 330 Ω to GND) |
 | GP20 | | |
 | GP21 | | |
 | GP22 | | |
-| GP26 | | (ADC0 capable) |
-| GP27 | | (ADC1 capable) |
-| GP28 | | (ADC2 capable) |
+| GP26 | B3 | ADC0 line channel (mounted right) |
+| GP27 | B3 | ADC1 line channel (mounted left) |
+| GP28 | B3 | Digital barcode input |
 
 ## 3. Peripherals
 
@@ -195,3 +195,10 @@ limit there. The numbers below are the example's usage.
 | Alarm handler | 12 | | | | 0 real / 1 demo | |
 
 (The kernel's USB and WiFi service tasks also use a few of these.)
+
+## Integrated motor handoff
+
+VC owns normal DRIVE and barcode movement. B5 publishes BUSY before bypass
+commands and restores FOLLOW only after line/heading recovery. Mission disable
+is checked again inside B2 safety authorization and PWM application, so a delayed
+B5 clearance update cannot override STOP. B3 remains the only ADC owner.

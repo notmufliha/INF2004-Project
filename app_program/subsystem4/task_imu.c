@@ -52,6 +52,7 @@ static INT  console_integer (float32_t value);
 static H    telemetry_integer (float32_t value);
 static void report_hump (const imu_event_t * p_event, uint32_t sequence);
 static bool initialise_analysis (imu_analysis_t * p_analysis);
+static void reset_peak_request (imu_analysis_t * p_analysis);
 
 #if !S4_IMU_USE_MOCK
 static bool initialise_hardware (imu_hardware_state_t * p_state,
@@ -241,6 +242,7 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
         report_fault(&health, data.timestamp_ms);
         /* An invalid processed reading resets any incomplete terrain sequence.
          */
+        reset_peak_request(&analysis);
         bool b_analysed = imu_analysis_process(&analysis, &processed, &event);
 
         /* Completed roll events include the one-wheel geometric estimate. */
@@ -280,6 +282,21 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
             report_event(&data, &event, &b_have_previous, &previous,
                          &last_report);
         }
+    }
+}
+
+/** @brief Consume the controller request in the owning analysis task. */
+static void
+reset_peak_request (imu_analysis_t * p_analysis)
+{
+    UINT reset_flags = 0U;
+
+    if (E_OK == tk_wai_flg(gh_events, S4_RESET_PEAK_FLAG,
+                           TWF_ORW | TWF_BITCLR, &reset_flags, TMO_POL))
+    {
+        p_analysis->highest_hump_cm = 0.0f;
+        p_analysis->b_highest_hump_valid = false;
+        comm_reset_hump_peak();
     }
 }
 
