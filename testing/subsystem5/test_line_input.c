@@ -39,7 +39,7 @@ typedef struct { uint32_t lo; } SYSTIM;
 #define TP_PRC1 1
 #include "../../app_program/subsystem3/b3_line_barcode.h"
 static jmp_buf iteration;
-static uint32_t values[2] = {200u, 3000u};
+static uint32_t values[2] = {200u, 300u};
 static int fail_channel = -1;
 static bool busy, short_read, bad_clock;
 static uint32_t time_ms = 100u;
@@ -98,16 +98,26 @@ int main(void)
     assert(b3_start() == E_OBJ);
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
-    /* Before a sweep the PD branch fallback is 220..620: raw 200 is
-     * white; raw 3000 is black. Neither needs a long adaptation delay. */
+    /* Raw 200 is below the lost cutoff; raw 300 is the inclusive boundary. */
     assert(out.ir_left == 0u &&
            out.ir_centre == 1000u && timestamp == 100u);
+    assert(out.line_flags == B3_LINE_F_DETECTED);
+    values[0] = values[1] = B3_LINE_RAW_LOST_BELOW - 1U;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 0u && out.ir_centre == 0u);
+    assert(out.line_flags == B3_LINE_F_LOST);
+    values[0] = B3_LINE_RAW_LOST_BELOW;
+    values[1] = B3_LINE_RAW_LOST_BELOW - 1U;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 1000u && out.ir_centre == 0u);
     assert(out.line_flags == B3_LINE_F_DETECTED);
     fail_channel = 1;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OBJ); /* No partial pair. */
     fail_channel = -1;
-    values[0] = values[1] = 4095u;
+    values[0] = values[1] = B3_LINE_RAW_BLACK_MAX;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     assert(out.line_flags == (B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION));

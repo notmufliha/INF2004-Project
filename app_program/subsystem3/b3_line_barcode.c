@@ -263,6 +263,7 @@ static void b3_invalidate_line(void)
 static uint16_t b3_track_normalise(uint16_t raw)
 {
     uint32_t scaled;
+    if (raw < B3_LINE_RAW_LOST_BELOW) return 0U;
 #if B3_LINE_RAW_LOW_IS_BLACK
     if (raw <= B3_LINE_RAW_BLACK_MAX) return 1000U;
     if (raw >= B3_LINE_RAW_WHITE_MIN) return 0U;
