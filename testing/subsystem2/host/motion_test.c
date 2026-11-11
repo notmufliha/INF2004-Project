@@ -163,10 +163,11 @@ static void test_move_and_settle(bool reverse)
     value.direction = reverse ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD;
     id = send(value); tick(&state, 0, 0);
     CHECK(pwm_left * sign > 0 && pwm_right * sign > 0);
-    tick(&state, sign * 1001, sign * 100);
+    /* Right wheel at a realistic 10 counts per 10 ms tick (1000 cps). */
+    tick(&state, sign * 1001, sign * 10);
     CHECK(state.status == MOTION_STATUS_RUNNING);
     CHECK(pwm_left == 0 && pwm_right * sign > 0);
-    tick(&state, 0, sign * 900);
+    tick(&state, 0, sign * 990);
     CHECK(state.settling && state.status == MOTION_STATUS_RUNNING);
     CHECK(pwm_left == 0 && pwm_right == 0);
     for (INT i = 0; i < 10; i++) tick(&state, 0, 0);
@@ -373,6 +374,34 @@ static void test_encoder_diagnostic_fault(void)
     CHECK(pwm_left == 0 && pwm_right == 0);
 }
 
+static void test_feedforward_and_kick(void)
+{
+    pid_state_t state = setup();
+    motion_command_t value = command(MOTION_CMD_DRIVE);
+    INT first_right;
+    value.steering_permille = 500; /* left 1500 cps, right 500 cps */
+    send(value); tick(&state, 0, 0);
+    /* Feed-forward: the wheel split applies on the first control tick. */
+    CHECK(pwm_left > pwm_right && pwm_right > 0);
+    CHECK(pwm_left - pwm_right >= 3);
+    first_right = pwm_right;
+    /* Wheels held still: kick after 100 ms, no stall fault yet. */
+    for (INT i = 0; i < 15; i++) {
+        if (i % 5 == 0) send(value);
+        tick(&state, 0, 0);
+    }
+    CHECK(state.status == MOTION_STATUS_RUNNING);
+    CHECK(pwm_right >= first_right + (INT)PID_KICK_PWM - 1);
+    CHECK(pwm_left <= PID_MAX_PWM);
+    /* Still stuck at 500 ms: the stall fault remains. */
+    for (INT i = 0; i < 40 && state.status == MOTION_STATUS_RUNNING; i++) {
+        if (i % 5 == 0) send(value);
+        tick(&state, 0, 0);
+    }
+    CHECK(state.status == MOTION_STATUS_FAULT &&
+        state.fault == MOTION_FAULT_STALL);
+}
+
 int main(void)
 {
     INT mapped_speed;
@@ -417,6 +446,7 @@ int main(void)
     test_turn(false); test_turn(true); test_guards();
     test_results_and_stale(); test_feedback_and_time();
     test_timeouts_and_standstill(); test_stop_and_steering();
+    test_feedforward_and_kick();
     test_physical_api_and_history();
     test_encoder_diagnostic_fault();
     printf("PASS: %u subsystem 2 host assertions\n", checks);

@@ -19,6 +19,19 @@
 #if TM_MQTT
 #include "mqtt_utk.h"
 #endif
+/* Subsystem 1's pure re-join policy (stdint/stdbool only, like
+ * comm_bridge.h is for mqtt_utk.c). */
+#include "../../../../app_program/subsystem1/s1_link.h"
+
+#if (CYW43_LINK_DOWN != S1_LINK_STATUS_DOWN) || \
+    (CYW43_LINK_JOIN != S1_LINK_STATUS_JOIN) || \
+    (CYW43_LINK_NOIP != S1_LINK_STATUS_NOIP) || \
+    (CYW43_LINK_UP != S1_LINK_STATUS_UP) || \
+    (CYW43_LINK_FAIL != S1_LINK_STATUS_FAIL) || \
+    (CYW43_LINK_NONET != S1_LINK_STATUS_NONET) || \
+    (CYW43_LINK_BADAUTH != S1_LINK_STATUS_BADAUTH)
+#error "s1_link.h link status values no longer match cyw43.h"
+#endif
 #endif
 
 #include <string.h>
@@ -32,11 +45,13 @@
 
 #define CYW43_POLL_MS        2
 
-/* An association can fail transiently -- a busy channel, a weak beacon, an AP
- * that drops the handshake under load. Without a retry the radio would sit in
- * CYW43_LINK_FAIL until the next power cycle, so re-issue the join on a fixed
- * backoff for as long as the link is down. */
-#define WIFI_REJOIN_DELAY_US (5 * 1000 * 1000ull)
+/* Re-join policy: app_program/subsystem1/s1_link.c (B1, host-tested).
+ * An association can fail transiently -- a busy channel, a weak beacon, an AP
+ * that drops the handshake under load -- and an AP that vanishes (hotspot
+ * switched off) leaves the link DOWN rather than FAILED, because the driver
+ * clears its join state on DISASSOC. Either way the join is re-issued every
+ * S1_LINK_REJOIN_MS; a join stuck in JOIN/NOIP for S1_LINK_STUCK_MS is reset
+ * with a leave first. */
 
 /* Overridable from the makefile if an AP needs something else. MIXED accepts
  * both TKIP and AES; the driver treats it the same as WPA2_AES_PSK for a
@@ -275,7 +290,7 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
 
 #if TM_NET_LWIP
     int32_t  prev_link_status = radio_status.link_status;
-    uint64_t rejoin_at = 0;
+    uint64_t status_since_us  = time_us_64();
 #endif
 
     for(;;) {
@@ -288,7 +303,16 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
             radio_status.ip_addr = ip4_addr_get_u32(netif_ip4_addr(&cyw43_state.netif[CYW43_ITF_STA]));
         }
         if(radio_status.link_status != prev_link_status) {
+#if TM_MQTT
+            /* Leaving UP: drop the MQTT session now instead of waiting
+             * ~15 s for its keepalive to notice, so it reconnects as soon
+             * as the link is back (B1 FR-B1-7). */
+            if(prev_link_status == CYW43_LINK_UP) {
+                mqtt_utk_link_down();
+            }
+#endif
             prev_link_status = radio_status.link_status;
+            status_since_us  = time_us_64();
             if(radio_status.link_status == CYW43_LINK_UP) {
                 uint32_t ip = radio_status.ip_addr;
                 tm_printf((UB*)"wifi: link up, ip=%d.%d.%d.%d\n",
@@ -299,18 +323,23 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
                           link_status_str(radio_status.link_status),
                           (int)radio_status.link_status);
             }
-
-            /* Negative == the association attempt is over and lost. Arm a
-             * retry; a positive-but-not-UP status (JOIN/NOIP) is still making
-             * progress, so leave it alone and let DHCP finish. */
-            rejoin_at = (radio_status.link_status < 0)?
-                        time_us_64() + WIFI_REJOIN_DELAY_US: 0;
         }
 
-        if(rejoin_at != 0 && time_us_64() >= rejoin_at) {
-            rejoin_at = 0;
-            if(radio_status.link_status < 0) {
+        {
+            uint64_t              now_us  = time_us_64();
+            uint32_t              elapsed = (uint32_t)((now_us - status_since_us) / 1000u);
+            s1_link_wifi_action_t action  = s1_link_wifi_action(radio_status.link_status,
+                                                                elapsed);
+
+            if(action == S1_LINK_WIFI_RESET) {
+                /* Stuck mid-join, or DHCP never answered: start clean. */
+                tm_printf((UB*)"wifi: join stuck for %ds, resetting\n",
+                          (int)(elapsed / 1000u));
+                (void)cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+            }
+            if(action != S1_LINK_WIFI_WAIT) {
                 (void)wifi_try_join();
+                status_since_us = now_us;
                 /* Force the next iteration to treat whatever comes back as a
                  * change, so the new outcome is always reported. Must be a
                  * value cyw43_tcpip_link_status() can never return (it yields

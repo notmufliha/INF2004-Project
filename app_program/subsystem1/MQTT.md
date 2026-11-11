@@ -55,7 +55,7 @@ bits to a whole byte. Every frame starts with a 3-bit wire **version = 1**.
 | 10–11 | IR left, centre | 12 each | raw ADC 0–4095 | B3 |
 | 12 | IR right | 1 | digital 0/1 | B3 |
 | 13 | line flags | 3 | bit0 detected, bit1 lost, bit2 junction | B3 |
-| 14 | last barcode | 3 | 0 none, 1–4 = A–D | B3 |
+| 14 | last barcode | 3 | 0 none, 1–4 = A–D, 5 = Z | B3 |
 | 15 | last nav | 3 | 0–4: NONE LEFT RIGHT STRAIGHT UTURN | B3 |
 | 16 | motion state | 3 | B4's `imu_motion_state_t` 0–7 | B4 |
 | 17 | pitch | 10 s | ±511 = ±51.1° (0.1° steps) | B4 |
@@ -72,13 +72,26 @@ before the field wraps, and the decoder (`Unwrap24`) rebuilds the full total
 anyway, because consecutive frames (≤ 10 s apart → ≤ 50,000 counts) always
 differ by far less than 2²³.
 
+**Front no-target policy.** In integrated B5 telemetry, distance code **510**
+means `OPEN_SPACE_ASSUMED`, not 510 cm. Real B5 distances are 0..400 cm;
+511 remains invalid/not measured. Python/JavaScript decoders expose
+`obs_open_space`; their raw `obs_d_cm` remains 510 for protocol inspection.
+The dashboard labels the assumption and leaves a gap in the measured-distance
+chart. Clearance and obstacle-event fields retain their existing interpretation.
+An assumed no-target return cannot diagnose a disconnected ECHO wire.
+
+Integrated B5 no-echo error details 1..5 now identify the raw failure:
+1 stuck high, 2 no rise, 3 no fall, 4 short/glitch, 5 out of range. Legacy
+detail 45 means front angle/2. With open-space policy enabled, no rise and
+completed out-of-range returns are assumed open and do not raise this error.
+
 ### Event — header 33 bits + body
 
 Header: ver 3 · **type 2** (0 barcode, 1 hump, 2 obstacle, 3 error) · seq 8 · time 20 (0.1 s).
 
 | Type | Body | Total |
 |---|---|---|
-| barcode | code 3 (1–4 = A–D) · nav 3 | 39 bits → 5 B |
+| barcode | code 3 (1–4 = A–D, 5 = Z) · nav 3 | 39 bits → 5 B |
 | hump | valid 1 · height 7 (mm) · peak 7 (mm) | 48 bits → 6 B |
 | obstacle | distance 9 · width 7 · left 9 · right 9 (cm, all-ones = invalid) · action 3 (NONE STOP CONTINUE LEFT RIGHT REVERSE) | 70 bits → 9 B |
 | error | code 8 · detail 8 | 49 bits → 7 B |
@@ -166,7 +179,7 @@ code yet: it should call `comm_set_line()` and `comm_report_barcode()`.
 - Every `comm_xxx()` call returns immediately and never waits for the
   network (NFR-B1-2). If a queue is full, the item is dropped and counted.
 - The telemetry snapshot is packed C bit-fields; several tasks write fields
-  that share a 32-bit word, so every access holds `mtx_telem`
+  that share a 32-bit word, so every access holds the telemetry mutex
   (`TA_INHERIT`). The fault mask is a kernel event flag, so `tk_set_flg` /
   `tk_clr_flg` update it atomically, even from an ISR.
 - Only the kernel's WiFi task calls lwIP/MQTT (TEAM.md section 3).
@@ -177,13 +190,18 @@ code yet: it should call `comm_set_line()` and `comm_report_barcode()`.
 
 | Situation | What happens | `link` state | `FAULT_WIFI_LOSS` |
 |---|---|---|---|
-| WiFi down | kernel re-joins the AP every 5 s | `CONNECTING_WIFI` (first time) / `RECONNECTING` | set once a link was lost |
+| WiFi down (AP failed or disappeared) | MQTT session closed at once; kernel re-joins the AP every 5 s (`s1_link.c`); a join stuck for 20 s is reset | `CONNECTING_WIFI` (first time) / `RECONNECTING` | set once a link was lost |
 | WiFi down > 30 s | telemetry paused, re-join continues | `OFFLINE` | set |
 | Broker refuses / unreachable | retry after 1, 2, 4, 8, 16, 16 s | `RECONNECTING` | set |
 | 6 retries failed | wait 60 s, then start again | `OFFLINE` | set |
 | Broker connection drops | noticed within ~15 s (keepalive 10 s), then retries | `RECONNECTING` | set |
+| Broker host name lookup fails (`MQTT_BROKER_HOST` only) | after 5 s, connect to the last address that worked | `RECONNECTING` | set |
 | Connected again | heartbeat sent at once | `CONNECTED` | cleared |
 
 The status LED on GP19 shows the state: fast blink = joining WiFi, slow
 blink = connecting/reconnecting to the broker, solid = connected, short blip
 every 2 s = offline.
+
+Sequence diagrams for these cases, and why DNS is safe on reconnect:
+`testing/subsystem1/DESIGN_B1.md`. Live view of all of it:
+`tools/dashboard/README.md`.

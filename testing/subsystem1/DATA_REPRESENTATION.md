@@ -31,7 +31,7 @@ Week 13 evidence for Buddy 1 (WiFi Communication, Command & Telemetry).
 | IR left / centre | B3 | 0–4095 | 4096 | `UH` (16) | `: 12` | 12 each |
 | IR right | B3 | 0/1 | 2 | `UB` (8) | `: 1` | 1 |
 | Line flags | B3 | detected/lost/junction | 2³ | `UB` (8) | `: 3` bitmask | 3 |
-| Last barcode | B3 | none, A–D | 5 | ASCII `UB` (8) | `: 3` (0 none, 1–4) | 3 |
+| Last barcode | B3 | none, A–D, Z | 6 | ASCII `UB` (8) | `: 3` (0 none, 1–5) | 3 |
 | Last nav command | B3 | none, L, R, straight, U-turn | 5 | `UB` (8) | `: 3` | 3 |
 | IMU motion state | B4 | 8 states (`imu_motion_state_t`) | 8 | `UB` own 7-state list | `: 3`, B4's own enum | 3 |
 | Pitch | B4 | ±51.1° in 0.1° | 1023 | `H` (16) | `INT : 10` | 10 |

@@ -2,3 +2,9 @@
 app_program/subsystem4/*.[ch] text eol=lf
 testing/subsystem4/host/*.[ch] text eol=lf
 testing/subsystem4/startup/*.[ch] text eol=lf
+# B1 (subsystem 1) follows BARR-C 3.6: LF line endings only.
+app_program/subsystem1/*.[ch] text eol=lf
+app_program/fault.[ch] text eol=lf
+app_program/fault_flags.h text eol=lf
+lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.[ch] text eol=lf
+testing/subsystem1/host/*.[ch] text eol=lf

@@ -24,6 +24,7 @@ static ER       g_alarm_error;
 int
 main (void)
 {
+    assert(E_OBJ == subsystem4_reset_peak());
 #if ROBOT_MODE && S4_IMU_USE_MOCK
     assert(E_PAR == subsystem4_wait_ready(100));
 #else
@@ -37,6 +38,9 @@ main (void)
     g_flag_error = E_OK;
     g_buffers = 0U;
     assert(E_OK == subsystem4_init());
+    assert(E_OK == subsystem4_reset_peak());
+    assert(0U != (g_flags & S4_RESET_PEAK_FLAG));
+    assert(E_OK == tk_clr_flg(gh_events, ~S4_RESET_PEAK_FLAG));
 #if ROBOT_MODE
     assert((0 == gh_summary) && (0 == gh_monitor_alarm));
     assert(0U == g_alarm_calls);

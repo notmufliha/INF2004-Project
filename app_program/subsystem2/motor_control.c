@@ -5,11 +5,12 @@
 
 #include <stdbool.h>
 #include "motor_control.h"
-#define MOTOR_L_A_PIN   8U      // Left motor PWM output A
-#define MOTOR_L_B_PIN   9U      // Left motor PWM output B
-#define MOTOR_R_A_PIN   10U     // Right motor PWM output A
-#define MOTOR_R_B_PIN   11U     // Right motor PWM output B
-#define MOTOR_PWM_WRAP  999U
+#include "../robot_config.h"
+#define MOTOR_L_A_PIN   ROBOT_MOTOR_L_REV_PIN      // Left motor PWM output A
+#define MOTOR_L_B_PIN   ROBOT_MOTOR_L_FWD_PIN      // Left motor PWM output B
+#define MOTOR_R_A_PIN   ROBOT_MOTOR_R_FWD_PIN     // Right motor PWM output A
+#define MOTOR_R_B_PIN   ROBOT_MOTOR_R_REV_PIN     // Right motor PWM output B
+#define MOTOR_PWM_WRAP  ROBOT_PWM_TOP
 #define MOTOR_TEST_DUTY 50
 /* RP2040 peripheral reset control. */
 #define RESETS_RESET_REG  (*(volatile UW *)0x4000C000U)
@@ -117,21 +118,22 @@ void motor_left_set(int speed_percent)
         duty = (UW)speed_percent;
     }
     duty = (duty * MOTOR_PWM_WRAP) / 100U;
-    /* Stop only the left motor before updating PWM. */
-    pwm_set_cc(MOTOR_L_A_PIN, 0U);
-    pwm_set_cc(MOTOR_L_B_PIN, 0U);
-    /* Positive = forward, negative = reverse. */
+    /* Clear the opposite input before energizing the requested input.
+     * Keep the active input continuous on same-direction duty refreshes. */
     if (speed_percent > 0)
     {
+        pwm_set_cc(MOTOR_L_A_PIN, 0U);
         pwm_set_cc(MOTOR_L_B_PIN, duty);
     }
     else if (speed_percent < 0)
     {
+        pwm_set_cc(MOTOR_L_B_PIN, 0U);
         pwm_set_cc(MOTOR_L_A_PIN, duty);
     }
     else
     {
-        /* No additional action is required. */
+        pwm_set_cc(MOTOR_L_A_PIN, 0U);
+        pwm_set_cc(MOTOR_L_B_PIN, 0U);
     }
 }
 
@@ -161,20 +163,21 @@ void motor_right_set(int speed_percent)
         duty = (UW)speed_percent;
     }
     duty = (duty * MOTOR_PWM_WRAP) / 100U;
-    /* Stop right motor before changing direction. */
-    pwm_set_cc(MOTOR_R_A_PIN, 0U);
-    pwm_set_cc(MOTOR_R_B_PIN, 0U);
+    /* Do not zero the active PWM input on same-direction refreshes. */
     if (speed_percent > 0)
     {
+        pwm_set_cc(MOTOR_R_B_PIN, 0U);
         pwm_set_cc(MOTOR_R_A_PIN, duty);
     }
     else if (speed_percent < 0)
     {
+        pwm_set_cc(MOTOR_R_A_PIN, 0U);
         pwm_set_cc(MOTOR_R_B_PIN, duty);
     }
     else
     {
-        /* No additional action is required. */
+        pwm_set_cc(MOTOR_R_A_PIN, 0U);
+        pwm_set_cc(MOTOR_R_B_PIN, 0U);
     }
 }
 

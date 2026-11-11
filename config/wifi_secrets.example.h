@@ -25,6 +25,13 @@
 #define MQTT_BROKER_IP   "192.168.1.10"
 #define MQTT_BROKER_PORT 1883
 
+/* Optional: a broker HOST NAME instead of a fixed IP (e.g. a public test
+ * broker).  Looked up with DNS on every connection attempt; if the lookup
+ * fails or takes > 5 s, the last address that worked (first time:
+ * MQTT_BROKER_IP) is used instead.  Leave it undefined for the demo: an IP
+ * literal never needs DNS.  Note: ".local" (mDNS) names are NOT supported. */
+/* #define MQTT_BROKER_HOST "broker.hivemq.com" */
+
 /* Must be unique per car on the broker */
 #define MQTT_CLIENT_ID   "inf2004-g25-car"
 

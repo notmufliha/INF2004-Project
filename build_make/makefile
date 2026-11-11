@@ -77,16 +77,18 @@ endif
 
 # All EXE_FILE
 all: $(EXE_FILE).elf
+ifneq ($(E2U),)
+all: $(EXE_FILE).uf2
+$(EXE_FILE).uf2: $(EXE_FILE).elf $(E2U)
+	$(E2U) $(EXE_FILE).elf $@
+endif
 
-$(EXE_FILE).elf: $(OBJS)
+$(EXE_FILE).elf: $(OBJS) $(subst ",,$(LNKFILE))
 	@echo 'Linker: $@'
 	$(LINK)  $(LFLAGS) -T $(LNKFILE) -Wl,-Map,"$(EXE_FILE).map" -o "$(EXE_FILE).elf" $(OBJS) $(LDLIBS)
 	@echo 'Finished building target: $@'
 ifneq ($(SIZE),)
 	$(SIZE) $(EXE_FILE).elf
-endif
-ifneq ($(E2U),)
-	$(E2U) $(EXE_FILE).elf $(EXE_FILE).uf2
 endif
 	@echo ' '
 
