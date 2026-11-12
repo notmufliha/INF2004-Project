@@ -42,7 +42,9 @@
 #define	DEVCNF_I2C1_INTPRI	2
 
 /* Communication timeout time */
-#define	DEVCNF_I2C0_TMO		5
+/* Allow two 10-ms kernel ticks for the GY-511 transaction phase, rather
+ * than expiring a 5-ms request under interrupt/task load. Still bounded. */
+#define	DEVCNF_I2C0_TMO		20
 #define	DEVCNF_I2C1_TMO		1000
 
 #endif		/* __DEV_I2C_CNF_RP2040_H__ */

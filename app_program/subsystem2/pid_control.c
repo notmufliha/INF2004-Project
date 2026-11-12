@@ -9,6 +9,7 @@
 #include "motion_profile.h"
 #include "b2_motor.h"
 #include "b2_integration.h"
+#include "../robot_config.h"
 
 #define PID_PERIOD_MS 10
 #define PID_MAX_INTERVAL_MS 20
@@ -401,6 +402,23 @@ static motion_profile_t pid_profile(pid_state_t *state)
     {
         target = PID_PI * pid_turn_track(&state->command) * 10.0f *
             state->command.target_angle_deg / 360.0f;
+    }
+    if (state->command.type == MOTION_CMD_DRIVE &&
+        state->command.direction == MOTION_DIR_FORWARD &&
+        state->command.steering_permille == 0) {
+        float trim = ROBOT_STRAIGHT_TRIM_PERMILLE / 1000.0f;
+        float left_scale = 1.0f + trim;
+        float right_scale = 1.0f - trim;
+        /* Compare progress against the trimmed wheel ratio. Otherwise the
+         * straight-line synchronizer would immediately undo the trim.
+         * Feedback still corrects either wheel departing from that ratio. */
+        motion_profile_t profile = motion_profile_targets(speed, 0.0f,
+            state->left_mm * state->left_sign / left_scale,
+            state->right_mm * state->right_sign / right_scale,
+            target, bounded, true);
+        profile.left_speed *= left_scale;
+        profile.right_speed *= right_scale;
+        return profile;
     }
     return motion_profile_targets(speed,
         state->command.steering_permille / 1000.0f,

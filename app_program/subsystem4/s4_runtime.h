@@ -17,8 +17,15 @@
 #define S4_IMU_LOG_RAW_MAG 0
 #endif
 
+/* Keep fresh safety snapshots ahead of telemetry and line diagnostics.
+ * Motor control (5), VC (6) and obstacle sensing (7) retain precedence. */
+#if ROBOT_MODE
+#define S4_PRI_IMU_SAMPLE 8
+#define S4_PRI_IMU_ANALYSIS 9
+#else
 #define S4_PRI_IMU_SAMPLE 18
 #define S4_PRI_IMU_ANALYSIS 19
+#endif
 #define S4_IMU_PERIOD_MS 10U
 #define S4_IMU_QUEUE_DEPTH 8
 /* Kernel message buffer uses a four-byte length header and aligned payload. */

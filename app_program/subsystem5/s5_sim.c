@@ -33,8 +33,8 @@ static S5Scan fine_make(bool invalid)
 const char *s5_scenario_name(S5Scenario s)
 {
     static const char *names[] = {"left-clear", "right-clear", "both-blocked",
-        "reverse-clears", "invalid-coarse", "stop-timeout", "motion-timeout",
-        "reverse-timeout", "line-timeout", "clear-path", "front-timeout",
+        "route-clears", "invalid-coarse", "stop-timeout", "motion-timeout",
+        "route-blocked", "line-timeout", "clear-path", "front-timeout",
         "fine-invalid"};
     return (unsigned)s < S5_SCENARIO_COUNT ? names[s] : "unknown";
 }
@@ -46,15 +46,15 @@ S5SimResult s5_sim_run(S5Scenario scenario, S5Trace trace, void *user)
     for (i = 0; i < S5_MOTION_LIMIT + S5_RECOVERY_LIMIT + 4u * S5_WAIT_LIMIT + 100u; i++) {
         S5Input in = {0};
         S5State previous = r.controller.state;
-        bool reverse_clear = scenario == S5_SCENARIO_REVERSE_CLEARS &&
-                             r.controller.reverse_attempts > 0u;
+        bool route_clear = scenario == S5_SCENARIO_ROUTE_CLEARS &&
+                           r.controller.route_waits > 0u;
         bool left = scenario != S5_SCENARIO_RIGHT_CLEAR &&
                     scenario != S5_SCENARIO_BOTH_BLOCKED &&
-                    scenario != S5_SCENARIO_REVERSE_TIMEOUT &&
-                    (scenario != S5_SCENARIO_REVERSE_CLEARS || reverse_clear);
+                    scenario != S5_SCENARIO_ROUTE_BLOCKED &&
+                    (scenario != S5_SCENARIO_ROUTE_CLEARS || route_clear);
         bool right = scenario != S5_SCENARIO_BOTH_BLOCKED &&
-                     scenario != S5_SCENARIO_REVERSE_TIMEOUT &&
-                     (scenario != S5_SCENARIO_REVERSE_CLEARS || reverse_clear);
+                     scenario != S5_SCENARIO_ROUTE_BLOCKED &&
+                     (scenario != S5_SCENARIO_ROUTE_CLEARS || route_clear);
         in.front_valid = scenario != S5_SCENARIO_FRONT_TIMEOUT;
         in.front_cm = scenario == S5_SCENARIO_CLEAR_PATH ? 90.0f : 16.0f;
         in.stopped = scenario != S5_SCENARIO_STOP_TIMEOUT &&
@@ -64,17 +64,21 @@ S5SimResult s5_sim_run(S5Scenario scenario, S5Trace trace, void *user)
         in.fine_ready = r.controller.ticks_in_state >= 2;
         in.fine = fine_make(scenario == S5_SCENARIO_FINE_INVALID);
         in.motion_complete = scenario != S5_SCENARIO_MOTION_TIMEOUT &&
-                             !(scenario == S5_SCENARIO_REVERSE_TIMEOUT &&
-                               r.controller.state == S5_REVERSE) &&
                              r.controller.ticks_in_state >= 2;
         in.line_found = scenario != S5_SCENARIO_LINE_TIMEOUT &&
                         r.controller.ticks_in_state >= 3;
         r.last_command = s5_controller_step(&r.controller, &in);
+        if (r.last_command == S5_CMD_REVERSE) return r; /* Never autonomous. */
         r.steps = i + 1;
         if (trace && (r.last_command != S5_CMD_NONE || previous != r.controller.state))
             trace(scenario, r.steps, r.controller.state, r.last_command, user);
         if (r.controller.state == S5_DONE || r.controller.state == S5_FAULT) {
             r.terminated = true;
+            break;
+        }
+        if ((scenario == S5_SCENARIO_BOTH_BLOCKED || scenario == S5_SCENARIO_ROUTE_BLOCKED) &&
+            r.controller.state == S5_WAIT_ROUTE && r.controller.route_waits >= 2u) {
+            r.terminated = true; /* Verified repeated pause/rescan, no movement. */
             break;
         }
         if (scenario == S5_SCENARIO_CLEAR_PATH && i >= 9) {

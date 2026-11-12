@@ -15,14 +15,17 @@ static bool result_ready;
 static ROBOT_STATE published;
 static bool permission = true;
 static S5MissionState obstacle_state = S5_MISSION_FOLLOW;
+static bool boot_handshake, boot_mission_enabled;
 S5MissionState s5_mission_state(void) { return obstacle_state; }
-void s5_mission_enable(bool allow) { (void)allow; }
+void s5_mission_enable(bool allow) { boot_mission_enabled = allow; }
+bool s5_mission_approach_slow(void) { return false; }
 static uint32_t generation = 1u;
 static VC_INPUT input;
 static REMOTE_CMD remote_queue[8];
 static UINT remote_head, remote_count, task_ticks;
 static uint32_t clock_ms;
 static bool stale_line, stale_imu, delayed_startup;
+static bool force_no_line;
 static uint32_t snapshot_delay;
 static bool calibrated_startup;
 static B3_LINE_CAL startup_right_cal, startup_left_cal;
@@ -45,6 +48,7 @@ ER motion_send_command(const motion_command_t *command)
     if (send_error != E_OK) return send_error;
     sent = *command;
     if (command->type == MOTION_CMD_DRIVE) {
+        if (boot_handshake) assert(task_ticks >= 4u);
         /* Every DRIVE: no wheel in the stall zone, outer within B2's limit. */
         INT s = command->steering_permille;
         INT left = command->target_speed_cps * (1000 + s) / 1000;
@@ -87,8 +91,8 @@ ER tk_get_tim(SYSTIM *time) { time->lo = clock_ms; return E_OK; }
 ER tk_dly_tsk(INT delay)
 {
     clock_ms += (uint32_t)delay;
-    permission = true; /* Simulate fresh B5 authorization after STOP. */
-    if (++task_ticks == (calibrated_startup ? 8u : 4u)) longjmp(task_done, 1);
+    permission = boot_handshake ? boot_mission_enabled && task_ticks >= 3u : true;
+    if (++task_ticks == (boot_handshake ? 7u : calibrated_startup ? 8u : 4u)) longjmp(task_done, 1);
     return E_OK;
 }
 INT tk_rcv_mbf(ID id, void *data, TMO timeout)
@@ -103,7 +107,7 @@ ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
     clock_ms += snapshot_delay;
     *state = (B3_STATE){0};
-    state->line_flags = LINE_F_DETECTED;
+    state->line_flags = force_no_line ? LINE_F_LOST : LINE_F_DETECTED;
     if (calibrated_startup) {
         /* Real low-output calibration feeds the real autostart adapter. */
         state->ir_left = b3_line_cal_update(&startup_right_cal, task_ticks < 3u ? 140u : 260u);
@@ -122,6 +126,10 @@ ER imu_vc_receive(imu_notice_t *notice, TMO timeout)
     last_tick = clock_ms;
     *notice = (imu_notice_t){0};
     notice->snapshot.b_valid = true;
+    if (boot_handshake && task_ticks == 1u) {
+        notice->snapshot.b_valid = false;
+        notice->events = IMU_NOTICE_UNAVAILABLE;
+    }
     notice->snapshot.timestamp_ms = stale_imu ? clock_ms - 1501u : clock_ms;
     return E_OK;
 }
@@ -326,6 +334,28 @@ int main(void)
     step(&c, 20u, 0u);
     input.clearance = false; step(&c, 20u, 0u);
     assert(c.state == ROBOT_OBSTACLE_SCAN && c.running && stops > 0u);
+    {
+        uint32_t started = c.recovery_ms;
+        /* Reproduce COM6: clearance toggles every few hundred ms while
+         * both sensors are white. The search must advance, then stop. */
+        input.clearance = true;
+        step(&c, VC_LINE_REACQUIRE_MS, 0u);
+        assert(c.recovery_ms == started);
+        assert(sent.steering_permille == -VC_LINE_SEARCH_STEER);
+        for (UINT i = 0u; i < 20u; ++i) {
+            input.clearance = false; step(&c, 200u, 0u);
+            input.clearance = true; step(&c, 200u, 0u);
+            assert(c.recovery_ms == started);
+        }
+        assert(sent.type == MOTION_CMD_STOP && c.running);
+        UINT prior_drives = drives;
+        input.clearance = false; step(&c, 20u, 0u);
+        input.clearance = true; step(&c, 20u, 0u);
+        assert(drives == prior_drives);
+        input.line_flags = LINE_F_DETECTED;
+        step(&c, 20u, 0u);
+        assert(!c.line_recovery_active && drives == prior_drives + 1u);
+    }
 
     c = fresh(); command(&c, RCMD_START, 0u);
     input.left = 100u; input.centre = 900u;
@@ -338,6 +368,14 @@ int main(void)
 
     /* Curve with BOTH sensors on the line (no junction flag): the car
      * must steer, not drive straight, and slow down for the curve. */
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.left = input.centre = 1000u;
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+    confirm_junction(&c);
+    assert(c.running && c.state == ROBOT_LINE_FOLLOW);
+    assert(sent.type == MOTION_CMD_DRIVE && sent.steering_permille == 0);
+    assert(left_wheel() > 0 && left_wheel() == right_wheel());
+
     c = fresh(); command(&c, RCMD_START, 0u);
     input.line_flags = LINE_F_DETECTED;
     input.left = 700u; input.centre = 700u;
@@ -454,8 +492,28 @@ int main(void)
         input.obstacle_active = false;
         input.clearance = true;
         input.line_flags = LINE_F_DETECTED;
+        c.curve_steer = B3_LINE_STEER_MAX;
+        c.last_speed = 2000;
+        input.left = input.centre = 800u;
         step(&c, 20u, 0u);
         assert(drives == prior_drives + 1u && c.running);
+        assert(!c.obstacle_handoff && c.curve_steer == 0);
+        assert(c.last_speed < 2000); /* Restart gently after the bypass. */
+    }
+    /* An obstacle encountered during line recovery must not consume the
+     * post-bypass search window while B5 owns the wheels. */
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.line_flags = LINE_F_LOST;
+    step(&c, 20u, 0u);
+    assert(c.state == ROBOT_LINE_RECOVERY);
+    input.obstacle_active = true;
+    step(&c, VC_LINE_SEARCH_MS + 100u, 0u);
+    input.obstacle_active = false;
+    {
+        UINT prior_drives = drives;
+        step(&c, 20u, 0u);
+        assert(c.running && drives == prior_drives + 1u);
+        assert(c.recovery_ms == input.now_ms);
     }
     for (UINT failure = 0u; failure < 6u; ++failure) {
         c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
@@ -500,6 +558,19 @@ int main(void)
         if (setjmp(task_done) == 0) controller_task(0, NULL);
         assert(scenario == 0u ? drives > 0u : drives == 0u);
     }
+    /* Real startup handshake: no B5 clearance until sensing is enabled,
+     * transient IMU unavailability before clearance, then recovery.
+     * Do not consume autostart or send DRIVE during the warmup fault. */
+    c = fresh(); (void)c;
+    boot_handshake = true; boot_mission_enabled = false;
+    stale_line = stale_imu = delayed_startup = false;
+    clock_ms = 19000u;
+    task_ticks = remote_head = remote_count = 0u;
+    permission = false;
+    if (setjmp(task_done) == 0) controller_task(0, NULL);
+    assert(drives > 0u);
+    boot_handshake = false;
+    puts("PASS boot arming survives IMU warmup failure and waits for B5 clearance");
     c = fresh(); (void)c;
     clock_ms = 20000u;
     task_ticks = remote_head = remote_count = 0u;

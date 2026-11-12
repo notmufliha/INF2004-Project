@@ -40,6 +40,14 @@ int main(void)
     float cm;
     load(S5_ECHO_OK, 120.0f);
     assert(s5_measure_stable_cm(&cm) && cm == 120.0f);
+    assert(cursor == ROBOT_ECHO_SAMPLES);
+    load(S5_ECHO_OK, 120.0f);
+    assert(s5_measure_scan_cm(&cm) && cm == 120.0f);
+    assert(cursor == 3u); /* Scan consensus finishes in three agreeing pings. */
+    load(S5_ECHO_OK, 120.0f);
+    readings[1] = (S5EchoReading){S5_ECHO_NO_FALL, 0u, 0.0f};
+    assert(s5_measure_scan_cm(&cm) && cm == 120.0f);
+    assert(cursor == 6u); /* Two valid echoes cannot authorize the first batch. */
     load(S5_ECHO_NO_RISE, 0.0f);
     assert(!s5_measure_stable_cm(&cm)); /* Strict measurements never invent ranges. */
     load(S5_ECHO_NO_RISE, 0.0f);

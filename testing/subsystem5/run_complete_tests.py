@@ -34,9 +34,14 @@ groups = {
                    "testing/subsystem5/host_sim_main.c"],
     "maneuver": ["app_program/subsystem5/s5_maneuver.c",
                  "testing/subsystem5/test_maneuver.c"],
+    "clear_forward": ["app_program/subsystem5/s5_maneuver.c",
+                      "testing/subsystem5/test_clear_forward.c"],
     "navigation": ["app_program/subsystem5/s5_logic.c",
                    "app_program/subsystem5/s5_maneuver.c",
                    "testing/subsystem5/test_navigation.c"],
+    "navigation_clear_forward": ["app_program/subsystem5/s5_logic.c",
+                   "app_program/subsystem5/s5_maneuver.c",
+                   "testing/subsystem5/test_navigation_clear_forward.c"],
     "scan": ["app_program/subsystem5/s5_logic.c",
              "testing/subsystem5/test_scan.c"],
     "line_input": ["testing/subsystem5/test_line_input.c", "app_program/subsystem3/b3_code39.c",
@@ -49,6 +54,7 @@ with tempfile.TemporaryDirectory(prefix="b5_complete_") as folder:
     for name, sources in groups.items():
         binary = Path(folder) / (name + (".exe" if os.name == "nt" else ""))
         run([CC, *(["-mno-ms-bitfields"] if os.name == "nt" else []), "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
+             *(["-DROBOT_CLEAR_PATH_FORWARD=0"] if name in ("maneuver", "navigation") else []),
              "-Iapp_program/subsystem5",
              *sources, "-o", str(binary)])
         output = run([str(binary)])
@@ -73,4 +79,4 @@ for script in ("test_b1_contract.py", "test_b5_error_contract.py",
                "test_guard_heartbeat.py", "test_ultrasonic_driver.py"):
     output = run([sys.executable, str(ROOT / "testing/subsystem5" / script)])
     print(output.splitlines()[-1])
-print("PASS all 16 Buddy 5 test groups")
+print(f"PASS all {len(groups) + 7} Buddy 5 test groups")

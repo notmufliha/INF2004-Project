@@ -209,6 +209,10 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
 
     imu_analysis_default_config(&config);
     imu_processing_default_config(&processing_config);
+#if ROBOT_MODE
+    processing_config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
+    config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
+#endif
 
     if ((!imu_processing_init(&processing, &processing_config)) ||
         (!imu_odom_init(&height)))
@@ -234,8 +238,14 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
             return;
         }
 
+        uint32_t previous_good_ms = processing.last_good_ms;
         bool b_usable = imu_processing_process(
             &processing, &data, data.timestamp_ms, &processed, &health);
+        if (health.b_fault_started) {
+            tm_printf((UB *)"[B4-FAULT-DETAIL] raw_valid=%d sample_gap_ms=%u failures=%u\n",
+                (INT)data.b_valid, (UW)(data.timestamp_ms - previous_good_ms),
+                (UW)processing.failures);
+        }
 
         report_fault(&health, data.timestamp_ms);
         /* An invalid processed reading resets any incomplete terrain sequence.
@@ -526,7 +536,7 @@ hardware_read (uint32_t now_ms, imu_data_t * p_data)
 
     if (GY511_NO_DATA == result)
     {
-        if (now_ms - state.last_data_ms <= 100U)
+        if (now_ms - state.last_data_ms <= ROBOT_IMU_MAX_GAP_MS)
         {
             return false;
         }
