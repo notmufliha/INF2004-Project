@@ -41,7 +41,7 @@ bool s5_servo_init(void)
 }
 
 /* Gentle, bounded movements: never jump directly across the sensor mount.
- * 3 degree increments every 35ms give the servo time to follow the command.
+ * 2 degree increments every 35ms reduce acceleration and mount vibration.
  * This is a blocking RTOS task operation; it must only run while stopped.
  */
 bool s5_servo_angle(uint16_t angle_deg)

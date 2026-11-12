@@ -98,10 +98,31 @@ int main(void)
     assert(b3_start() == E_OBJ);
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
-    /* Raw 200 is below the lost cutoff; raw 300 is the inclusive boundary. */
-    assert(out.ir_left == 0u &&
+    /* Both low raw readings represent black with this sensor polarity. */
+    assert(out.ir_left == 1000u &&
            out.ir_centre == 1000u && timestamp == 100u);
-    assert(out.line_flags == B3_LINE_F_DETECTED);
+    assert(out.line_flags == (B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION));
+    {
+        /* Replay stationary black-line pairs from the supplied COM6 log.
+         * Neither channel may drop out at the old 300-count boundary. */
+        const uint16_t pairs[][2] = {
+            {350u, 166u}, {310u, 171u}, {242u, 156u},
+            {245u, 155u}, {282u, 181u}, {236u, 159u}
+        };
+        for (unsigned i = 0u; i < sizeof(pairs) / sizeof(pairs[0]); ++i) {
+            values[0] = pairs[i][0]; values[1] = pairs[i][1];
+            sample();
+            assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+            assert(out.ir_left == 1000u && out.ir_centre == 1000u);
+            assert(out.line_flags & B3_LINE_F_DETECTED);
+            assert(!(out.line_flags & B3_LINE_F_LOST));
+        }
+    }
+    values[0] = values[1] = B3_LINE_RAW_WHITE_MIN;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 0u && out.ir_centre == 0u);
+    assert(out.line_flags == B3_LINE_F_LOST);
     values[0] = values[1] = B3_LINE_RAW_LOST_BELOW - 1U;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);

@@ -40,9 +40,11 @@ static bool agreeing(float first, float second)
     return abs_difference(first, second) <= tolerance;
 }
 
-/* Three pairwise-agreeing readings are needed within five separated pings.
+/* Three pairwise-agreeing readings are needed within the separated batch.
+ * Scans use three pings; general/front consensus keeps the five-ping batch.
  * Do not use a median of invalid or inconsistent measurements as clearance. */
-static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close)
+static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close,
+                             uint8_t samples)
 {
     float values[ROBOT_ECHO_SAMPLES];
     uint8_t count = 0u;
@@ -60,7 +62,7 @@ static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close)
     }
 
     *out_cm = 0.0f;
-    for (i = 0u; i < ROBOT_ECHO_SAMPLES; ++i)
+    for (i = 0u; i < samples; ++i)
     {
         S5EchoReading reading = forward ? s5_ultrasonic_read_front() :
                                          s5_ultrasonic_read_detailed();
@@ -68,7 +70,7 @@ static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close)
             reading.cm <= ROBOT_STOP_CM) close_echo = true;
 #if ROBOT_VERBOSE_SENSOR_LOG
         tm_printf((UB*)"[S5-ECHO] ping=%d/%d status=%s pulse_us=%d cm_x100=%d suppressed=%d\n",
-                  (int)(i + 1u), (int)ROBOT_ECHO_SAMPLES,
+                  (int)(i + 1u), (int)samples,
                   s5_echo_status_name(reading.status), (int)reading.pulse_us,
                   (int)(reading.cm * 100.0f),
                   (int)s5_echo_suppressed_cm(reading.cm));
@@ -89,7 +91,7 @@ static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close)
             ++count;
         }
 
-        if ((uint8_t)(i + 1u) < ROBOT_ECHO_SAMPLES)
+        if ((uint8_t)(i + 1u) < samples)
         {
             tk_dly_tsk((reading.status == S5_ECHO_OK) ?
                        S5_ECHO_GAP_MS : ROBOT_ECHO_GAP_AFTER_FAILURE_MS);
@@ -161,7 +163,7 @@ static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close)
     return true;
 }
 
-static bool measure_stable(float *out_cm, bool forward, bool stop_on_close)
+static bool measure_stable(float *out_cm, bool forward, bool stop_on_close, uint8_t samples)
 {
     uint8_t attempt;
 
@@ -173,7 +175,7 @@ static bool measure_stable(float *out_cm, bool forward, bool stop_on_close)
     *out_cm = 0.0f;
     for (attempt = 0u; attempt < ROBOT_ECHO_BATCH_ATTEMPTS; ++attempt)
     {
-        if (measure_one_batch(out_cm, forward, stop_on_close))
+        if (measure_one_batch(out_cm, forward, stop_on_close, samples))
         {
             return true;
         }
@@ -187,9 +189,9 @@ static bool measure_stable(float *out_cm, bool forward, bool stop_on_close)
     return false;
 }
 
-bool s5_measure_stable_cm(float *out_cm) { return measure_stable(out_cm, false, false); }
-bool s5_measure_front_cm(float *out_cm) { return measure_stable(out_cm, true, true); }
-bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false); }
+bool s5_measure_stable_cm(float *out_cm) { return measure_stable(out_cm, false, false, ROBOT_ECHO_SAMPLES); }
+bool s5_measure_front_cm(float *out_cm) { return measure_stable(out_cm, true, true, ROBOT_ECHO_SAMPLES); }
+bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false, 3u); }
 
 /* Chatter protection: an invalid or close moving echo still stops the
  * motors immediately. A cluster of such events imposes a timed hold,

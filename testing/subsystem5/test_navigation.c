@@ -41,12 +41,14 @@ static uint32_t clock_ms = 100u;
 static uint32_t next_id = 10u;
 static uint32_t generation = 1u;
 static unsigned faults, stop_calls, drive_calls, move_calls, turn_calls;
+static unsigned permission_calls;
 static bool allowed, line_valid = true, jam_queue;
 static uint32_t snapshot_delay;
 static B3_STATE line_state = {3000u, 1000u, B3_LINE_F_DETECTED};
 static motion_status_snapshot_t status = {MOTION_STATUS_IDLE, 100u, 0u, true};
 static motion_status_snapshot_t result;
 static int last_turn, last_direction, last_angle;
+static int last_drive_direction, last_drive_steer;
 static float last_move;
 static ER tk_get_tim(SYSTIM *t) { t->lo = clock_ms; return E_OK; }
 void b2_request_stop(void)
@@ -58,8 +60,9 @@ void b2_request_stop(void)
     status.status = MOTION_STATUS_CANCELLED;
 }
 bool b2_motor_is_stopped(void) { return status.physically_stopped; }
-static void b2_request_forward(void) { allowed = true; }
+static void b2_request_forward(void) { ++permission_calls; allowed = true; }
 static bool b2_safety_motion_allowed(void) { return allowed; }
+static uint32_t b2_safety_stop_generation(void) { return generation; }
 static bool b2_safety_stop_requested(void) { return false; }
 
 static unsigned fault_get(void) { return faults; }
@@ -88,8 +91,10 @@ static ER motion_send_command(const motion_command_t *cmd)
 {
     if (jam_queue) return E_OBJ;
     if (cmd->type == MOTION_CMD_DRIVE) {
-        assert(allowed && cmd->safety_generation == generation);
+        assert(allowed && cmd->safety_generation == b2_safety_stop_generation());
         ++drive_calls;
+        last_drive_direction = cmd->direction;
+        last_drive_steer = cmd->steering_permille;
         status.status = MOTION_STATUS_RUNNING;
         status.physically_stopped = false;
     }
@@ -107,7 +112,7 @@ static ER issue(uint32_t *id)
 }
 static ER motion_turn_degrees(INT angle, INT speed, int direction, uint32_t *id)
 {
-    assert(angle > 0 && angle <= 90 && speed > 0);
+    assert(angle > 0 && angle <= 120 && speed > 0);
     last_angle = angle;
     last_turn = direction;
     ++turn_calls;
@@ -135,6 +140,14 @@ static void finish_leg(void)
     result = status;
     tick(120.0f);
 }
+static void finish_offset(void)
+{
+    tick(120.0f);
+    assert(allowed && last_move == maneuver.offset_cm);
+    assert(last_direction == MOTION_DIR_FORWARD);
+    finish_leg();
+    assert(maneuver.state == S5_MAN_FORWARD);
+}
 int main(void)
 {
     S5Profile p = {0};
@@ -146,14 +159,14 @@ int main(void)
     line_state.line_flags = 0u;
     for (int i = 0; i < 3; ++i) {
         clock_ms += 65u;
-        s5_navigation_tick(true, 25.0f, true);
+        s5_navigation_tick(true, ROBOT_STOP_CM, true);
     }
     assert(drive_calls == 0u && !allowed); /* Wait on boot until a line is visible. */
     assert(!s5_navigation_has_line_reference());
     line_state.line_flags = B3_LINE_F_DETECTED;
     for (int i = 0; i < 3; ++i) {
         clock_ms += 65u;
-        s5_navigation_tick(true, 120.0f, true);
+        s5_navigation_tick(true, 31.0f, true);
     }
     assert(drive_calls == 0u);
     assert(s5_navigation_has_line_reference());
@@ -164,11 +177,64 @@ int main(void)
     assert(s5_navigation_error() == S5_ERR_NONE && allowed);
     snapshot_delay = 0u;
     clock_ms += 65u;
-    s5_navigation_tick(true, 40.0f, true);
+    s5_navigation_tick(true, (ROBOT_STOP_CM + ROBOT_RELEASE_CM) * 0.5f, true);
     assert(allowed && drive_calls == 0u); /* Continue through hysteresis band. */
+    {
+        unsigned prior_stops = stop_calls;
+        /* Good clear readings from COM6 interleaved with one/two short
+         * invalid pulses must not alternate FOLLOW and STOP. */
+        for (unsigned i = 0u; i < 30u; ++i) {
+            unsigned prior_permissions = permission_calls;
+            clock_ms += 65u;
+            s5_navigation_tick(false, 0.0f, true);
+            assert(allowed && stop_calls == prior_stops);
+            assert(permission_calls == prior_permissions);
+            if (i % 2u) {
+                clock_ms += 65u;
+                s5_navigation_tick(false, 0.0f, true);
+                assert(allowed && stop_calls == prior_stops);
+                assert(permission_calls == prior_permissions);
+            }
+            clock_ms += 65u;
+            s5_navigation_tick(true, 150.0f, true);
+            assert(allowed && stop_calls == prior_stops);
+        }
+        /* An actual close reading still stops on the very first sample. */
+        clock_ms += 65u;
+        s5_navigation_tick(true, ROBOT_STOP_CM, true);
+        assert(!allowed && stop_calls > prior_stops);
+        for (unsigned i = 0u; i < ROBOT_CLEAR_CONFIRM; ++i) {
+            clock_ms += 65u; s5_navigation_tick(true, 150.0f, true);
+        }
+        assert(allowed);
+        for (unsigned i = 0u; i < S5_FRONT_INVALID_LIMIT; ++i) {
+            clock_ms += 30u;
+            s5_navigation_tick(false, 0.0f, true);
+            if (i + 1u < S5_FRONT_INVALID_LIMIT) assert(allowed);
+        }
+        assert(!allowed); /* Persistent errors stop within the grace window. */
+        for (unsigned i = 0u; i < ROBOT_CLEAR_CONFIRM; ++i) {
+            clock_ms += 65u; s5_navigation_tick(true, 150.0f, true);
+        }
+        assert(allowed);
+        /* Missing clearance beyond the grace deadline stops even before
+         * the three-invalid-sample count is exhausted. */
+        clock_ms += ROBOT_FRONT_GLITCH_GRACE_MS + 1u;
+        s5_navigation_tick(false, 0.0f, true);
+        assert(!allowed);
+        for (unsigned i = 0u; i < ROBOT_CLEAR_CONFIRM; ++i) {
+            clock_ms += 65u; s5_navigation_tick(true, 150.0f, true);
+        }
+        assert(allowed);
+    }
     assert(s5_bridge_request(S5_CMD_STOP, &p));
     assert(!allowed && stop_calls > 0u);
     assert(s5_navigation_stopped());
+    /* A removed obstacle resumes from a stopped scan without pretending
+     * that a bypass/recovery maneuver has completed. */
+    assert(s5_bridge_request(S5_CMD_RESUME, &p));
+    assert(!allowed);
+    assert(s5_bridge_request(S5_CMD_STOP, &p));
     p.valid = true;
     p.bypass_side = S5_SIDE_LEFT;
     p.estimated_width_cm = 8.0f;
@@ -180,14 +246,12 @@ int main(void)
     assert(!s5_bridge_motion_complete());
     line_state.line_flags = 0u; /* Leave the original line. */
     finish_leg();
-    tick(120.0f);
-    assert(move_calls == 1u && last_move == 20.0f && last_direction == MOTION_DIR_FORWARD);
-    finish_leg();
+    finish_offset();
     tick(120.0f);
     assert(turn_calls == 2u && last_turn == MOTION_TURN_RIGHT);
     finish_leg();
     tick(120.0f);
-    assert(move_calls == 2u && last_move == 83.0f);
+    assert(move_calls == 2u && last_move == 63.0f);
     finish_leg();
     assert(s5_bridge_motion_complete());
     tick(120.0f);
@@ -201,6 +265,8 @@ int main(void)
     for (unsigned i = 0u; i < 7u; ++i) { finish_leg(); tick(120.0f); }
     line_state.line_flags = B3_LINE_F_DETECTED;
     tick(120.0f);
+    assert(!allowed && maneuver.state == S5_MAN_LINE_STOP);
+    assert(!s5_bridge_line_found()); /* First contact brakes, never hands off. */
     tick(120.0f);
     tick(120.0f);
     assert(!allowed && !s5_bridge_line_found());
@@ -222,14 +288,60 @@ int main(void)
         clock_ms += 65u;
         s5_navigation_tick(true, 120.0f, true);
     }
-    assert(drive_calls == 0u && allowed); /* Following resumes after recovery. */
+    assert(allowed); /* VC can resume after width-sized bypass. */
     clock_ms += 65u;
-    s5_navigation_tick(true, 25.0f, true);
+    s5_navigation_tick(true, ROBOT_STOP_CM, true);
     assert(!allowed); /* A second obstacle interrupts following immediately. */
     assert(s5_bridge_request(S5_CMD_STOP, &p));
-    assert(s5_bridge_request(S5_CMD_GO_LEFT, &p));
+    {
+        S5Controller decision;
+        S5Input observation = {0};
+        const float captured[] = {16.94f, 152.39f, 20.46f, 152.79f, 18.86f};
+        s5_controller_init(&decision);
+        decision.state = S5_COARSE;
+        for (int i = 0; i < 5; ++i) {
+            observation.coarse.points[i] = (S5ScanPoint){(uint16_t)(70 + 10 * i), captured[i], true};
+        }
+        observation.front_valid = observation.stopped = observation.coarse_ready = true;
+        observation.front_cm = 17.23f;
+        S5Command chosen = s5_controller_step(&decision, &observation);
+        assert(chosen == S5_CMD_GO_LEFT); /* Actual capture: inner left ray is usable. */
+        assert(s5_bridge_request(chosen, &decision.profile));
+    }
     tick(25.0f);
-    assert(turn_calls == 6u); /* A new avoidance cycle is armed. */
+    assert(turn_calls == 6u && last_turn == MOTION_TURN_LEFT);
+    finish_leg();
+    finish_offset();
+    tick(120.0f);
+    assert(last_turn == MOTION_TURN_RIGHT && turn_calls == 7u);
+    finish_leg();
+    {
+        unsigned prior_moves = move_calls;
+        tick(120.0f); /* Head-on verification after the turn enables forward motion. */
+        assert(move_calls == prior_moves + 1u);
+        assert(last_direction == MOTION_DIR_FORWARD && last_move > 0.0f);
+    }
+    assert(s5_bridge_request(S5_CMD_STOP, &p));
+    {
+        const int looks[] = {-45, 45, 45, -45};
+        int heading = 0;
+        for (unsigned i = 0u; i < 4u; ++i) {
+            assert(s5_navigation_probe_begin(looks[i]));
+            assert(!s5_navigation_probe_complete());
+            assert(last_angle == (looks[i] < 0 ? -looks[i] : looks[i]));
+            tick(17.0f); /* Logged frontal distance still permits rotation. */
+            assert(!s5_navigation_probe_complete());
+            assert(!s5_navigation_probe_begin(60)); /* No overlapping turns. */
+            finish_leg();
+            assert(s5_navigation_probe_complete() && s5_navigation_stopped());
+            heading += looks[i];
+        }
+        assert(heading == 0);
+        assert(s5_navigation_probe_begin(-45));
+        s5_navigation_pause();
+        assert(!allowed && !s5_navigation_probe_complete());
+        puts("PASS chassis viewpoints wait for B2 completion, restore heading and cancel on pause");
+    }
     line_valid = false;
     tick(120.0f);
     assert(!s5_bridge_ready() && !allowed);

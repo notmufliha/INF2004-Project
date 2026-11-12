@@ -39,6 +39,7 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     b2_request_stop(); /* Revoke B5 movement as well as VC movement. */
     c->running = false;
     c->paused = false;
+    c->line_recovery_active = false;
     c->navigation = 0u;
     c->navigation_id = 0u;
     c->pending_navigation = B3_NAV_NONE;
@@ -208,6 +209,7 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
     switch (cmd->type) {
     case RCMD_START:
         if (c->mode != MODE_TEST) {
+            if (!c->running) c->line_recovery_active = false;
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
@@ -302,6 +304,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (in->obstacle_active) {
         /* B5 owns bounded bypass/recovery legs; never overwrite them. */
+        c->obstacle_handoff = true;
         c->drive_sent = false;
         c->stopped = false;
         c->navigation = 0u;
@@ -311,7 +314,24 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->junction_enter_samples = c->junction_clear_samples = 0u;
         return;
     }
+    if (c->obstacle_handoff) {
+        /* The bypass changed position and heading. Discard steering/speed
+         * history from before the obstacle and give a lost line a fresh
+         * recovery window, even if we entered avoidance during recovery. */
+        c->obstacle_handoff = false;
+        c->drive_sent = false;
+        c->last_steer = c->last_error = c->curve_steer = c->last_speed = 0;
+        c->line_pos = B3_LINE_POS_CENTRE;
+        c->last_line_search_direction = 0;
+        c->recovery_ms = in->now_ms;
+        c->line_recovery_active = false;
+    }
     if (!in->clearance || (in->faults & FAULT_NO_ECHO)) {
+        if (c->state != ROBOT_OBSTACLE_SCAN) {
+            tm_printf((UB *)"[VC-CLEARANCE-WAIT] now_ms=%d allowed=%d no_echo=%d generation=%d\n",
+                      (INT)in->now_ms, (INT)in->clearance,
+                      (INT)((in->faults & FAULT_NO_ECHO) != 0u), (INT)in->safety_generation);
+        }
         if (c->navigation != 0u) {
             /* Our navigation STOP revokes clearance. Wait for a fresh B5
              * report before submitting the turn, without losing the request. */
@@ -326,8 +346,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
+    if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
+    if (line_detected) c->line_recovery_active = false;
     update_junction_state(c, in->line_flags);
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
         c->pending_navigation == B3_NAV_NONE &&
@@ -347,11 +369,32 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         (void)line_position(c, in); /* remember which side the line is on */
     }
     if (c->navigation == 0u && !line_detected) {
+        if (ROBOT_CLEAR_PATH_FORWARD) {
+            set_state(c, ROBOT_LINE_RECOVERY);
+            if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
+            command.type = MOTION_CMD_DRIVE;
+            command.direction = MOTION_DIR_FORWARD;
+            command.target_speed_cps = speed / 2;
+            command.steering_permille = 0;
+            apply_wheel_minimum(&command);
+            command.safety_generation = in->safety_generation;
+            c->last_steer = c->last_error = c->curve_steer = 0;
+            c->line_recovery_active = false;
+            if (motion_send_command(&command) == E_OK) {
+                c->stopped = false;
+                c->drive_sent = true;
+                c->last_drive_ms = in->now_ms;
+            } else if (!c->drive_sent || in->now_ms - c->last_drive_ms >= 60u) safe_stop(c);
+            return;
+        }
         uint32_t recovery_elapsed;
         INT direction;
         INT search_steer = VC_LINE_SEARCH_STEER;
 
-        if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
+        if (!c->line_recovery_active) {
+            c->recovery_ms = in->now_ms;
+            c->line_recovery_active = true;
+        }
         recovery_elapsed = in->now_ms - c->recovery_ms;
         set_state(c, ROBOT_LINE_RECOVERY);
         if (recovery_elapsed >= VC_LINE_SEARCH_MS) {
@@ -519,6 +562,7 @@ static void controller_task(INT stacd, void *exinf)
     imu_event_t imu = {0};
     bool hazard = false;
     bool autostart_pending = ROBOT_AUTOSTART != 0;
+    uint32_t last_boot_log_ms = 0u;
     (void)stacd;
     (void)exinf;
     vehicle_controller_init(&c);
@@ -582,6 +626,7 @@ static void controller_task(INT stacd, void *exinf)
         in.motion_valid = in.motion_valid &&
             now.lo - in.motion.sample_time_ms <= VC_MOTION_MAX_AGE_MS;
         in.clearance = b2_safety_motion_allowed();
+        in.approach_slow = s5_mission_approach_slow();
         in.safety_generation = b2_safety_stop_generation();
         in.faults = fault_get();
         {
@@ -591,17 +636,29 @@ static void controller_task(INT stacd, void *exinf)
         }
         /* Higher-priority VC can run before B2/B3 publish their first
          * sample. Arm boot motion only after producers are actually ready. */
-        if (autostart_pending && in.line_valid && in.imu_valid &&
+        bool boot_sensors_ready = in.line_valid && in.imu_valid &&
             in.motion_valid && !in.hazard && !in.obstacle_fault &&
-            (in.line_flags & LINE_F_DETECTED) &&
-            !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU))) {
+            (ROBOT_CLEAR_PATH_FORWARD || (in.line_flags & LINE_F_DETECTED)) &&
+            !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU));
+        /* B5 needs an enabled mission to establish line reference and
+         * clearance. Keep boot arming pending until it actually permits
+         * DRIVE; a transient fault during warmup must not consume START. */
+        if (autostart_pending && boot_sensors_ready && in.clearance &&
+            !(in.faults & FAULT_NO_ECHO)) {
             REMOTE_CMD start = {0};
             start.type = RCMD_START;
             vehicle_controller_command(&c, &start);
             autostart_pending = false;
+            tm_printf((UB *)"[VC-BOOT] sensors and front clearance ready; START\n");
+        } else if (autostart_pending && in.now_ms - last_boot_log_ms >= 1000u) {
+            last_boot_log_ms = in.now_ms;
+            tm_printf((UB *)"[VC-BOOT-WAIT] line=%d detected=%d imu=%d motion=%d hazard=%d obstacle_fault=%d clearance=%d faults=%d\n",
+                      (INT)in.line_valid, (INT)((in.line_flags & LINE_F_DETECTED) != 0u),
+                      (INT)in.imu_valid, (INT)in.motion_valid, (INT)in.hazard,
+                      (INT)in.obstacle_fault, (INT)in.clearance, (INT)in.faults);
         }
         vehicle_controller_step(&c, &in, nav);
-        s5_mission_enable(c.running && !c.estop && !c.paused &&
+        s5_mission_enable(((autostart_pending && boot_sensors_ready) || c.running) && !c.estop && !c.paused &&
                           c.mode != MODE_TEST && c.speed_percent != 0u);
         /* Hazards stop this tick even when coalesced with recovery. A later
          * explicit START is required; no automatic mission restart. */

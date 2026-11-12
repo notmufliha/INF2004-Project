@@ -19,9 +19,11 @@
 #define B3_LINE_RAW_LOW_IS_BLACK (1U)
 #define B3_LINE_RAW_BLACK_MAX (1500U)
 #define B3_LINE_RAW_WHITE_MIN (1999U)
-/* ADC readings below this floor are treated as no line, regardless of the
- * configured sensor polarity or normalization range. */
-#define B3_LINE_RAW_LOST_BELOW (300U)
+/* Only a zero ADC reading is excluded. With low-is-black sensors, valid
+ * tape readings can be below 300 (COM6: GP26 ~250, GP27 ~160). Applying
+ * a 300-count floor inverted those readings into "no line" and biased
+ * steering whenever only one channel crossed that artificial boundary. */
+#define B3_LINE_RAW_LOST_BELOW (1U)
 
 #define B3_NAV_QUEUE_LENGTH (8U)
 

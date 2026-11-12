@@ -45,6 +45,17 @@ static bool expired(uint32_t start, uint32_t duration_us)
     return (uint32_t)(now_us() - start) >= duration_us;
 }
 
+/* PWM captures the echo while this task sleeps. Yield during millisecond
+ * waits so the higher-priority safety task does not monopolize the CPU.
+ * Never call this during the bounded 12-us trigger pulse. */
+static void yield_echo_wait(uint32_t *last_yield_us)
+{
+    if ((uint32_t)(now_us() - *last_yield_us) >= 1000u) {
+        tk_dly_tsk(1u);
+        *last_yield_us = now_us();
+    }
+}
+
 float s5_echo_us_to_cm(uint32_t echo_us)
 {
     return ((float)echo_us * 0.0343f) / 2.0f;
@@ -67,6 +78,8 @@ const char *s5_echo_status_name(S5EchoStatus status)
 bool s5_ultrasonic_init(void)
 {
     have_trigger = false;
+    tm_printf((UB*)"[S5-CLOCK] timer_tick_cycles=%d expected=12 (1 MHz)\n",
+              (int)(in_w(0x4005802cU) & 0x1ffU));
     /* The sensor must work independently of motor initialization order. */
     clr_w(0x4000c000u, 1u << 14u); /* RESETS_RESET: PWM */
     uint32_t reset_started = now_us();
@@ -110,11 +123,13 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
     uint32_t start, count;
     UINT trigger_irq;
     bool saw_high = false;
+    uint32_t last_yield_us = now_us();
 
     /* Enforce spacing at the hardware boundary, including warmup, scans,
      * retries and a restarted mission. Caller delays alone do not cover
      * every transition and can retrigger during a no-target timeout. */
-    while (have_trigger && !expired(last_trigger_us, S5_MIN_TRIGGER_GAP_US)) { }
+    while (have_trigger && !expired(last_trigger_us, S5_MIN_TRIGGER_GAP_US))
+        yield_echo_wait(&last_yield_us);
 
     /* A stuck-high pin is not a valid echo. */
     start = now_us();
@@ -123,6 +138,7 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
             r.status = S5_ECHO_STUCK_HIGH;
             return r;
         }
+        yield_echo_wait(&last_yield_us);
     }
 
     /* Clear the hardware count immediately before sending a fresh trigger.
@@ -159,6 +175,7 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
             r.status = S5_ECHO_NO_RISE;
             return r;
         }
+        yield_echo_wait(&last_yield_us);
     }
 
     /* Counter keeps running only while ECHO is high.  Interrupts and task
@@ -177,6 +194,7 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
                     r.status = S5_ECHO_NO_FALL;
                     return r;
                 }
+                yield_echo_wait(&last_yield_us);
             }
             /* GPIO did fall: classify the completed hardware pulse below.
              * Open-space policy accepts a completed OUT_OF_RANGE pulse. */
@@ -186,6 +204,7 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
 #endif
             break;
         }
+        yield_echo_wait(&last_yield_us);
     }
 
     r.pulse_us = in_w(S5_ECHO_CTR) & 0xffffu;

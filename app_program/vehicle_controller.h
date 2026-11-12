@@ -44,6 +44,7 @@ typedef struct {
     bool clearance, line_valid, imu_valid, hump, hazard, motion_valid;
     bool barcode_active; /* B3 barcode sensor is crossing bars */
     bool obstacle_active, obstacle_fault;
+    bool approach_slow;
     UH left, centre;
     UB line_flags, faults;
     motion_status_snapshot_t motion;
@@ -55,6 +56,8 @@ typedef struct {
     RUN_MODE mode;
     UINT speed_percent;
     bool running, paused, estop, stopped, drive_sent;
+    bool obstacle_handoff; /* B5 moved the robot since our last line command. */
+    bool line_recovery_active; /* Survives temporary clearance stops. */
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
     INT last_line_search_direction; /* -1 left / +1 right: last line side */
     INT line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */

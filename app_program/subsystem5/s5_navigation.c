@@ -9,17 +9,23 @@
 #include "../subsystem1/subsystem1.h"
 
 typedef enum { NAV_FOLLOW, NAV_STOP, NAV_AVOID, NAV_RECOVER,
-               NAV_REVERSE, NAV_FAULT } NavigationMode;
+               NAV_REVERSE, NAV_FAULT, NAV_PROBE } NavigationMode;
 static NavigationMode mode;
 static S5Maneuver maneuver;
 static bool initialized;
 static bool stop_queued;
 static unsigned clear_hits;
+static unsigned invalid_front_hits;
+static uint32_t last_clear_ms;
+static uint32_t last_turn_guard_log_ms;
 static unsigned initial_line_hits;
 static uint32_t initial_line_sample;
 static bool line_reference;
 static bool (*rear_sensor)(float);
 static S5Error navigation_error;
+static uint32_t probe_id, probe_started_ms;
+static bool probe_complete;
+static int probe_degrees;
 
 static bool now_ms(uint32_t *now)
 {
@@ -56,6 +62,7 @@ static bool request(S5Command command, const S5Profile *profile)
     uint32_t now;
     if (command == S5_CMD_STOP || command == S5_CMD_HALT) {
         clear_hits = 0u;
+        invalid_front_hits = 0u;
         mode = command == S5_CMD_HALT ? NAV_FAULT : NAV_STOP;
         s5_maneuver_init(&maneuver);
         comm_set_robot_state(command == S5_CMD_HALT ? ROBOT_SAFE_STOP : ROBOT_OBSTACLE_SCAN);
@@ -70,7 +77,10 @@ static bool request(S5Command command, const S5Profile *profile)
         return true;
     }
     if (command == S5_CMD_RESUME) {
-        if (mode != NAV_RECOVER || maneuver.state != S5_MAN_COMPLETE)
+        bool recovered = mode == NAV_RECOVER && maneuver.state == S5_MAN_COMPLETE;
+        bool obstacle_removed = mode == NAV_STOP && maneuver.state == S5_MAN_IDLE &&
+                                s5_navigation_stopped();
+        if (!recovered && !obstacle_removed)
             return false;
         mode = NAV_FOLLOW;
         clear_hits = 0u;
@@ -85,9 +95,10 @@ static bool request(S5Command command, const S5Profile *profile)
     s5_maneuver_init(&maneuver);
     if (!s5_maneuver_begin(&maneuver, command, profile,
                            ROBOT_BYPASS_MAX_DEPTH_CM, now)) return false;
-    tm_printf((UB*)"[S5-ROUTE] side=%d offset_cm_x100=%d pass_cm_x100=%d search_limit_cm_x100=%d\n",
-              (int)maneuver.side, (int)(maneuver.lateral_cm * 100.0f),
-              (int)(maneuver.pass_cm * 100.0f), (int)(maneuver.search_limit_cm * 100.0f));
+    tm_printf((UB*)"[S5-ROUTE] side=%d offset_cm_x100=%d pass_cm_x100=%d search_limit_cm_x100=%d course_bounds=%d\n",
+              (int)maneuver.side, (int)(maneuver.offset_cm * 100.0f),
+              (int)(maneuver.pass_cm * 100.0f), (int)(maneuver.search_limit_cm * 100.0f),
+              profile ? (int)profile->uses_course_bounds : 0);
     mode = command == S5_CMD_REVERSE ? NAV_REVERSE : NAV_AVOID;
     comm_set_robot_state(ROBOT_OBSTACLE_AVOID);
     return true;
@@ -123,6 +134,9 @@ bool s5_navigation_init(void)
     navigation_error = S5_ERR_NONE;
     stop_queued = false;
     clear_hits = initial_line_hits = 0u;
+    invalid_front_hits = 0u;
+    last_clear_ms = 0u;
+    last_turn_guard_log_ms = 0u;
     initial_line_sample = 0u;
     line_reference = false;
     if (!s5_bridge_install(&driver)) return false;
@@ -132,13 +146,35 @@ bool s5_navigation_init(void)
 void s5_navigation_pause(void)
 {
     (void)stop_motor();
+    probe_id = 0u;
+    probe_complete = false;
     if (mode == NAV_FAULT) return;
     mode = NAV_FOLLOW;
     clear_hits = 0u;
+    invalid_front_hits = 0u;
     s5_maneuver_init(&maneuver);
 }
 S5Error s5_navigation_error(void) { return navigation_error; }
 bool s5_navigation_has_line_reference(void) { return line_reference; }
+bool s5_navigation_probe_complete(void) { return probe_complete; }
+bool s5_navigation_probe_begin(int degrees)
+{
+    uint32_t now, id = 0u;
+    if (!ready() || mode != NAV_STOP || !s5_navigation_stopped() ||
+        !now_ms(&now) || degrees == 0 || degrees < -120 || degrees > 120) return false;
+    b2_request_forward();
+    if (!b2_safety_motion_allowed() || motion_turn_degrees(degrees < 0 ? -degrees : degrees,
+        ROBOT_BYPASS_SPEED_CPS, degrees < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id) != E_OK || !id)
+        return false;
+    probe_id = id;
+    probe_degrees = degrees;
+    probe_started_ms = now;
+    probe_complete = false;
+    stop_queued = false;
+    mode = NAV_PROBE;
+    tm_printf((UB*)"[S5-LOOK] turn_deg=%d id=%d\n", degrees, (int)id);
+    return true;
+}
 bool s5_navigation_stopped(void)
 {
     uint32_t now;
@@ -146,6 +182,26 @@ bool s5_navigation_stopped(void)
     return motion_get_status(&status) == E_OK && now_ms(&now) &&
            now - status.sample_time_ms <= 200u && status.physically_stopped &&
            !b2_safety_stop_requested() && b2_motor_is_stopped();
+}
+bool s5_navigation_probe_bypass(const S5Profile *profile)
+{
+    uint32_t now;
+    if (!profile || !profile->valid || mode != NAV_STOP || !probe_complete ||
+        !s5_navigation_stopped() || !now_ms(&now)) return false;
+    int expected = profile->bypass_side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG;
+    if (profile->bypass_side == S5_SIDE_NONE || probe_degrees != expected) return false;
+    s5_maneuver_init(&maneuver);
+    if (!s5_maneuver_begin(&maneuver,
+        profile->bypass_side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT,
+        profile, ROBOT_BYPASS_MAX_DEPTH_CM, now)) return false;
+    /* The viewpoint turn already completed. Start the diagonal offset,
+     * rather than restoring heading and submitting another outward turn. */
+    maneuver.state = S5_MAN_OFFSET;
+    probe_complete = false;
+    mode = NAV_AVOID;
+    tm_printf((UB*)"[S5-LOOK-ADVANCE] side=%d offset_cm_x100=%d pass_cm_x100=%d\n",
+        (int)maneuver.side, (int)(maneuver.offset_cm * 100.0f), (int)(maneuver.pass_cm * 100.0f));
+    return true;
 }
 
 void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
@@ -178,6 +234,24 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     in.front_cm = front_cm;
     in.stopped = status.physically_stopped;
     if (!in.line_valid) { fault_stop(S5_ERR_LINE_TIMEOUT); return; }
+    if (mode == NAV_PROBE) {
+        motion_status_snapshot_t terminal;
+        if (!front_valid || !(front_cm > ROBOT_BYPASS_MIN_TURN_CM) ||
+            front_cm > S5_MAX_RANGE_CM || in.now_ms - probe_started_ms >= ROBOT_BYPASS_LEG_TIMEOUT_MS) {
+            fault_stop(!front_valid ? S5_ERR_FRONT_SENSOR : S5_ERR_INSUFFICIENT_CLEARANCE);
+            return;
+        }
+        if (motion_get_result(probe_id, &terminal) == E_OK) {
+            if (terminal.status != MOTION_STATUS_COMPLETED || !terminal.physically_stopped || !in.stopped) {
+                fault_stop(S5_ERR_MOTION_TIMEOUT);
+                return;
+            }
+            probe_complete = true;
+            mode = NAV_STOP;
+            (void)stop_motor();
+        } else b2_request_forward();
+        return;
+    }
     if (follow && !line_reference) {
         if (!in.line_detected) initial_line_hits = 0u;
         else if (initial_line_hits == 0u || sample != initial_line_sample) {
@@ -187,21 +261,32 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         }
     }
     if (follow && (mode == NAV_FOLLOW || mode == NAV_STOP)) {
+        bool valid_front = front_valid && front_cm > 0.0f && front_cm <= S5_MAX_RANGE_CM;
+        if (!valid_front) {
+            if (invalid_front_hits < S5_FRONT_INVALID_LIMIT) ++invalid_front_hits;
+            if (mode == NAV_FOLLOW && !stop_queued && clear_hits >= ROBOT_CLEAR_CONFIRM &&
+                invalid_front_hits < S5_FRONT_INVALID_LIMIT &&
+                in.now_ms - last_clear_ms <= ROBOT_FRONT_GLITCH_GRACE_MS) {
+                /* Keep the existing, unexpired clearance. Do not fabricate
+                 * a reading or refresh permission from an invalid echo. */
+                return;
+            }
+        } else invalid_front_hits = 0u;
         /* Hysteresis: require release distance to START, but keep following
          * down to STOP distance. Stopping at RELEASE left the robot parked
-         * at 35..45 cm forever, outside the controller's scan trigger. */
+         * between STOP and RELEASE forever, outside the scan trigger. */
         bool clearance = mode == NAV_FOLLOW && !stop_queued &&
                          clear_hits >= ROBOT_CLEAR_CONFIRM ?
                          front_cm > ROBOT_STOP_CM : front_cm >= ROBOT_RELEASE_CM;
-        if (!front_valid || !clearance ||
-            front_cm > S5_MAX_RANGE_CM) {
+        if (!valid_front || !clearance) {
             clear_hits = 0u;
             (void)stop_motor();
             mode = NAV_STOP;
             return;
         }
+        last_clear_ms = in.now_ms;
         if (clear_hits < ROBOT_CLEAR_CONFIRM) ++clear_hits;
-        if (clear_hits < ROBOT_CLEAR_CONFIRM || !line_reference) { (void)stop_motor(); return; }
+        if (clear_hits < ROBOT_CLEAR_CONFIRM || (!ROBOT_CLEAR_PATH_FORWARD && !line_reference)) { (void)stop_motor(); return; }
         b2_request_forward();
         if (!b2_safety_motion_allowed()) return; /* Wait for STOP ACK. */
         /* Normal DRIVE belongs to the vehicle controller. */
@@ -228,9 +313,24 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         }
     }
     in.rear_clear = rear_sensor && rear_sensor(ROBOT_BYPASS_REVERSE_CM);
+    if (maneuver.pending_id &&
+        (maneuver.state == S5_MAN_TURN_OUT || maneuver.state == S5_MAN_FORWARD ||
+         maneuver.state == S5_MAN_TURN_IN || maneuver.state == S5_MAN_ALIGN ||
+         maneuver.state == S5_MAN_ALIGN_CHECK) &&
+        in.now_ms - last_turn_guard_log_ms >= 200u) {
+        last_turn_guard_log_ms = in.now_ms;
+        tm_printf((UB*)"[S5-TURN-GUARD] side=%d front_cm_x100=%d valid=%d\n",
+                  (int)maneuver.side, (int)(front_cm * 100.0f), (int)front_valid);
+    }
     action = s5_maneuver_step(&maneuver, &in);
     if (action.type == S5_ACT_STOP) {
         (void)stop_motor();
+        if (maneuver.waiting_clear && in.now_ms - last_turn_guard_log_ms >= 1000u) {
+            last_turn_guard_log_ms = in.now_ms;
+            tm_printf((UB*)"[S5-FORWARD-WAIT] state=%d front_cm_x100=%d release_cm=%d clear_hits=%d\n",
+                (int)maneuver.state, (int)(front_cm * 100.0f),
+                (int)ROBOT_RELEASE_CM, (int)maneuver.clear_hits);
+        }
         if (maneuver.state == S5_MAN_FAILED) fault_stop(maneuver.error);
         return;
     }

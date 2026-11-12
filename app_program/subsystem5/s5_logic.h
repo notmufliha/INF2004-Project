@@ -11,6 +11,7 @@
 #define S5_MAX_RANGE_CM 450.0f
 #define S5_FRONT_INVALID_LIMIT 3u
 #define S5_WAIT_LIMIT 30u /* stop/scan outer tick budget */
+#define S5_ROUTE_RESCAN_TICKS 45u /* about three seconds between stopped retries */
 #define S5_MOTION_LIMIT 3000u /* outer tick budget; executor uses real ms deadlines */
 #define S5_RECOVERY_LIMIT 1500u /* executor additionally bounds travel and wall time */
 /* Geometry comes from robot_config.h and requires measured calibration. */
@@ -22,7 +23,7 @@ void s5_make_fine_angles(uint16_t center_deg, uint16_t out[S5_SCAN_COUNT]);
 
 typedef enum {
     S5_FOLLOW, S5_WAIT_STOP, S5_COARSE, S5_FINE, S5_REVERSE, S5_AVOID,
-    S5_RECOVER, S5_DONE, S5_FAULT
+    S5_RECOVER, S5_DONE, S5_FAULT, S5_WAIT_ROUTE
 } S5State;
 typedef enum {
     S5_CMD_NONE, S5_CMD_STOP, S5_CMD_SCAN_COARSE,
@@ -30,6 +31,7 @@ typedef enum {
     S5_CMD_FIND_LINE, S5_CMD_RESUME, S5_CMD_HALT
 } S5Command;
 typedef enum { S5_SIDE_NONE, S5_SIDE_LEFT, S5_SIDE_RIGHT } S5Side;
+S5Side s5_probe_side(const S5Scan *scan);
 typedef enum {
     S5_ERR_NONE, S5_ERR_FRONT_SENSOR, S5_ERR_STOP_TIMEOUT,
     S5_ERR_SCAN_TIMEOUT, S5_ERR_NO_CLEAR_ROUTE,
@@ -54,6 +56,7 @@ typedef enum { S5_SIZE_UNKNOWN, S5_SIZE_SMALL, S5_SIZE_LARGE,
 
 typedef struct {
     bool valid;
+    bool uses_course_bounds; /* Width is a configured bound, not a measurement. */
     S5ObstacleSize size;
     float nearest_cm;
     float nearest_lateral_cm; /* x: negative left, positive right */
@@ -79,6 +82,7 @@ typedef struct {
     uint16_t ticks_in_state;
     uint16_t fine_center_deg;
     uint8_t reverse_attempts;
+    uint8_t route_waits, clear_route_hits;
     S5Scan last_coarse;
     uint8_t invalid_front_count;
     uint16_t events;
@@ -91,6 +95,9 @@ S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side);
 /* Prefer a bracketed fine silhouette. A valid but clipped fine scan may
  * fall back to the wider coarse silhouette; invalid echoes never do. */
 S5Profile s5_profile_from_scans(const S5Scan *coarse, const S5Scan *fine, S5Side side);
+/* Clipped or single-hit narrow scans may use explicit course size limits. Requires a
+ * clear outer ray; executor rechecks the new heading before translation. */
+S5Profile s5_profile_from_course_bounds(const S5Scan *coarse, const S5Scan *fine);
 /* Shared size-aware recommendation; does not authorise physical motion. */
 S5Side s5_plan_bypass(S5Profile *profile, const S5Scan *coarse);
 const char *s5_state_name(S5State s);

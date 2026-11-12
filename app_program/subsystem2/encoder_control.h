@@ -24,14 +24,14 @@ void encoder_get_invalid_counts(UW *left, UW *right);
 
 /* Provisional turn-only correction: initial scale = 90/70.
  * Left scale 1.3932155 produced a reported approximately 100 degrees.
- * Current left trial = 1.3932155 * 90/100.
- * Right retains the initial scale after reported improvement.
+ * Latest floor feedback: turns overshoot slightly. Reduce both previous
+ * scales by 10%: left 1.2538940 * 0.90, right 1.2857143 * 0.90.
  * Re-measure completed left/right turns on the same surface and load.
  * New scale = old scale * requested angle / measured angle.
  * Never tune these values from a cancelled, timed-out or faulted turn.
  */
-#define ENC_TURN_LEFT_SCALE      1.2538940f
-#define ENC_TURN_RIGHT_SCALE     1.2857143f
+#define ENC_TURN_LEFT_SCALE      1.1285046f
+#define ENC_TURN_RIGHT_SCALE     1.1571429f
 
 /* Preliminary encoder calibration values. */
 #define ENC_LEFT_COUNTS_PER_REV  2499

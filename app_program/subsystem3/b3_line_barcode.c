@@ -290,6 +290,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	B3_LINE_CAL left_cal;
 	B3_LINE_CAL centre_cal;
 	bool calibration_reported = false;
+    unsigned diagnostic_samples = 0U;
 
 	(void)stacd;
 	(void)exinf;
@@ -334,10 +335,16 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		/* Controller gets normalised values; dashboard gets raw ADC. */
 		b3_set_line_state(left_norm, centre_norm, right, flags);
 		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
+        if (++diagnostic_samples >= 50U) {
+            diagnostic_samples = 0U;
+            tm_printf((UB *)"[LINE-RAW] GP26=%d GP27=%d norm26=%d norm27=%d low_is_black=%d\n",
+                      (int)left, (int)centre, (int)left_norm,
+                      (int)centre_norm, (int)B3_LINE_RAW_LOW_IS_BLACK);
+        }
 		if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
 		    b3_line_cal_ready(&centre_cal)) {
 			calibration_reported = true;
-			tm_printf((UB *)"[B3-CAL] learned GP26 white=%d black=%d; GP27 white=%d black=%d\n",
+			tm_printf((UB *)"[B3-CAL] observed GP26 min=%d max=%d; GP27 min=%d max=%d; tracking uses fixed thresholds\n",
 				  (int)left_cal.white, (int)left_cal.black,
 				  (int)centre_cal.white, (int)centre_cal.black);
 		}
