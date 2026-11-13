@@ -393,14 +393,20 @@ int main(void)
     input.left = 840u; input.centre = 500u; settle(&c, 10u);
     assert(sent.steering_permille > 0 && wheel_ok(right_wheel()) &&
         right_wheel() > 0 && left_wheel() > right_wheel());
-    /* Crossing a barcode: steady slow speed, then normal again. */
+    /* Crossing a barcode: speed frozen, even when the junction flag or a
+     * steering correction would normally slow the car, then normal again. */
     input.left = 700u; input.centre = 700u; settle(&c, 60u);
     assert(sent.target_speed_cps == straight_speed);
     input.barcode_active = true; step(&c, 20u, 0u);
-    assert(sent.target_speed_cps == VC_BARCODE_CPS);
-    settle(&c, 10u);
-    assert(sent.target_speed_cps == VC_BARCODE_CPS);
-    input.barcode_active = false; settle(&c, 30u);
+    assert(sent.target_speed_cps == straight_speed);
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION; settle(&c, 5u);
+    assert(sent.target_speed_cps == straight_speed);
+    input.line_flags = LINE_F_DETECTED;
+    input.left = 840u; input.centre = 500u; settle(&c, 5u);
+    assert(sent.target_speed_cps == straight_speed);
+    input.left = 700u; input.centre = 700u; settle(&c, 10u);
+    assert(sent.target_speed_cps == straight_speed);
+    input.barcode_active = false; settle(&c, 60u);
     assert(sent.target_speed_cps == straight_speed);
     input.left = 900u; input.centre = 30u; settle(&c, 10u);
     /* Look-ahead hold: back on centre, speed recovers only gradually. */

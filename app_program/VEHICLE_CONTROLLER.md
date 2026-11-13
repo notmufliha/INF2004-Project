@@ -84,7 +84,9 @@ keeping the outer wheel's speed. This prevents B2 stall faults on curves and
 at low dashboard speeds. B3 treats raw ADC readings below 300 as lost, then
 normalises the remaining readings per sensor (0 = off-line, 1000 = black);
 a sensor is on the line at 201 or more. While a barcode is under the sensor
-the speed is held at `VC_BARCODE_CPS` (500 counts/s).
+(a GP28 edge within 400 ms) the speed is frozen at the value it had when the
+first bar arrived: no junction, curve or barcode slowdown, because a speed
+change mid-strip distorts the timed bar widths.
 The base speed is reduced only when the outer wheel would otherwise exceed
 B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn
 accuracy must be calibrated on the actual track. B5's physical avoidance

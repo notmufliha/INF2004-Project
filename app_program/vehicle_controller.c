@@ -531,9 +531,13 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         command.target_speed_cps = speed;
     }
     if (command.target_speed_cps < 1) command.target_speed_cps = 1;
-    /* Steady and slow across a barcode (slowing applies at once). */
-    if (in->barcode_active && command.target_speed_cps > VC_BARCODE_CPS) {
-        command.target_speed_cps = VC_BARCODE_CPS;
+    /* Constant speed across a barcode.  Bar widths are timed, so a speed
+     * change part-way through the strip (the junction or curve slowdown, or
+     * braking at the first bar) stretches the later elements and the read
+     * is rejected.  Keep the speed the car had when the first bar arrived
+     * until the bars stop. */
+    if (in->barcode_active && c->drive_sent && c->last_speed > 0) {
+        command.target_speed_cps = c->last_speed;
     }
     /* Gentle acceleration, also from standstill; slowing applies at once. */
     {

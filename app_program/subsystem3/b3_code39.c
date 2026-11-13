@@ -1,6 +1,7 @@
 #include "b3_code39.h"
 
 #include <stddef.h>
+#include <stdint.h>
 
 /* Full Code 39 set: nine elements (bar, space, ... bar), 1 = wide, first
  * element in bit 8.  Every character has exactly three wide elements. */
@@ -74,12 +75,45 @@ void b3_code39_reset(B3_CODE39_DECODER *decoder)
     }
 }
 
-/* Wide/narrow mask of the nine elements at offset, or 0 when the widths do
- * not split cleanly into six narrow and three wide elements. */
-static uint16_t element_mask(const B3_CODE39_DECODER *decoder, uint8_t offset,
-                             uint32_t *narrow_max_us)
+/* Insertion sort of a few widths, ascending. */
+static void sort_widths(uint32_t *widths, uint8_t count)
 {
-    uint32_t sorted[9];
+    uint8_t index;
+
+    for (index = 1U; index < count; ++index) {
+        uint32_t value = widths[index];
+        uint8_t insert = index;
+
+        while (insert > 0U && widths[insert - 1U] > value) {
+            widths[insert] = widths[insert - 1U];
+            insert--;
+        }
+        widths[insert] = value;
+    }
+}
+
+/* True when "wider" is clearly a wide element next to "narrower". */
+static bool clearly_wider(uint32_t narrower, uint32_t wider)
+{
+    return (uint64_t)wider * 10U >=
+        (uint64_t)narrower * B3_CODE39_WIDE_RATIO_X10;
+}
+
+/* Wide/narrow mask of the nine elements at offset, or 0 when the widths do
+ * not split cleanly.  Bars (elements 0, 2, 4, 6, 8) and spaces (1, 3, 5, 7)
+ * are split separately: the IR spot blurs every edge, so on the car each
+ * bar reads thinner and each space wider than printed, and a narrow space
+ * can read as long as a wide bar.  Comparing all nine widths together then
+ * rejects good barcodes.  Every Code 39 character has either two wide bars
+ * and one wide space, or (only $ / + %) no wide bar and three wide spaces.
+ * narrow_space_us receives the widest narrow space, for the gap check. */
+static uint16_t element_mask(const B3_CODE39_DECODER *decoder, uint8_t offset,
+                             uint32_t *narrow_space_us)
+{
+    uint32_t bars[5];
+    uint32_t spaces[4];
+    uint32_t bar_cut;
+    uint32_t space_cut;
     uint16_t wide_mask = 0U;
     uint8_t wide_count = 0U;
     uint8_t index;
@@ -89,29 +123,36 @@ static uint16_t element_mask(const B3_CODE39_DECODER *decoder, uint8_t offset,
             decoder->levels[offset] :
             (uint8_t)(decoder->levels[offset] ^ 1U);
         uint32_t width = decoder->widths_us[offset + index];
-        uint8_t insert = index;
 
         if (width == 0U || decoder->levels[offset + index] != expected_level) {
             return 0U;
         }
-        sorted[index] = width;
-        while (insert > 0U && sorted[insert] < sorted[insert - 1U]) {
-            uint32_t value = sorted[insert];
-            sorted[insert] = sorted[insert - 1U];
-            sorted[insert - 1U] = value;
-            insert--;
+        if ((index & 1U) == 0U) {
+            bars[index / 2U] = width;
+        } else {
+            spaces[index / 2U] = width;
         }
     }
+    sort_widths(bars, 5U);
+    sort_widths(spaces, 4U);
 
-    /* Three widest are wide; the narrowest wide must clearly exceed the
-     * widest narrow, independent of the car's speed. */
-    *narrow_max_us = sorted[5];
-    if ((uint64_t)sorted[6] * 10U <
-        (uint64_t)sorted[5] * B3_CODE39_WIDE_RATIO_X10) {
+    if (clearly_wider(bars[2], bars[3]) && clearly_wider(spaces[2], spaces[3])) {
+        bar_cut = bars[3];       /* two wide bars, one wide space */
+        space_cut = spaces[3];
+        *narrow_space_us = spaces[2];
+    } else if (!clearly_wider(bars[0], bars[4]) &&
+               clearly_wider(spaces[0], spaces[1])) {
+        bar_cut = UINT32_MAX;    /* $ / + %: no wide bar, three wide spaces */
+        space_cut = spaces[1];
+        *narrow_space_us = spaces[0];
+    } else {
         return 0U;
     }
+
     for (index = 0U; index < 9U; ++index) {
-        if (decoder->widths_us[offset + index] >= sorted[6]) {
+        uint32_t cut = (index & 1U) == 0U ? bar_cut : space_cut;
+
+        if (decoder->widths_us[offset + index] >= cut) {
             wide_mask |= (uint16_t)(1U << (8U - index));
             wide_count++;
         }
@@ -119,22 +160,24 @@ static uint16_t element_mask(const B3_CODE39_DECODER *decoder, uint8_t offset,
     return wide_count == 3U ? wide_mask : 0U;
 }
 
+/* The gap between characters is a narrow space, so compare it with the
+ * neighbouring character's narrow spaces (same colour, same blur). */
 static bool valid_intercharacter_gap(const B3_CODE39_DECODER *decoder,
                                      uint8_t gap_index, uint8_t next_index,
-                                     uint32_t narrow_max_us)
+                                     uint32_t narrow_space_us)
 {
     return decoder->levels[gap_index] != decoder->levels[gap_index - 1U] &&
         decoder->levels[next_index] == decoder->levels[gap_index - 1U] &&
         decoder->widths_us[gap_index] != 0U &&
-        (uint64_t)decoder->widths_us[gap_index] * 2U >= narrow_max_us &&
+        (uint64_t)decoder->widths_us[gap_index] * 2U >= narrow_space_us &&
         (uint64_t)decoder->widths_us[gap_index] <=
-            (uint64_t)narrow_max_us * 2U;
+            (uint64_t)narrow_space_us * 2U;
 }
 
 static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
                        uint32_t width_us, char *symbol, bool *decoded)
 {
-    uint32_t narrow_max_us = 0U;
+    uint32_t narrow_space_us = 0U;
     uint16_t mask;
     char character;
     uint8_t index;
@@ -159,7 +202,7 @@ static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
         decoder->levels[index] = level;
         decoder->run_count++;
         if (decoder->run_count == 9U) {
-            mask = element_mask(decoder, 0U, &narrow_max_us);
+            mask = element_mask(decoder, 0U, &narrow_space_us);
             if (mask == CODE39_START_STOP_MASK ||
                 mask == mirror_mask(CODE39_START_STOP_MASK)) {
                 decoder->in_barcode = 1U;
@@ -181,7 +224,7 @@ static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
     decoder->run_count++;
 
     if (decoder->run_count == 19U) {
-        mask = element_mask(decoder, 10U, &narrow_max_us);
+        mask = element_mask(decoder, 10U, &narrow_space_us);
         if (decoder->reversed != 0U) {
             mask = mirror_mask(mask);
         }
@@ -194,7 +237,7 @@ static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
             reject(decoder, B3_CODE39_REJECT_PATTERN);
             reset_candidate(decoder);
         } else if (!valid_intercharacter_gap(decoder, 9U, 10U,
-                                             narrow_max_us)) {
+                                             narrow_space_us)) {
             reject(decoder, B3_CODE39_REJECT_GAP);
             reset_candidate(decoder);
         } else {
@@ -204,12 +247,12 @@ static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
     }
 
     if (decoder->run_count == B3_CODE39_RUN_COUNT) {
-        mask = element_mask(decoder, 20U, &narrow_max_us);
+        mask = element_mask(decoder, 20U, &narrow_space_us);
         if (decoder->reversed != 0U) {
             mask = mirror_mask(mask);
         }
         if (decoder->payload_valid != 0U && mask == CODE39_START_STOP_MASK &&
-            valid_intercharacter_gap(decoder, 19U, 20U, narrow_max_us)) {
+            valid_intercharacter_gap(decoder, 19U, 20U, narrow_space_us)) {
             *symbol = decoder->payload;
             *decoded = true;
             decoder->last_reversed = decoder->reversed;
