@@ -214,7 +214,10 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
     switch (cmd->type) {
     case RCMD_START:
         if (c->mode != MODE_TEST) {
-            if (!c->running) c->line_recovery_active = false;
+            if (!c->running) {
+                c->line_recovery_active = false;
+                c->follow_steer = 0;
+            }
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
@@ -326,6 +329,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->obstacle_handoff = false;
         c->drive_sent = false;
         c->last_steer = c->last_error = c->curve_steer = c->last_speed = 0;
+        c->follow_steer = 0;
         c->line_pos = B3_LINE_POS_CENTRE;
         c->last_line_search_direction = 0;
         c->recovery_ms = in->now_ms;
@@ -372,6 +376,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (c->navigation == 0u && line_detected) {
         (void)line_position(c, in); /* remember which side the line is on */
+        c->line_seen_ms = in->now_ms;
     }
     if (c->navigation == 0u && !line_detected) {
         if (ROBOT_CLEAR_PATH_FORWARD) {
@@ -381,6 +386,15 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             command.direction = MOTION_DIR_FORWARD;
             command.target_speed_cps = speed / 2;
             command.steering_permille = 0;
+            /* Lost the line on a curve: it left on the side the car was
+             * already turning toward.  Keep that turn briefly so the car
+             * swings back onto the tape instead of driving straight off
+             * the outside of the bend.  Only then drive straight. */
+            if (in->now_ms - c->line_seen_ms < VC_CURVE_REACQUIRE_MS &&
+                (c->follow_steer >= VC_CURVE_REACQUIRE_MIN_STEER ||
+                 c->follow_steer <= -VC_CURVE_REACQUIRE_MIN_STEER)) {
+                command.steering_permille = c->follow_steer;
+            }
             apply_wheel_minimum(&command);
             command.safety_generation = in->safety_generation;
             c->last_steer = c->last_error = c->curve_steer = 0;
@@ -504,6 +518,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
     }
     c->last_steer = command.steering_permille;
+    c->follow_steer = command.steering_permille;
     {
         INT magnitude = command.steering_permille < 0 ?
             -command.steering_permille : command.steering_permille;

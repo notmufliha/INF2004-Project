@@ -26,6 +26,17 @@ int main(void)
     assert(sent.steering_permille != 0); /* Tape restores steering. */
     input.line_flags = LINE_F_LOST;
     step(&c, 20u, 0u);
+    assert(sent.steering_permille == 0); /* weak steer: straight at once */
+    /* Line lost on a hard right curve: keep turning right briefly, then
+     * fall back to the straight clear-path drive. */
+    input.line_flags = LINE_F_DETECTED;
+    for (unsigned i = 0; i < 10u; ++i) step(&c, 20u, 0u);
+    INT curve_steer = sent.steering_permille;
+    assert(curve_steer >= VC_CURVE_REACQUIRE_MIN_STEER);
+    input.line_flags = LINE_F_LOST;
+    step(&c, 20u, 0u);
+    assert(sent.steering_permille == curve_steer);
+    for (unsigned i = 0; i < VC_CURVE_REACQUIRE_MS / 20u; ++i) step(&c, 20u, 0u);
     assert(sent.steering_permille == 0);
     input.clearance = false;
     step(&c, 20u, 0u);
