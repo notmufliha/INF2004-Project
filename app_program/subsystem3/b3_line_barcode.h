@@ -12,10 +12,9 @@
 
 /* WARNING: Validate the 20 ms period against sensor response and car speed. */
 #define B3_LINE_UPDATE_MS (20U)
-/* Track tuning: measured black is 100..200, white is about 1000, and a
- * lifted sensor reads 4000+. Raw 12-bit ADC is unchanged for telemetry.
- * Transition from fully black at 200 to fully white at 1000.
- * Change polarity if measured
+/* Track tuning: raw 12-bit ADC remains 0..4095 for telemetry.
+ * This setting interprets the dark line as LOW ADC, with transition fully
+ * white at 1999 and fully black at 1500. Change polarity if measured
  * black readings are HIGHER than white readings.
  *
  * Backward compatibility: the V2 comparison notes refer to
@@ -25,10 +24,11 @@
 #ifndef B3_CAL_LOW_IS_BLACK
 #define B3_CAL_LOW_IS_BLACK B3_LINE_RAW_LOW_IS_BLACK
 #endif
-#define B3_LINE_RAW_BLACK_MAX (200U)
-#define B3_LINE_RAW_WHITE_MIN (1000U)
-/* Only zero is invalid/off-line. Do not discard the measured black range. */
-#define B3_LINE_RAW_LOST_BELOW (1U)
+#define B3_LINE_RAW_BLACK_MAX (1500U)
+#define B3_LINE_RAW_WHITE_MIN (1999U)
+/* ADC readings below this floor are treated as no line, regardless of the
+ * configured sensor polarity or normalization range. */
+#define B3_LINE_RAW_LOST_BELOW (300U)
 
 #define B3_NAV_QUEUE_LENGTH (8U)
 
@@ -145,9 +145,10 @@ IMPORT ER b3_start(void);
 IMPORT ER b3_get_state(B3_STATE *state);
 /* Timestamp is updated only after both ADC reads succeed. E_OBJ until then. */
 IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
-/* Hold the slow scan speed through wide bars at the minimum wheel speed.
- * Keep this aligned with B3_CODE39_IDLE_US. */
-#define B3_BARCODE_ACTIVE_US (1000000U)
+/* True while the barcode sensor is crossing bars (an edge within the last
+ * B3_BARCODE_ACTIVE_US); the controller then holds a slow, steady speed so
+ * bar widths are measured cleanly. */
+#define B3_BARCODE_ACTIVE_US (400000U)
 IMPORT bool b3_barcode_active(void);
 
 /**

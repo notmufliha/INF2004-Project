@@ -69,7 +69,7 @@ logged and ignored. A queued command waits for a confirmed junction and the
 car slows to 75% while one is pending.
 
 Two-sensor steering is proportional: the difference between the two line
-sensors, with a 40-count normalised deadband, sets up to 80% steering toward the
+sensors, ignoring the first 50 ADC codes, sets up to 80% steering toward the
 stronger side. It applies whenever the line is detected, including at a
 junction (balanced sensors give zero steering on their own). Curve speed:
 the base speed drops in proportion to the hardest recent steering, down to
@@ -81,13 +81,10 @@ No DRIVE asks a wheel to run between 0 and `VC_MIN_WHEEL_CPS` (300 counts/s,
 about 25 mm/s; calibrate on the car): a curve's inner wheel a little below it
 is raised to it, far below it is set to 0 so the car pivots around that wheel,
 keeping the outer wheel's speed. This prevents B2 stall faults on curves and
-at low dashboard speeds. B3 uses the measured low-is-black endpoints:
-raw 1..200 is black, raw 1000 and above is off-line, and zero is invalid.
-The transition is linear (normalised 0 = off-line, 1000 = black);
-a sensor is on the line at 201 or more. Steering gain and slew are unchanged
-so the calibration fix does not weaken curve correction.
-For one second after the latest barcode edge the base speed is capped at
-`VC_BARCODE_CPS` (500 counts/s), subject to the other adjustments above.
+at low dashboard speeds. B3 treats raw ADC readings below 300 as lost, then
+normalises the remaining readings per sensor (0 = off-line, 1000 = black);
+a sensor is on the line at 201 or more. While a barcode is under the sensor
+the speed is held at `VC_BARCODE_CPS` (500 counts/s).
 The base speed is reduced only when the outer wheel would otherwise exceed
 B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn
 accuracy must be calibrated on the actual track. B5's physical avoidance

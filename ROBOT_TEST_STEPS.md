@@ -66,18 +66,18 @@ The USB-only image cannot connect to the dashboard.
    with the robot stopped and motor power off. Hold each surface under each
    sensor for at least 0.1 seconds, without changing sensor height. Look for
    `[B3-CAL] learned GP26 white=... black=...; GP27 white=... black=...`.
-   Current measured readings are black 100..200, white about 1000, lifted
-   4000+. Black must produce the LOWER raw ADC reading. Fixed endpoints in
-   `b3_line_barcode.h` control steering; `[B3-CAL]` is observational only.
-   Different readings/polarity need endpoint correction before a floor test.
+   Black must produce the higher
+   raw ADC reading; measured contrast must be at least 64 counts and clearly
+   greater than the stationary noise on each surface. Opposite
+   polarity or inadequate contrast needs correction before a floor test.
 3. GP26 is physically the RIGHT line sensor; GP27 is physically the LEFT.
    Confirm by covering one sensor at a time and observing dashboard raw ADC.
    `[LINE]` in USB logs contains normalized controller values (0 white,
    1000 black); the dashboard bars contain raw ADC values.
 4. Leave a sensor on the same grey/edge surface for at least one minute.
    Its normalized value should remain stable apart from sensor noise. The
-   fixed normalization does not change while stationary. Remeasure endpoints
-   if light, mounting height or surface changes.
+   updated calibration preserves observed endpoints instead of shrinking
+   the range while stationary. Reboot and resweep if light or surface changes.
 5. Put the line under the sensors and provide valid front clearance. Apply
    motor power on the stand, send SPEED 10 (or use the speed control), then
    START. Both wheels must rotate physically forward. Place the line toward
@@ -100,23 +100,17 @@ The USB-only image cannot connect to the dashboard.
    Steering constants are in `b3_line_barcode.h`; change one at a time and
    repeat the same course. Minimum sustainable wheel speed is provisional
    (`VC_MIN_WHEEL_CPS`), so low percentages still have a speed floor.
-   This image uses proportional sensor-difference steering with a 40-count
-   deadband and full 800-permille steering at a 400-count difference.
-   `B3_LINE_STEER_ERROR_FULL_SCALE` controls gain: raising it is gentler,
-   lowering it is stronger. Verify calibration and mapping before tuning.
+   This image uses the weighted-position PD controller from `line-follow-pd`.
+   The fixed trim trials have been removed. `B3_LINE_KP_X10` and
+   `B3_LINE_KD_X10` are the PD tuning settings; verify physical sensor,
+   encoder and motor mapping before tuning gains.
 5. Remove the line briefly: recovery should first steer hard toward the last
    seen side for one second, then alternate in widening sweeps and stop after
    eight seconds total. It stays armed
    and may resume when a line reappears. Send STOP before repositioning it.
-6. Test framed Code 39 `*A*` and `*Z*` with white quiet zones in both travel
-   orientations. A queues STRAIGHT and Z
+6. Test Code 39 A and Z in both travel orientations. A queues STRAIGHT and Z
    queues RIGHT; the action executes at a confirmed junction. Check the event
    and the physical route. Other letters decode but have no configured route.
-   Watch USB serial for `[B3] barcode ...`. A scan with no recognized start
-   or an incomplete stop now reports a rejection after one second idle
-   (at least nine runs are required for a no-start report). If there is still
-   no message, check that GP28 switches on EVERY bar and gap, not just once
-   over the whole strip. Test at low speed without changing sensor height.
 
 ## 6. Subsystem 5: stop, scan and bypass
 
