@@ -39,7 +39,8 @@ typedef struct { uint32_t lo; } SYSTIM;
 #define TP_PRC1 1
 #include "../../app_program/subsystem3/b3_line_barcode.h"
 static jmp_buf iteration;
-static uint32_t values[2] = {200u, 300u};
+static uint32_t values[2] = {346u, 212u};
+static uint16_t telemetry_left, telemetry_centre;
 static int fail_channel = -1;
 static bool busy, short_read, bad_clock;
 static uint32_t time_ms = 100u;
@@ -73,7 +74,11 @@ static ER tk_srea_dev(ID id, int channel, UW *out, int size, SZ *actual)
 }
 static ER tk_get_tim(SYSTIM *time) { time->lo = time_ms; return bad_clock ? E_OBJ : E_OK; }
 static void comm_set_line(uint16_t l, uint16_t c, unsigned r, unsigned flags)
-{ assert(l <= 4095u && c <= 4095u && r == 0u && flags != 0u); }
+{
+    assert(l <= 4095u && c <= 4095u && r == 0u && flags != 0u);
+    telemetry_left = l;
+    telemetry_centre = c;
+}
 static ER tk_dly_tsk(unsigned ms)
 { assert(ms == B3_LINE_UPDATE_MS); longjmp(iteration, 1); }
 static ID app_start_task(FP entry, INT pri, UW core, const char *name)
@@ -98,26 +103,47 @@ int main(void)
     assert(b3_start() == E_OBJ);
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
-    /* Raw 200 is below the lost cutoff; raw 300 is the inclusive boundary. */
-    assert(out.ir_left == 0u &&
-           out.ir_centre == 1000u && timestamp == 100u);
+    /* Each channel uses its own high-is-black range from the reference. */
+    assert(out.ir_left == 1000u &&
+           out.ir_centre == 0u && timestamp == 100u);
     assert(out.line_flags == B3_LINE_F_DETECTED);
-    values[0] = values[1] = B3_LINE_RAW_LOST_BELOW - 1U;
+    assert(telemetry_left == 346u && telemetry_centre == 212u);
+    values[0] = 245u;
+    values[1] = 777u;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 0u && out.ir_centre == 1000u);
+    assert(out.line_flags == B3_LINE_F_DETECTED);
+    /* Equal edge coverage must not create steering bias from raw contrast. */
+    values[0] = 296u;
+    values[1] = 495u;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 504u && out.ir_centre == 500u);
+    assert(out.line_flags == B3_LINE_F_DETECTED);
+    assert(telemetry_left == 296u && telemetry_centre == 495u);
+    values[0] = 245u;
+    values[1] = 212u;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     assert(out.ir_left == 0u && out.ir_centre == 0u);
     assert(out.line_flags == B3_LINE_F_LOST);
-    values[0] = B3_LINE_RAW_LOST_BELOW;
-    values[1] = B3_LINE_RAW_LOST_BELOW - 1U;
+    values[0] = 265u;
+    values[1] = 325u;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
-    assert(out.ir_left == 1000u && out.ir_centre == 0u);
+    assert(out.line_flags == B3_LINE_F_LOST);
+    values[0] = 266u;
+    values[1] = 326u;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     assert(out.line_flags == B3_LINE_F_DETECTED);
     fail_channel = 1;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OBJ); /* No partial pair. */
     fail_channel = -1;
-    values[0] = values[1] = B3_LINE_RAW_BLACK_MAX;
+    values[0] = 346u;
+    values[1] = 777u;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     assert(out.line_flags == (B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION));

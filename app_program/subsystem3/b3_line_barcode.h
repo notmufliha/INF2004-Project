@@ -12,23 +12,22 @@
 
 /* WARNING: Validate the 20 ms period against sensor response and car speed. */
 #define B3_LINE_UPDATE_MS (20U)
-/* Track tuning: raw 12-bit ADC remains 0..4095 for telemetry.
- * This setting interprets the dark line as LOW ADC, with transition fully
- * white at 1999 and fully black at 1500. Change polarity if measured
- * black readings are HIGHER than white readings.
- *
- * Backward compatibility: the V2 comparison notes refer to
- * B3_CAL_LOW_IS_BLACK; keep that alias working without changing the
- * canonical macro used by the current implementation. */
-#define B3_LINE_RAW_LOW_IS_BLACK (1U)
+/* Measured endpoints from line_follow_v2_and_buddy_4 (9f32d8c).
+ * Higher ADC means black; GP26 is physically right and GP27 left.
+ * Recheck at operating height if mounting or lighting changes. */
+#define B3_LINE_RAW_LOW_IS_BLACK (0U)
 #ifndef B3_CAL_LOW_IS_BLACK
 #define B3_CAL_LOW_IS_BLACK B3_LINE_RAW_LOW_IS_BLACK
 #endif
-#define B3_LINE_RAW_BLACK_MAX (1500U)
-#define B3_LINE_RAW_WHITE_MIN (1999U)
-/* ADC readings below this floor are treated as no line, regardless of the
- * configured sensor polarity or normalization range. */
-#define B3_LINE_RAW_LOST_BELOW (300U)
+#define B3_LINE_GP26_WHITE (245U)
+#define B3_LINE_GP26_BLACK (346U)
+#define B3_LINE_GP27_WHITE (212U)
+#define B3_LINE_GP27_BLACK (777U)
+#define B3_LINE_RAW_LOST_BELOW (1U)
+
+_Static_assert(B3_LINE_GP26_BLACK > B3_LINE_GP26_WHITE &&
+	       B3_LINE_GP27_BLACK > B3_LINE_GP27_WHITE,
+	       "B3 measured black endpoints must exceed white endpoints");
 
 #define B3_NAV_QUEUE_LENGTH (8U)
 

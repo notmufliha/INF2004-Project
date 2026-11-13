@@ -44,7 +44,7 @@
  * B3_CAL_LOW_IS_BLACK name, while the current implementation uses the more
  * explicit B3_LINE_RAW_LOW_IS_BLACK macro. */
 #ifndef B3_LINE_RAW_LOW_IS_BLACK
-#define B3_LINE_RAW_LOW_IS_BLACK (1U)
+#define B3_LINE_RAW_LOW_IS_BLACK (0U)
 #endif
 #ifndef B3_CAL_LOW_IS_BLACK
 #define B3_CAL_LOW_IS_BLACK B3_LINE_RAW_LOW_IS_BLACK
@@ -66,6 +66,8 @@ typedef struct {
 } B3_LINE_CAL;
 
 void b3_line_cal_init(B3_LINE_CAL *cal);
+/* Scale a high-is-black sensor to 0..1000; requires black > white. */
+uint16_t b3_line_cal_scale(uint16_t raw, uint16_t white, uint16_t black);
 /* True only after confirmed observations span the minimum contrast. */
 bool b3_line_cal_ready(const B3_LINE_CAL *cal);
 /* Learn from one raw 12-bit reading and return it normalised 0..1000. */

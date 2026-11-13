@@ -57,6 +57,23 @@ vm.runInContext("onEvent(event)", context);
 assert(element("events").children[0].children[1].textContent.includes("no falling edge"));
 assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY, { ver: 1, obs_d_cm: 400 })).obs_open_space, false);
 
+// Labels follow each sensor's new profile; flags still come from firmware.
+for (const [left, centre, expectedLeft, expectedCentre] of [
+  [185, 131, "WHITE band", "WHITE band"],
+  [245, 777, "WHITE band", "BLACK band"],
+  [346, 212, "BLACK band", "WHITE band"],
+  [296, 495, "transition band", "transition band"],
+  [0, 0, "invalid / zero", "invalid / zero"]
+]) {
+  context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, {
+    ver: 1, ir_l: left, ir_c: centre, line: 2
+  }));
+  vm.runInContext("updateDiagnostics(frame)", context);
+  assert.equal(element("diag-left-class").textContent, expectedLeft);
+  assert.equal(element("diag-centre-class").textContent, expectedCentre);
+  assert.equal(element("diag-flags").textContent, "LOST");
+}
+
 // Every command button: publish one 3-byte frame on <prefix>/cmd, and the
 // car's ack (or a missing ack) shows up in the command log.
 const lastLog = () => element("acks").children[0].children[1].textContent;

@@ -7,19 +7,14 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
 ## What the module does
 
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
-- Auto-calibrates each sensor (`b3_line_cal.c`): it learns that sensor's own
-  white and black readings. Sweep both surfaces after each reboot; once
-  measured contrast reaches 64 counts, measured endpoints replace the
-  provisional 220..620 defaults. Three overlapping samples confirm each
-  extreme, so a single spike is ignored without splitting a real surface
-  across block boundaries. Endpoints widen but never shrink during a run,
-  so a pause or long curve cannot shift the steering reference.
-  It normalises to 0 = white .. 1000 =
-  black. The controller receives normalised values; the dashboard still shows
-  raw ADC. This removes the bias between two sensors of different
-  sensitivity, and a grey floor beside the course no longer reads as line.
-- A sensor is line-active at normalised 201 or more. The provisional fallback
-  therefore detects raw 301 immediately, before any sweep history exists.
+- Uses the fixed, per-sensor high-is-black calibration from
+  `line_follow_v2_and_buddy_4` at `9f32d8c`: GP26 white 245 / black 346,
+  GP27 white 212 / black 777. Each channel is clamped/scaled independently
+  to 0 = white .. 1000 = black, so differing sensitivity does not create
+  a steering bias. Zero is off-line. Automatic calibration observations
+  remain diagnostic only and never replace the fixed endpoints.
+- A sensor is line-active at normalised 201 or more (raw GP26 >=266 or
+  GP27 >=326 with these endpoints).
   It reports `DETECTED` if either sensor is active and
   `LOST` if neither is.
 - While following, steers on the normalised difference right - left. On
@@ -43,6 +38,9 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
   last seen side for one second, then searches in widening sweeps for up
   to 8 seconds, then stops but stays armed until the line is seen again.
   It never searches without fresh ultrasonic clearance.
+  The reference branch's unbounded straight-ahead driving on line loss is
+  deliberately NOT imported. Current curve steering, slowdown, slew,
+  junction handling and barcode decoding remain unchanged.
 - `JUNCTION` means both sensors read at least `B3_LINE_JUNCTION_MIN` (800
   normalised) and within `B3_LINE_JUNCTION_BALANCE` (150) of each other. Both
   sensors merely on the line is normal following, not a junction.
@@ -84,10 +82,15 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
    its telemetry mutex and event queue exist; then call `b3_init()` before
    starting tasks and `b3_start()` from core 0. The sample `subsystem3_init()`
    and `subsystem3_start()` lifecycle currently do not call either function.
-5. Before a run, slide the car across the line once or twice so each sensor
-   sees white and black; calibration then settles on the course. Check on the
-   dashboard that black reads at least 64 counts above white and that
-   stationary noise is clearly smaller than that contrast.
+5. Before a run, check both sensors over white and black at their actual
+   operating height, motor power off. Confirm higher readings on black
+   and compare each channel with the fixed endpoints above. Do not lift
+   the robot to measure white/black; remeasure endpoints if mounting,
+   lighting or surface differs from the reference setup.
+   The dashboard reports raw ADC and labels bands per channel.
+   `[LINE-RAW] GP26=... GP27=... norm26=... norm27=... flags=...` prints
+   raw and normalized values together about once per second.
+   `[B3-CAL] observed ...` is not an applied calibration.
    `B3_LINE_STEER_ERROR_FULL_SCALE` (400) is the tuning knob: lower it if
    curves are missed, raise it if the car weaves on straights; test
    with the wheels raised and adjust them only after confirming turn direction.

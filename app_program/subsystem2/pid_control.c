@@ -23,11 +23,14 @@
  * the PI correction.  The old fixed 20% base meant every wheel started at the
  * same PWM whatever its target, so steering (one wheel faster, one slower)
  * only took effect as the slow integral caught up, and slow wheels drifted
- * into the motor deadband and stalled.  These values give ~19% at the
- * default 1000 counts/s, close to the old base, and reach PID_MAX_PWM at
- * 5000 counts/s.  CALIBRATE: PID_MIN_MOVE_PWM = lowest PWM that keeps a
+ * into the motor deadband and stalled. The shared base gives ~19% at
+ * 1000 counts/s; forward DRIVE substitutes the per-wheel bases below.
+ * CALIBRATE: PID_MIN_MOVE_PWM = lowest PWM that keeps a
  * loaded wheel turning; slope from the PWM needed at a known speed. */
 #define PID_MIN_MOVE_PWM 15.0f
+/* Reference branch's loaded-wheel compensation, forward DRIVE only. */
+#define PID_FORWARD_LEFT_BASE_PWM 10.0f
+#define PID_FORWARD_RIGHT_BASE_PWM 15.0f
 #define PID_FF_PWM_PER_CPS 0.004f
 #define PID_MAX_PWM 35
 #define PID_KP 0.006f
@@ -346,7 +349,7 @@ static void pid_guard(pid_state_t *state)
 }
 
 static INT pid_wheel_pwm(float target_cps, float measured_cps,
-    float *integral, float dt, bool stuck)
+    float *integral, float dt, bool stuck, float base_pwm)
 {
     float error;
     float output;
@@ -357,7 +360,7 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
         *integral = 0.0f;
         return 0;
     }
-    base = PID_MIN_MOVE_PWM + PID_FF_PWM_PER_CPS * target_cps;
+    base = base_pwm + PID_FF_PWM_PER_CPS * target_cps;
     if (stuck)
     {
         base += PID_KICK_PWM;
@@ -434,6 +437,8 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     float left_cps = state->left_speed_cps;
     float right_cps = state->right_speed_cps;
     float dt = (float)(state->now_ms - state->previous_ms) / 1000.0f;
+    bool forward_drive = state->command.type == MOTION_CMD_DRIVE &&
+        state->command.direction == MOTION_DIR_FORWARD;
     INT left_pwm;
     INT right_pwm;
     if (state->sample_count >= PID_WINDOW_SIZE)
@@ -447,10 +452,12 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
         left_cps * state->left_sign, &state->left_integral, dt,
-        state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS);
+        state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
+        forward_drive ? PID_FORWARD_LEFT_BASE_PWM : PID_MIN_MOVE_PWM);
     right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
         right_cps * state->right_sign, &state->right_integral, dt,
-        state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS);
+        state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
+        forward_drive ? PID_FORWARD_RIGHT_BASE_PWM : PID_MIN_MOVE_PWM);
     state->left_history[slot] = state->left_now;
     state->right_history[slot] = state->right_now;
     state->time_history[slot] = state->now_ms;

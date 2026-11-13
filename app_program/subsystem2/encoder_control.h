@@ -33,9 +33,10 @@ void encoder_get_invalid_counts(UW *left, UW *right);
 #define ENC_TURN_LEFT_SCALE      1.2538940f
 #define ENC_TURN_RIGHT_SCALE     1.2857143f
 
-/* Preliminary encoder calibration values. */
-#define ENC_LEFT_COUNTS_PER_REV  2499
-#define ENC_RIGHT_COUNTS_PER_REV 2341
+/* Reference branch's measured means from two 10-revolution runs per wheel.
+ * Recheck if wheels, encoders or gearing change. Turn scales above stay local. */
+#define ENC_LEFT_COUNTS_PER_REV  2534
+#define ENC_RIGHT_COUNTS_PER_REV 2530
 
 /* Calculate signed wheel travel from encoder count differences. */
 void encoder_get_distance_cm(

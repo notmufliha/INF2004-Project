@@ -30,8 +30,8 @@ Choose one mode, rebuild, and flash the newly generated UF2:
 
 Start with individual modes. Firmware waits 5 seconds after task startup, then
 up to 30 seconds for Buddy 5 clearance and encoder standstill. Motor speed
-defaults to 1000 reference counts/s (approximately 81.7 mm/s with the current
-preliminary calibration). Each movement is tracked by its command ID. MOVE and
+defaults to 1000 reference counts/s (approximately 80.6 mm/s with the current
+encoder calibration). Each movement is tracked by its command ID. MOVE and
 TURN must complete and reach standstill; mode 3 explicitly tests STOP while
 DRIVE is active. The sequence runs only once per boot.
 
@@ -50,6 +50,16 @@ Restore `ROBOT_MOTION_TEST=0` and `ROBOT_ENABLE_DRIVE=0` after testing.
 
 ## Command API
 
+The hybrid line-following firmware uses the measured encoder resolutions from
+`line_follow_v2_and_buddy_4` (`9f32d8c`): 2534 left / 2530 right counts/rev.
+Forward DRIVE uses base feed-forward PWM of 10% left / 15% right plus
+0.004% per target count/s, PI feedback and the existing breakaway kick.
+These are not fixed motor outputs. MOVE, TURN and reverse DRIVE keep the
+shared 15% base; local turn-angle correction scales are unchanged.
+The sensor-difference curve controller is unchanged. Remeasure wheel travel
+and straight tracking if motors, load, gearing or wheels differ from the
+reference robot. No unbounded off-line driving or fixed straight trim is added.
+
 Include `motion_command.h` and `b2_motor.h`. All calls are task-context APIs.
 Zero-initialize command structures, including the new steering/timeout fields.
 
@@ -65,8 +75,8 @@ ER error = motion_send_command_with_id(&command, &id);
 ```
 
 - Speed uses **left-wheel reference counts/s**, 1..5000. The right-wheel
-  target is converted using its own encoder resolution. At the preliminary
-  geometry, 1000 counts/s is approximately 81.7 mm/s. Confirm these encoder
+  target is converted using its own encoder resolution.   At the configured
+  geometry, 1000 counts/s is approximately 80.6 mm/s. Confirm these encoder
   calibrations before treating the speed as physically accurate.
 - DRIVE steering is -1000..1000: zero is straight; positive increases the left
   wheel speed and reduces the right. Full steering stops the inner wheel.
@@ -125,7 +135,7 @@ limited by the requested speed. These are preliminary tuning constants.
   FAULT / STALL after 500 ms (5000 ms below 5 mm/s). This latches a safety STOP.
   Before that, a commanded wheel with no progress for 100 ms gets an extra
   8% PWM kick to break static friction. Wheel PWM is feed-forward
-  (15% + 0.004% per count/s of target) plus the PI correction, so a steering
+  (the command-specific base above + 0.004% per count/s of target) plus the PI correction, so a steering
   change splits the wheel PWMs immediately. A wheel commanded to 0 is never
   reported as stalled.
 - Encoder movement continues for 1500 ms after PWM removal:

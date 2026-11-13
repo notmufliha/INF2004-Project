@@ -191,11 +191,11 @@ static void test_turn(bool right)
         ENC_RIGHT_COUNTS_PER_REV / (4.0f * ENC_WHEEL_DIAMETER_CM)) + 2;
     if (right)
     {
-        CHECK(left_target > 1190 && left_target < 1210);
+        CHECK(left_target > 1210 && left_target < 1230);
     }
     else
     {
-        CHECK(left_target > 1160 && left_target < 1180);
+        CHECK(left_target > 1180 && left_target < 1200);
     }
     id = send(value); tick(&state, 0, 0);
     CHECK(pwm_left * left_sign > 0 && pwm_right * left_sign < 0);
@@ -402,6 +402,37 @@ static void test_feedforward_and_kick(void)
         state.fault == MOTION_FAULT_STALL);
 }
 
+static void test_forward_wheel_balance(void)
+{
+    const motion_cmd_type_t types[] = {
+        MOTION_CMD_DRIVE, MOTION_CMD_DRIVE, MOTION_CMD_MOVE, MOTION_CMD_TURN
+    };
+    for (unsigned i = 0u; i < sizeof(types) / sizeof(types[0]); ++i) {
+        pid_state_t state = setup();
+        motion_command_t value = command(types[i]);
+        value.direction = i == 1u ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD;
+        if (value.type == MOTION_CMD_TURN) value.turn_direction = MOTION_TURN_RIGHT;
+        send(value);
+        tick(&state, 0, 0);
+        INT left = pwm_left < 0 ? -pwm_left : pwm_left;
+        INT right = pwm_right < 0 ? -pwm_right : pwm_right;
+        if (i == 0u) {
+            /* Same physical target: only forward DRIVE has a lower left base. */
+            CHECK(right - left >= 4 && right - left <= 6);
+            motion_profile_t profile = pid_profile(&state);
+            CHECK(fabsf(profile.left_speed - profile.right_speed) < 0.01f);
+            /* A full curve still stops its inner wheel despite feed-forward. */
+            value.steering_permille = 1000;
+            send(value);
+            tick(&state, 0, 0);
+            CHECK(pwm_left > 0 && pwm_right == 0);
+        } else {
+            /* Reverse DRIVE, MOVE and TURN keep the shared original base. */
+            CHECK(abs(left - right) <= 1);
+        }
+    }
+}
+
 int main(void)
 {
     INT mapped_speed;
@@ -447,6 +478,7 @@ int main(void)
     test_results_and_stale(); test_feedback_and_time();
     test_timeouts_and_standstill(); test_stop_and_steering();
     test_feedforward_and_kick();
+    test_forward_wheel_balance();
     test_physical_api_and_history();
     test_encoder_diagnostic_fault();
     printf("PASS: %u subsystem 2 host assertions\n", checks);

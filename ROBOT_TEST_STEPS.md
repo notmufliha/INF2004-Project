@@ -66,18 +66,23 @@ The USB-only image cannot connect to the dashboard.
    with the robot stopped and motor power off. Hold each surface under each
    sensor for at least 0.1 seconds, without changing sensor height. Look for
    `[B3-CAL] learned GP26 white=... black=...; GP27 white=... black=...`.
-   Black must produce the higher
-   raw ADC reading; measured contrast must be at least 64 counts and clearly
-   greater than the stationary noise on each surface. Opposite
-   polarity or inadequate contrast needs correction before a floor test.
+   Black must produce the higher raw ADC reading. This hybrid uses fixed
+   reference endpoints: GP26 white 245 / black 346, GP27 white 212 / black
+   777. `[B3-CAL] observed ...` is diagnostic only; it does not change those
+   endpoints. `[LINE-RAW]` prints raw ADC, normalized values and flags
+   together about once per second. Opposite polarity or significantly
+   different endpoints need correction before a floor test.
 3. GP26 is physically the RIGHT line sensor; GP27 is physically the LEFT.
    Confirm by covering one sensor at a time and observing dashboard raw ADC.
    `[LINE]` in USB logs contains normalized controller values (0 white,
    1000 black); the dashboard bars contain raw ADC values.
 4. Leave a sensor on the same grey/edge surface for at least one minute.
    Its normalized value should remain stable apart from sensor noise. The
-   updated calibration preserves observed endpoints instead of shrinking
-   the range while stationary. Reboot and resweep if light or surface changes.
+   fixed normalization does not change while stationary. Remeasure endpoints
+   if light or surface changes. With motor power off, hold each position
+   for five seconds: both white, both black, GP26 black/GP27 white, then
+   GP26 white/GP27 black. Expect normalized 0/0, 1000/1000, 1000/0 and
+   0/1000 when the measured surfaces reach the configured endpoints.
 5. Put the line under the sensors and provide valid front clearance. Apply
    motor power on the stand, send SPEED 10 (or use the speed control), then
    START. Both wheels must rotate physically forward. Place the line toward
@@ -100,10 +105,15 @@ The USB-only image cannot connect to the dashboard.
    Steering constants are in `b3_line_barcode.h`; change one at a time and
    repeat the same course. Minimum sustainable wheel speed is provisional
    (`VC_MIN_WHEEL_CPS`), so low percentages still have a speed floor.
-   This image uses the weighted-position PD controller from `line-follow-pd`.
-   The fixed trim trials have been removed. `B3_LINE_KP_X10` and
-   `B3_LINE_KD_X10` are the PD tuning settings; verify physical sensor,
-   encoder and motor mapping before tuning gains.
+   The hybrid keeps this branch's sensor-difference steering: 40-count
+   deadband, full 800-permille steering at a 400-count difference.
+   `B3_LINE_STEER_ERROR_FULL_SCALE` controls gain; higher is gentler.
+   Reference wheel balancing uses 2534/2530 counts/rev and forward DRIVE
+   base PWM of 10% left/15% right plus feedback, not fixed outputs.
+   MOVE/TURN/reverse bases and turn-angle scales are unchanged.
+   Change one setting at a time; compare three straight, left-curve and
+   right-curve runs at the same requested speed, recording departures
+   and unexpected LINE_RECOVERY transitions.
 5. Remove the line briefly: recovery should first steer hard toward the last
    seen side for one second, then alternate in widening sweeps and stop after
    eight seconds total. It stays armed

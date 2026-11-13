@@ -33,10 +33,18 @@ bool b3_line_cal_ready(const B3_LINE_CAL *cal)
 		(uint32_t)cal->black - cal->white >= B3_CAL_MIN_SPAN;
 }
 
+uint16_t b3_line_cal_scale(uint16_t raw, uint16_t white, uint16_t black)
+{
+	if (raw <= white) return 0U;
+	if (raw >= black) return (uint16_t)B3_CAL_FULL_SCALE;
+	return (uint16_t)(((uint32_t)raw - white) * B3_CAL_FULL_SCALE /
+			  (black - white));
+}
+
 uint16_t b3_line_cal_update(B3_LINE_CAL *cal, uint16_t raw)
 {
-	uint32_t white;
-	uint32_t black;
+	uint16_t white;
+	uint16_t black;
 
 	if (cal == NULL) {
 		return 0U;
@@ -71,13 +79,5 @@ uint16_t b3_line_cal_update(B3_LINE_CAL *cal, uint16_t raw)
 		black = B3_CAL_DEFAULT_BLACK;
 	}
 
-	/* Pololu readCalibrated(): scale to 0..1000 and clamp. */
-	if (raw <= white) {
-		return 0U;
-	}
-	if (raw >= black) {
-		return (uint16_t)B3_CAL_FULL_SCALE;
-	}
-	return (uint16_t)(((uint32_t)raw - white) * B3_CAL_FULL_SCALE /
-			  (black - white));
+	return b3_line_cal_scale(raw, white, black);
 }

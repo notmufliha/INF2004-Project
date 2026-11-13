@@ -108,7 +108,7 @@ svg.chart { width: 100%; height: 150px; display: block; }
     <div class="tiles">
       <div class="tile"><div class="k">Left IR ADC</div><div class="v" id="diag-left">–</div><div class="s" id="diag-left-class">waiting for telemetry</div></div>
       <div class="tile"><div class="k">Centre IR ADC</div><div class="v" id="diag-centre">–</div><div class="s" id="diag-centre-class">waiting for telemetry</div></div>
-      <div class="tile"><div class="k">Track threshold</div><div class="v">&lt; 2000</div><div class="s">black ≤1500; transition 1501–1998; white ≥1999</div></div>
+      <div class="tile"><div class="k">Calibration profile</div><div class="v">HIGH = black</div><div class="s">GP26 white ≤245 / black ≥346; GP27 white ≤212 / black ≥777</div></div>
       <div class="tile"><div class="k">Line flags</div><div class="v" id="diag-flags">–</div><div class="s">firmware detection output</div></div>
       <div class="tile"><div class="k">Obstacle state</div><div class="v" id="diag-obstacle">–</div><div class="s" id="diag-obstacle-detail">waiting for telemetry</div></div>
       <div class="tile"><div class="k">Safe-stop state</div><div class="v" id="diag-stop">–</div><div class="s" id="diag-stop-detail">waiting for telemetry</div></div>
@@ -118,7 +118,7 @@ svg.chart { width: 100%; height: 150px; display: block; }
       <dt>Last error event</dt><dd id="diag-error">none received this session</dd>
       <dt>Possible stop cause</dt><dd id="diag-cause">Waiting for telemetry</dd>
     </dl>
-    <p class="note">Raw IR values come from existing B3 telemetry (0–4095). Classification assumes LOW ADC = black, matching this firmware's test configuration. The precise VC-STOP-REASON is printed on the robot serial terminal, not transmitted in the existing MQTT packet; the possible cause displayed here is a clue, not a confirmed diagnosis. No safety interlock is disabled.</p>
+    <p class="note">Raw IR values come from existing B3 telemetry (0–4095). Band labels use the fixed per-sensor HIGH ADC = black profile from line_follow_v2_and_buddy_4; zero is invalid. The line flags are the firmware's actual detection output. Remeasure endpoints at operating height if mounting or lighting changes; lifted readings are not a calibration test. The precise VC-STOP-REASON is printed on the robot serial terminal, not transmitted in the existing MQTT packet; the possible cause displayed here is a clue, not a confirmed diagnosis. No safety interlock is disabled.</p>
   </section>
 
   <section class="card">
@@ -336,11 +336,12 @@ addEventListener("resize", redraw);
 
 /* Diagnostics use existing telemetry fields; no wire protocol changes. */
 function updateDiagnostics(d) {
-  const classify = (x) => x <= 1500 ? "BLACK band" : x < 1999 ? "transition band" : "WHITE band";
+  const classify = (x, white, black) => x === 0 ? "invalid / zero" :
+    x <= white ? "WHITE band" : x >= black ? "BLACK band" : "transition band";
   $("diag-left").textContent = d.ir_l;
   $("diag-centre").textContent = d.ir_c;
-  $("diag-left-class").textContent = classify(d.ir_l);
-  $("diag-centre-class").textContent = classify(d.ir_c);
+  $("diag-left-class").textContent = classify(d.ir_l, 245, 346);
+  $("diag-centre-class").textContent = classify(d.ir_c, 212, 777);
   $("diag-flags").textContent = d.line_flags.join(" + ") || "none";
   const obstructed = d.state_name === "OBSTACLE_SCAN" || d.state_name === "OBSTACLE_AVOID";
   $("diag-obstacle").textContent = obstructed ? "ACTIVE" : "not active";

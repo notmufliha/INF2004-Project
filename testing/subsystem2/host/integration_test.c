@@ -76,7 +76,7 @@ int main(void)
 #if B2_TEST_BINARY
     assert(sent_left == 5000 && sent_right == -1000);
 #else
-    assert(sent_left == 408 && sent_right == -87);
+    assert(sent_left == 402 && sent_right == -80);
 #endif
     assert(sent_enc_left == 0x12345678 && sent_enc_right == -123456789);
     snapshot.fault = MOTION_FAULT_ENCODER; snapshot.command_id = 42;

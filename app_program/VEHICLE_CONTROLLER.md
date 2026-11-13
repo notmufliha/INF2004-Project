@@ -69,7 +69,7 @@ logged and ignored. A queued command waits for a confirmed junction and the
 car slows to 75% while one is pending.
 
 Two-sensor steering is proportional: the difference between the two line
-sensors, ignoring the first 50 ADC codes, sets up to 80% steering toward the
+sensors, with a 40-count normalized deadband, sets up to 80% steering toward the
 stronger side. It applies whenever the line is detected, including at a
 junction (balanced sensors give zero steering on their own). Curve speed:
 the base speed drops in proportion to the hardest recent steering, down to
@@ -81,9 +81,16 @@ No DRIVE asks a wheel to run between 0 and `VC_MIN_WHEEL_CPS` (300 counts/s,
 about 25 mm/s; calibrate on the car): a curve's inner wheel a little below it
 is raised to it, far below it is set to 0 so the car pivots around that wheel,
 keeping the outer wheel's speed. This prevents B2 stall faults on curves and
-at low dashboard speeds. B3 treats raw ADC readings below 300 as lost, then
-normalises the remaining readings per sensor (0 = off-line, 1000 = black);
-a sensor is on the line at 201 or more. While a barcode is under the sensor
+at low dashboard speeds. B3 uses the reference branch's fixed per-channel
+high-is-black normalization: GP26 white 245 / black 346, GP27 white 212 /
+black 777 (0 = off-line, 1000 = black); a sensor is on the line at 201 or
+more. The curve controller and bounded line-loss search are unchanged;
+the reference's drive-straight-when-lost option is not imported.
+B2 uses reference encoder resolutions (2534 left / 2530 right counts/rev)
+and forward DRIVE feed-forward bases (10% left / 15% right), plus the existing
+speed term, PI correction and breakaway kick. MOVE, TURN and reverse DRIVE
+retain the original 15% bases; turn-angle correction scales are unchanged.
+While a barcode is under the sensor
 the speed is held at `VC_BARCODE_CPS` (500 counts/s).
 The base speed is reduced only when the outer wheel would otherwise exceed
 B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn

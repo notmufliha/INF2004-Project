@@ -257,25 +257,11 @@ static void b3_invalidate_line(void)
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
-/* Consistent 0..1000 line contrast within the requested raw <2000 band.
- * Keep raw ADC telemetry unchanged. Calibration is intentionally not used
- * here: an uncalibrated sensor at boot must not learn an inverted polarity. */
-static uint16_t b3_track_normalise(uint16_t raw)
+/* Fixed per-channel endpoints avoid boot noise changing the steering range. */
+static uint16_t b3_track_normalise(uint16_t raw, uint16_t white, uint16_t black)
 {
-    uint32_t scaled;
     if (raw < B3_LINE_RAW_LOST_BELOW) return 0U;
-#if B3_LINE_RAW_LOW_IS_BLACK
-    if (raw <= B3_LINE_RAW_BLACK_MAX) return 1000U;
-    if (raw >= B3_LINE_RAW_WHITE_MIN) return 0U;
-    scaled = (uint32_t)(B3_LINE_RAW_WHITE_MIN - raw) * 1000U /
-             (B3_LINE_RAW_WHITE_MIN - B3_LINE_RAW_BLACK_MAX);
-#else
-    if (raw <= B3_LINE_RAW_BLACK_MAX) return 0U;
-    if (raw >= B3_LINE_RAW_WHITE_MIN) return 1000U;
-    scaled = (uint32_t)(raw - B3_LINE_RAW_BLACK_MAX) * 1000U /
-             (B3_LINE_RAW_WHITE_MIN - B3_LINE_RAW_BLACK_MAX);
-#endif
-    return (uint16_t)scaled;
+    return b3_line_cal_scale(raw, white, black);
 }
 
 EXPORT void b3_line_task(INT stacd, void *exinf)
@@ -290,6 +276,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	B3_LINE_CAL left_cal;
 	B3_LINE_CAL centre_cal;
 	bool calibration_reported = false;
+	unsigned diagnostic_samples = 0U;
 
 	(void)stacd;
 	(void)exinf;
@@ -314,12 +301,13 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-		/* Retain calibration observations for future tuning, but use the
-         * explicit sub-2000 line detection band requested for this test. */
+		/* Observations are diagnostic only; tracking uses fixed endpoints. */
         (void)b3_line_cal_update(&left_cal, left);
         (void)b3_line_cal_update(&centre_cal, centre);
-        left_norm = b3_track_normalise(left);
-        centre_norm = b3_track_normalise(centre);
+        left_norm = b3_track_normalise(left, B3_LINE_GP26_WHITE,
+                                      B3_LINE_GP26_BLACK);
+        centre_norm = b3_track_normalise(centre, B3_LINE_GP27_WHITE,
+                                        B3_LINE_GP27_BLACK);
 		flags = 0U;
 		if (B3_LINE_LEFT_ACTIVE(left_norm) ||
 		    B3_LINE_CENTRE_ACTIVE(centre_norm)) {
@@ -334,10 +322,16 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		/* Controller gets normalised values; dashboard gets raw ADC. */
 		b3_set_line_state(left_norm, centre_norm, right, flags);
 		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
+		if (++diagnostic_samples >= 50U) {
+			diagnostic_samples = 0U;
+			tm_printf((UB *)"[LINE-RAW] GP26=%d GP27=%d norm26=%d norm27=%d flags=%d\n",
+				  (int)left, (int)centre, (int)left_norm,
+				  (int)centre_norm, (int)flags);
+		}
 		if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
 		    b3_line_cal_ready(&centre_cal)) {
 			calibration_reported = true;
-			tm_printf((UB *)"[B3-CAL] learned GP26 white=%d black=%d; GP27 white=%d black=%d\n",
+			tm_printf((UB *)"[B3-CAL] observed GP26 min=%d max=%d; GP27 min=%d max=%d; tracking uses fixed endpoints\n",
 				  (int)left_cal.white, (int)left_cal.black,
 				  (int)centre_cal.white, (int)centre_cal.black);
 		}
