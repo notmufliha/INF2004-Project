@@ -221,11 +221,11 @@ static void test_turn(bool right)
         ENC_RIGHT_COUNTS_PER_REV / (4.0f * ENC_WHEEL_DIAMETER_CM)) + 2;
     if (right)
     {
-        CHECK(left_target > 1070 && left_target < 1090);
+        CHECK(left_target >= 1094 && left_target <= 1097);
     }
     else
     {
-        CHECK(left_target > 1040 && left_target < 1065);
+        CHECK(left_target >= 1067 && left_target <= 1070);
     }
     id = send(value); tick(&state, 0, 0);
     CHECK(pwm_left * left_sign > 0 && pwm_right * left_sign < 0);
@@ -508,7 +508,20 @@ int main(void)
         CHECK(pid_base_pwm(&trial, false) == PID_MIN_MOVE_PWM);
         float integral = 1.0f;
         CHECK(pid_wheel_pwm(0.0f, 0.0f, &integral, 0.01f, true,
-                            (float)B2_LEFT_BASE_PWM) == 0);
+                            (float)B2_LEFT_BASE_PWM, PID_LEFT_KP) == 0);
+        CHECK(integral == 0.0f);
+        /* Equal base and zero dt isolate proportional response. Check both
+         * signs: the stronger gain increases drive below target and reduces
+         * it above target, while preserving the integral state.
+         */
+        CHECK(pid_wheel_pwm(500.0f, 0.0f, &integral, 0.0f, false,
+                            12.0f, 0.009f) >
+              pid_wheel_pwm(500.0f, 0.0f, &integral, 0.0f, false,
+                            12.0f, PID_LEFT_KP));
+        CHECK(pid_wheel_pwm(500.0f, 1000.0f, &integral, 0.0f, false,
+                            12.0f, 0.009f) <
+              pid_wheel_pwm(500.0f, 1000.0f, &integral, 0.0f, false,
+                            12.0f, PID_LEFT_KP));
         CHECK(integral == 0.0f);
     }
 #if B2_SPEED_DIAGNOSTICS

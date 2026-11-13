@@ -31,7 +31,9 @@
 #define PID_MIN_MOVE_PWM 15.0f
 #define PID_FF_PWM_PER_CPS 0.004f
 #define PID_MAX_PWM 35
-#define PID_KP 0.006f
+#define PID_LEFT_KP 0.006f
+/* The 0.009f trial did not improve physical drift; retain the original gain. */
+#define PID_RIGHT_KP 0.006f
 /* Static friction: a commanded wheel that has not moved for
  * PID_KICK_AFTER_MS gets PID_KICK_PWM extra until it moves, well before the
  * 500 ms stall fault. */
@@ -350,7 +352,7 @@ static void pid_guard(pid_state_t *state)
 }
 
 static INT pid_wheel_pwm(float target_cps, float measured_cps,
-    float *integral, float dt, bool stuck, float base_pwm)
+    float *integral, float dt, bool stuck, float base_pwm, float kp)
 {
     float error;
     float output;
@@ -376,14 +378,14 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
     {
         candidate = -PID_I_LIMIT;
     }
-    output = base + PID_KP * error + candidate;
+    output = base + kp * error + candidate;
     /* Conditional integration prevents winding further into saturation. */
     if (!((output > PID_MAX_PWM && error > 0.0f) ||
           (output < 0.0f && error < 0.0f)))
     {
         *integral = candidate;
     }
-    output = base + PID_KP * error + *integral;
+    output = base + kp * error + *integral;
     if (output > PID_MAX_PWM)
     {
         return PID_MAX_PWM;
@@ -515,11 +517,11 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
         left_cps * state->left_sign, &state->left_integral, dt,
         state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
-        pid_base_pwm(state, true));
+        pid_base_pwm(state, true), PID_LEFT_KP);
     right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
         right_cps * state->right_sign, &state->right_integral, dt,
         state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
-        pid_base_pwm(state, false));
+        pid_base_pwm(state, false), PID_RIGHT_KP);
     state->left_history[slot] = state->left_now;
     state->right_history[slot] = state->right_now;
     state->time_history[slot] = state->now_ms;
