@@ -104,12 +104,19 @@ so decoding does not depend on a fixed robot speed. It requires the standard
 `*` start/stop characters and one-character payloads, decodes the full Code
 39 set (0-9, A-Z, - . space $ / + %), and reads either direction: a strip
 crossed from the far end has each character's elements reversed, so the
-mask is mirrored and looked up in the same table. The narrowest wide element
-must be at least 1.4x the widest narrow one. A level change that flips back
-within 3 ms (sensor chatter, or a spike inside a bar) is merged into the
+mask is mirrored and looked up in the same table. Bars and spaces are
+classified separately: the IR spot blurs each edge, so on the car every bar
+reads thinner and every space wider than printed (another INF2004 team
+measured narrow spaces at ~45 ms against wide spaces at ~245 ms), and a
+narrow space can then be as long as a wide bar. Within each character the
+two widest bars and the widest space are wide (for `$ / + %`: no wide bar,
+three wide spaces), and the narrowest wide element must be at least 1.4x the
+widest narrow one of the same colour. The gaps between characters are
+checked against the narrow spaces. A level change that flips back within
+3 ms (sensor chatter, or a spike inside a bar) is merged into the
 surrounding element. While bars are passing (an edge within 400 ms) the
-controller holds a steady 500 counts/s (~41 mm/s), as the teams with
-reliable on-car reads did.
+controller freezes the speed it had at the first bar: a slowdown part-way
+through the strip would stretch the later elements and fail the read.
 
 Every decode and every rejection is printed on the USB serial console, for
 example `[B3] barcode *A* read (forward) -> STRAIGHT at next junction`, or

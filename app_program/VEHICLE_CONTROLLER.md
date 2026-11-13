@@ -90,8 +90,10 @@ B2 uses reference encoder resolutions (2534 left / 2530 right counts/rev)
 and forward DRIVE feed-forward bases (10% left / 15% right), plus the existing
 speed term, PI correction and breakaway kick. MOVE, TURN and reverse DRIVE
 retain the original 15% bases; turn-angle correction scales are unchanged.
-While a barcode is under the sensor
-the speed is held at `VC_BARCODE_CPS` (500 counts/s).
+While a barcode is under the sensor (a GP28 edge within 400 ms) the speed
+is frozen at the value it had when the first bar arrived: no junction, curve
+or barcode slowdown, because a speed change mid-strip distorts the timed
+bar widths.
 The base speed is reduced only when the outer wheel would otherwise exceed
 B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn
 accuracy must be calibrated on the actual track. B5's physical avoidance

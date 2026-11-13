@@ -34,9 +34,6 @@
  * set to 0 so the car pivots around that wheel (a wheel commanded to 0 is
  * never reported as stalled). */
 #define VC_MIN_WHEEL_CPS 300
-/* While a barcode is under the sensor, hold this steady speed (~41 mm/s) so
- * bar widths are timed cleanly: proven teams read barcodes slowly. */
-#define VC_BARCODE_CPS 500
 #define VC_JUNCTION_RELEASE_SAMPLES 3u
 
 typedef struct {
