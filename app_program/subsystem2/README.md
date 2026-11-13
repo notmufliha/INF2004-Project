@@ -171,3 +171,20 @@ commands, retain their IDs, and read the results. B3 must supply line status.
 A separate checked avoidance authorization policy is needed before turning or
 reversing around an obstacle can use the safety gate. Do not simply disable
 that gate or change drive/bypass flags to claim integration is complete.
+# Temporary wheel-speed diagnostics
+
+`B2_SPEED_DIAGNOSTICS` in `pid_control.h` enables `[B2-SPEED]` output at
+most twice per second while the PI controller requests wheel PWM. Set it to 0
+and rebuild to remove logging and its per-task timestamp. Controller gains,
+trim, targets and safety gating are unchanged.
+
+`targetL/R` are signed encoder counts/s after the motion profile, trim and
+wheel-specific conversion. `measL/R` are the signed windowed speeds used by PI;
+these differ from the instantaneous feedback in `[VC-STEER]`. `pwmReqL/R` are
+signed requested duty percentages, not proof of applied output: the B2 safety
+gate can independently force zero. `t` is low 32-bit milliseconds and `dt` is
+the control interval in ms. Positive means forward. Logging occurs after the
+PWM request and outside the safety lock. Console work still adds task overhead.
+Targets in counts/s need not be identical for equal linear speeds because the
+left/right encoder counts-per-revolution calibration differs. Compare each
+measurement with its own target. Correlate timestamps with `[VC-STEER]`.

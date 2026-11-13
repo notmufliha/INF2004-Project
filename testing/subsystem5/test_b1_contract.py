@@ -30,6 +30,7 @@ typedef enum { AVOID_NONE, AVOID_STOP, AVOID_CONTINUE, AVOID_LEFT,
                AVOID_RIGHT, AVOID_REVERSE } AVOID_ACTION;
 typedef struct {
     bool valid;
+    bool uses_course_bounds;
     float nearest_cm;
     float estimated_width_cm;
     float left_clearance_cm;
@@ -47,7 +48,7 @@ static int comm_report_obstacle(UH d, UH w, UH l, UH r, AVOID_ACTION a)
 main = r'''
 int main(void)
 {
-    S5Profile profile = {true, 35.4f, 50.5f, 400.0f, 0.0f};
+    S5Profile profile = {true, false, 35.4f, 50.5f, 400.0f, 0.0f};
     assert(s5_wire_cm(0.0f, S5_WIRE_DISTANCE_MAX_CM) == 0u);
     assert(s5_wire_cm(35.4f, S5_WIRE_DISTANCE_MAX_CM) == 35u);
     assert(s5_wire_cm(400.0f, S5_WIRE_DISTANCE_MAX_CM) == 400u);
@@ -86,7 +87,11 @@ int main(void)
     s5_report_profile(&profile, S5_SIDE_RIGHT);
     assert(report_count == 7u && reported_action == AVOID_RIGHT);
     assert(reported[1] == 100u);
-    puts("B5/B1 wire adapter: PASS (7 event cases + numeric boundaries)");
+    profile.uses_course_bounds = true;
+    s5_report_profile(&profile, S5_SIDE_RIGHT);
+    assert(report_count == 8u && reported_action == AVOID_RIGHT);
+    assert(reported[0] == 30u && reported[1] == COMM_CM_INVALID);
+    puts("B5/B1 wire adapter: PASS (8 event cases + numeric boundaries)");
     return 0;
 }
 '''

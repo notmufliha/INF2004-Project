@@ -12,16 +12,25 @@
 
 /* WARNING: Validate the 20 ms period against sensor response and car speed. */
 #define B3_LINE_UPDATE_MS (20U)
-/* ADC conversions averaged per sensor per 20 ms line sample. */
-#define B3_ADC_OVERSAMPLE (8U)
+/* Provisional measured endpoints, 2026-11-13; higher ADC means black.
+ * White maximum / black minimum from stationary same-firmware captures.
+ * GP26 is physically right, GP27 left. Recheck after mounting changes.
+ */
+#define B3_LINE_RAW_LOW_IS_BLACK (0U)
+#define B3_LINE_GP26_WHITE (245U)
+#define B3_LINE_GP26_BLACK (346U)
+#define B3_LINE_GP27_WHITE (212U)
+#define B3_LINE_GP27_BLACK (777U)
+/* Zero is off-line; all other values use the measured channel endpoints. */
+#define B3_LINE_RAW_LOST_BELOW (1U)
+
 #define B3_NAV_QUEUE_LENGTH (8U)
 
 #define B3_LINE_F_DETECTED (0x01U)
 #define B3_LINE_F_LOST (0x02U)
 #define B3_LINE_F_JUNCTION (0x04U)
 /* Line values given to the controller (B3_STATE ir_left / ir_centre) are
- * NORMALISED per sensor by b3_line_cal: 0 = that sensor's white, 1000 = its
- * black. The dashboard still shows the raw ADC readings. */
+ * normalized to 0 = off-line and 1000 = black. The dashboard shows raw ADC. */
 /* Pololu QTRSensors readLine() thresholds: a sensor is "on the line" above
  * 200, and values of 50 or less are noise left out of the position. */
 #define B3_LINE_ACTIVE_MIN (201U)
@@ -37,12 +46,6 @@
  * sensor (ADC "centre"), 1000 = under its RIGHT sensor (ADC "left"),
  * B3_LINE_POS_CENTRE = centred.  Off the line it holds the last side. */
 #define B3_LINE_POS_CENTRE (500)
-/* The remembered line side (for recovery) only changes when the line is
- * clearly to one side: |position - centre| >= this.  With both sensors on
- * the line, a centred car reads position 500, which used to count as
- * "right" on every sample: the car forgot a left-hand curve as soon as it
- * was centred, and searched right whenever the line was then lost. */
-#define B3_LINE_SIDE_LEVEL (100)
 /* Steering for THIS robot's sensor layout: the line is wider than the
  * sensor gap, so both sensors read black when centred and the only
  * steering signal appears when one of them reaches a line edge.  The car
@@ -141,15 +144,6 @@ IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
  * bar widths are measured cleanly. */
 #define B3_BARCODE_ACTIVE_US (400000U)
 IMPORT bool b3_barcode_active(void);
-/* Called by the controller on START.  If B3 reports LOST at that moment
- * although the car has been put on the line, the learned calibration is
- * wrong (typically: the car was lifted after a safe-stop, lifted sensors
- * read very dark and widened the learned black, so the real line now reads
- * as white), and the line task restarts it on its next sample.  A
- * calibration that sees the line is KEPT: on this robot even black reads
- * below the provisional raw threshold (TEST_LOG S3-C07), so discarding a
- * good startup sweep would leave the line invisible. */
-IMPORT void b3_request_recalibration(void);
 
 /**
  * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.

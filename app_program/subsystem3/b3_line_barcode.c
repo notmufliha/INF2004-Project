@@ -71,7 +71,6 @@ EXPORT ID mtx_b3_state;
 
 static void b3_gpio_irq_handler(UINT intno);
 static ER b3_read_adc(uint8_t channel, uint16_t *value);
-static ER b3_read_adc_avg(uint8_t channel, uint16_t *value);
 static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
 			      uint8_t flags);
 static void b3_set_barcode_state(uint8_t barcode, uint8_t nav);
@@ -258,11 +257,13 @@ static void b3_invalidate_line(void)
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
-static volatile bool g_b3_recal_request;
-
-EXPORT void b3_request_recalibration(void)
+/* Fixed measured endpoints prevent boot noise from learning a false range.
+ * Raw ADC telemetry remains unchanged; each channel has its own range.
+ */
+static uint16_t b3_track_normalise(uint16_t raw, uint16_t white, uint16_t black)
 {
-	g_b3_recal_request = true;
+    if (raw < B3_LINE_RAW_LOST_BELOW) return 0U;
+    return b3_line_cal_scale(raw, white, black);
 }
 
 EXPORT void b3_line_task(INT stacd, void *exinf)
@@ -277,6 +278,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	B3_LINE_CAL left_cal;
 	B3_LINE_CAL centre_cal;
 	bool calibration_reported = false;
+    unsigned diagnostic_samples = 0U;
 
 	(void)stacd;
 	(void)exinf;
@@ -284,7 +286,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	b3_line_cal_init(&centre_cal);
 
 	for (;;) {
-		error = b3_read_adc_avg(B3_ADC_LEFT_CHANNEL, &left);
+		error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &left);
 		if (error != E_OK) {
 			CHECK(error, "B3 GP26 ADC read");
             b3_invalidate_line();
@@ -292,7 +294,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 			continue;
 		}
 
-		error = b3_read_adc_avg(B3_ADC_CENTRE_CHANNEL, &centre);
+		error = b3_read_adc(B3_ADC_CENTRE_CHANNEL, &centre);
 		if (error != E_OK) {
 			CHECK(error, "B3 GP27 ADC read");
             b3_invalidate_line();
@@ -301,17 +303,13 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-		if (g_b3_recal_request) {
-			g_b3_recal_request = false;
-			if ((g_b3_state.line_flags & B3_LINE_F_LOST) != 0U) {
-				b3_line_cal_init(&left_cal);
-				b3_line_cal_init(&centre_cal);
-				calibration_reported = false;
-				tm_printf((UB *)"[B3-CAL] LOST at START: calibration restarted, slide the car across the line\n");
-			}
-		}
-		left_norm = b3_line_cal_update(&left_cal, left);
-		centre_norm = b3_line_cal_update(&centre_cal, centre);
+		/* Keep observations for diagnostics; tracking uses measured endpoints. */
+        (void)b3_line_cal_update(&left_cal, left);
+        (void)b3_line_cal_update(&centre_cal, centre);
+        left_norm = b3_track_normalise(left, B3_LINE_GP26_WHITE,
+                                       B3_LINE_GP26_BLACK);
+        centre_norm = b3_track_normalise(centre, B3_LINE_GP27_WHITE,
+                                         B3_LINE_GP27_BLACK);
 		flags = 0U;
 		if (B3_LINE_LEFT_ACTIVE(left_norm) ||
 		    B3_LINE_CENTRE_ACTIVE(centre_norm)) {
@@ -326,10 +324,16 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		/* Controller gets normalised values; dashboard gets raw ADC. */
 		b3_set_line_state(left_norm, centre_norm, right, flags);
 		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
+        if (++diagnostic_samples >= 50U) {
+            diagnostic_samples = 0U;
+            tm_printf((UB *)"[LINE-RAW] GP26=%d GP27=%d norm26=%d norm27=%d low_is_black=%d\n",
+                      (int)left, (int)centre, (int)left_norm,
+                      (int)centre_norm, (int)B3_LINE_RAW_LOW_IS_BLACK);
+        }
 		if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
 		    b3_line_cal_ready(&centre_cal)) {
 			calibration_reported = true;
-			tm_printf((UB *)"[B3-CAL] learned GP26 white=%d black=%d; GP27 white=%d black=%d\n",
+			tm_printf((UB *)"[B3-CAL] observed GP26 min=%d max=%d; GP27 min=%d max=%d; tracking uses fixed thresholds\n",
 				  (int)left_cal.white, (int)left_cal.black,
 				  (int)centre_cal.white, (int)centre_cal.black);
 		}
@@ -392,29 +396,6 @@ static ER b3_read_adc(uint8_t channel, uint16_t *value)
 	}
 
 	*value = (uint16_t)(adc_word & 0x0FFFU);
-	return E_OK;
-}
-
-/* Average B3_ADC_OVERSAMPLE back-to-back conversions: one reading per
- * 20 ms tick let a single noisy sample steer the car. */
-static ER b3_read_adc_avg(uint8_t channel, uint16_t *value)
-{
-	uint32_t sum = 0U;
-	uint16_t sample = 0U;
-	uint32_t i;
-	ER result;
-
-	if (value == NULL) {
-		return E_PAR;
-	}
-	for (i = 0U; i < B3_ADC_OVERSAMPLE; i++) {
-		result = b3_read_adc(channel, &sample);
-		if (result != E_OK) {
-			return result;
-		}
-		sum += sample;
-	}
-	*value = (uint16_t)((sum + (B3_ADC_OVERSAMPLE / 2U)) / B3_ADC_OVERSAMPLE);
 	return E_OK;
 }
 

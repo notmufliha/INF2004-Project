@@ -7,6 +7,12 @@
 
 #include "../app.h"
 
+/* Temporary straight-drive diagnosis; set 0 and rebuild to disable. */
+#ifndef B2_SPEED_DIAGNOSTICS
+#define B2_SPEED_DIAGNOSTICS 1
+#endif
+#define B2_SPEED_LOG_MS 500u
+
 extern ID gh_pid_task;
 
 void pid_cyclic_handler(void *p_exinf);

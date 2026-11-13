@@ -57,6 +57,8 @@ typedef struct {
 } B3_LINE_CAL;
 
 void b3_line_cal_init(B3_LINE_CAL *cal);
+/* Scale measured high-is-black endpoints; invalid ranges return off-line. */
+uint16_t b3_line_cal_scale(uint16_t raw, uint16_t white, uint16_t black);
 /* True only after confirmed observations span the minimum contrast. */
 bool b3_line_cal_ready(const B3_LINE_CAL *cal);
 /* Learn from one raw 12-bit reading and return it normalised 0..1000. */

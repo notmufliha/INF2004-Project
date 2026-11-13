@@ -6,6 +6,15 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
 
 ## What the module does
 
+Current trial (2026-11-13): stationary captures show higher ADC on black.
+Tracking now uses fixed per-channel white/black endpoints: GP26 245/346 and
+GP27 212/777. Values below white map to 0, above black to 1000, with linear
+interpolation between. These are provisional settings for this sensor mounting.
+Raw telemetry stays unchanged. The auto-calibration observations below remain
+diagnostic only; they do not override these tracking endpoints. Retest both
+surfaces and straight-line tracking after rebuilding and flashing. Motor trim
+and controller steering gains are not changed by this trial.
+
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
 - Auto-calibrates each sensor (`b3_line_cal.c`): it learns that sensor's own
   white and black readings. Sweep both surfaces after each reboot; once
@@ -32,32 +41,17 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
   `503ed6e` gave only ~270 permille with one sensor half off the line, and
   the car ran off at curves. The weighted position (0 left, 500 centre,
   1000 right, values <=50 ignored) is still kept to remember which side the
-  line was last seen on, for recovery. That side only changes when the line
-  is clearly to one side (|position - 500| >= 100): a centred car reads 500
-  with both sensors on black, which used to count as "right" on every
-  sample, so a left-hand curve was forgotten and the search turned right.
-- Each 20 ms line sample averages 8 back-to-back ADC conversions per
-  sensor (`B3_ADC_OVERSAMPLE`), so one noisy conversion cannot steer. At
-  full steer the car slows to half speed (`VC_CURVE_MIN_PERMILLE` 500).
+  line was last seen on, for recovery.
   The ADC named `left` is physically on the robot's right, and the ADC named
   `centre` is physically on its left. Similar readings drive straight; a
   stronger right sensor steers right and a stronger left sensor steers left.
   Steering applies whenever
   the line is detected, including when both sensors see it. The car slows on
   curves (down to 60% at full steer) and only speeds back up gradually.
-- A `LOST` of 60 ms or less while following (`VC_LINE_DROPOUT_MS`) is a
-  sensor dropout: the last steering and speed are kept.
-- If line flags report `LOST` for longer, the controller turns toward the
-  side the line was last clearly on in a tightening arc (steering 400,
-  +40 per 20 ms, up to full), for up to 3 s (about 60 degrees at the
-  default speed), then stops but stays armed until the line is seen
-  again. There are no wide sweeps: they drove the car across the
-  course. With no clear side (line lost straight ahead) it stops at once.
-  It never searches a line not seen since START, and never without fresh
-  ultrasonic clearance.
-- START clears B2's latched stall/encoder faults. They were cleared only
-  at boot, and the controller safe-stops while one is set, so after a
-  stall the car could not be restarted without a reboot.
+- If line flags report `LOST`, the controller first steers hard toward the
+  last seen side for one second, then searches in widening sweeps for up
+  to 8 seconds, then stops but stays armed until the line is seen again.
+  It never searches without fresh ultrasonic clearance.
 - `JUNCTION` means both sensors read at least `B3_LINE_JUNCTION_MIN` (800
   normalised) and within `B3_LINE_JUNCTION_BALANCE` (150) of each other. Both
   sensors merely on the line is normal following, not a junction.

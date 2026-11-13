@@ -164,5 +164,20 @@ int main(void)
 	}
 	assert(!b3_line_cal_ready(&left)); /* Floor noise is not a full sweep. */
 	puts("PASS S3-PD-C10 stationary noise does not claim learned calibration");
+    /* Same-firmware stationary white/black captures, 2026-11-13. */
+    assert(b3_line_cal_scale(245U, 245U, 346U) == 0U);
+    assert(b3_line_cal_scale(208U, 245U, 346U) == 0U);
+    assert(b3_line_cal_scale(346U, 245U, 346U) == 1000U);
+    assert(b3_line_cal_scale(370U, 245U, 346U) == 1000U);
+    assert(b3_line_cal_scale(212U, 212U, 777U) == 0U);
+    assert(b3_line_cal_scale(131U, 212U, 777U) == 0U);
+    assert(b3_line_cal_scale(777U, 212U, 777U) == 1000U);
+    assert(b3_line_cal_scale(826U, 212U, 777U) == 1000U);
+    assert(b3_line_cal_scale(300U, 245U, 346U) >
+           b3_line_cal_scale(280U, 245U, 346U));
+    assert(b3_line_cal_scale(100U, 200U, 200U) == 0U);
+    assert(b3_line_cal_scale(300U, 400U, 200U) == 0U);
+    puts("PASS measured per-channel contrast: white off, black on, "
+         "interpolation and invalid range");
 	return 0;
 }

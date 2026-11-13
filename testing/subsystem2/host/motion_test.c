@@ -8,6 +8,7 @@
 #define ROBOT_CONFIG_H
 #define ROBOT_ENABLE_DRIVE 1
 #define ROBOT_WHEELS_UP_MOTOR_TEST 0
+#undef ROBOT_MOTION_TEST
 #define ROBOT_MOTION_TEST 6
 #define ROBOT_MOTION_TEST_SPEED_CPS 1000
 #define ROBOT_MOTION_TEST_BOOT_MS 5000u
@@ -130,6 +131,35 @@ static void test_profiles(void)
     CHECK(!p.right_reached);
     p = motion_profile_targets(20, 0, 95, 95, 100, true, true);
     CHECK(p.left_speed < 20 && p.left_speed > 0);
+    {
+        pid_state_t state = setup();
+        state.command = command(MOTION_CMD_DRIVE);
+        state.command.direction = MOTION_DIR_FORWARD;
+        state.left_sign = state.right_sign = 1;
+        motion_profile_t trimmed = pid_profile(&state);
+#if ROBOT_STRAIGHT_TRIM_PERMILLE > 0
+        CHECK(trimmed.left_speed > trimmed.right_speed);
+#elif ROBOT_STRAIGHT_TRIM_PERMILLE < 0
+        CHECK(trimmed.left_speed < trimmed.right_speed);
+#else
+        CHECK(fabsf(trimmed.left_speed - trimmed.right_speed) < 0.01f);
+#endif
+        float left_scale = 1.0f + ROBOT_STRAIGHT_TRIM_PERMILLE / 1000.0f;
+        float right_scale = 1.0f - ROBOT_STRAIGHT_TRIM_PERMILLE / 1000.0f;
+        state.left_mm = 100.0f * left_scale;
+        state.right_mm = 100.0f * right_scale;
+        p = pid_profile(&state);
+        CHECK(fabsf(p.left_speed - trimmed.left_speed) < 0.01f);
+        CHECK(fabsf(p.right_speed - trimmed.right_speed) < 0.01f);
+        state.left_mm += 10.0f;
+        p = pid_profile(&state);
+        CHECK(p.left_speed < trimmed.left_speed && p.right_speed > trimmed.right_speed);
+        state.command.type = MOTION_CMD_TURN;
+        state.command.target_angle_deg = 90;
+        state.left_mm = state.right_mm = 0.0f;
+        p = pid_profile(&state);
+        CHECK(fabsf(p.left_speed - p.right_speed) < 0.01f);
+    }
 }
 
 static void test_validation_and_queue(void)
@@ -191,11 +221,11 @@ static void test_turn(bool right)
         ENC_RIGHT_COUNTS_PER_REV / (4.0f * ENC_WHEEL_DIAMETER_CM)) + 2;
     if (right)
     {
-        CHECK(left_target > 1190 && left_target < 1210);
+        CHECK(left_target > 1070 && left_target < 1090);
     }
     else
     {
-        CHECK(left_target > 1160 && left_target < 1180);
+        CHECK(left_target > 1040 && left_target < 1065);
     }
     id = send(value); tick(&state, 0, 0);
     CHECK(pwm_left * left_sign > 0 && pwm_right * left_sign < 0);
@@ -264,7 +294,8 @@ static void test_feedback_and_time(void)
     motion_profile_t profile;
     send(value); tick(&state, 0, 0);
     profile = pid_profile(&state);
-    CHECK(fabsf(profile.left_speed - profile.right_speed) < .001f);
+    CHECK(fabsf(profile.left_speed / (1.0f + ROBOT_STRAIGHT_TRIM_PERMILLE / 1000.0f) -
+                profile.right_speed / (1.0f - ROBOT_STRAIGHT_TRIM_PERMILLE / 1000.0f)) < .001f);
     /* Refreshes preserve history; run across multiple ring-buffer wraps. */
     for (INT i = 0; i < 100; i++)
     {
@@ -449,6 +480,27 @@ int main(void)
     test_feedforward_and_kick();
     test_physical_api_and_history();
     test_encoder_diagnostic_fault();
+#if B2_SPEED_DIAGNOSTICS
+    {
+        pid_state_t diagnostic = {0};
+        motion_profile_t profile = {0};
+        diagnostic.now_ms = -1000;
+        pid_report_speed(&diagnostic, profile, 0.0f, 0.0f, 0, 0);
+        CHECK(diagnostic.speed_log_ms == (uint32_t)-1000);
+        diagnostic.now_ms = -999;
+        pid_report_speed(&diagnostic, profile, 0.0f, 0.0f, 0, 0);
+        CHECK(diagnostic.speed_log_ms == (uint32_t)-1000);
+        diagnostic.now_ms = -500;
+        pid_report_speed(&diagnostic, profile, 0.0f, 0.0f, 0, 0);
+        CHECK(diagnostic.speed_log_ms == (uint32_t)-500);
+        diagnostic.now_ms = 0;
+        pid_report_speed(&diagnostic, profile, 0.0f, 0.0f, 0, 0);
+        CHECK(diagnostic.speed_log_ms == 0u);
+        diagnostic.now_ms = 1;
+        pid_report_speed(&diagnostic, profile, 0.0f, 0.0f, 0, 0);
+        CHECK(diagnostic.speed_log_ms == 0u);
+    }
+#endif
     printf("PASS: %u subsystem 2 host assertions\n", checks);
     return 0;
 }

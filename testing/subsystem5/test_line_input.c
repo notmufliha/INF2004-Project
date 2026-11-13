@@ -39,7 +39,7 @@ typedef struct { uint32_t lo; } SYSTIM;
 #define TP_PRC1 1
 #include "../../app_program/subsystem3/b3_line_barcode.h"
 static jmp_buf iteration;
-static uint32_t values[2] = {200u, 3000u};
+static uint32_t values[2] = {356u, 809u};
 static int fail_channel = -1;
 static bool busy, short_read, bad_clock;
 static uint32_t time_ms = 100u;
@@ -98,16 +98,48 @@ int main(void)
     assert(b3_start() == E_OBJ);
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
-    /* Before a sweep the PD branch fallback is 220..620: raw 200 is
-     * white; raw 3000 is black. Neither needs a long adaptation delay. */
-    assert(out.ir_left == 0u &&
+    /* Measured black is high on both independently scaled channels. */
+    assert(out.ir_left == 1000u &&
            out.ir_centre == 1000u && timestamp == 100u);
+    assert(out.line_flags == (B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION));
+    {
+        /* Replay measured same-firmware black pairs. */
+        const uint16_t pairs[][2] = {
+            {370u, 801u}, {367u, 813u}, {347u, 816u},
+            {355u, 826u}, {346u, 777u}, {352u, 818u}
+        };
+        for (unsigned i = 0u; i < sizeof(pairs) / sizeof(pairs[0]); ++i) {
+            values[0] = pairs[i][0]; values[1] = pairs[i][1];
+            sample();
+            assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+            assert(out.ir_left == 1000u && out.ir_centre == 1000u);
+            assert(out.line_flags & B3_LINE_F_DETECTED);
+            assert(!(out.line_flags & B3_LINE_F_LOST));
+        }
+    }
+    values[0] = B3_LINE_GP26_WHITE;
+    values[1] = B3_LINE_GP27_WHITE;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 0u && out.ir_centre == 0u);
+    assert(out.line_flags == B3_LINE_F_LOST);
+    values[0] = values[1] = B3_LINE_RAW_LOST_BELOW - 1U;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 0u && out.ir_centre == 0u);
+    assert(out.line_flags == B3_LINE_F_LOST);
+    values[0] = B3_LINE_GP26_BLACK;
+    values[1] = B3_LINE_RAW_LOST_BELOW - 1U;
+    sample();
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(out.ir_left == 1000u && out.ir_centre == 0u);
     assert(out.line_flags == B3_LINE_F_DETECTED);
     fail_channel = 1;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OBJ); /* No partial pair. */
     fail_channel = -1;
-    values[0] = values[1] = 4095u;
+    values[0] = B3_LINE_GP26_BLACK;
+    values[1] = B3_LINE_GP27_BLACK;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     assert(out.line_flags == (B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION));

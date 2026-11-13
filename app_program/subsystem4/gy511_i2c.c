@@ -10,11 +10,15 @@
 #include "imu_odom.h"
 #include "../../device/include/dev_i2c.h"
 
+#define GY511_I2C_ATTEMPTS 2U
+
 static ID   gh_i2c_device;
+static UW bus_failures;
 static bool capture_clock (void * p_context, uint32_t * p_time_ms);
 static void pair_acceleration (void * p_context, imu_data_t * p_data,
                                uint32_t begin_ms, uint32_t end_ms,
                                bool b_time_valid);
+static void report_bus_failure (ER error, uint8_t address, uint8_t reg);
 
 static bool read_registers (void * p_context, uint8_t address, uint8_t reg,
                             uint8_t * p_data, uint32_t count);
@@ -104,12 +108,23 @@ read_registers (void * p_context, uint8_t address, uint8_t reg,
     transfer.rcv_size = (SZ)count;
     transfer.rcv_data = p_data;
 
-    ER error_code = tk_swri_dev(gh_i2c_device, TDN_I2C_EXEC, &transfer,
+    ER error_code = E_OK;
+    for (UINT attempt = 0U; attempt < GY511_I2C_ATTEMPTS; ++attempt)
+    {
+        actual = 0;
+        error_code = tk_swri_dev(gh_i2c_device, TDN_I2C_EXEC, &transfer,
                                 sizeof(transfer), &actual);
-
-    return (E_OK == error_code) &&
-           ((SZ)sizeof(transfer) == actual); /* Fixed B4 message sizes fit the
-                                                kernel signed size type. */
+        if ((E_OK == error_code) && ((SZ)sizeof(transfer) == actual))
+        {
+            return true;
+        }
+        if ((E_TMOUT != error_code) && (E_IO != error_code))
+        {
+            break;
+        }
+    }
+    report_bus_failure(error_code, address, reg);
+    return false;
 }
 
 /** @brief Write a register and its value through the kernel I2C driver. */
@@ -121,12 +136,36 @@ write_register (void * p_context, uint8_t address, uint8_t reg, uint8_t value)
 
     UB bytes[2] = {reg, value};
     SZ actual   = 0;
-    ER error_code =
-        tk_swri_dev(gh_i2c_device, address, bytes, sizeof(bytes), &actual);
+    ER error_code = E_OK;
+    for (UINT attempt = 0U; attempt < GY511_I2C_ATTEMPTS; ++attempt)
+    {
+        actual = 0;
+        error_code = tk_swri_dev(gh_i2c_device, address, bytes,
+                                 sizeof(bytes), &actual);
+        if ((E_OK == error_code) && ((SZ)sizeof(bytes) == actual))
+        {
+            return true;
+        }
+        if ((E_TMOUT != error_code) && (E_IO != error_code))
+        {
+            break;
+        }
+    }
+    report_bus_failure(error_code, address, reg);
+    return false;
+}
 
-    return (E_OK == error_code) &&
-           ((SZ)sizeof(bytes) == actual); /* Fixed B4 message sizes fit the
-                                             kernel signed size type. */
+/** @brief Rate-limit diagnostics after a bounded bus retry fails. */
+static void
+report_bus_failure (ER error, uint8_t address, uint8_t reg)
+{
+    ++bus_failures;
+    if ((1U == bus_failures) || (0U == bus_failures % 100U))
+    {
+        tm_printf((UB *)"[B4-I2C] failed after retry: error=%d "
+                        "address=%d reg=%d failures=%u\n",
+                  (INT)error, (INT)address, (INT)reg, bus_failures);
+    }
 }
 
 /*** end of file ***/

@@ -1,0 +1,28 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261112000139
+Username: DESKTOP-L2ELVMC\CodexSandboxOffline
+RunAs User: DESKTOP-L2ELVMC\CodexSandboxOffline
+Configuration Name: 
+Machine: DESKTOP-L2ELVMC (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File tools/test_robot.ps1
+Process ID: 5292
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Source base: 1b3f9f821b9631630c2843f98f726a3c2bef4a3b; includes current working tree changes
+
+
+
+
+
+**********************
+Windows PowerShell transcript end
+End time: 20261112000156
+**********************

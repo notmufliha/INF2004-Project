@@ -21,6 +21,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Controller/subsystem 3 tests failed' }
     & python testing/subsystem5/run_complete_tests.py
     if ($LASTEXITCODE -ne 0) { throw 'Subsystem 5 tests failed' }
+    & python testing/subsystem4/test_i2c_retry.py
+    if ($LASTEXITCODE -ne 0) { throw 'IMU I2C retry tests failed' }
     Write-Host 'PASS all requested subsystem host suites (hardware tests still required)'
 } finally {
     Stop-Transcript | Out-Null

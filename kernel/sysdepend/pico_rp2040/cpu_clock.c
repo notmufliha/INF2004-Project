@@ -71,6 +71,15 @@ LOCAL void clock_config(UINT clock_kind, UW clksrc, UW src_freq, UW freq)
 	out_w(clock+CLK_x_DIV, div);
 }
 
+/* RP2040 TIMER advances on the watchdog tick, independently of SysTick.
+ * CLK_REF is the 12-MHz crystal: divide by XOSC_MHz for 1 tick/us.
+ * Leaving the reset divisor in place stretches a 65-ms ultrasonic trigger
+ * interval to approximately 2.77 seconds, expiring motor clearance. */
+LOCAL void init_timer_tick(void)
+{
+    out_w(0x4005802cU, (1U << 9) | XOSC_MHz); /* WATCHDOG_TICK: ENABLE | CYCLES */
+}
+
 /*
  *  Startup System Clock
  */
@@ -103,6 +112,7 @@ EXPORT void startup_clock(ATR clkatr)
 	while(!(in_w(CLK_REF+CLK_x_SELECTED)&(1<<2)));
 
 	out_w(CLK_REF+CLK_x_DIV, div);
+	init_timer_tick();
 
 	/* CLK SYS settings */
 	div = (TMCLK_MHz << 8) / TMCLK_MHz;
