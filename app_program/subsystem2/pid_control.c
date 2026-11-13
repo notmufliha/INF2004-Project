@@ -350,7 +350,7 @@ static void pid_guard(pid_state_t *state)
 }
 
 static INT pid_wheel_pwm(float target_cps, float measured_cps,
-    float *integral, float dt, bool stuck)
+    float *integral, float dt, bool stuck, float base_pwm)
 {
     float error;
     float output;
@@ -361,7 +361,7 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
         *integral = 0.0f;
         return 0;
     }
-    base = PID_MIN_MOVE_PWM + PID_FF_PWM_PER_CPS * target_cps;
+    base = base_pwm + PID_FF_PWM_PER_CPS * target_cps;
     if (stuck)
     {
         base += PID_KICK_PWM;
@@ -479,6 +479,22 @@ static void pid_report_speed(pid_state_t *state, motion_profile_t profile,
 }
 #endif
 
+/* Preserve the original feed-forward for MOVE, TURN and reverse driving. */
+static float pid_base_pwm(const pid_state_t *state, bool left)
+{
+#if B2_FORWARD_FEEDFORWARD_TRIAL
+    if (state->command.type == MOTION_CMD_DRIVE &&
+        state->command.direction == MOTION_DIR_FORWARD)
+    {
+        return left ? (float)B2_LEFT_BASE_PWM : (float)B2_RIGHT_BASE_PWM;
+    }
+#else
+    (void)state;
+    (void)left;
+#endif
+    return PID_MIN_MOVE_PWM;
+}
+
 static void pid_apply(pid_state_t *state, motion_profile_t profile)
 {
     UINT slot = state->history_index;
@@ -498,10 +514,12 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
         left_cps * state->left_sign, &state->left_integral, dt,
-        state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS);
+        state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
+        pid_base_pwm(state, true));
     right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
         right_cps * state->right_sign, &state->right_integral, dt,
-        state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS);
+        state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
+        pid_base_pwm(state, false));
     state->left_history[slot] = state->left_now;
     state->right_history[slot] = state->right_now;
     state->time_history[slot] = state->now_ms;

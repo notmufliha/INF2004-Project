@@ -410,11 +410,19 @@ static void test_feedforward_and_kick(void)
     pid_state_t state = setup();
     motion_command_t value = command(MOTION_CMD_DRIVE);
     INT first_right;
+    INT straight_left;
+    INT straight_right;
+    value.steering_permille = 0;
+    send(value); tick(&state, 0, 0);
+    straight_left = pwm_left;
+    straight_right = pwm_right;
+    state = setup();
     value.steering_permille = 500; /* left 1500 cps, right 500 cps */
     send(value); tick(&state, 0, 0);
     /* Feed-forward: the wheel split applies on the first control tick. */
-    CHECK(pwm_left > pwm_right && pwm_right > 0);
-    CHECK(pwm_left - pwm_right >= 3);
+    /* Compare each motor with itself: per-wheel feed-forward can differ. */
+    CHECK(pwm_left > straight_left && pwm_right < straight_right);
+    CHECK(pwm_right > 0);
     first_right = pwm_right;
     /* Wheels held still: kick after 100 ms, no stall fault yet. */
     for (INT i = 0; i < 15; i++) {
@@ -480,6 +488,29 @@ int main(void)
     test_feedforward_and_kick();
     test_physical_api_and_history();
     test_encoder_diagnostic_fault();
+    {
+        pid_state_t trial = setup();
+        trial.command = command(MOTION_CMD_DRIVE);
+        trial.command.direction = MOTION_DIR_FORWARD;
+#if B2_FORWARD_FEEDFORWARD_TRIAL
+        CHECK(pid_base_pwm(&trial, true) == (float)B2_LEFT_BASE_PWM);
+        CHECK(pid_base_pwm(&trial, false) == (float)B2_RIGHT_BASE_PWM);
+#else
+        CHECK(pid_base_pwm(&trial, true) == PID_MIN_MOVE_PWM);
+        CHECK(pid_base_pwm(&trial, false) == PID_MIN_MOVE_PWM);
+#endif
+        trial.command.direction = MOTION_DIR_REVERSE;
+        CHECK(pid_base_pwm(&trial, true) == PID_MIN_MOVE_PWM);
+        CHECK(pid_base_pwm(&trial, false) == PID_MIN_MOVE_PWM);
+        trial.command.type = MOTION_CMD_TURN;
+        CHECK(pid_base_pwm(&trial, true) == PID_MIN_MOVE_PWM);
+        trial.command.type = MOTION_CMD_MOVE;
+        CHECK(pid_base_pwm(&trial, false) == PID_MIN_MOVE_PWM);
+        float integral = 1.0f;
+        CHECK(pid_wheel_pwm(0.0f, 0.0f, &integral, 0.01f, true,
+                            (float)B2_LEFT_BASE_PWM) == 0);
+        CHECK(integral == 0.0f);
+    }
 #if B2_SPEED_DIAGNOSTICS
     {
         pid_state_t diagnostic = {0};

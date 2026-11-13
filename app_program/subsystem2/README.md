@@ -188,3 +188,28 @@ PWM request and outside the safety lock. Console work still adds task overhead.
 Targets in counts/s need not be identical for equal linear speeds because the
 left/right encoder counts-per-revolution calibration differs. Compare each
 measurement with its own target. Correlate timestamps with `[VC-STEER]`.
+# Forward feed-forward calibration trial (2026-11-13)
+
+`pid_control.h` now exposes `B2_FORWARD_FEEDFORWARD_TRIAL` (default 1),
+`B2_LEFT_BASE_PWM` (6%) and `B2_RIGHT_BASE_PWM` (12%). These are provisional
+trial intercepts based on the loaded-robot logs, not measured minimum duties
+or a fitted calibration curve. The previous shared base was 15%. Forward
+DRIVE uses the selected wheel base plus the existing 0.004% per target count/s,
+PI correction and stalled-wheel kick. Thus actual requested PWM is not fixed
+at 6/12%. MOVE, TURN and reverse DRIVE retain the original shared base.
+Requested speed, trim, PI gains, limits and safety stops are unchanged.
+
+Rebuild/reflash and repeat the plain-white zero-steer test from the same start,
+with the same load and battery condition. Compare `[B2-SPEED]` target/measured
+speeds during startup and after settling, and note the physical drift. Watch
+for slow wheel startup, repeated kicks or a stall; lower base PWM can expose
+static friction. Do not conclude calibration is correct from host tests.
+Set `B2_FORWARD_FEEDFORWARD_TRIAL` to 0 and rebuild/reflash to restore the old
+shared 15% base without removing diagnostics. Record the result before making
+another tuning change. Forward line-following DRIVE is affected too; use the
+plain-white test first.
+
+Validation: 1,266 B2 host assertions passed with the trial on and off; both B1
+integration variants passed. ARM syntax checks passed in both modes. The
+network robot build generated `mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.uf2`.
+These checks establish software compatibility, not physical calibration.
