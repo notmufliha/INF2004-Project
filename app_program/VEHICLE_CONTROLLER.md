@@ -81,7 +81,10 @@ No DRIVE asks a wheel to run between 0 and `VC_MIN_WHEEL_CPS` (300 counts/s,
 about 25 mm/s; calibrate on the car): a curve's inner wheel a little below it
 is raised to it, far below it is set to 0 so the car pivots around that wheel,
 keeping the outer wheel's speed. This prevents B2 stall faults on curves and
-at low dashboard speeds. Line values are normalised per sensor by B3 (0 = white, 1000 = black); a sensor is on the line at 500 or more. While a barcode is under the sensor the speed is held at `VC_BARCODE_CPS` (500 counts/s).
+at low dashboard speeds. B3 treats raw ADC readings below 300 as lost, then
+normalises the remaining readings per sensor (0 = off-line, 1000 = black);
+a sensor is on the line at 201 or more. While a barcode is under the sensor
+the speed is held at `VC_BARCODE_CPS` (500 counts/s).
 The base speed is reduced only when the outer wheel would otherwise exceed
 B2's 5000 counts/s limit. Sensor thresholds, steering direction/gain, junction travel and turn
 accuracy must be calibrated on the actual track. B5's physical avoidance
@@ -101,3 +104,19 @@ Hardware scheduling, stop distance and full Pico firmware execution require
 separate validation.
 
 See [current build, recovery and calibration notes](../ROBOT_FIX_NOTES.md).
+# Temporary steering diagnostic
+
+`VC_STEERING_DIAGNOSTICS` in `vehicle_controller.h` defaults to 1 for the
+rightward-drift investigation. Set 0 and rebuild to compile out the diagnostic
+and its four-byte per-controller timestamp. At most one `[VC-STEER]` line is
+printed per 250 ms, after an accepted forward DRIVE, including line recovery.
+
+Fields: `t` is unsigned milliseconds; `state` is the controller state;
+`R26` and `L27` are normalized physical right/left sensor values (0 white,
+1000 black); `flags` is the B3 line bitmask. `steer` is the accepted command in
+permille: positive turns right, negative left, zero straight. `base` is the
+final command speed in encoder counts/s before B2 steering/trim distribution,
+not PWM. `measL`/`measR` are the existing measured wheel speeds in counts/s;
+`age` is their snapshot age in milliseconds. Feedback precedes the new command,
+so compare successive records, not a single record as an instantaneous response.
+No sensor thresholds, steering gains or motor targets are changed by logging.

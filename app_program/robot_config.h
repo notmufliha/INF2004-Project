@@ -9,6 +9,9 @@
 #endif
 /* Keep the integrated B4 calibration gate. */
 #define ROBOT_IMU_STARTUP_TIMEOUT_MS 30000
+/* Loaded RTOS runs have logged 110-ms acquisition gaps. Allow a bounded
+ * 250-ms interval consistently in acquisition, processing and analysis. */
+#define ROBOT_IMU_MAX_GAP_MS 250U
 #ifndef ROBOT_AUTOSTART
 #define ROBOT_AUTOSTART 1
 #endif
@@ -44,6 +47,22 @@
  * Autonomous mode requires measured obstacles no deeper than this bound. */
 #define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
 #define ROBOT_BYPASS_SPEED_CPS 600
+#define ROBOT_BYPASS_TURN_DEG 45
+/* Clear path: drive straight off tape, use line steering whenever tape is seen. */
+#ifndef ROBOT_CLEAR_PATH_FORWARD
+#define ROBOT_CLEAR_PATH_FORWARD 1
+#endif
+/* Bypass offset uses encoder distance: obstacle edge + chassis + margin. */
+/* Straight forward DRIVE trim: positive counters left drift by requesting
+ * slightly more left-wheel travel and less right-wheel travel. Adjust from
+ * measured floor runs. Latest trial: 90 (+9% left / -9% right), reduced
+ * from 100 after reported right drift; earlier 80 drifted left. */
+#ifndef ROBOT_STRAIGHT_TRIM_PERMILLE
+#define ROBOT_STRAIGHT_TRIM_PERMILLE 0
+#endif
+#if ROBOT_STRAIGHT_TRIM_PERMILLE < -150 || ROBOT_STRAIGHT_TRIM_PERMILLE > 150
+#error "Straight-drive trim must be between -150 and 150 permille."
+#endif
 #define ROBOT_BYPASS_REVERSE_CM 8.0f
 #define ROBOT_BYPASS_SEARCH_STEP_CM 2.0f
 /* Search across the predicted line and up to 40 cm beyond it, to allow
@@ -59,7 +78,15 @@
 #define ROBOT_BYPASS_ALIGN_OBSERVE_MS 300u
 #define ROBOT_BYPASS_ALIGN_STEP_DEG 15
 #define ROBOT_BYPASS_ALIGN_SWEEPS 6u
-#define ROBOT_BYPASS_MIN_TURN_CM 20.0f
+/* Configured chassis rotation radius sqrt(8^2 + 10^2) ~= 12.8 cm.
+ * A 14 cm turn threshold retains ~1.2 cm beyond that configured envelope;
+ * the logged 14.50 cm stationary reading must not reject a selected turn. */
+#define ROBOT_BYPASS_MIN_TURN_CM 14.0f
+/* Candidate opening for an in-place turn, followed by live monitoring.
+ * Separate from the 40 cm silhouette classification used during scans. */
+#define ROBOT_BYPASS_SIDE_CLEAR_CM 25.0f
+/* Treat small side-range differences as noise and consistently prefer left. */
+#define ROBOT_BYPASS_SIDE_TIE_CM 10.0f
 
 /* Visible ultrasonic silhouette only; centimetres. Measure chassis before
  * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse. */
@@ -130,7 +157,7 @@
 #define ROBOT_ECHO_AGREEMENT_MIN_CM 3.0f
 #define ROBOT_ECHO_AGREEMENT_FRACTION 0.15f
 /* After the servo self-test, allow power and the sensor to settle. */
-#define ROBOT_SENSOR_STARTUP_SETTLE_MS 2000u
+#define ROBOT_SENSOR_STARTUP_SETTLE_MS 500u
 #define ROBOT_SENSOR_WARMUP_PINGS 3u
 /* GPIO reset/retry loop has been REMOVED from Buddy 5 source.
  * Invalid readings keep motors stopped, but do not reinitialize hardware
@@ -150,9 +177,14 @@
 /* A short second attempt helps transient echoes, never turns a timeout
  * into a fabricated clear distance. */
 #define ROBOT_SCAN_RETRY_DELAY_MS 120u
-#define ROBOT_STOP_CM 35.0f
-#define ROBOT_RELEASE_CM 45.0f
+/* Closer obstacle response, retaining room above the 14 cm turn minimum.
+ * Keep 5 cm hysteresis so readings near the stop boundary do not chatter. */
+#define ROBOT_STOP_CM 16.0f
+#define ROBOT_RELEASE_CM 21.0f
 #define ROBOT_CLEAR_CONFIRM 3u
+/* While already following, tolerate isolated invalid echoes for at most
+ * 150 ms after actual clearance. Invalid echoes never renew B2's lease. */
+#define ROBOT_FRONT_GLITCH_GRACE_MS 150u
 #define ROBOT_STOP_SETTLE_MS 250u
 
 #if ROBOT_ENABLE_BYPASS && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || !ROBOT_MODE)

@@ -8,8 +8,10 @@
 #include <stdio.h>
 #include "imu_processing.h"
 #include "imu_analysis.h"
+#include "../../../app_program/robot_config.h"
 
 #define TEST_RECOVERY_PENDING 4U
+#define TEST_ROBOT_GAPS 10U
 
 static imu_processing_t        g_state;
 static imu_processing_config_t g_config;
@@ -24,6 +26,7 @@ static bool step (void);
 static void test_filter (void);
 static void test_faults (void);
 static void test_elapsed_filter (void);
+static void test_robot_timing (void);
 
 /** @brief Main. */
 int
@@ -32,8 +35,49 @@ main (void)
     test_filter();
     test_faults();
     test_elapsed_filter();
+    test_robot_timing();
     puts("All IMU processing tests passed.");
     return 0;
+}
+
+/** @brief Verify the integrated robot timing budget and recovery guards. */
+static void
+test_robot_timing (void)
+{
+    imu_analysis_t analysis;
+    imu_analysis_config_t config;
+    imu_event_t event;
+    reset();
+    g_config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
+    assert(imu_processing_init(&g_state, &g_config));
+    imu_analysis_default_config(&config);
+    config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
+    assert(imu_analysis_init(&analysis, &config));
+    assert(step());
+    assert(imu_analysis_process(&analysis, &g_out, &event));
+    for (uint32_t index = 0U; index < TEST_ROBOT_GAPS; ++index)
+    {
+        g_raw.timestamp_ms += 110U; /* Latest COM6 scheduling gap. */
+        assert(imu_processing_process(&g_state, &g_raw, g_raw.timestamp_ms,
+                                       &g_out, &g_health));
+        assert(!g_health.b_fault_active);
+        assert((imu_analysis_process(&analysis, &g_out, &event)) &&
+               (event.b_valid));
+    }
+    g_raw.timestamp_ms += ROBOT_IMU_MAX_GAP_MS + 1U;
+    assert(!imu_processing_process(&g_state, NULL, g_raw.timestamp_ms,
+                                   &g_out, &g_health));
+    assert((g_health.b_fault_started) && (g_health.b_fault_active) &&
+           (!g_out.b_valid));
+    for (uint32_t index = 1U; index < g_config.recovery_samples; ++index)
+    {
+        assert(!step());
+    }
+    assert((step()) && (g_health.b_recovered));
+    g_raw.b_valid = false;
+    assert((!step()) && (!g_out.b_valid));
+    puts("PASS robot timing: repeated 110-ms gaps accepted, >250-ms loss "
+         "faults, recovery and invalid-data stop retained");
 }
 
 /** @brief Verify filter response, angle wrapping and impact preservation. */

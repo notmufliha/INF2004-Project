@@ -52,6 +52,9 @@ static INT  console_integer (float32_t value);
 static H    telemetry_integer (float32_t value);
 static void report_hump (const imu_event_t * p_event, uint32_t sequence);
 static bool initialise_analysis (imu_analysis_t * p_analysis);
+static void report_fault_detail (const imu_data_t * p_data,
+                                  const imu_processing_t * p_processing,
+                                  uint32_t previous_good_ms);
 static void reset_peak_request (imu_analysis_t * p_analysis);
 
 #if !S4_IMU_USE_MOCK
@@ -212,6 +215,9 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
     (void)p_exinf;
 
     imu_processing_default_config(&processing_config);
+#if ROBOT_MODE
+    processing_config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
+#endif
 
     if (!imu_processing_init(&processing, &processing_config))
     {
@@ -236,8 +242,13 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
             return;
         }
 
+        uint32_t previous_good_ms = processing.last_good_ms;
         bool b_usable = imu_processing_process(
             &processing, &data, data.timestamp_ms, &processed, &health);
+        if (health.b_fault_started)
+        {
+            report_fault_detail(&data, &processing, previous_good_ms);
+        }
 
         report_fault(&health, data.timestamp_ms);
         /* An invalid processed reading resets any incomplete terrain sequence.
@@ -285,6 +296,19 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
     }
 }
 
+/** @brief Report the acquisition gap when the health guard starts a fault. */
+static void
+report_fault_detail (const imu_data_t * p_data,
+                     const imu_processing_t * p_processing,
+                     uint32_t previous_good_ms)
+{
+    tm_printf((UB *)"[B4-FAULT-DETAIL] raw_valid=%d "
+                    "sample_gap_ms=%u failures=%u\n",
+              (INT)p_data->b_valid,
+              (UW)(p_data->timestamp_ms - previous_good_ms),
+              (UW)p_processing->failures);
+}
+
 /** @brief Consume the controller request in the owning analysis task. */
 static void
 reset_peak_request (imu_analysis_t * p_analysis)
@@ -308,6 +332,9 @@ initialise_analysis (imu_analysis_t * p_analysis)
 
     imu_analysis_default_config(&config);
     config.wheel_track_mm = S4_WHEEL_TRACK_MM;
+#if ROBOT_MODE
+    config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
+#endif
 #if !S4_IMU_USE_MOCK
     config.roll_enter_deg = S4_ROLL_HUMP_ENTER_DEG;
     config.roll_level_deg = S4_ROLL_HUMP_LEVEL_DEG;
@@ -571,7 +598,7 @@ hardware_read (uint32_t now_ms, imu_data_t * p_data)
 
     if (GY511_NO_DATA == result)
     {
-        if (now_ms - state.last_data_ms <= 100U)
+        if (now_ms - state.last_data_ms <= ROBOT_IMU_MAX_GAP_MS)
         {
             return false;
         }

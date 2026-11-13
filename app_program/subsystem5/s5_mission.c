@@ -6,6 +6,7 @@
 static T_SPLOCK mission_lock;
 #endif
 static bool enabled;
+static bool approach_slow;
 static S5MissionState mission_state;
 static void lock(UINT *irq)
 {
@@ -29,6 +30,7 @@ void s5_mission_init(void)
     (void)InitSpinLock(&mission_lock);
 #endif
     enabled = false;
+    approach_slow = false;
     mission_state = S5_MISSION_FOLLOW;
 }
 void s5_mission_enable(bool allow)
@@ -55,4 +57,18 @@ S5MissionState s5_mission_state(void)
     S5MissionState state;
     lock(&irq); state = mission_state; unlock(irq);
     return state;
+}
+void s5_mission_front(bool valid, float cm)
+{
+    UINT irq;
+    lock(&irq);
+    if (valid) approach_slow = cm > 0.0f && cm <= 30.0f;
+    unlock(irq);
+}
+bool s5_mission_approach_slow(void)
+{
+    UINT irq;
+    bool slow;
+    lock(&irq); slow = approach_slow; unlock(irq);
+    return slow;
 }

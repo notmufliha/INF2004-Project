@@ -6,15 +6,23 @@
 #include "subsystem4/subsystem4.h"
 #include "subsystem5/s5_mission.h"
 
+#if VC_STEERING_DIAGNOSTICS
+static void report_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
+                            const motion_command_t *command);
+#endif
+
 #if ROBOT_MODE && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || S1_STANDALONE_DEMO)
 #error "The Vehicle Controller requires exclusive command ownership; disable demos/tests"
 #endif
 
 static void set_state(VEHICLE_CONTROLLER *c, ROBOT_STATE state)
 {
+    /* Always publish: B5 also writes the telemetry state (obstacle legs),
+     * so a state equal to our cached one may still be stale on the
+     * dashboard, e.g. IDLE after PAUSE while it still shows AVOID. */
+    comm_set_robot_state(state);
     if (c->state != state) {
         c->state = state;
-        comm_set_robot_state(state);
         tm_printf((UB *)"[VC] state=%d\n", (INT)state);
     }
 }
@@ -36,6 +44,7 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     b2_request_stop(); /* Revoke B5 movement as well as VC movement. */
     c->running = false;
     c->paused = false;
+    c->line_recovery_active = false;
     c->navigation = 0u;
     c->navigation_id = 0u;
     c->pending_navigation = B3_NAV_NONE;
@@ -68,17 +77,11 @@ static INT line_position(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             weighted += right * 1000u;
         }
         c->line_pos = (INT)(weighted / sum); /* sum > 0: one value > 200 */
-        if (c->line_pos <= B3_LINE_POS_CENTRE - B3_LINE_SIDE_LEVEL) {
-            c->last_line_search_direction = -1;
-        } else if (c->line_pos >= B3_LINE_POS_CENTRE + B3_LINE_SIDE_LEVEL) {
-            c->last_line_search_direction = 1;
-        } else {
-            /* Near centre: keep the side the line was last clearly on. */
-        }
+        c->last_line_search_direction =
+            c->line_pos < B3_LINE_POS_CENTRE ? -1 : 1;
         return c->line_pos;
     }
-    return c->last_line_search_direction < 0 ? 0 :
-        (c->last_line_search_direction > 0 ? 1000 : B3_LINE_POS_CENTRE);
+    return c->line_pos < B3_LINE_POS_CENTRE ? 0 : 1000;
 }
 
 /* PD steering (Pololu 3pi line follower form): error = position - centre,
@@ -106,6 +109,22 @@ static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     }
     c->last_error = error;
     return steering;
+}
+
+/* Widening search: sweep 600 ms toward the side the line was last seen,
+ * then 1200 ms the other way, 1800 ms back, and so on.  Each reversal
+ * crosses the starting heading and swings further out than the last. */
+static INT line_search_direction(uint32_t elapsed_ms, INT first_direction)
+{
+    uint32_t segment_ms = VC_LINE_SEARCH_SWITCH_MS;
+    INT direction = first_direction;
+
+    while (elapsed_ms >= segment_ms) {
+        elapsed_ms -= segment_ms;
+        segment_ms += VC_LINE_SEARCH_SWITCH_MS;
+        direction = -direction;
+    }
+    return direction;
 }
 
 /* Convert the requested curve into wheel speeds the motors can hold.
@@ -184,7 +203,7 @@ void vehicle_controller_init(VEHICLE_CONTROLLER *c)
     *c = (VEHICLE_CONTROLLER){0};
     c->line_pos = B3_LINE_POS_CENTRE;
     c->mode = MODE_AUTO;
-    c->speed_percent = VC_DEFAULT_SPEED_PERCENT;
+    c->speed_percent = 20u;
     c->state = ROBOT_INIT;
     stop_motion(c);
     set_state(c, ROBOT_IDLE);
@@ -195,18 +214,15 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
     switch (cmd->type) {
     case RCMD_START:
         if (c->mode != MODE_TEST) {
+            if (!c->running) c->line_recovery_active = false;
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
             c->paused = false;
-            /* B3 restarts its calibration only if it reports LOST now
-             * (see b3_line_barcode.h); a working calibration is kept. */
-            b3_request_recalibration();
-            /* B2 latches stall/encoder faults until reboot, and every step
-             * safe-stops while one is set, so START could never restart the
-             * car after a stall.  START is the operator's acknowledgement:
-             * clear them; B2 raises them again at once if still present. */
+            /* B2 latches stall/encoder faults until reboot and every step
+             * safe-stops while one is set, so after one stall no dashboard
+             * command could move the car again.  START is the operator's
+             * acknowledgement: clear them; B2 re-raises them if still real. */
             fault_clear(FAULT_MOTOR_STALL | FAULT_ENCODER);
-            c->line_seen_since_start = false;
         }
         break;
     case RCMD_RESUME:
@@ -275,6 +291,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         (in->faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU)) ||
         in->motion.status == MOTION_STATUS_FAULT ||
         in->motion.status == MOTION_STATUS_TIMEOUT) {
+        tm_printf((UB *)"[VC-STOP-REASON] motion_valid=%d imu_valid=%d hazard=%d obstacle_fault=%d faults=%d motion_status=%d\n",
+                  (INT)in->motion_valid, (INT)in->imu_valid, (INT)in->hazard,
+                  (INT)in->obstacle_fault, (INT)in->faults, (INT)in->motion.status);
         safe_stop(c);
         return;
     }
@@ -284,11 +303,13 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     if (!in->line_valid) {
+        tm_printf((UB *)"[VC-STOP-REASON] line data invalid/stale\n");
         safe_stop(c);
         return;
     }
     if (in->obstacle_active) {
         /* B5 owns bounded bypass/recovery legs; never overwrite them. */
+        c->obstacle_handoff = true;
         c->drive_sent = false;
         c->stopped = false;
         c->navigation = 0u;
@@ -298,7 +319,24 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->junction_enter_samples = c->junction_clear_samples = 0u;
         return;
     }
+    if (c->obstacle_handoff) {
+        /* The bypass changed position and heading. Discard steering/speed
+         * history from before the obstacle and give a lost line a fresh
+         * recovery window, even if we entered avoidance during recovery. */
+        c->obstacle_handoff = false;
+        c->drive_sent = false;
+        c->last_steer = c->last_error = c->curve_steer = c->last_speed = 0;
+        c->line_pos = B3_LINE_POS_CENTRE;
+        c->last_line_search_direction = 0;
+        c->recovery_ms = in->now_ms;
+        c->line_recovery_active = false;
+    }
     if (!in->clearance || (in->faults & FAULT_NO_ECHO)) {
+        if (c->state != ROBOT_OBSTACLE_SCAN) {
+            tm_printf((UB *)"[VC-CLEARANCE-WAIT] now_ms=%d allowed=%d no_echo=%d generation=%d\n",
+                      (INT)in->now_ms, (INT)in->clearance,
+                      (INT)((in->faults & FAULT_NO_ECHO) != 0u), (INT)in->safety_generation);
+        }
         if (c->navigation != 0u) {
             /* Our navigation STOP revokes clearance. Wait for a fresh B5
              * report before submitting the turn, without losing the request. */
@@ -313,8 +351,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
+    if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
+    if (line_detected) c->line_recovery_active = false;
     update_junction_state(c, in->line_flags);
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
         c->pending_navigation == B3_NAV_NONE &&
@@ -333,75 +373,75 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (c->navigation == 0u && line_detected) {
         (void)line_position(c, in); /* remember which side the line is on */
     }
-    if (line_detected) {
-        c->line_seen_since_start = true;
-        c->lost_since_ms = 0u;
-    } else if (c->lost_since_ms == 0u) {
-        c->lost_since_ms = in->now_ms != 0u ? in->now_ms : 1u;
-    }
-    if (c->navigation == 0u && !line_detected && !c->line_seen_since_start) {
-        /* Not seen since START (car off the line, or calibration just
-         * restarted): wait in place instead of driving a search.  It
-         * starts following as soon as the line is seen. */
-        stop_motion(c);
-        set_state(c, ROBOT_LINE_RECOVERY);
-        return;
-    }
-    if (c->navigation == 0u && !line_detected &&
-        c->state == ROBOT_LINE_FOLLOW && c->drive_sent &&
-        in->now_ms - c->lost_since_ms < VC_LINE_DROPOUT_MS) {
-        /* Short dropout while following: hold the last steering/speed. */
-        if (in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
-        command.type = MOTION_CMD_DRIVE;
-        command.direction = MOTION_DIR_FORWARD;
-        command.steering_permille = c->last_steer;
-        command.target_speed_cps = c->last_speed > 0 ? c->last_speed : 1;
-        apply_wheel_minimum(&command);
-        command.safety_generation = in->safety_generation;
-        if (motion_send_command(&command) == E_OK) {
-            c->stopped = false;
-            c->last_drive_ms = in->now_ms;
-        } else if (in->now_ms - c->last_drive_ms >= 60u) {
-            safe_stop(c);
-        }
-        return;
-    }
     if (c->navigation == 0u && !line_detected) {
+        if (ROBOT_CLEAR_PATH_FORWARD) {
+            set_state(c, ROBOT_LINE_RECOVERY);
+            if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
+            command.type = MOTION_CMD_DRIVE;
+            command.direction = MOTION_DIR_FORWARD;
+            command.target_speed_cps = speed / 2;
+            command.steering_permille = 0;
+            apply_wheel_minimum(&command);
+            command.safety_generation = in->safety_generation;
+            c->last_steer = c->last_error = c->curve_steer = 0;
+            c->line_recovery_active = false;
+            if (motion_send_command(&command) == E_OK) {
+#if VC_STEERING_DIAGNOSTICS
+                report_steering(c, in, &command);
+#endif
+                c->stopped = false;
+                c->drive_sent = true;
+                c->last_drive_ms = in->now_ms;
+            } else if (!c->drive_sent || in->now_ms - c->last_drive_ms >= 60u) safe_stop(c);
+            return;
+        }
         uint32_t recovery_elapsed;
-        INT direction = c->last_line_search_direction;
-        INT search_steer;
+        INT direction;
+        INT search_steer = VC_LINE_SEARCH_STEER;
 
-        if (c->state != ROBOT_LINE_RECOVERY) c->recovery_ms = in->now_ms;
+        if (!c->line_recovery_active) {
+            c->recovery_ms = in->now_ms;
+            c->line_recovery_active = true;
+        }
         recovery_elapsed = in->now_ms - c->recovery_ms;
         set_state(c, ROBOT_LINE_RECOVERY);
-        if (direction == 0 || recovery_elapsed >= VC_LINE_REACQUIRE_MS) {
-            /* No clear side to turn to, or not found there: stop, still
-             * armed, instead of sweeping across the course.  Following
+        if (recovery_elapsed >= VC_LINE_SEARCH_MS) {
+            /* Search exhausted: stop but stay armed.  Line following
              * resumes by itself once B3 sees the line again (e.g. the car
-             * is put back on it).  STOP, faults and stale data still
-             * disarm as before. */
+             * is put back on it); no new START is needed.  Dashboard STOP,
+             * faults and stale data still disarm as before. */
             stop_motion(c);
             return;
+        }
+
+        direction = c->last_line_search_direction;
+        if (direction == 0) direction = 1;
+        if (recovery_elapsed < VC_LINE_REACQUIRE_MS) {
+            /* Pololu behaviour: turn hard back toward the last side. */
+            search_steer = B3_LINE_STEER_MAX;
+        } else {
+            /* Not found there: widening sweeps, starting the other way. */
+            direction = line_search_direction(
+                recovery_elapsed - VC_LINE_REACQUIRE_MS, -direction);
         }
         if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) {
             return;
         }
-        /* Tightening arc toward the side the line was last clearly on,
-         * close to where it was lost; the outer wheel runs at the set
-         * speed so the car turns far enough in VC_LINE_REACQUIRE_MS. */
-        search_steer = VC_RECOVER_START_STEER + VC_RECOVER_RAMP_PER_TICK *
-            (INT)(recovery_elapsed / VC_PERIOD_MS);
-        if (search_steer > B3_LINE_STEER_MAX) search_steer = B3_LINE_STEER_MAX;
         command.type = MOTION_CMD_DRIVE;
         command.direction = MOTION_DIR_FORWARD;
         command.steering_permille = direction * search_steer;
-        command.target_speed_cps = speed * 1000 / (1000 + search_steer);
-        if (command.target_speed_cps < 1) command.target_speed_cps = 1;
+        command.target_speed_cps = speed / 2;
+        if (command.target_speed_cps == 0) command.target_speed_cps = 1;
+        command.target_speed_cps = command.target_speed_cps * 1000 /
+            (1000 + search_steer);
         c->last_steer = command.steering_permille;
         c->last_error = direction * B3_LINE_POS_CENTRE;
         apply_wheel_minimum(&command);
         command.safety_generation = in->safety_generation;
         if (motion_send_command(&command) == E_OK) {
+#if VC_STEERING_DIAGNOSTICS
+            report_steering(c, in, &command);
+#endif
             c->stopped = false;
             c->drive_sent = true;
             c->last_drive_ms = in->now_ms;
@@ -518,6 +558,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     apply_wheel_minimum(&command);
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {
+#if VC_STEERING_DIAGNOSTICS
+        report_steering(c, in, &command);
+#endif
         c->stopped = false;
         c->drive_sent = true;
         c->last_drive_ms = in->now_ms;
@@ -526,6 +569,29 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
 }
 
+#if VC_STEERING_DIAGNOSTICS
+/* Log only accepted commands; measured speeds describe the preceding motion,
+ * not the response to the command just submitted. Physical left/right labels
+ * differ from B3's historical ADC variable names.
+ */
+static void report_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
+                            const motion_command_t *command)
+{
+    if (in->now_ms - c->last_steering_log_ms < VC_STEERING_LOG_MS) {
+        return;
+    }
+    c->last_steering_log_ms = in->now_ms;
+    tm_printf((UB *)"[VC-STEER] t=%u state=%d R26=%d L27=%d flags=%u "
+                    "steer=%d base=%d measL=%d measR=%d age=%u\n",
+              (UW)in->now_ms, (INT)c->state,
+              (INT)in->left, (INT)in->centre,
+              (UINT)in->line_flags, command->steering_permille,
+              command->target_speed_cps, in->motion.left_speed_cps,
+              in->motion.right_speed_cps,
+              (UW)(in->now_ms - in->motion.sample_time_ms));
+}
+#endif
+
 static void controller_task(INT stacd, void *exinf)
 {
     VEHICLE_CONTROLLER c;
@@ -533,6 +599,7 @@ static void controller_task(INT stacd, void *exinf)
     imu_event_t imu = {0};
     bool hazard = false;
     bool autostart_pending = ROBOT_AUTOSTART != 0;
+    uint32_t last_boot_log_ms = 0u;
     (void)stacd;
     (void)exinf;
     vehicle_controller_init(&c);
@@ -596,6 +663,7 @@ static void controller_task(INT stacd, void *exinf)
         in.motion_valid = in.motion_valid &&
             now.lo - in.motion.sample_time_ms <= VC_MOTION_MAX_AGE_MS;
         in.clearance = b2_safety_motion_allowed();
+        in.approach_slow = s5_mission_approach_slow();
         in.safety_generation = b2_safety_stop_generation();
         in.faults = fault_get();
         {
@@ -605,17 +673,29 @@ static void controller_task(INT stacd, void *exinf)
         }
         /* Higher-priority VC can run before B2/B3 publish their first
          * sample. Arm boot motion only after producers are actually ready. */
-        if (autostart_pending && in.line_valid && in.imu_valid &&
+        bool boot_sensors_ready = in.line_valid && in.imu_valid &&
             in.motion_valid && !in.hazard && !in.obstacle_fault &&
-            (in.line_flags & LINE_F_DETECTED) &&
-            !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU))) {
+            (ROBOT_CLEAR_PATH_FORWARD || (in.line_flags & LINE_F_DETECTED)) &&
+            !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU));
+        /* B5 needs an enabled mission to establish line reference and
+         * clearance. Keep boot arming pending until it actually permits
+         * DRIVE; a transient fault during warmup must not consume START. */
+        if (autostart_pending && boot_sensors_ready && in.clearance &&
+            !(in.faults & FAULT_NO_ECHO)) {
             REMOTE_CMD start = {0};
             start.type = RCMD_START;
             vehicle_controller_command(&c, &start);
             autostart_pending = false;
+            tm_printf((UB *)"[VC-BOOT] sensors and front clearance ready; START\n");
+        } else if (autostart_pending && in.now_ms - last_boot_log_ms >= 1000u) {
+            last_boot_log_ms = in.now_ms;
+            tm_printf((UB *)"[VC-BOOT-WAIT] line=%d detected=%d imu=%d motion=%d hazard=%d obstacle_fault=%d clearance=%d faults=%d\n",
+                      (INT)in.line_valid, (INT)((in.line_flags & LINE_F_DETECTED) != 0u),
+                      (INT)in.imu_valid, (INT)in.motion_valid, (INT)in.hazard,
+                      (INT)in.obstacle_fault, (INT)in.clearance, (INT)in.faults);
         }
         vehicle_controller_step(&c, &in, nav);
-        s5_mission_enable(c.running && !c.estop && !c.paused &&
+        s5_mission_enable(((autostart_pending && boot_sensors_ready) || c.running) && !c.estop && !c.paused &&
                           c.mode != MODE_TEST && c.speed_percent != 0u);
         /* Hazards stop this tick even when coalesced with recovery. A later
          * explicit START is required; no automatic mission restart. */

@@ -69,7 +69,7 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
             action = AVOID_RIGHT;
         }
 
-        /* Never publish a partly valid profile or authorise bypass
+        /* Never publish a partly valid measured profile or authorise bypass
          * when any field is malformed. The receiver sees one explicit
          * invalid STOP event, not misleading partial clearance data. */
         if ((distance_cm == COMM_CM_INVALID) ||
@@ -83,6 +83,8 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
             right_cm = COMM_CM_INVALID;
             action = AVOID_STOP;
         }
+        /* A configured course-width bound is not a measured silhouette. */
+        if (profile->uses_course_bounds) width_cm = COMM_CM_INVALID;
     }
 
     (void)comm_report_obstacle(distance_cm, width_cm, left_cm, right_cm,
@@ -452,8 +454,8 @@ static void stationary_profile_mode(void)
                                (s5_wire_cm(guard.cm,
                                            S5_WIRE_DISTANCE_MAX_CM) !=
                                 COMM_CM_INVALID);
-            /* True hysteresis: restart needs 45 cm; while already moving,
-             * valid distances above 35 cm keep the current drive interval. */
+            /* Restart needs RELEASE; while already moving, valid
+             * distances above STOP keep the current drive interval. */
             if (guard_valid && (guard.cm > ROBOT_STOP_CM)) {
                 comm_set_obstacle_dist(s5_wire_cm(guard.cm,
                                                  S5_WIRE_DISTANCE_MAX_CM));
@@ -729,6 +731,13 @@ static void stationary_profile_mode(void)
 #if S5_MOTION_BRIDGE_ENABLED
 /* Actual controller: synchronous scans are converted into ready events on
  * the next tick; motion/line events must come from real team bridge. */
+static bool begin_viewpoint(int degrees)
+{
+    S5EchoReading front = s5_ultrasonic_read_front();
+    return (front.status == S5_ECHO_OK || front.status == S5_ECHO_OPEN_SPACE) &&
+        front.cm > ROBOT_BYPASS_MIN_TURN_CM && front.cm <= S5_MAX_RANGE_CM &&
+        s5_navigation_probe_begin(degrees);
+}
 static void live_controller_mode(void)
 {
     S5Controller c;
@@ -736,7 +745,15 @@ static void live_controller_mode(void)
     bool coarse_ready = false, fine_ready = false;
     bool stop_requested = false;
     bool sensor_unavailable = false;
+    unsigned front_failures = 0u;
+    uint32_t previous_poll_ms = 0u;
     uint32_t last_log_ms = 0u;
+    unsigned look_stage = 0u;
+    bool look_attempted = false;
+    unsigned look_clear_hits = 0u;
+    float look_obstacle_cm = 0.0f;
+    S5Side look_first_side = S5_SIDE_LEFT;
+    S5Scan look_left = {0}, look_right = {0};
     if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
     s5_controller_init(&c);
     tm_printf((UB*)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
@@ -748,6 +765,9 @@ static void live_controller_mode(void)
         SYSTIM cycle_start = {0}, cycle_end;
         S5EchoReading reading;
         if (tk_get_tim(&cycle_start) != E_OK) emergency_halt("system clock unavailable");
+        if (previous_poll_ms && cycle_start.lo - previous_poll_ms > ROBOT_MOTOR_WATCHDOG_MS / 2u)
+            tm_printf((UB*)"[S5-POLL-GAP] ms=%d\n", (int)(cycle_start.lo - previous_poll_ms));
+        previous_poll_ms = cycle_start.lo;
         /* Sensor always faces forward outside scans. Monitoring continues
          * during movement. Repeated invalid readings fail closed. */
         /* Apply the same configured no-target policy in every heading.
@@ -760,6 +780,7 @@ static void live_controller_mode(void)
                          (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) !=
                           COMM_CM_INVALID);
         in.front_cm = in.front_valid ? cm : 0.0f;
+        s5_mission_front(in.front_valid, cm);
         comm_set_obstacle_dist(reading.status == S5_ECHO_OPEN_SPACE ?
                                COMM_FRONT_OPEN_SPACE_CM : in.front_valid ?
                                s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
@@ -773,13 +794,28 @@ static void live_controller_mode(void)
         }
         if (in.front_valid)
         {
+            front_failures = 0u;
             fault_clear(FAULT_NO_ECHO);
             sensor_unavailable = false;
         }
         else
         {
-            fault_raise(FAULT_NO_ECHO);
-            if (!sensor_unavailable)
+            bool hard_failure = reading.status == S5_ECHO_STUCK_HIGH ||
+                reading.status == S5_ECHO_NO_FALL ||
+                reading.status == S5_ECHO_OK || reading.status == S5_ECHO_OPEN_SPACE;
+            if (front_failures < S5_FRONT_INVALID_LIMIT) ++front_failures;
+            /* Match navigation's bounded glitch tolerance. A single short
+             * noise pulse must not make the VC revoke otherwise fresh
+             * clearance. Electrical failures and maneuver faults stop now. */
+            if (hard_failure || c.state != S5_FOLLOW ||
+                front_failures >= S5_FRONT_INVALID_LIMIT) {
+                fault_raise(FAULT_NO_ECHO);
+                b2_request_stop();
+            }
+            tm_printf((UB*)"[S5-FRONT-INVALID] echo=%s pulse_us=%d failures=%d hard=%d\n",
+                      s5_echo_status_name(reading.status), (int)reading.pulse_us,
+                      (int)front_failures, (int)hard_failure);
+            if (!sensor_unavailable && (hard_failure || front_failures >= S5_FRONT_INVALID_LIMIT))
             {
                 (void)comm_report_error(ERR_S5_NO_ECHO, (UH)reading.status);
                 sensor_unavailable = true;
@@ -792,6 +828,9 @@ static void live_controller_mode(void)
             s5_navigation_pause();
             s5_controller_init(&c);
             coarse_ready = fine_ready = stop_requested = false;
+            look_stage = 0u;
+            look_attempted = false;
+            look_clear_hits = 0u;
             s5_mission_publish(s5_bridge_ready() ? S5_MISSION_FOLLOW : S5_MISSION_FAULT);
             tk_dly_tsk(S5_ECHO_GAP_MS);
             continue;
@@ -801,9 +840,68 @@ static void live_controller_mode(void)
             (void)comm_report_error(ERR_S5(s5_navigation_error()), 0u);
             emergency_halt(s5_error_name(s5_navigation_error()));
         }
+        /* All narrow rays can hit one obstacle. Change the chassis viewpoint
+         * while keeping the sensor servo inside its checked 70..110 limits.
+         * Each turn requires a real B2 completion before any stopped scan. */
+        if (look_stage != 0u) {
+            if (!s5_navigation_probe_complete() || !s5_navigation_stopped()) {
+                tk_dly_tsk(1);
+                continue;
+            }
+            if ((look_stage == 1u || look_stage == 3u) && in.front_valid && cm >= ROBOT_RELEASE_CM) {
+                    if (++look_clear_hits < ROBOT_CLEAR_CONFIRM) {
+                        tk_dly_tsk(S5_ECHO_GAP_MS);
+                        continue;
+                    }
+                    c.profile = (S5Profile){0};
+                    c.profile.valid = c.profile.uses_course_bounds = true;
+                    c.profile.bypass_side = c.side = look_stage == 1u ? look_first_side :
+                        (look_first_side == S5_SIDE_LEFT ? S5_SIDE_RIGHT : S5_SIDE_LEFT);
+                    c.profile.estimated_width_cm = ROBOT_OBSTACLE_MAX_BYPASS_CM;
+                    c.profile.size = S5_SIZE_LARGE;
+                    c.profile.center_y_cm = c.profile.nearest_cm = look_obstacle_cm;
+                    if (!s5_navigation_probe_bypass(&c.profile)) emergency_halt("clear viewpoint handoff rejected");
+                    c.state = S5_AVOID;
+                    c.error = S5_ERR_NONE;
+                    c.ticks_in_state = 0u;
+                    look_stage = 0u;
+                    s5_mission_publish(S5_MISSION_BUSY);
+                    continue;
+            }
+            look_clear_hits = 0u;
+            if (look_stage == 1u) {
+                s5_coarse_scan(look_first_side == S5_SIDE_LEFT ? &look_left : &look_right);
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? 45 : -45)) emergency_halt("center viewpoint rejected");
+                look_stage = 2u;
+            } else if (look_stage == 2u) {
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? 45 : -45)) emergency_halt("opposite viewpoint rejected");
+                look_stage = 3u;
+            } else if (look_stage == 3u) {
+                s5_coarse_scan(look_first_side == S5_SIDE_LEFT ? &look_right : &look_left);
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -45 : 45)) emergency_halt("heading restore rejected");
+                look_stage = 4u;
+            } else {
+                /* Same sensor origin, original heading restored. Side ray
+                 * angles include the +/-45 degree chassis look turns. */
+                coarse.points[0] = look_left.points[0];
+                coarse.points[1] = look_left.points[2];
+                coarse.points[2] = (S5ScanPoint){90u, cm, in.front_valid};
+                coarse.points[3] = look_right.points[2];
+                coarse.points[4] = look_right.points[4];
+                const uint16_t bearings[5] = {25u, 45u, 90u, 135u, 155u};
+                for (int i = 0; i < S5_SCAN_COUNT; ++i) coarse.points[i].angle_deg = bearings[i];
+                coarse.nearest_index = s5_find_nearest(coarse.points, S5_SCAN_COUNT);
+                print_scan("WIDE", &coarse);
+                c.state = S5_COARSE;
+                c.ticks_in_state = 0u;
+                coarse_ready = true;
+                look_stage = 0u;
+            }
+            if (look_stage != 0u) continue;
+        }
         /* Establish the original line before starting an avoidance cycle.
          * A robot placed off the line waits, even with an obstacle ahead. */
-        if (c.state == S5_FOLLOW && !s5_navigation_has_line_reference()) {
+        if (!ROBOT_CLEAR_PATH_FORWARD && c.state == S5_FOLLOW && !s5_navigation_has_line_reference()) {
             tk_dly_tsk(S5_ECHO_GAP_MS);
             continue;
         }
@@ -815,7 +913,29 @@ static void live_controller_mode(void)
         if (coarse_ready) in.coarse = coarse;
         if (fine_ready) in.fine = fine;
         coarse_ready = fine_ready = false;
+        if (c.state == S5_FINE && in.fine_ready)
+            tm_printf((UB*)"[S5-DECISION] front_cm_x100=%d left_cm_x100=%d right_cm_x100=%d opening_cm=%d min_turn_cm=%d\n",
+                      (int)(c.last_coarse.points[2].distance_cm * 100.0f),
+                      (int)(c.last_coarse.points[0].distance_cm * 100.0f),
+                      (int)(c.last_coarse.points[4].distance_cm * 100.0f),
+                      (int)ROBOT_BYPASS_SIDE_CLEAR_CM, (int)ROBOT_BYPASS_MIN_TURN_CM);
         cmd = s5_controller_step(&c, &in);
+        if (c.state == S5_WAIT_ROUTE && !look_attempted &&
+            c.error == S5_ERR_NO_CLEAR_ROUTE && in.front_valid &&
+            cm > ROBOT_BYPASS_MIN_TURN_CM && s5_navigation_stopped()) {
+            look_first_side = s5_probe_side(&c.last_coarse);
+            if (look_first_side != S5_SIDE_NONE) {
+                look_attempted = true;
+                look_clear_hits = 0u;
+                look_obstacle_cm = cm;
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -45 : 45)) emergency_halt("first viewpoint rejected");
+                look_stage = 1u;
+                s5_mission_publish(S5_MISSION_BUSY);
+                continue;
+            }
+            if (c.ticks_in_state <= 1u)
+                tm_printf((UB*)"[S5-TURN-WAIT] side rays below turn clearance; stopped pending a clear route\n");
+        }
         s5_mission_publish(c.state == S5_FOLLOW ? S5_MISSION_FOLLOW : S5_MISSION_BUSY);
         if (cmd != S5_CMD_NONE) {
             tm_printf((UB*)"[S5] state=%s command=%s error=%s\n",
@@ -860,6 +980,10 @@ static void live_controller_mode(void)
             break;
         case S5_CMD_GO_LEFT:
         case S5_CMD_GO_RIGHT:
+            tm_printf((UB*)"[S5-CHOICE] %s left_cm_x100=%d right_cm_x100=%d\n",
+                      cmd == S5_CMD_GO_LEFT ? "LEFT" : "RIGHT",
+                      (int)(c.profile.left_clearance_cm * 100.0f),
+                      (int)(c.profile.right_clearance_cm * 100.0f));
             print_profile(&c.profile);
             s5_report_profile(&c.profile,
                               cmd == S5_CMD_GO_LEFT ? S5_SIDE_LEFT :
@@ -873,6 +997,7 @@ static void live_controller_mode(void)
             if (cmd == S5_CMD_RESUME) {
                 /* Resume is a completed handoff, not a permanent DONE state. */
                 s5_controller_init(&c);
+                look_attempted = false;
                 stop_requested = false;
                 s5_mission_publish(S5_MISSION_FOLLOW);
             }
@@ -904,7 +1029,10 @@ EXPORT void s5_task(INT stacd, void *exinf)
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] 2026-11-06 B5-SIZE-AVOID-RECOVER: autonomous=%d\n", (int)ROBOT_ENABLE_BYPASS);
+    tm_printf((UB*)"[FW-ID] %s %s B5-BLUE-ROUTE45: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
+              __DATE__, __TIME__, (int)ROBOT_ENABLE_BYPASS,
+              (int)ROBOT_SCAN_SAFE_MIN_DEG, (int)ROBOT_SCAN_SAFE_MAX_DEG,
+              (int)ROBOT_STOP_CM, (int)ROBOT_RELEASE_CM, (int)ROBOT_STRAIGHT_TRIM_PERMILLE);
     tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
     if (!s5_ultrasonic_init()) {
         s5_mission_publish(S5_MISSION_FAULT);
@@ -922,7 +1050,7 @@ EXPORT void s5_task(INT stacd, void *exinf)
         for (;;) tk_dly_tsk(1000);
     }
     tm_printf((UB*)"[S5-BOOT] servo PWM initialized at 50Hz\n");
-    tk_dly_tsk(600);
+    tk_dly_tsk(S5_SERVO_SETTLE_MS);
 #if S5_MOTION_BRIDGE_ENABLED
     /* Warm-up never releases the initial B2 STOP latch. Startup echoes are
      * discarded; the controller then requires fresh clearance to drive. */

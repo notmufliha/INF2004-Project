@@ -16,6 +16,15 @@ int main(void)
 {
     uint32_t generation;
     s5_mission_init();
+    assert(!s5_mission_approach_slow());
+    s5_mission_front(true, 30.0f);
+    assert(s5_mission_approach_slow());
+    s5_mission_front(false, 0.0f);
+    assert(s5_mission_approach_slow()); /* Missing data cannot accelerate the approach. */
+    s5_mission_front(true, 31.0f);
+    assert(!s5_mission_approach_slow());
+    s5_mission_front(false, 20.0f);
+    assert(!s5_mission_approach_slow());
     assert(b2_safety_init() == E_OK);
     b2_safety_acknowledge_stop();
     b2_request_forward();

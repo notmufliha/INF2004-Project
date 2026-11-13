@@ -13,13 +13,13 @@ int main(void)
 {
     unsigned passed = 0, failed = 0, i;
     const S5State expected_state[S5_SCENARIO_COUNT] = {
-        S5_DONE, S5_DONE, S5_FAULT, S5_DONE, S5_DONE, S5_FAULT,
-        S5_FAULT, S5_FAULT, S5_FAULT, S5_FOLLOW, S5_FAULT, S5_FAULT
+        S5_DONE, S5_DONE, S5_WAIT_ROUTE, S5_DONE, S5_DONE, S5_FAULT,
+        S5_FAULT, S5_WAIT_ROUTE, S5_FAULT, S5_FOLLOW, S5_FAULT, S5_FAULT
     };
     const S5Error expected_error[S5_SCENARIO_COUNT] = {
         S5_ERR_NONE, S5_ERR_NONE, S5_ERR_NO_CLEAR_ROUTE, S5_ERR_NONE,
         S5_ERR_NONE, S5_ERR_STOP_TIMEOUT, S5_ERR_MOTION_TIMEOUT,
-        S5_ERR_REVERSE_TIMEOUT, S5_ERR_LINE_TIMEOUT, S5_ERR_NONE,
+        S5_ERR_NO_CLEAR_ROUTE, S5_ERR_LINE_TIMEOUT, S5_ERR_NONE,
         S5_ERR_FRONT_SENSOR, S5_ERR_FINE_SCAN
     };
     for (i = 0; i < S5_SCENARIO_COUNT; i++) {
@@ -32,10 +32,13 @@ int main(void)
                  p->estimated_width_cm > 10.0f && p->estimated_width_cm < 12.0f &&
                  p->nearest_cm == 15.0f && p->nearest_angle_deg == 90u &&
                  p->left_clearance_cm == 90.0f && p->right_clearance_cm == 65.0f;
-        if (i == S5_SCENARIO_RIGHT_CLEAR || i == S5_SCENARIO_INVALID_COARSE)
+        if (i == S5_SCENARIO_RIGHT_CLEAR)
             ok = ok && r.controller.side == S5_SIDE_RIGHT;
-        if (i == S5_SCENARIO_REVERSE_CLEARS || i == S5_SCENARIO_BOTH_BLOCKED)
-            ok = ok && r.controller.reverse_attempts == 1u;
+        if (i == S5_SCENARIO_INVALID_COARSE)
+            ok = ok && r.controller.side == S5_SIDE_LEFT; /* Valid inner ray remains usable. */
+        ok = ok && r.controller.reverse_attempts == 0u;
+        if (i == S5_SCENARIO_ROUTE_CLEARS || i == S5_SCENARIO_BOTH_BLOCKED)
+            ok = ok && r.controller.route_waits > 0u;
         printf("[PROFILE] %-17s width=%.2fcm nearest=%.2fcm angle=%u left=%.2fcm right=%.2fcm margin=%.2fcm\n",
                s5_scenario_name((S5Scenario)i), p->estimated_width_cm,
                p->nearest_cm, (unsigned)p->nearest_angle_deg,

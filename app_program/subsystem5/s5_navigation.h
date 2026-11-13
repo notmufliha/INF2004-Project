@@ -11,6 +11,10 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow);
 S5Error s5_navigation_error(void);
 bool s5_navigation_stopped(void);
 bool s5_navigation_has_line_reference(void);
+/* Encoder-controlled stationary viewpoint changes, servo remains bounded. */
+bool s5_navigation_probe_begin(int turn_deg);
+bool s5_navigation_probe_complete(void);
+bool s5_navigation_probe_bypass(const S5Profile *profile);
 /* Optional non-blocking rear-sensor provider, installed before task startup.
  * True means fresh independently verified clearance for the requested travel.
  * No provider means that reverse is rejected, never assumed safe. */

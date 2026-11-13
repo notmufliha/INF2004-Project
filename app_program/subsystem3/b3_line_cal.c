@@ -33,6 +33,18 @@ bool b3_line_cal_ready(const B3_LINE_CAL *cal)
 		(uint32_t)cal->black - cal->white >= B3_CAL_MIN_SPAN;
 }
 
+uint16_t b3_line_cal_scale(uint16_t raw, uint16_t white, uint16_t black)
+{
+    if ((black <= white) || (raw <= white)) {
+        return 0U;
+    }
+    if (raw >= black) {
+        return (uint16_t)B3_CAL_FULL_SCALE;
+    }
+    return (uint16_t)(((uint32_t)raw - white) * B3_CAL_FULL_SCALE /
+                       ((uint32_t)black - white));
+}
+
 uint16_t b3_line_cal_update(B3_LINE_CAL *cal, uint16_t raw)
 {
 	uint32_t white;

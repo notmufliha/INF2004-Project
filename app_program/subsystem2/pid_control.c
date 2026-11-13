@@ -9,6 +9,7 @@
 #include "motion_profile.h"
 #include "b2_motor.h"
 #include "b2_integration.h"
+#include "../robot_config.h"
 
 #define PID_PERIOD_MS 10
 #define PID_MAX_INTERVAL_MS 20
@@ -84,6 +85,9 @@ typedef struct
     UW left_invalid_start;
     UW right_invalid_start;
     int64_t encoder_window_ms;
+#if B2_SPEED_DIAGNOSTICS
+    uint32_t speed_log_ms;
+#endif
 } pid_state_t;
 
 ID gh_pid_task = 0;
@@ -402,6 +406,23 @@ static motion_profile_t pid_profile(pid_state_t *state)
         target = PID_PI * pid_turn_track(&state->command) * 10.0f *
             state->command.target_angle_deg / 360.0f;
     }
+    if (state->command.type == MOTION_CMD_DRIVE &&
+        state->command.direction == MOTION_DIR_FORWARD &&
+        state->command.steering_permille == 0) {
+        float trim = ROBOT_STRAIGHT_TRIM_PERMILLE / 1000.0f;
+        float left_scale = 1.0f + trim;
+        float right_scale = 1.0f - trim;
+        /* Compare progress against the trimmed wheel ratio. Otherwise the
+         * straight-line synchronizer would immediately undo the trim.
+         * Feedback still corrects either wheel departing from that ratio. */
+        motion_profile_t profile = motion_profile_targets(speed, 0.0f,
+            state->left_mm * state->left_sign / left_scale,
+            state->right_mm * state->right_sign / right_scale,
+            target, bounded, true);
+        profile.left_speed *= left_scale;
+        profile.right_speed *= right_scale;
+        return profile;
+    }
     return motion_profile_targets(speed,
         state->command.steering_permille / 1000.0f,
         state->left_mm * state->left_sign,
@@ -427,6 +448,36 @@ static bool pid_stalled(pid_state_t *state, motion_profile_t profile)
     return state->now_ms - state->left_progress_ms >= left_limit ||
         state->now_ms - state->right_progress_ms >= right_limit;
 }
+
+#if B2_SPEED_DIAGNOSTICS
+/* Targets are after profile/trim and wheel-specific mm-to-count conversion.
+ * Measurements are the same windowed feedback used by the PI controller.
+ * PWM is requested output: the safety gate may independently force zero.
+ */
+static void pid_report_speed(pid_state_t *state, motion_profile_t profile,
+                              float left_cps, float right_cps,
+                              INT left_pwm, INT right_pwm)
+{
+    const uint32_t now_ms = (uint32_t)state->now_ms;
+    if (now_ms - state->speed_log_ms < B2_SPEED_LOG_MS)
+    {
+        return;
+    }
+    state->speed_log_ms = now_ms;
+    tm_printf((UB *)"[B2-SPEED] t=%u type=%d steer=%d "
+                    "targetL=%d targetR=%d measL=%d measR=%d "
+                    "pwmReqL=%d pwmReqR=%d dt=%u\n",
+              (UW)state->now_ms, (INT)state->command.type,
+              state->command.steering_permille,
+              (INT)(profile.left_speed / pid_mm_per_count(true)) *
+                  state->left_sign,
+              (INT)(profile.right_speed / pid_mm_per_count(false)) *
+                  state->right_sign,
+              (INT)left_cps, (INT)right_cps,
+              state->left_sign * left_pwm, state->right_sign * right_pwm,
+              (UW)state->control_interval_ms);
+}
+#endif
 
 static void pid_apply(pid_state_t *state, motion_profile_t profile)
 {
@@ -461,6 +512,10 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
     b2_safety_apply_pwm(state->left_sign * left_pwm,
         state->right_sign * right_pwm, state->generation);
+#if B2_SPEED_DIAGNOSTICS
+    pid_report_speed(state, profile, left_cps, right_cps,
+                      left_pwm, right_pwm);
+#endif
     if (left_pwm != 0 || right_pwm != 0)
     {
         state->stopped = false;

@@ -9,7 +9,7 @@
 /* Calibrate against the actual servo and sensor mounting. Servo must settle
  * before measuring; avoid ultrasonic cross-talk by spacing trigger pulses. */
 #ifndef S5_SERVO_SETTLE_MS
-#define S5_SERVO_SETTLE_MS 180
+#define S5_SERVO_SETTLE_MS 200
 #endif
 #ifndef S5_ECHO_GAP_MS
 #define S5_ECHO_GAP_MS 65
@@ -58,14 +58,15 @@ static void scan_angles(S5Scan *scan, const uint16_t angles[S5_SCAN_COUNT])
         }
         tk_dly_tsk(S5_SERVO_SETTLE_MS);
         scan->points[i].valid = s5_measure_scan_cm(&scan->points[i].distance_cm);
-        /* A failed 5-ping measurement is unknown. Do not repeatedly
+        /* A failed three-ping measurement is unknown. Do not repeatedly
          * trigger the transducer or invent a distance during a scan. */
 #if ROBOT_VERBOSE_SENSOR_LOG
         tm_printf((UB*)"[S5-SCAN] angle=%d echo=%s distance_cm_x100=%d\n",
                   (int)angles[i], scan->points[i].valid ? "OK" : "TIMEOUT/INVALID",
                   (int)(scan->points[i].distance_cm * 100.0f));
 #endif
-        tk_dly_tsk(S5_ECHO_GAP_MS);
+        /* Servo travel/settling already spaces rays. The driver also
+         * enforces the 65 ms minimum at every actual trigger. */
 #endif
     }
 #if S5_SERVO_ENABLED && S5_HARDWARE_ENABLED && !S5_SIMULATION

@@ -5,7 +5,13 @@
 
 /* Buddy 5: Week 6 design-review pins. Confirm Maker Pi vs Robo Pico
  * conflicts with the team before connecting motor PWM or servo PWM. */
+/* Clearance must run before telemetry (12..14), below motor control (5)
+ * and VC (6). Echo waits yield; they must not starve line sampling. */
+#if ROBOT_MODE
+#define S5_PRI_MAIN 7
+#else
 #define S5_PRI_MAIN 20
+#endif
 #define S5_SIMULATION 0
 #define S5_HARDWARE_ENABLED 1
 #define S5_SERVO_ENABLED 1
@@ -18,7 +24,7 @@
  */
 #define S5_SAFE_MIN_DEG ROBOT_SCAN_SAFE_MIN_DEG
 #define S5_SAFE_MAX_DEG ROBOT_SCAN_SAFE_MAX_DEG
-#define S5_SERVO_STEP_DEG 3u
+#define S5_SERVO_STEP_DEG 2u
 #define S5_SERVO_STEP_DELAY_MS 35u
 
 /* Autonomous B2/B3 adapter follows the robot configuration. With bypass
@@ -63,7 +69,7 @@
 #define S5_SCAN_COOLDOWN_MS 3000u
 #define S5_CONFIRM_HITS 3u
 #define S5_PICO_DEMO_PAUSE_MS 15000u
-#define S5_SERVO_SETTLE_MS 220u
+#define S5_SERVO_SETTLE_MS 200u
 #define S5_ECHO_GAP_MS 65u
 
 IMPORT void s5_task(INT stacd, void *exinf);

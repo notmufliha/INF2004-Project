@@ -35,7 +35,9 @@ typedef struct {
     S5Error error;
     S5Side side;
     float lateral_cm;
+    float offset_cm;
     float pass_cm;
+    float offset_done_cm, pass_done_cm, active_move_cm;
     float searched_cm;
     float search_limit_cm;
     uint32_t start_ms;
@@ -47,6 +49,9 @@ typedef struct {
     int alignment_heading_deg;
     bool left_original_line;
     bool issuing;
+    bool waiting_clear;
+    unsigned clear_hits;
+    uint32_t last_clear_sample_ms;
 } S5Maneuver;
 
 void s5_maneuver_init(S5Maneuver *m);
