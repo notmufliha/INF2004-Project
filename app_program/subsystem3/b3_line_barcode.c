@@ -146,6 +146,8 @@ EXPORT ER b3_init(void)
 	g_edge_tail = 0U;
 	g_edge_pending = 0U;
 	g_edge_overflow = 0U;
+	g_edge_seen = 0U;
+	g_last_edge_us = 0U;
 	g_b3_started = 0U;
 	g_line_sample_valid = false;
 
@@ -257,8 +259,8 @@ static void b3_invalidate_line(void)
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
-/* Consistent 0..1000 line contrast within the requested raw <2000 band.
- * Keep raw ADC telemetry unchanged. Calibration is intentionally not used
+/* Normalise the measured black/white endpoints, keeping raw telemetry.
+ * Automatic calibration is intentionally not used
  * here: an uncalibrated sensor at boot must not learn an inverted polarity. */
 static uint16_t b3_track_normalise(uint16_t raw)
 {
@@ -314,8 +316,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-		/* Retain calibration observations for future tuning, but use the
-         * explicit sub-2000 line detection band requested for this test. */
+		/* Observe calibration for diagnostics; use measured fixed endpoints. */
         (void)b3_line_cal_update(&left_cal, left);
         (void)b3_line_cal_update(&centre_cal, centre);
         left_norm = b3_track_normalise(left);
@@ -548,14 +549,16 @@ static void b3_log_reject(const B3_CODE39_DECODER *decoder)
 		"bars not clearly wide/narrow (dirty strip, speed change or sensor threshold)",
 		"not a Code 39 character",
 		"gap between characters wrong",
-		"stop character missing"
+		"stop character missing",
+		"no start '*' recognized; check Code 39 framing, GP28 threshold and scan speed",
+		"scan ended before payload and stop '*'; check GP28 missed edges"
 	};
 	static uint16_t logged = 0U;
 
 	if (decoder->reject_count != logged) {
 		logged = decoder->reject_count;
-		tm_printf((UB *)"[B3] barcode after start '*' rejected: %s (payload '%c')\n",
-			  decoder->last_reject < 5U ?
+		tm_printf((UB *)"[B3] barcode rejected: %s (payload '%c')\n",
+			  decoder->last_reject < sizeof(reasons) / sizeof(reasons[0]) ?
 			  reasons[decoder->last_reject] : "?",
 			  decoder->last_reject_char != '\0' ?
 			  decoder->last_reject_char : '?');

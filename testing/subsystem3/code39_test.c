@@ -178,6 +178,88 @@ int main(void)
            decoder.last_reject_char == 'A');
     puts("PASS C39-05 rejects with reasons");
 
+    /* C39-06: malformed and interrupted strips must not fail silently or
+     * leave a partial scan to consume the beginning of the next strip. */
+    scan(mask_of('A'), STAR, NARROW_US, NARROW_US * 13U / 10U, NARROW_US,
+         0U, 0U, 0U, UINT32_MAX - 300000U);
+    assert(decoder.reject_count == 0U); /* no recognizable start */
+    assert(!b3_code39_poll(&decoder, now_us + B3_CODE39_IDLE_US,
+                           &decoded_symbol));
+    assert(decoder.reject_count == 1U &&
+           decoder.last_reject == B3_CODE39_REJECT_START &&
+           decoder.have_level == 0U);
+    assert(!b3_code39_poll(&decoder, now_us + 2U * B3_CODE39_IDLE_US,
+                           &decoded_symbol));
+    assert(decoder.reject_count == 1U); /* one diagnostic per scan */
+    {
+        uint32_t widths[29];
+        uint8_t level = 0U;
+        build(widths, mask_of('Z'), STAR, NARROW_US,
+              NARROW_US * 5U / 2U, NARROW_US);
+        b3_code39_reset(&decoder);
+        decoded_count = 0U;
+        now_us = 1000U;
+        feed(level, now_us);
+        now_us += 50000U;
+        /* Stop just after the start character and its following gap. */
+        for (uint8_t i = 0U; i < 10U; ++i) {
+            level ^= 1U;
+            feed(level, now_us);
+            now_us += widths[i];
+        }
+        finish();
+        assert(decoder.in_barcode != 0U);
+        now_us += B3_CODE39_IDLE_US;
+        assert(!b3_code39_poll(&decoder, now_us, &decoded_symbol));
+        assert(decoder.last_reject == B3_CODE39_REJECT_INCOMPLETE &&
+               decoder.reject_count == 1U && decoder.have_level == 0U);
+        /* Same decoder, new strip: no reboot or manual reset required. */
+        level = 0U;
+        feed(level, now_us);
+        now_us += 50000U;
+        for (uint8_t i = 0U; i < 29U; ++i) {
+            level ^= 1U;
+            feed(level, now_us);
+            now_us += widths[i];
+        }
+        level ^= 1U;
+        feed(level, now_us);
+        finish();
+        assert(decoded_count == 1U && decoded_symbol == 'Z');
+        assert(decoder.reject_count == 1U);
+    }
+    puts("PASS C39-06 idle rejection, timer wrap and next-strip recovery");
+
+    /* C39-07: task-style polling throughout slow, wide bars must not
+     * abandon a valid scan or report its trailing quiet zone as a failure. */
+    {
+        uint32_t widths[29];
+        uint8_t level = 1U;
+        build(widths, mask_of('A'), STAR, 240000U, 600000U, 240000U);
+        b3_code39_reset(&decoder);
+        decoded_count = 0U;
+        now_us = UINT32_MAX - 100000U;
+        feed(level, now_us);
+        now_us += 50000U;
+        for (uint8_t i = 0U; i < 29U; ++i) {
+            level ^= 1U;
+            feed(level, now_us);
+            for (uint32_t t = 1000U; t < widths[i]; t += 1000U) {
+                char symbol;
+                assert(!b3_code39_poll(&decoder, now_us + t, &symbol));
+            }
+            now_us += widths[i];
+        }
+        level ^= 1U;
+        feed(level, now_us);
+        finish();
+        assert(decoded_count == 1U && decoded_symbol == 'A');
+        assert(!b3_code39_poll(&decoder, now_us + B3_CODE39_IDLE_US,
+                               &decoded_symbol));
+        assert(decoder.reject_count == 0U);
+    }
+    puts("PASS C39-07 slow bars with continuous polling");
+
     puts("PASS: Code 39 full set both directions, speed drift, chatter, wrap and rejection");
     return 0;
 }

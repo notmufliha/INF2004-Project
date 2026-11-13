@@ -273,9 +273,24 @@ bool b3_code39_feed(B3_CODE39_DECODER *decoder, uint8_t level,
 bool b3_code39_poll(B3_CODE39_DECODER *decoder, uint32_t now_us,
                     char *symbol)
 {
-    if (decoder == NULL || symbol == NULL || decoder->have_pending == 0U ||
-        now_us - decoder->pending_us < B3_CODE39_MIN_RUN_US) {
+    bool decoded = false;
+
+    if (decoder == NULL || symbol == NULL) {
         return false;
     }
-    return commit_pending(decoder, symbol);
+    if (decoder->have_pending != 0U &&
+        now_us - decoder->pending_us >= B3_CODE39_MIN_RUN_US) {
+        decoded = commit_pending(decoder, symbol);
+    }
+    if (decoder->have_level != 0U && decoder->have_pending == 0U &&
+        now_us - decoder->run_start_us >= B3_CODE39_IDLE_US) {
+        if (decoder->in_barcode != 0U) {
+            reject(decoder, B3_CODE39_REJECT_INCOMPLETE);
+        } else if (decoder->run_count >= 9U) {
+            reject(decoder, B3_CODE39_REJECT_START);
+        }
+        reset_candidate(decoder);
+        decoder->have_level = 0U;
+    }
+    return decoded;
 }

@@ -7,19 +7,15 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
 ## What the module does
 
 - Reads ADC channel 0 (GP26) and channel 1 (GP27), nominally every 20 ms.
-- Auto-calibrates each sensor (`b3_line_cal.c`): it learns that sensor's own
-  white and black readings. Sweep both surfaces after each reboot; once
-  measured contrast reaches 64 counts, measured endpoints replace the
-  provisional 220..620 defaults. Three overlapping samples confirm each
-  extreme, so a single spike is ignored without splitting a real surface
-  across block boundaries. Endpoints widen but never shrink during a run,
-  so a pause or long curve cannot shift the steering reference.
-  It normalises to 0 = white .. 1000 =
-  black. The controller receives normalised values; the dashboard still shows
-  raw ADC. This removes the bias between two sensors of different
-  sensitivity, and a grey floor beside the course no longer reads as line.
-- A sensor is line-active at normalised 201 or more. The provisional fallback
-  therefore detects raw 301 immediately, before any sweep history exists.
+- Normalises the measured low-is-black range: black reads 100..200, white
+  about 1000, and a lifted sensor 4000+. Raw 1..200 maps to 1000 (black);
+  raw 1000..4095 maps to 0 (white/off-line), with a linear transition
+  between 200 and 1000. Zero is treated as invalid/off-line.
+  The former below-300 cutoff discarded the actual black line and could
+  repeatedly trigger hard recovery turns. The controller receives normalised
+  values; the dashboard still shows raw ADC. Automatic calibration
+  observations are logged but do not replace these fixed endpoints.
+- A sensor is line-active at normalised 201 or more.
   It reports `DETECTED` if either sensor is active and
   `LOST` if neither is.
 - While following, steers on the normalised difference right - left. On
@@ -84,10 +80,10 @@ Buddy 3 tasks and the Vehicle Controller consumes their samples.
    its telemetry mutex and event queue exist; then call `b3_init()` before
    starting tasks and `b3_start()` from core 0. The sample `subsystem3_init()`
    and `subsystem3_start()` lifecycle currently do not call either function.
-5. Before a run, slide the car across the line once or twice so each sensor
-   sees white and black; calibration then settles on the course. Check on the
-   dashboard that black reads at least 64 counts above white and that
-   stationary noise is clearly smaller than that contrast.
+5. Before a run, check both sensors over white and black at operating height.
+   The dashboard should show black around 100..200 and white around 1000.
+   If these change, remeasure and update the fixed endpoints/polarity in
+   `b3_line_barcode.h`; the calibration log is observational only.
    `B3_LINE_STEER_ERROR_FULL_SCALE` (400) is the tuning knob: lower it if
    curves are missed, raise it if the car weaves on straights; test
    with the wheels raised and adjust them only after confirming turn direction.
@@ -104,13 +100,18 @@ crossed from the far end has each character's elements reversed, so the
 mask is mirrored and looked up in the same table. The narrowest wide element
 must be at least 1.4x the widest narrow one. A level change that flips back
 within 3 ms (sensor chatter, or a spike inside a bar) is merged into the
-surrounding element. While bars are passing (an edge within 400 ms) the
-controller holds a steady 500 counts/s (~41 mm/s), as the teams with
-reliable on-car reads did.
+surrounding element. While bars are passing (an edge within one second) the
+controller caps the base speed at 500 counts/s (~41 mm/s); curves, humps,
+minimum-wheel-speed adjustment and safety checks still apply. The longer
+hold avoids accelerating between slow wide bars.
 
 Every decode and every rejection is printed on the USB serial console, for
 example `[B3] barcode *A* read (forward) -> STRAIGHT at next junction`, or
-`[B3] barcode after start '*' rejected: <reason>`. Letters act only if they
+`[B3] barcode rejected: <reason>`. After one second without an edge, an
+unrecognized start (at least nine completed runs) or an incomplete scan
+is also reported and reset, rather than silently carrying partial data
+into the next strip. Isolated edges do not produce rejection messages.
+Letters act only if they
 are in the `b3_routes` table in `b3_line_barcode.c`:
 
 | Code 39 payload | Recorded barcode | Navigation |
@@ -126,6 +127,10 @@ every white gap (the dashboard's "IR right" shows this raw 0/1 level). The decod
 uses alternating edge levels, so either black/white electrical polarity is
 supported. The track barcode is approximately 144 mm long; this length is not
 used as a decode threshold.
+Use actual Code 39 bars encoding `*A*` or `*Z*`, including the start/stop
+asterisks and white quiet zones; a printed label "A" alone does not confirm
+that the barcode generator included Code 39 framing. Check the console
+for about a second after leaving the strip for a failure diagnostic.
 
 The controller retains a decoded navigation command until three consecutive
 junction samples confirm the junction. Test the scan and route first on the
