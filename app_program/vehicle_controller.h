@@ -41,6 +41,10 @@
  * never reported as stalled). */
 #define VC_MIN_WHEEL_CPS 300
 #define VC_JUNCTION_RELEASE_SAMPLES 3u
+/* Clear-path mode, line lost on a curve: keep the last following steer
+ * (if at least MIN_STEER) for this long before driving straight. */
+#define VC_CURVE_REACQUIRE_MS 500u
+#define VC_CURVE_REACQUIRE_MIN_STEER 200
 
 typedef struct {
     uint32_t now_ms, safety_generation;
@@ -67,6 +71,8 @@ typedef struct {
     INT last_error; /* previous PD error, for the derivative term */
     INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
     INT last_steer, last_speed; /* last DRIVE sent, for smoothing */
+    INT follow_steer; /* last steering sent while following the line */
+    uint32_t line_seen_ms; /* last tick the line was detected */
 #if VC_STEERING_DIAGNOSTICS
     uint32_t last_steering_log_ms;
 #endif
