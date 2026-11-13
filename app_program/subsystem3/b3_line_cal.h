@@ -40,6 +40,15 @@
  * B3 "on the line" boundary (above 200, as in Pololu readLine()). */
 #define B3_CAL_DEFAULT_WHITE (220U)
 #define B3_CAL_DEFAULT_BLACK (620U)
+/* Compatibility with the V2 comparison note: older code and notes use the
+ * B3_CAL_LOW_IS_BLACK name, while the current implementation uses the more
+ * explicit B3_LINE_RAW_LOW_IS_BLACK macro. */
+#ifndef B3_LINE_RAW_LOW_IS_BLACK
+#define B3_LINE_RAW_LOW_IS_BLACK (1U)
+#endif
+#ifndef B3_CAL_LOW_IS_BLACK
+#define B3_CAL_LOW_IS_BLACK B3_LINE_RAW_LOW_IS_BLACK
+#endif
 /* Smallest learned span accepted as a real calibration. */
 #define B3_CAL_MIN_SPAN (64U)
 /* Consecutive readings that must all lie beyond an extreme to move it. */

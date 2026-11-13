@@ -15,8 +15,15 @@
 /* Track tuning: raw 12-bit ADC remains 0..4095 for telemetry.
  * This setting interprets the dark line as LOW ADC, with transition fully
  * white at 1999 and fully black at 1500. Change polarity if measured
- * black readings are HIGHER than white readings. */
+ * black readings are HIGHER than white readings.
+ *
+ * Backward compatibility: the V2 comparison notes refer to
+ * B3_CAL_LOW_IS_BLACK; keep that alias working without changing the
+ * canonical macro used by the current implementation. */
 #define B3_LINE_RAW_LOW_IS_BLACK (1U)
+#ifndef B3_CAL_LOW_IS_BLACK
+#define B3_CAL_LOW_IS_BLACK B3_LINE_RAW_LOW_IS_BLACK
+#endif
 #define B3_LINE_RAW_BLACK_MAX (1500U)
 #define B3_LINE_RAW_WHITE_MIN (1999U)
 /* ADC readings below this floor are treated as no line, regardless of the
