@@ -10,8 +10,9 @@
  * bar or space; it is merged into the surrounding element.  A narrow bar is
  * ~3.4 mm, i.e. >= 8 ms even at full speed (408 mm/s). */
 #define B3_CODE39_MIN_RUN_US (3000U)
-/* Narrowest wide element must be at least 1.4x the widest narrow one
- * (value from a team car that read 20/20 barcodes on the track). */
+/* Within one character, the narrowest wide bar must be at least 1.4x the
+ * widest narrow bar, and likewise for spaces.  Bars and spaces are compared
+ * separately because sensor blur makes bars read thinner, spaces wider. */
 #define B3_CODE39_WIDE_RATIO_X10 (14U)
 
 typedef enum {
