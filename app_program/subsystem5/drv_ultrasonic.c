@@ -221,8 +221,9 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
 S5EchoReading s5_ultrasonic_read_front(void)
 {
     S5EchoReading r = s5_ultrasonic_read_detailed();
-#if ROBOT_NO_TARGET_FORWARD
-    if (r.status == S5_ECHO_NO_RISE || r.status == S5_ECHO_OUT_OF_RANGE) {
+#if ROBOT_NO_TARGET_FORWARD || ROBOT_COMPLETED_FAR_ECHO
+    if ((ROBOT_NO_TARGET_FORWARD && r.status == S5_ECHO_NO_RISE) ||
+        r.status == S5_ECHO_OUT_OF_RANGE) {
         r.status = S5_ECHO_OPEN_SPACE;
         /* Control-only sentinel, explicitly labelled as assumed in logs.
          * Scan policy may use this as an assumed-clear boundary ray. */

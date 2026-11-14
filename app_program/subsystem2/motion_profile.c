@@ -3,7 +3,7 @@
 /* Preliminary tuning values; validate on the loaded robot. */
 #define PROFILE_CORRECTION_GAIN 2.0f
 #define PROFILE_CORRECTION_LIMIT 0.25f
-#define PROFILE_SLOW_DISTANCE_MM 30.0f
+#define PROFILE_SLOW_DISTANCE_MM 50.0f
 #define PROFILE_MIN_SPEED_MM_S 5.0f
 
 static float profile_approach(float speed, float remaining)

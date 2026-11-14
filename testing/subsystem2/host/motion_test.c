@@ -221,7 +221,7 @@ static void test_turn(bool right)
         ENC_RIGHT_COUNTS_PER_REV / (4.0f * ENC_WHEEL_DIAMETER_CM)) + 2;
     if (right)
     {
-        CHECK(left_target > 1070 && left_target < 1090);
+        CHECK(left_target > 1140 && left_target < 1160);
     }
     else
     {
@@ -407,7 +407,9 @@ static void test_encoder_diagnostic_fault(void)
 
 static void test_loaded_turn_finish(void)
 {
-  for (INT left_start = 224; left_start <= 454; left_start += 230) {
+  const INT captures[] = {224, 381, 454};
+  for (UINT capture = 0; capture < sizeof(captures) / sizeof(captures[0]); ++capture) {
+    INT left_start = captures[capture];
     pid_state_t state = setup();
     motion_command_t value = command(MOTION_CMD_TURN);
     motion_status_snapshot_t result;
@@ -423,10 +425,11 @@ static void test_loaded_turn_finish(void)
     CHECK(profile.right_reached && !profile.left_reached);
     CHECK(profile.right_speed == 0.0f);
     CHECK(profile.left_speed / pid_mm_per_count(true) >= PID_BOUNDED_MIN_CPS - 0.01f);
-    /* Loaded wheel: 28% breakaway, 22% sustaining torque at 200 cps. */
+    /* Latest capture remains stuck at 30%: model 35% breakaway,
+     * then 22% sustaining torque at 200 cps. */
     bool moving = false;
     for (INT i = 0; i < 500 && !state.settling; ++i) {
-        moving = moving ? pwm_left <= -22 : pwm_left <= -28;
+        moving = moving ? pwm_left <= -22 : pwm_left <= -35;
         tick(&state, moving ? -2 : 0, 0);
         CHECK(state.fault == MOTION_FAULT_NONE);
         CHECK(pwm_right == 0);
@@ -440,6 +443,43 @@ static void test_loaded_turn_finish(void)
     send(value); tick(&state, 0, 0);
     CHECK(state.status == MOTION_STATUS_RUNNING && pwm_left > 0 && pwm_right > 0);
   }
+  /* A physically blocked wheel still faults; never turn a stall into success. */
+  pid_state_t blocked = setup();
+  motion_command_t turn = command(MOTION_CMD_TURN);
+  turn.target_angle_deg = 45; turn.target_speed_cps = 600;
+  send(turn); tick(&blocked, 0, 0);
+  bool reached_ceiling = false;
+  for (INT i = 0; i < 51; ++i) {
+      tick(&blocked, 0, 0);
+      if (pwm_left == PID_MAX_PWM || pwm_left == -PID_MAX_PWM) reached_ceiling = true;
+  }
+  CHECK(reached_ceiling);
+  CHECK(blocked.status == MOTION_STATUS_FAULT && blocked.fault == MOTION_FAULT_STALL);
+  CHECK(pwm_left == 0 && pwm_right == 0);
+}
+
+static void test_five_second_move(void)
+{
+    pid_state_t state = setup();
+    motion_command_t value = command(MOTION_CMD_MOVE);
+    value.target_distance_counts = 100000;
+    value.run_ms = 5000u;
+    uint32_t id = send(value);
+    tick(&state, 0, 0);
+    for (INT i = 0; i < 499; ++i) {
+        tick(&state, 3, 3);
+        CHECK(!state.settling && state.status == MOTION_STATUS_RUNNING);
+    }
+    CHECK(state.now_ms - state.started_ms == 4990);
+    tick(&state, 3, 3);
+    CHECK(state.settling && pwm_left == 0 && pwm_right == 0);
+    CHECK(state.now_ms - state.started_ms == 5000);
+    for (INT i = 0; i < 12; ++i) tick(&state, 0, 0);
+    motion_status_snapshot_t result;
+    CHECK(motion_get_result(id, &result) == E_OK);
+    CHECK(result.status == MOTION_STATUS_COMPLETED && result.physically_stopped);
+    state = setup(); value = command(MOTION_CMD_TURN); value.run_ms = 1000u;
+    CHECK(motion_send_command(&value) == E_PAR);
 }
 
 static void test_move_pwm_slew(void)
@@ -458,6 +498,53 @@ static void test_move_pwm_slew(void)
     }
     tick(&state, 3000, 3000);
     CHECK(pwm_left == 0 && pwm_right == 0 && state.settling);
+}
+
+static void test_loaded_forward_start(void)
+{
+    for (INT drive = 0; drive <= 1; ++drive) {
+        pid_state_t state = setup();
+        motion_command_t move = command(drive ? MOTION_CMD_DRIVE : MOTION_CMD_MOVE);
+        move.target_speed_cps = 450; move.target_distance_counts = 10000;
+        send(move); tick(&state, 0, 0);
+        bool left_started = false, right_started = false;
+        for (INT i = 0; i < 35 && !(left_started && right_started); ++i) {
+            INT left = pwm_left >= 24 ? 2 : 0;
+            INT right = pwm_right >= 24 ? 2 : 0;
+            if (left) left_started = true;
+            if (right) right_started = true;
+            if (drive) state.refreshed_ms = clock_ms; /* Normal DRIVE refresh lease. */
+            tick(&state, left, right);
+            CHECK(state.fault == MOTION_FAULT_NONE);
+            CHECK(pwm_left <= PID_MAX_PWM && pwm_right <= PID_MAX_PWM);
+        }
+        CHECK(left_started && right_started);
+        CHECK(clock_ms <= 360u); /* Breakaway before the 500 ms stall deadline. */
+    }
+}
+
+static void test_controlled_forward_speed(void)
+{
+    pid_state_t state = setup();
+    motion_command_t move = command(MOTION_CMD_MOVE);
+    move.target_speed_cps = 450; move.target_distance_counts = 100000;
+    send(move); tick(&state, 0, 0);
+    float previous = state.left_profile_speed;
+    for (INT i = 0; i < 10; ++i) {
+        tick(&state, 0, 0);
+        CHECK(state.left_profile_speed - previous <= 0.401f);
+        previous = state.left_profile_speed;
+    }
+    CHECK(state.left_profile_speed < 5.0f); /* No full-speed launch. */
+    for (INT i = 0; i < 30; ++i) tick(&state, 13, 13); /* Logged 1300 cps overspeed. */
+    CHECK(pwm_left < 22 && pwm_right < 22); /* Moving wheels get braking, not torque floor. */
+    state.left_mm = state.right_mm = 100000.0f * pid_mm_per_count(true) - 15.0f;
+    motion_profile_t slow = pid_profile(&state);
+    CHECK(slow.left_speed / pid_mm_per_count(true) < 200.0f);
+#if B2_FORWARD_FEEDFORWARD_TRIAL
+    CHECK(pid_base_pwm(&state, true) == (float)B2_LEFT_BASE_PWM);
+    CHECK(pid_base_pwm(&state, false) == (float)B2_RIGHT_BASE_PWM);
+#endif
 }
 
 static void test_feedforward_and_kick(void)
@@ -540,7 +627,7 @@ int main(void)
     test_turn(false); test_turn(true); test_guards();
     test_results_and_stale(); test_feedback_and_time();
     test_timeouts_and_standstill(); test_stop_and_steering();
-    test_feedforward_and_kick(); test_loaded_turn_finish(); test_move_pwm_slew();
+    test_feedforward_and_kick(); test_loaded_turn_finish(); test_move_pwm_slew(); test_five_second_move(); test_controlled_forward_speed(); test_loaded_forward_start();
     test_physical_api_and_history();
     test_encoder_diagnostic_fault();
     {

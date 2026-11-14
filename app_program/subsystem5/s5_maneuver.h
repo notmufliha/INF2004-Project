@@ -7,7 +7,8 @@ typedef enum {
     S5_MAN_IDLE, S5_MAN_TURN_OUT, S5_MAN_OFFSET, S5_MAN_FORWARD,
     S5_MAN_PASS, S5_MAN_TURN_IN, S5_MAN_SEARCH, S5_MAN_LINE_STOP,
     S5_MAN_ALIGN, S5_MAN_COMPLETE, S5_MAN_FAILED, S5_MAN_BACK,
-    S5_MAN_ALIGN_CHECK
+    S5_MAN_ALIGN_CHECK, S5_MAN_REPLAN_STOP, S5_MAN_REPLAN_TURN,
+    S5_MAN_REPLAN_CHECK, S5_MAN_REPLAN_ADVANCE
 } S5ManeuverState;
 typedef enum { S5_ACT_NONE, S5_ACT_STOP, S5_ACT_MOVE,
                S5_ACT_TURN } S5ActionType;
@@ -29,6 +30,7 @@ typedef struct {
     bool line_junction;
     uint32_t line_sample_ms;
     bool rear_clear; /* independent rear observation, never a front echo */
+    float motion_progress_cm;
 } S5ManeuverInput;
 typedef struct {
     S5ManeuverState state;
@@ -36,6 +38,9 @@ typedef struct {
     S5Side side;
     float lateral_cm;
     float offset_cm;
+    float minimum_offset_cm;
+    unsigned turn_clear_hits;
+    uint32_t last_turn_clear_ms;
     float pass_cm;
     float offset_done_cm, pass_done_cm, active_move_cm;
     float searched_cm;
@@ -52,6 +57,16 @@ typedef struct {
     bool waiting_clear;
     unsigned clear_hits;
     uint32_t last_clear_sample_ms;
+    bool reactive;
+    unsigned reactive_turns;
+    uint32_t invalid_since_ms;
+    int reactive_heading_deg, reactive_target_deg;
+    float reactive_progress_cm;
+    unsigned reactive_exit_hits;
+    float reactive_required_cm, reactive_forward_cm;
+    int reactive_entry_heading_deg;
+    bool forward_paused;
+    bool reactive_align_parallel, reactive_parallel_lock;
 } S5Maneuver;
 
 void s5_maneuver_init(S5Maneuver *m);

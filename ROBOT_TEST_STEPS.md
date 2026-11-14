@@ -1,102 +1,142 @@
+V43 active update: scan consensus uses five pings per angle instead of three, retaining requirement for three pairwise-agreeing measured returns and existing bounded retry. Two misses in a batch can now be tolerated without inventing clear rays. Still one coarse and one fine sweep; stationary sweep duration increases. Regression confirms19.30 cm near return with two59260 us out-of-range misses is retained. Missing-all and inconsistent measurements still fail. 15 cm middle-leg cap retained. All21 B5 groups pass. Intermittent sensor returns still require physical verification.
+
+V42 active update: exact-sequence middle leg capped at 15 cm across initial and first-leg-progress recalculations. Captured route grew from17.81 to28.14 cm after first-leg interruption; cap prevents this growth. Interrupted middle MOVE commands subtract measured pass_done_cm from the same capped total. First/final diagonals unchanged. Shortened route needs physical verification for box clearance. All21 B5 test groups pass.
+
+V41 active update: WAIT_ROUTE with error NONE (scan front measured beyond release) can resume after existing clearance confirmation, even if encounter latch was set earlier. Failed route errors stay latched and cannot resume merely from assumed-open samples. Regression covers captured 99.18 cm clear front, valid stop and prior40 cm encounter, plus failed-route 400 cm assumption remaining stopped. All21 B5 test groups pass; physical verification pending.
+
+V40 active update: successful terminal result with live stopped=false waits for stop confirmation instead of immediately faulting MOTION_TIMEOUT. Separate result/live snapshots may cross completion during a poll. Failed/cancelled terminal results still fault and now log S5-MOTOR-RESULT status/fault/stopped fields. Existing deadline bounds the wait; no next leg is issued before stop. Regression covers both sides: opposite turn completion with stale moving snapshot then confirmed stop starts middle forward MOVE. 25 percent shorter middle distance retained. Latest physical log lacks terminal result status so this build also disambiguates actual motor cancellation/fault from handoff race.
+
+V39 active update: exact bypass middle forward distance uses 75 percent of its previous geometry calculation, with existing 5 cm minimum. Applied on initial planning and both measured-first-leg recalculation paths, for either side. First/final diagonals, speed and turns unchanged. This is empirical floor tuning: shorter passing travel reduces the previous geometry clearance allowance and needs physical verification around the 20 cm box.
+
+V38 active update: coarse scan selects candidate side using the same opening logic as planning. Fine scan centres on that side (left80/right100), retains front ray90, and confirms the proposed corridor rather than the nearest blocked opposite edge. Stopped coarse front range tightens the stored encounter gap so close-range retreat is not skipped due to stale approach distance. Regression replays 8.44,7.82,8.67,96.97,97.74 cm, confirms fine centre100, then reverse and GO_RIGHT. All 21 B5 test groups pass. Physical verification pending; rear space must be clear.
+
+V37 active update: choose route from coarse/fine scans BEFORE bounded retreat. Preserve measured encounter gap and chosen side through reverse; reverse completion starts GO_LEFT/GO_RIGHT directly without rescanning or forward approach. In test mode an incomplete frontal silhouette may use configured 20 cm bounds, measured encounter gap plus planned retreat, valid outer side opening and same-side fine confirmation; unknown scan rays are not clear measurements. Live turning/forward guards remain. Failed route planning stays stopped rather than RESUME from assumed-open echo; no forward/reverse loop. Rear space must remain clear. Regression covers 99.39 cm right outer ray, missing centre, 98.85 cm fine confirmation, one reverse then GO_RIGHT despite later 400 cm assumption.
+
+V36 active update: completed OUT_OF_RANGE front pulses are explicitly OPEN_SPACE_ASSUMED in floor-test mode. Captured 59260 us pulses previously caused start/stop chatter and permanent FRONT_SENSOR halt. This is a control assumption, not a measured 400 cm distance. NO_RISE, NO_FALL, STUCK_HIGH and TOO_SHORT remain invalid; scan rays remain strict. Three startup samples and measured close-obstacle avoidance remain active. Driver host tests replay the 59 ms pulse and missing/unfinished echoes. Test in clear floor space and verify real nearby obstacles are measured; a malfunction producing long pulses can still conceal an obstacle. Right calibration, mirror sequence and bounded retreat retained.
+
+V35 active update: startup OUT_OF_RANGE pulses no longer enter an irreversible FRONT_SENSOR emergency halt before the sensor becomes ready. Motors stay stopped and sensing continues until three consecutive valid readings. Confirmed clear front starts straight movement; a confirmed obstacle starts avoidance. Invalid startup readings remain unknown, never clearance. If STARTUP-WAIT persists, check ultrasonic sensor, echo wiring and power; movement requires valid sensing. After startup is armed, operational fault protection is unchanged. Right-side selection, calibration and bounded retreat retained.
+
+V34 active update: replayed coarse scan 54.11,13.04,13.97,invalid,99.12 cm. Missing inner-right echo no longer discards the valid 99.12 cm outer-right opening. In floor test only, a valid outer ray >= forward release may nominate a monitored turn when inner ray is unknown. Missing outer or any observed ray inside pivot clearance still rejects the side. Unknown is never forward clearance: fresh head-on valid echoes remain required after rotation. Complete mirrored route and bounded retreat unchanged. Physical test pending.
+
+V33 active update: floor-test side-selection tie tolerance reduced from 10 cm to 1 cm. A measured clearer right opening selects RIGHT45 -> forward -> LEFT45 -> forward -> LEFT45 -> forward -> RIGHT45 -> straight. Left bypass mirrors this sequence. Last diagonal uses measured first-diagonal distance for either side; live obstacle guards may interrupt travel. Direction-specific encoder calibration and bounded retreat retained. Near-equal openings prefer left. Tests cover 5 cm advantages on both sides and complete mirrored turn sequences.
+
+V32 active update: right-turn encoder travel reduced 4% from V31, equivalent to the previous calibration at 48 degrees instead of 50. Nominal route angles remain 45 degrees. Bounded 8 cm reverse and bypass sequence retained. Keep rear space clear: no rear sensor is fitted. Actual physical angle requires floor testing.
+
+V31 active update: right-turn encoder travel increased 11.1% (nominal 45 degrees uses the former 50-degree travel). Route geometry remains nominal 45 degrees; measure actual turns on the floor. Close startup gaps <=12.3 cm trigger one encoder-limited 8 cm reverse before the scan pair. One retreat maximum per obstacle encounter; still-blocked geometry stops. No rear sensor is fitted: keep at least 15 cm behind the robot clear during this floor test. A configured rear sensor veto overrides the test fallback. Motor stall, deadline and front echo validity protections remain active. Host validation: 3703 motor assertions and 21 B5 groups. Physical testing pending.
+
+V30: Captured startup gap 8.59 cm is below 9.3 cm turning guard. Start this test at least 15 cm from the sensor to the obstacle. WAIT_ROUTE now starts a new coarse/fine pair after three valid stopped readings show at least 5 cm more gap than the failed scan and exceed turn guard by 3 cm. Unchanged blocked geometry remains stopped without repeated scans. All 21 B5 host groups pass; hardware verification remains required.
+
 # Subsystems 1, 2, 3 and 5: build and test
 
-## Active obstacle test build
+## Active obstacle test build: SCAN5-V43
 
-`SMOOTH-30-V3`: obstacle-test turns are reduced to 30 degrees. The diagonal
-is recalculated as lateral/sin(30), and its forward projection is subtracted
-from the parallel leg. Return travel counts only completed encoder moves.
-Forward MOVE PWM ramps by at most one percentage point per 10 ms control
-tick; target completion and safety stops still remove PWM immediately.
-Instead of fixed 5 cm steps, test-mode legs use the measured available travel
-while retaining at least the 20 cm stop threshold plus 3 cm margin. This
-reduces repeated start/stop jerks without treating missing echoes as clear.
-Flash `build_make/robot_smooth_30_v3.uf2`, confirm `[B2-FW] SMOOTH-30-V3`.
+Startup correction: forward assistance now ramps an absolute PWM floor toward
+26% after 100 ms without encoder progress, reaching it by about 300 ms. The
+previous additive ramp could remain below loaded-motor breakaway torque.
+It applies to both initial forward DRIVE and bypass MOVE. Moving wheels return
+to normal speed control; MOVE still has the 1-point/10 ms PWM slew and slower
+40 mm/s^2 acceleration. Stall timeout, obstacle gates and PWM ceiling remain
+unchanged. New tests model both forward commands requiring 24% breakaway and
+verify movement begins before the 500 ms stall deadline. Physical startup still
+requires healthy sensors and verified front clearance.
+Forward smoothing update: MOVE acceleration is reduced from 80 to 40 mm/s^2.
+Forward static-friction assistance now ramps over 200 ms after 100 ms without
+encoder progress, instead of jumping to a 24% floor. Existing 1 PWM point per
+10 ms slew, encoder target stops, stall detection and obstacle stops remain.
+TURN breakaway and the four-turn route are unchanged. Physical smoothness
+still needs verification under the actual battery/load.
 
-`TURN-FINISH-V2` adds sustaining torque for unfinished encoder MOVE/TURN
-wheels below target speed. The PWM floor is 22%; braking above target speed
-and zero PWM at the encoder target remain active. A 12-point kick handles
-breakaway. Regression tests replay both incomplete-turn captures (-224/+513
-and -454/+513), complete the turn with a loaded-wheel model, then accept a
-forward MOVE. Stall and duration faults remain enabled. Flash the distinctly
-named `build_make/robot_turn_finish_v2.uf2` and confirm `[B2-FW] TURN-FINISH-V2`
-in the startup log to distinguish this motor controller from earlier builds.
+One completed forward command per stage: the captured parallel MOVE finished
+at 21.94 cm, but the old controller issued another 7.18 cm to fill a geometric
+remainder. Exact-sequence mode now advances after that successful MOVE directly
+to TURN_IN (the second right 45-degree turn), without a top-up. The first and
+return forward stages use the same rule. The three successful forward moves
+are separated by exactly four 45-degree turns. Safety cancellations are not
+reported as successful movement; they can still pause a leg.
 
-Turn-completion fix from the latest COM6 capture: fault=1 / motion_status=5
-was a motor stall during the first turn, not a post-turn clearance wait.
-The right wheel reached its target at +503 counts while the left stopped
-at -454 as its target decayed to 145 counts/s. Unfinished MOVE/TURN wheels
-now retain a 300 counts/s finishing floor (capped by requested speed).
-Static-friction kick is increased from 8 to 12 PWM points and cannot be
-cancelled by stale negative PI integral. Reached wheels stay at zero PWM;
-stall detection, encoder targets, deadlines and standstill checks remain active.
-Expect the first turn to report completion before the diagonal forward leg.
+If an interrupted first leg already exceeds its 20 cm progress threshold,
+three valid rotation-clearance readings take its scheduled turn even if the
+front reading has risen above 25 cm. It cannot restart that forward leg just
+to fill the old remaining distance. Completed actual encoder travel is still
+used for subsequent geometry. The actual leg is limited by available measured
+corridor space; a shortened path does not itself certify 20 x 20 cm box clearance.
+Second-right-turn handoff fix: exact-sequence mode now retains motor ownership
+through TURN_IN (the second right 45-degree turn), the return diagonal and
+final left turn. It no longer waits for an intermediate high-level FIND_LINE
+request before issuing TURN_IN. Premature FIND_LINE is rejected; the single
+handoff happens only after the whole fixed route is COMPLETE and stopped.
+Normal line-navigation mode retains its original recovery handoff.
+Regression tests execute both right turns while NAV_AVOID still owns motion,
+then verify final heading and the completed handoff back to straight DRIVE.
+The supplied log ends with the second forward command still RUNNING, rather
+than showing a turn fault; remaining encoder travel and clearance gates still
+apply. This change removes the intermediate barrier, not those safety checks.
+Latest blocked-leg transition: the capture travelled about 22 cm, stopped
+at an 18.7 cm echo, and waited for 25 cm instead of issuing the scheduled
+right turn. The fixed test route may now end a blocked first leg once it
+has at least 20 cm measured progress, confirmed standstill and three fresh
+valid readings above the sensor-relative turn guard. It then issues the
+scheduled opposite 45-degree turn, never an added outward turn. Passing and
+return distances are recalculated from actual first-leg travel. The nominal
+~47 cm target remains when the corridor permits it; below 20 cm progress it
+still waits rather than turning too early. This adaptive transition does not
+certify full lateral body clearance in arbitrary clutter. Forward movement
+after the turn still requires the existing 25 cm restart clearance.
+Measured geometry correction: the sensor front face is approximately 5 cm
+forward of the drive-wheel axle, as measured by the user. The old 0 cm setting
+compared sensor-origin echoes directly against an axle-centred turn envelope.
+The latest valid 11.42 cm echoes were therefore rejected before a turn command.
 
-Latest COM6 fix: all coarse/fine echoes were valid at 17..19 cm, but
-`opening_cm=25` forced WAIT_ROUTE. Test-mode candidate-turn clearance is now
-15 cm, above the unchanged 14 cm live rotation guard. This permits the
-initial turn from that scan; it does not certify a forward corridor. After
-the turn, forward legs still require 25 cm to start and stop at 20 cm.
-If the turned sensor still sees 18 cm, the robot correctly holds STOP;
-three clear readings, such as the earlier 38.39 cm, release the next leg.
-Both scan stages and the encoder-measured complete detour remain enabled.
+ROBOT_SENSOR_FORWARD_OFFSET_CM is now 5.0. Turn checks credit only 4 cm to allow
+1 cm uncertainty in the approximate measurement. Live front rotation threshold
+is 9.3 cm at the sensor, preserving the 13.3 cm axle guard. Scan-side checks
+project the credited offset along each actual ray before testing axle-relative
+clearance. A scan must still contain valid echoes; missing returns remain
+unknown. The exact captured coarse/fine scan now selects LEFT and issues its
+45-degree B2 turn command. A front echo at/below the new guard still stops.
+Passing-distance planning uses the full measured 5 cm offset, adding the
+previously missing distance between the axle and sensor to the far-edge target.
+Target: centred 20 x 20 cm box. Sequence is unchanged:
+left45 -> forward diagonal -> right45 -> forward past box -> right45 ->
+forward return diagonal -> left45 -> normal straight DRIVE.
+The right-side route mirrors this sequence. Exactly one coarse and one fine
+scan choose the side. Clearance interruptions cannot add unplanned turns.
 
-Scan-to-motion fix: a missing coarse ray on the unused side no longer vetoes
-a measured opening on the opposite side. The chosen side requires both coarse
-rays valid and outside the turn guard. Fine scanning still runs once and must
-provide a valid centre above the turn guard plus at least three valid returns.
-Insufficient fine coverage or blocked sides holds STOP. No missing echo is
-converted into open-space clearance.
+Motion settings are tuned against the latest log, where a 2.12 cm command
+with roughly 400 cps target reached 1100..1300 measured cps:
 
-Scan policy: obstacle test mode performs exactly one coarse sweep followed by
-one fine sweep around the nearest coarse point before deciding on a bypass.
-No periodic rescans or chassis viewpoint scans run in this mode. Invalid scans
-or blocked sides hold STOP; normal forward pings continue, and confirmed
-obstacle removal permits resuming. Live echo fluctuations do not restart the
-scan pair. Startup drives when valid front range >50 cm; otherwise it performs
-the coarse/fine pair before deciding.
-Bypass progression fix: the 50/55 cm approach thresholds no longer govern
-the post-turn legs. After a confirmed turn, 25 cm clearance permits bounded
-forward steps; movement stops at 20 cm. The logged 38.39 cm stationary
-reading now permits forward movement. Invalid echoes still stop motion.
-In obstacle test mode the route uses encoders throughout: turn out 45 degrees,
-diagonal forward, turn opposite 45 degrees, pass forward, turn inward
-45 degrees, diagonal back by the measured offset, restore heading with the
-initial 45-degree turn, then hand back to straight DRIVE. Both left and right
-routes finish at the original heading without requiring black tape.
+- Bypass speed: 450 left-reference counts/s, nominal 3.68 cm/s.
+- Forward MOVE feed-forward uses the existing per-wheel forward bases 6/12%,
+  instead of the turn base and a continuous 22% torque floor.
+- MOVE acceleration is limited to 80 mm/s^2 and PWM changes to 1 point/10 ms.
+- Deceleration begins within 50 mm; MOVE finishing floor is 150 cps instead
+  of the 300 cps turn floor. Static-friction assistance is temporary.
+- TURN retains its 300 cps finishing floor, 22% support and 35% breakaway cap.
+- Encoders, not time, determine travel. Completed leg accounting uses actual
+  mean left/right encoder distance including coast, not just requested length.
+- The return diagonal and parallel leg are adjusted to the actual completed
+  outward distance. Logs show [S5-LEG-RESULT] planned vs measured travel.
 
-Scanner mount correction: `ROBOT_SCAN_SERVO_REVERSED=1`. Logical 70 degrees
-looks left (1611 us), logical 110 degrees looks right (1388 us), and centre
-stays at 1500 us. The COM6 scan showed a physically left opening at the old
-110-degree shaft position; the planner had incorrectly labelled it right.
-Confirm `[S5-SCAN-MAP] reversed=1` after flashing. Motor directions are unchanged.
+Centred-box geometry: half-width 10 + chassis half-width 8 + margin 8 = 26 cm
+lateral clearance. Required diagonal = 26/sin45 = 36.77 cm, plus 10 cm optional
+reserve gives 46.77 cm. Passing distance = max(5 cm, starting sensor front gap + 5 cm sensor offset +
+20 cm depth + 10 cm chassis half-length + 8 cm margin - completed diagonal's
+forward projection). For an 18 cm sensor gap and 46.77 cm diagonal this is 27.93 cm.
+Nominal leg durations are about 13 s diagonally and 6 s passing, plus ramps,
+clearance pauses and standstill confirmation. Timers do not truncate travel.
 
-`ROBOT_OBSTACLE_TEST=1` drives straight after IMU readiness, ignoring tape
-steering and barcode navigation. Automatic reverse remains disabled.
+A blocked first leg may advance to its next turn after the 20 cm progress
+minimum, with the remaining route geometry recomputed.
+Disable ROBOT_BYPASS_CENTERED_TEST_BOX for unknown/off-centre placement.
+Forward bypass STOP/restart remain 20/25 cm; normal DRIVE uses 50/55 cm.
+Missing echoes, impact, stalls and deadlines remain stops. A fixed route
+cannot certify clear space around a keyboard, cable or table edge.
 
-Crash-log correction: stop at **50 cm** and cap forward speed at **600 counts/s**.
-The logged sensor saw 70 -> 63 -> 48 -> 35 cm and never reached the old 10 cm
-threshold before the wheels stalled. Stop, confirm standstill, then scan for a
-45-degree bypass. Startup requires three valid readings above 50 cm; release
-is 55 cm and scan object classification is 60 cm. Turn clearance is restored
-to **14 cm**, outside the configured 12.8 cm chassis rotation radius.
-
-Missing echoes are no longer assumed to mean open space: both
-`ROBOT_NO_TARGET_FORWARD` and `ROBOT_NO_TARGET_SCAN` are 0. Invalid readings
-cannot renew the motor clearance lease. Blocked or unmeasured routes remain
-stopped. Before a floor run, with motor power off, check the forward-facing
-sensor against an obstacle at measured distances. If it reads background
-while the chassis touches the obstacle, fix sensor aim/height or add coverage;
-software cannot detect an object outside the ultrasonic beam.
-
-Normal line mode still searches for black tape. Obstacle test mode uses the
-encoder-measured return instead. Reverse requests require a rear sensor.
-
-Flash `build_make/mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.uf2` using BOOTSEL.
-Verify `[S5-TEST] obstacle_test=1 automatic_reverse=0 startup_clear_cm=50`.
-Expect `WAIT_STOP` then `COARSE`, with no `REVERSE`, before bypass movements.
-Set `ROBOT_OBSTACLE_TEST=0` in `app_program/robot_config.h` and rebuild to
-restore normal line following and its 21 cm startup/release requirement.
-
+Flash build_make/robot_scan5_v43.uf2 and confirm [S5-FW] SCAN5-V43 and
+speed_cps=450. Verify physical turns/travel on a clear floor: encoder CPR,
+wheel diameter, track and turn correction values remain provisional. The
+supplied log has no independent physical angle/distance measurement, so no
+new physical calibration is claimed. Existing left/right turn scales remain.
 The route notes below describe earlier builds; this active profile takes precedence.
 Current route marker: `B5-BLUE-ROUTE45`. Bypass turns remain 45 degrees as
 requested for the blue detour in the photo. Sequence: turn away from the

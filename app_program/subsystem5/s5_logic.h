@@ -82,6 +82,7 @@ typedef struct {
     uint16_t ticks_in_state;
     uint16_t fine_center_deg;
     uint8_t reverse_attempts;
+    float encounter_front_cm;
     uint8_t route_waits, clear_route_hits;
     S5Scan last_coarse;
     uint8_t invalid_front_count;

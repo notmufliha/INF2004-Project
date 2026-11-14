@@ -27,6 +27,7 @@ def run(command):
 
 
 groups = {
+    "reactive": ["app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_reactive.c"],
     "detour": ["app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_detour.c"],
     "obstacle_start": ["app_program/subsystem5/s5_logic.c", "app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_obstacle_start.c"],
     "mission_safety": ["testing/subsystem5/test_mission_safety.c"],
@@ -57,7 +58,9 @@ with tempfile.TemporaryDirectory(prefix="b5_complete_") as folder:
         binary = Path(folder) / (name + (".exe" if os.name == "nt" else ""))
         run([CC, *(["-mno-ms-bitfields"] if os.name == "nt" else []), "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
              *(["-DROBOT_CLEAR_PATH_FORWARD=0"] if name in ("maneuver", "navigation") else []),
-             *(["-DROBOT_OBSTACLE_TEST=0"] if name not in ("obstacle_start", "detour") else []),
+             *(["-DROBOT_OBSTACLE_TEST=0"] if name not in ("obstacle_start", "detour", "reactive") else []),
+             *(["-DROBOT_BYPASS_EXACT_SEQUENCE=0"] if name == "reactive" else []),
+             *(["-DROBOT_SENSOR_FORWARD_OFFSET_CM=0.0f"] if name not in ("obstacle_start", "detour", "reactive") else []),
              "-Iapp_program/subsystem5",
              *sources, "-lm", "-o", str(binary)])
         output = run([str(binary)])
