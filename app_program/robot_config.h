@@ -15,20 +15,26 @@
 #ifndef ROBOT_AUTOSTART
 #define ROBOT_AUTOSTART 1
 #endif
-/* VC follows the line; Buddy 5 owns encoder-controlled bypass/recovery. */
+/* Floor obstacle test: drive straight on approach, STOP then scan; no reverse.
+ * Set 0 and rebuild to restore normal line following.
+ */
+#ifndef ROBOT_OBSTACLE_TEST
+#define ROBOT_OBSTACLE_TEST 1
+#endif
+/* Buddy 5 owns encoder-controlled bypass/recovery. */
 #define ROBOT_FORWARD_STOP_MODE 0 /* VC owns normal line-following DRIVE. */
 /* Open-space policy requested for forward driving. NO_RISE means assume
  * no target, NOT verified clearance. A disconnected ECHO wire looks the
  * same and cannot be detected by this single-sensor policy. Set 0 for
  * strict stop-on-missing-echo behavior. See the separate scan policy below. */
 #ifndef ROBOT_NO_TARGET_FORWARD
-#define ROBOT_NO_TARGET_FORWARD 1
+#define ROBOT_NO_TARGET_FORWARD 0
 #endif
 /* Apply the same explicit open-space assumption to scan boundary rays.
  * A missing/disconnected sensor cannot be distinguished from no target.
  * Set both policies to 0 to require real return echoes throughout. */
 #ifndef ROBOT_NO_TARGET_SCAN
-#define ROBOT_NO_TARGET_SCAN 1
+#define ROBOT_NO_TARGET_SCAN 0
 #endif
 #ifndef ROBOT_ENABLE_DRIVE
 #define ROBOT_ENABLE_DRIVE 1
@@ -47,7 +53,11 @@
  * Autonomous mode requires measured obstacles no deeper than this bound. */
 #define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
 #define ROBOT_BYPASS_SPEED_CPS 600
+#if ROBOT_OBSTACLE_TEST
+#define ROBOT_BYPASS_TURN_DEG 30
+#else
 #define ROBOT_BYPASS_TURN_DEG 45
+#endif
 /* Clear path: drive straight off tape, use line steering whenever tape is seen. */
 #ifndef ROBOT_CLEAR_PATH_FORWARD
 #define ROBOT_CLEAR_PATH_FORWARD 1
@@ -78,13 +88,18 @@
 #define ROBOT_BYPASS_ALIGN_OBSERVE_MS 300u
 #define ROBOT_BYPASS_ALIGN_STEP_DEG 15
 #define ROBOT_BYPASS_ALIGN_SWEEPS 6u
-/* Configured chassis rotation radius sqrt(8^2 + 10^2) ~= 12.8 cm.
- * A 14 cm turn threshold retains ~1.2 cm beyond that configured envelope;
- * the logged 14.50 cm stationary reading must not reject a selected turn. */
+/* Keep turns outside the configured 12.8 cm chassis rotation radius. */
 #define ROBOT_BYPASS_MIN_TURN_CM 14.0f
 /* Candidate opening for an in-place turn, followed by live monitoring.
  * Separate from the 40 cm silhouette classification used during scans. */
+#if ROBOT_OBSTACLE_TEST
+/* Candidate rotation only: latest scan has 17..19 cm at all five bearings.
+ * 15 cm exceeds the 14 cm turn guard. Re-measure the forward corridor after
+ * turning; this threshold never authorizes forward translation by itself. */
+#define ROBOT_BYPASS_SIDE_CLEAR_CM 15.0f
+#else
 #define ROBOT_BYPASS_SIDE_CLEAR_CM 25.0f
+#endif
 /* Treat small side-range differences as noise and consistently prefer left. */
 #define ROBOT_BYPASS_SIDE_TIE_CM 10.0f
 
@@ -92,6 +107,11 @@
  * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse. */
 #define ROBOT_SCAN_SAFE_MIN_DEG 70u
 #define ROBOT_SCAN_SAFE_MAX_DEG 110u
+/* Mounted scanner is mirrored: old 110-degree pulse looked physically left.
+ * Planner bearings remain 70=left, 90=front, 110=right. */
+#ifndef ROBOT_SCAN_SERVO_REVERSED
+#define ROBOT_SCAN_SERVO_REVERSED 1
+#endif
 #define ROBOT_OBSTACLE_SMALL_CM 10.0f
 #define ROBOT_OBSTACLE_MAX_BYPASS_CM 30.0f
 #define ROBOT_CHASSIS_HALF_WIDTH_CM 8.0f
@@ -177,10 +197,23 @@
 /* A short second attempt helps transient echoes, never turns a timeout
  * into a fabricated clear distance. */
 #define ROBOT_SCAN_RETRY_DELAY_MS 120u
-/* Closer obstacle response, retaining room above the 14 cm turn minimum.
- * Keep 5 cm hysteresis so readings near the stop boundary do not chatter. */
+/* COM6 contact/stall happened while the sensor still read 35..48 cm.
+ * Stop before that observed range, never wait for a 10 cm echo. */
+#if ROBOT_OBSTACLE_TEST
+#define ROBOT_STOP_CM 50.0f
+#define ROBOT_RELEASE_CM 55.0f
+#define ROBOT_SCAN_OBJECT_CM 60.0f
+/* After scanning and turning into an opening, advance in bounded steps.
+ * These are bypass-only thresholds; normal forward approach still stops at 50. */
+#define ROBOT_BYPASS_MOVE_STOP_CM 20.0f
+#define ROBOT_BYPASS_MOVE_RELEASE_CM 25.0f
+#else
 #define ROBOT_STOP_CM 16.0f
 #define ROBOT_RELEASE_CM 21.0f
+#define ROBOT_SCAN_OBJECT_CM 40.0f
+#define ROBOT_BYPASS_MOVE_STOP_CM ROBOT_STOP_CM
+#define ROBOT_BYPASS_MOVE_RELEASE_CM ROBOT_RELEASE_CM
+#endif
 #define ROBOT_CLEAR_CONFIRM 3u
 /* While already following, tolerate isolated invalid echoes for at most
  * 150 ms after actual clearance. Invalid echoes never renew B2's lease. */

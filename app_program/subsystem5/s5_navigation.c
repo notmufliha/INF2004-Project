@@ -22,6 +22,11 @@ static unsigned initial_line_hits;
 static uint32_t initial_line_sample;
 static bool line_reference;
 static bool (*rear_sensor)(float);
+/* Reverse commands always require an independent rear sensor. */
+static bool reverse_path_clear(void)
+{
+    return rear_sensor && rear_sensor(ROBOT_BYPASS_REVERSE_CM);
+}
 static S5Error navigation_error;
 static uint32_t probe_id, probe_started_ms;
 static bool probe_complete;
@@ -78,7 +83,8 @@ static bool request(S5Command command, const S5Profile *profile)
     }
     if (command == S5_CMD_RESUME) {
         bool recovered = mode == NAV_RECOVER && maneuver.state == S5_MAN_COMPLETE;
-        bool obstacle_removed = mode == NAV_STOP && maneuver.state == S5_MAN_IDLE &&
+        bool obstacle_removed = ((mode == NAV_STOP && maneuver.state == S5_MAN_IDLE) ||
+                                (mode == NAV_REVERSE && maneuver.state == S5_MAN_COMPLETE)) &&
                                 s5_navigation_stopped();
         if (!recovered && !obstacle_removed)
             return false;
@@ -91,7 +97,7 @@ static bool request(S5Command command, const S5Profile *profile)
     if (mode != NAV_STOP && !(mode == NAV_REVERSE && maneuver.state == S5_MAN_COMPLETE))
         return false;
     if (command == S5_CMD_REVERSE &&
-        (!rear_sensor || !rear_sensor(ROBOT_BYPASS_REVERSE_CM))) return false;
+        !reverse_path_clear()) return false;
     s5_maneuver_init(&maneuver);
     if (!s5_maneuver_begin(&maneuver, command, profile,
                            ROBOT_BYPASS_MAX_DEPTH_CM, now)) return false;
@@ -264,7 +270,7 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         bool valid_front = front_valid && front_cm > 0.0f && front_cm <= S5_MAX_RANGE_CM;
         if (!valid_front) {
             if (invalid_front_hits < S5_FRONT_INVALID_LIMIT) ++invalid_front_hits;
-            if (mode == NAV_FOLLOW && !stop_queued && clear_hits >= ROBOT_CLEAR_CONFIRM &&
+            if (!ROBOT_OBSTACLE_TEST && mode == NAV_FOLLOW && !stop_queued && clear_hits >= ROBOT_CLEAR_CONFIRM &&
                 invalid_front_hits < S5_FRONT_INVALID_LIMIT &&
                 in.now_ms - last_clear_ms <= ROBOT_FRONT_GLITCH_GRACE_MS) {
                 /* Keep the existing, unexpired clearance. Do not fabricate
@@ -272,11 +278,10 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
                 return;
             }
         } else invalid_front_hits = 0u;
-        /* Hysteresis: require release distance to START, but keep following
-         * down to STOP distance. Stopping at RELEASE left the robot parked
-         * between STOP and RELEASE forever, outside the scan trigger. */
-        bool clearance = mode == NAV_FOLLOW && !stop_queued &&
-                         clear_hits >= ROBOT_CLEAR_CONFIRM ?
+        /* The obstacle test can start anywhere above STOP after three valid
+         * readings. Normal line mode retains release-distance hysteresis. */
+        bool clearance = (ROBOT_OBSTACLE_TEST || (mode == NAV_FOLLOW && !stop_queued &&
+                         clear_hits >= ROBOT_CLEAR_CONFIRM)) ?
                          front_cm > ROBOT_STOP_CM : front_cm >= ROBOT_RELEASE_CM;
         if (!valid_front || !clearance) {
             clear_hits = 0u;
@@ -312,7 +317,7 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
             in.stopped = result.physically_stopped && status.physically_stopped;
         }
     }
-    in.rear_clear = rear_sensor && rear_sensor(ROBOT_BYPASS_REVERSE_CM);
+    in.rear_clear = reverse_path_clear();
     if (maneuver.pending_id &&
         (maneuver.state == S5_MAN_TURN_OUT || maneuver.state == S5_MAN_FORWARD ||
          maneuver.state == S5_MAN_TURN_IN || maneuver.state == S5_MAN_ALIGN ||
@@ -329,9 +334,14 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
             last_turn_guard_log_ms = in.now_ms;
             tm_printf((UB*)"[S5-FORWARD-WAIT] state=%d front_cm_x100=%d release_cm=%d clear_hits=%d\n",
                 (int)maneuver.state, (int)(front_cm * 100.0f),
-                (int)ROBOT_RELEASE_CM, (int)maneuver.clear_hits);
+                (int)ROBOT_BYPASS_MOVE_RELEASE_CM, (int)maneuver.clear_hits);
         }
-        if (maneuver.state == S5_MAN_FAILED) fault_stop(maneuver.error);
+        if (maneuver.state == S5_MAN_FAILED) {
+            tm_printf((UB*)"[S5-STOP-DETAIL] front_cm_x100=%d valid=%d turn_min_cm_x100=%d command_id=%d\n",
+                      (int)(front_cm * 100.0f), (int)front_valid,
+                      (int)(ROBOT_BYPASS_MIN_TURN_CM * 100.0f), (int)status.command_id);
+            fault_stop(maneuver.error);
+        }
         return;
     }
     /* B2's clearance heartbeat remains active only with fresh actual

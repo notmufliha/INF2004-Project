@@ -7,7 +7,7 @@
 
 /* Profiling thresholds and configured stop distance; calibrate physically. */
 #define S5_STOP_CM ROBOT_STOP_CM
-#define S5_CLEAR_CM 40.0f
+#define S5_CLEAR_CM ROBOT_SCAN_OBJECT_CM
 #define S5_MAX_RANGE_CM 450.0f
 #define S5_FRONT_INVALID_LIMIT 3u
 #define S5_WAIT_LIMIT 30u /* stop/scan outer tick budget */

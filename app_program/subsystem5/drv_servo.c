@@ -1,5 +1,6 @@
 #include "subsystem5.h"
 #include "drv_servo.h"
+#include "servo_mapping.h"
 #include "../robot_config.h"
 #include <tk/syslib.h>
 #include <sys/sysdef.h>
@@ -11,10 +12,7 @@ static uint16_t last_angle_deg = 90u;
 
 uint16_t s5_servo_pulse_us(uint16_t angle_deg)
 {
-    if (angle_deg > 180u)
-    {
-        angle_deg = 180u;
-    }
+    angle_deg = s5_servo_mount_angle(angle_deg);
     return (uint16_t)(S5_MIN_PULSE_US +
            ((uint32_t)angle_deg * (S5_MAX_PULSE_US - S5_MIN_PULSE_US)) / 180u);
 }
@@ -37,6 +35,9 @@ bool s5_servo_init(void)
     tm_printf((UB*)"[S5-SERVO] GP%d PWM slice=%d 50Hz center=1500us init errors=%d,%d,%d,%d,%d\n",
               (int)S5_SERVO_PIN, (int)slice,
               (int)e0, (int)e1, (int)e2, (int)e3, (int)e4);
+    tm_printf((UB*)"[S5-SCAN-MAP] reversed=%d logical70=LEFT logical110=RIGHT pulse_left=%d pulse_right=%d\n",
+              (int)ROBOT_SCAN_SERVO_REVERSED,
+              (int)s5_servo_pulse_us(70u), (int)s5_servo_pulse_us(110u));
     return e0 == E_OK && e1 == E_OK && e2 == E_OK && e3 == E_OK && e4 == E_OK;
 }
 

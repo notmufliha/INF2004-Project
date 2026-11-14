@@ -124,7 +124,8 @@ int main(void)
         clipped.points[0].valid = true;
         /* Previously this repeated scans: the centre moved above STOP
          * during scanning and an open side was below the old 40 cm gate. */
-        wide.points[2].distance_cm = ROBOT_STOP_CM + 1.0f;
+        wide.points[2].distance_cm = (ROBOT_STOP_CM > ROBOT_BYPASS_MIN_TURN_CM ?
+                                     ROBOT_STOP_CM : ROBOT_BYPASS_MIN_TURN_CM) + 1.0f;
         wide.points[0].distance_cm = 28.0f;
         wide.points[4].distance_cm = 24.0f;
         p = s5_profile_from_course_bounds(&wide, &clipped);

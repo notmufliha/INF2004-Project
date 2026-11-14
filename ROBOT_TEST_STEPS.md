@@ -1,5 +1,103 @@
 # Subsystems 1, 2, 3 and 5: build and test
 
+## Active obstacle test build
+
+`SMOOTH-30-V3`: obstacle-test turns are reduced to 30 degrees. The diagonal
+is recalculated as lateral/sin(30), and its forward projection is subtracted
+from the parallel leg. Return travel counts only completed encoder moves.
+Forward MOVE PWM ramps by at most one percentage point per 10 ms control
+tick; target completion and safety stops still remove PWM immediately.
+Instead of fixed 5 cm steps, test-mode legs use the measured available travel
+while retaining at least the 20 cm stop threshold plus 3 cm margin. This
+reduces repeated start/stop jerks without treating missing echoes as clear.
+Flash `build_make/robot_smooth_30_v3.uf2`, confirm `[B2-FW] SMOOTH-30-V3`.
+
+`TURN-FINISH-V2` adds sustaining torque for unfinished encoder MOVE/TURN
+wheels below target speed. The PWM floor is 22%; braking above target speed
+and zero PWM at the encoder target remain active. A 12-point kick handles
+breakaway. Regression tests replay both incomplete-turn captures (-224/+513
+and -454/+513), complete the turn with a loaded-wheel model, then accept a
+forward MOVE. Stall and duration faults remain enabled. Flash the distinctly
+named `build_make/robot_turn_finish_v2.uf2` and confirm `[B2-FW] TURN-FINISH-V2`
+in the startup log to distinguish this motor controller from earlier builds.
+
+Turn-completion fix from the latest COM6 capture: fault=1 / motion_status=5
+was a motor stall during the first turn, not a post-turn clearance wait.
+The right wheel reached its target at +503 counts while the left stopped
+at -454 as its target decayed to 145 counts/s. Unfinished MOVE/TURN wheels
+now retain a 300 counts/s finishing floor (capped by requested speed).
+Static-friction kick is increased from 8 to 12 PWM points and cannot be
+cancelled by stale negative PI integral. Reached wheels stay at zero PWM;
+stall detection, encoder targets, deadlines and standstill checks remain active.
+Expect the first turn to report completion before the diagonal forward leg.
+
+Latest COM6 fix: all coarse/fine echoes were valid at 17..19 cm, but
+`opening_cm=25` forced WAIT_ROUTE. Test-mode candidate-turn clearance is now
+15 cm, above the unchanged 14 cm live rotation guard. This permits the
+initial turn from that scan; it does not certify a forward corridor. After
+the turn, forward legs still require 25 cm to start and stop at 20 cm.
+If the turned sensor still sees 18 cm, the robot correctly holds STOP;
+three clear readings, such as the earlier 38.39 cm, release the next leg.
+Both scan stages and the encoder-measured complete detour remain enabled.
+
+Scan-to-motion fix: a missing coarse ray on the unused side no longer vetoes
+a measured opening on the opposite side. The chosen side requires both coarse
+rays valid and outside the turn guard. Fine scanning still runs once and must
+provide a valid centre above the turn guard plus at least three valid returns.
+Insufficient fine coverage or blocked sides holds STOP. No missing echo is
+converted into open-space clearance.
+
+Scan policy: obstacle test mode performs exactly one coarse sweep followed by
+one fine sweep around the nearest coarse point before deciding on a bypass.
+No periodic rescans or chassis viewpoint scans run in this mode. Invalid scans
+or blocked sides hold STOP; normal forward pings continue, and confirmed
+obstacle removal permits resuming. Live echo fluctuations do not restart the
+scan pair. Startup drives when valid front range >50 cm; otherwise it performs
+the coarse/fine pair before deciding.
+Bypass progression fix: the 50/55 cm approach thresholds no longer govern
+the post-turn legs. After a confirmed turn, 25 cm clearance permits bounded
+forward steps; movement stops at 20 cm. The logged 38.39 cm stationary
+reading now permits forward movement. Invalid echoes still stop motion.
+In obstacle test mode the route uses encoders throughout: turn out 45 degrees,
+diagonal forward, turn opposite 45 degrees, pass forward, turn inward
+45 degrees, diagonal back by the measured offset, restore heading with the
+initial 45-degree turn, then hand back to straight DRIVE. Both left and right
+routes finish at the original heading without requiring black tape.
+
+Scanner mount correction: `ROBOT_SCAN_SERVO_REVERSED=1`. Logical 70 degrees
+looks left (1611 us), logical 110 degrees looks right (1388 us), and centre
+stays at 1500 us. The COM6 scan showed a physically left opening at the old
+110-degree shaft position; the planner had incorrectly labelled it right.
+Confirm `[S5-SCAN-MAP] reversed=1` after flashing. Motor directions are unchanged.
+
+`ROBOT_OBSTACLE_TEST=1` drives straight after IMU readiness, ignoring tape
+steering and barcode navigation. Automatic reverse remains disabled.
+
+Crash-log correction: stop at **50 cm** and cap forward speed at **600 counts/s**.
+The logged sensor saw 70 -> 63 -> 48 -> 35 cm and never reached the old 10 cm
+threshold before the wheels stalled. Stop, confirm standstill, then scan for a
+45-degree bypass. Startup requires three valid readings above 50 cm; release
+is 55 cm and scan object classification is 60 cm. Turn clearance is restored
+to **14 cm**, outside the configured 12.8 cm chassis rotation radius.
+
+Missing echoes are no longer assumed to mean open space: both
+`ROBOT_NO_TARGET_FORWARD` and `ROBOT_NO_TARGET_SCAN` are 0. Invalid readings
+cannot renew the motor clearance lease. Blocked or unmeasured routes remain
+stopped. Before a floor run, with motor power off, check the forward-facing
+sensor against an obstacle at measured distances. If it reads background
+while the chassis touches the obstacle, fix sensor aim/height or add coverage;
+software cannot detect an object outside the ultrasonic beam.
+
+Normal line mode still searches for black tape. Obstacle test mode uses the
+encoder-measured return instead. Reverse requests require a rear sensor.
+
+Flash `build_make/mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.uf2` using BOOTSEL.
+Verify `[S5-TEST] obstacle_test=1 automatic_reverse=0 startup_clear_cm=50`.
+Expect `WAIT_STOP` then `COARSE`, with no `REVERSE`, before bypass movements.
+Set `ROBOT_OBSTACLE_TEST=0` in `app_program/robot_config.h` and rebuild to
+restore normal line following and its 21 cm startup/release requirement.
+
+The route notes below describe earlier builds; this active profile takes precedence.
 Current route marker: `B5-BLUE-ROUTE45`. Bypass turns remain 45 degrees as
 requested for the blue detour in the photo. Sequence: turn away from the
 obstacle -> diagonal forward -> opposite 45-degree turn to face parallel ->

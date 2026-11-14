@@ -920,7 +920,19 @@ static void live_controller_mode(void)
                       (int)(c.last_coarse.points[4].distance_cm * 100.0f),
                       (int)ROBOT_BYPASS_SIDE_CLEAR_CM, (int)ROBOT_BYPASS_MIN_TURN_CM);
         cmd = s5_controller_step(&c, &in);
-        if (c.state == S5_WAIT_ROUTE && !look_attempted &&
+        if (in.fine_ready) {
+            unsigned coarse_valid = 0u, fine_valid = 0u;
+            for (int i = 0; i < S5_SCAN_COUNT; ++i) {
+                if (c.last_coarse.points[i].valid) coarse_valid |= 1u << i;
+                if (in.fine.points[i].valid) fine_valid |= 1u << i;
+            }
+            tm_printf((UB*)"[S5-SCAN-RESULT] state=%s command=%s error=%s coarse_mask=%u fine_mask=%u front_x100=%d width_x100=%d side=%d\n",
+                      s5_state_name(c.state), s5_command_name(cmd), s5_error_name(c.error),
+                      coarse_valid, fine_valid,
+                      (int)(c.last_coarse.points[2].distance_cm * 100.0f),
+                      (int)(c.profile.estimated_width_cm * 100.0f), (int)c.side);
+        }
+        if (!ROBOT_OBSTACLE_TEST && c.state == S5_WAIT_ROUTE && !look_attempted &&
             c.error == S5_ERR_NO_CLEAR_ROUTE && in.front_valid &&
             cm > ROBOT_BYPASS_MIN_TURN_CM && s5_navigation_stopped()) {
             look_first_side = s5_probe_side(&c.last_coarse);
@@ -1034,6 +1046,8 @@ EXPORT void s5_task(INT stacd, void *exinf)
               (int)ROBOT_SCAN_SAFE_MIN_DEG, (int)ROBOT_SCAN_SAFE_MAX_DEG,
               (int)ROBOT_STOP_CM, (int)ROBOT_RELEASE_CM, (int)ROBOT_STRAIGHT_TRIM_PERMILLE);
     tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
+    tm_printf((UB*)"[S5-TEST] obstacle_test=%d automatic_reverse=0 startup_clear_cm=%d\n",
+              (int)ROBOT_OBSTACLE_TEST, (int)ROBOT_STOP_CM);
     if (!s5_ultrasonic_init()) {
         s5_mission_publish(S5_MISSION_FAULT);
         b2_request_stop();

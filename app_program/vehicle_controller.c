@@ -305,7 +305,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         set_state(c, ROBOT_IDLE);
         return;
     }
-    if (!in->line_valid) {
+    if (!ROBOT_OBSTACLE_TEST && !in->line_valid) {
         tm_printf((UB *)"[VC-STOP-REASON] line data invalid/stale\n");
         safe_stop(c);
         return;
@@ -356,6 +356,25 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
     if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
+    if (ROBOT_OBSTACLE_TEST) {
+        /* Reduced approach speed for the unverified sensor mounting. */
+        if (speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
+        set_state(c, in->hump ? ROBOT_HUMP : ROBOT_LINE_FOLLOW);
+        if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
+        command.type = MOTION_CMD_DRIVE;
+        command.direction = MOTION_DIR_FORWARD;
+        command.target_speed_cps = speed;
+        command.steering_permille = 0;
+        if (in->hump) command.target_speed_cps /= 2;
+        apply_wheel_minimum(&command);
+        command.safety_generation = in->safety_generation;
+        if (motion_send_command(&command) == E_OK) {
+            c->stopped = false;
+            c->drive_sent = true;
+            c->last_drive_ms = in->now_ms;
+        } else if (!c->drive_sent || in->now_ms - c->last_drive_ms >= 60u) safe_stop(c);
+        return;
+    }
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
     if (line_detected) c->line_recovery_active = false;
@@ -692,20 +711,22 @@ static void controller_task(INT stacd, void *exinf)
         }
         /* Higher-priority VC can run before B2/B3 publish their first
          * sample. Arm boot motion only after producers are actually ready. */
-        bool boot_sensors_ready = in.line_valid && in.imu_valid &&
+        bool boot_sensors_ready = (ROBOT_OBSTACLE_TEST || in.line_valid) && in.imu_valid &&
             in.motion_valid && !in.hazard && !in.obstacle_fault &&
             (ROBOT_CLEAR_PATH_FORWARD || (in.line_flags & LINE_F_DETECTED)) &&
             !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU));
         /* B5 needs an enabled mission to establish line reference and
          * clearance. Keep boot arming pending until it actually permits
          * DRIVE; a transient fault during warmup must not consume START. */
-        if (autostart_pending && boot_sensors_ready && in.clearance &&
+        if (autostart_pending && boot_sensors_ready &&
+            (in.clearance || (ROBOT_OBSTACLE_TEST && in.obstacle_active)) &&
             !(in.faults & FAULT_NO_ECHO)) {
             REMOTE_CMD start = {0};
             start.type = RCMD_START;
             vehicle_controller_command(&c, &start);
             autostart_pending = false;
-            tm_printf((UB *)"[VC-BOOT] sensors and front clearance ready; START\n");
+            tm_printf((UB *)"[VC-BOOT] sensors ready; START clearance=%d bypass=%d\n",
+                      (INT)in.clearance, (INT)in.obstacle_active);
         } else if (autostart_pending && in.now_ms - last_boot_log_ms >= 1000u) {
             last_boot_log_ms = in.now_ms;
             tm_printf((UB *)"[VC-BOOT-WAIT] line=%d detected=%d imu=%d motion=%d hazard=%d obstacle_fault=%d clearance=%d faults=%d\n",

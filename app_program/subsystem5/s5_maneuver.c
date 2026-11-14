@@ -1,5 +1,6 @@
 #include "s5_maneuver.h"
 #include <stddef.h>
+#include <math.h>
 
 static bool positive(float x)
 {
@@ -43,15 +44,15 @@ bool s5_maneuver_begin(S5Maneuver *m, S5Command command,
     lateral = p->estimated_width_cm * (p->uses_course_bounds ? 1.0f : 0.5f) + S5_CHASSIS_HALF_WIDTH_CM +
               S5_EXTRA_MARGIN_CM;
     m->lateral_cm = lateral + (m->side == S5_SIDE_LEFT ? -p->center_x_cm : p->center_x_cm);
-    /* At 45 degrees, diagonal travel must be lateral / sin(45). */
-    m->offset_cm = m->lateral_cm * 1.41421356f;
+    float angle = ROBOT_BYPASS_TURN_DEG * 0.01745329252f;
+    m->offset_cm = m->lateral_cm / sinf(angle);
     m->pass_cm = p->center_y_cm + ROBOT_SENSOR_FORWARD_OFFSET_CM + depth +
-                 ROBOT_CHASSIS_HALF_LENGTH_CM + S5_EXTRA_MARGIN_CM - m->lateral_cm;
-    /* A 45-degree offset advances forward by the same lateral distance.
-     * Count that progress before the parallel leg; retain a short straight
+                 ROBOT_CHASSIS_HALF_LENGTH_CM + S5_EXTRA_MARGIN_CM - m->offset_cm * cosf(angle);
+    /* Count the diagonal's forward projection before the parallel leg;
+     * retain a short straight
      * segment when the diagonal already clears the configured depth bound. */
     if (m->pass_cm < 5.0f) m->pass_cm = 5.0f;
-    m->search_limit_cm = m->offset_cm + ROBOT_BYPASS_SEARCH_EXTRA_CM;
+    m->search_limit_cm = m->offset_cm + (ROBOT_OBSTACLE_TEST ? 0.0f : ROBOT_BYPASS_SEARCH_EXTRA_CM);
     if (!positive(m->lateral_cm) || !positive(m->offset_cm) || !positive(m->pass_cm) ||
         !positive(m->search_limit_cm)) return false;
     m->state = S5_MAN_TURN_OUT;
@@ -126,21 +127,23 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
      * instead of permanently faulting. Active motion retains immediate STOP. */
     if ((m->state == S5_MAN_OFFSET || m->state == S5_MAN_PASS || m->state == S5_MAN_SEARCH) &&
         !m->pending_id && !m->issuing && in->stopped &&
-        (m->waiting_clear || in->front_cm < ROBOT_RELEASE_CM)) {
+        (m->waiting_clear || in->front_cm < ROBOT_BYPASS_MOVE_RELEASE_CM)) {
         m->waiting_clear = true;
-        if (in->front_cm < ROBOT_RELEASE_CM) m->clear_hits = 0u;
+        if (in->front_cm < ROBOT_BYPASS_MOVE_RELEASE_CM) m->clear_hits = 0u;
         else if (in->now_ms != m->last_clear_sample_ms) ++m->clear_hits;
         m->last_clear_sample_ms = in->now_ms;
         if (m->clear_hits < ROBOT_CLEAR_CONFIRM)
             return (S5Action){S5_ACT_STOP, 0.0f, 0};
         m->waiting_clear = false;
     }
-    if (in->front_cm <= (turning || m->state == S5_MAN_BACK ?
-                        ROBOT_BYPASS_MIN_TURN_CM : ROBOT_STOP_CM))
+    /* Reversing increases front clearance; the turn envelope applies to turns.
+     * Rear clearance is checked separately throughout the reverse leg. */
+    if (m->state != S5_MAN_BACK && in->front_cm <= (turning ?
+                        ROBOT_BYPASS_MIN_TURN_CM : ROBOT_BYPASS_MOVE_STOP_CM))
         return stop(m, S5_ERR_INSUFFICIENT_CLEARANCE);
     if (m->state == S5_MAN_BACK && !in->rear_clear)
         return stop(m, S5_ERR_NO_CLEAR_ROUTE);
-    if ((m->state == S5_MAN_SEARCH ||
+    if (!ROBOT_OBSTACLE_TEST && (m->state == S5_MAN_SEARCH ||
          (m->state == S5_MAN_ALIGN_CHECK && !m->pending_id && !m->issuing && in->stopped)) &&
         in->line_sample_ms != m->last_line_ms) {
         m->last_line_ms = in->line_sample_ms;
@@ -179,7 +182,9 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
             next_leg(m, m->pass_done_cm + 0.01f >= m->pass_cm ? S5_MAN_TURN_IN : S5_MAN_PASS, in->now_ms);
             break;
         case S5_MAN_TURN_IN: next_leg(m, S5_MAN_SEARCH, in->now_ms); break;
-        case S5_MAN_SEARCH: next_leg(m, S5_MAN_SEARCH, in->now_ms); break;
+        case S5_MAN_SEARCH:
+            if (ROBOT_OBSTACLE_TEST) m->searched_cm += m->active_move_cm;
+            next_leg(m, S5_MAN_SEARCH, in->now_ms); break;
         case S5_MAN_ALIGN:
         case S5_MAN_ALIGN_CHECK:
             /* A sensor mounted ahead of the axle can rotate off the line.
@@ -229,10 +234,11 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
             next_leg(m, S5_MAN_ALIGN, in->now_ms);
             return (S5Action){S5_ACT_STOP, 0.0f, 0};
         }
-        a = (S5Action){S5_ACT_MOVE, ROBOT_BYPASS_SEARCH_STEP_CM, 0};
+        a = (S5Action){S5_ACT_MOVE, ROBOT_OBSTACLE_TEST ?
+            m->search_limit_cm - m->searched_cm : ROBOT_BYPASS_SEARCH_STEP_CM, 0};
         if (a.distance_cm > m->search_limit_cm - m->searched_cm)
             a.distance_cm = m->search_limit_cm - m->searched_cm;
-        m->searched_cm += a.distance_cm;
+        if (!ROBOT_OBSTACLE_TEST) m->searched_cm += a.distance_cm;
         break;
     default: return stop(m, S5_ERR_MOTION_TIMEOUT);
     }
@@ -243,8 +249,12 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
     if (a.type == S5_ACT_MOVE && a.distance_cm > 0.0f &&
         in->front_cm <= a.distance_cm + ROBOT_CHASSIS_HALF_LENGTH_CM + S5_EXTRA_MARGIN_CM) {
         float available = in->front_cm - ROBOT_CHASSIS_HALF_LENGTH_CM - S5_EXTRA_MARGIN_CM - 1.0f;
+        if (ROBOT_OBSTACLE_TEST) {
+            float guarded = in->front_cm - ROBOT_BYPASS_MOVE_STOP_CM - 3.0f;
+            if (available > guarded) available = guarded;
+        }
         if (!(available > 0.0f)) return stop(m, S5_ERR_INSUFFICIENT_CLEARANCE);
-        if (a.distance_cm > 5.0f) a.distance_cm = 5.0f;
+        if (!ROBOT_OBSTACLE_TEST && a.distance_cm > 5.0f) a.distance_cm = 5.0f;
         if (a.distance_cm > available) a.distance_cm = available;
     }
     if (a.type == S5_ACT_MOVE) m->active_move_cm = a.distance_cm;

@@ -405,6 +405,61 @@ static void test_encoder_diagnostic_fault(void)
     CHECK(pwm_left == 0 && pwm_right == 0);
 }
 
+static void test_loaded_turn_finish(void)
+{
+  for (INT left_start = 224; left_start <= 454; left_start += 230) {
+    pid_state_t state = setup();
+    motion_command_t value = command(MOTION_CMD_TURN);
+    motion_status_snapshot_t result;
+    value.turn_direction = MOTION_TURN_LEFT;
+    value.target_angle_deg = 45;
+    value.target_speed_cps = 600;
+    uint32_t id = send(value);
+    tick(&state, 0, 0);
+    /* Both COM6 captures: right wheel done, left stops at -224/-454. */
+    tick(&state, -left_start, 513);
+    state.left_integral = -PID_I_LIMIT;
+    motion_profile_t profile = pid_profile(&state);
+    CHECK(profile.right_reached && !profile.left_reached);
+    CHECK(profile.right_speed == 0.0f);
+    CHECK(profile.left_speed / pid_mm_per_count(true) >= PID_BOUNDED_MIN_CPS - 0.01f);
+    /* Loaded wheel: 28% breakaway, 22% sustaining torque at 200 cps. */
+    bool moving = false;
+    for (INT i = 0; i < 500 && !state.settling; ++i) {
+        moving = moving ? pwm_left <= -22 : pwm_left <= -28;
+        tick(&state, moving ? -2 : 0, 0);
+        CHECK(state.fault == MOTION_FAULT_NONE);
+        CHECK(pwm_right == 0);
+    }
+    CHECK(state.settling);
+    for (INT i = 0; i < 12; ++i) tick(&state, 0, 0);
+    CHECK(motion_get_result(id, &result) == E_OK);
+    CHECK(result.status == MOTION_STATUS_COMPLETED && result.physically_stopped);
+    /* The next forward leg must be accepted after the completed turn. */
+    value = command(MOTION_CMD_MOVE); value.target_distance_counts = 100;
+    send(value); tick(&state, 0, 0);
+    CHECK(state.status == MOTION_STATUS_RUNNING && pwm_left > 0 && pwm_right > 0);
+  }
+}
+
+static void test_move_pwm_slew(void)
+{
+    pid_state_t state = setup();
+    motion_command_t value = command(MOTION_CMD_MOVE);
+    value.target_distance_counts = 2000;
+    send(value); tick(&state, 0, 0);
+    CHECK(pwm_left == 1 && pwm_right == 1);
+    for (INT i = 0; i < 40; ++i) {
+        INT old_left = pwm_left, old_right = pwm_right;
+        /* Cross between below-target and overspeed to exercise braking. */
+        tick(&state, i < 20 ? 2 : 20, i < 20 ? 2 : 20);
+        CHECK(pwm_left - old_left <= 1 && old_left - pwm_left <= 1);
+        CHECK(pwm_right - old_right <= 1 && old_right - pwm_right <= 1);
+    }
+    tick(&state, 3000, 3000);
+    CHECK(pwm_left == 0 && pwm_right == 0 && state.settling);
+}
+
 static void test_feedforward_and_kick(void)
 {
     pid_state_t state = setup();
@@ -485,7 +540,7 @@ int main(void)
     test_turn(false); test_turn(true); test_guards();
     test_results_and_stale(); test_feedback_and_time();
     test_timeouts_and_standstill(); test_stop_and_steering();
-    test_feedforward_and_kick();
+    test_feedforward_and_kick(); test_loaded_turn_finish(); test_move_pwm_slew();
     test_physical_api_and_history();
     test_encoder_diagnostic_fault();
     {
