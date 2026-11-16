@@ -95,6 +95,8 @@ static bool motion_valid(const motion_command_t *command)
     {
         return false;
     }
+    if (command->run_ms != 0u && (command->type != MOTION_CMD_MOVE ||
+        command->run_ms < 100u || command->run_ms > 60000u)) return false;
     if (command->timeout_ms != 0u &&
         (command->timeout_ms < 100u || command->timeout_ms > 60000u ||
          command->type == MOTION_CMD_DRIVE))
@@ -242,6 +244,12 @@ ER motion_speed_from_percent(INT percent, INT *speed_cps)
 ER motion_move_cm(float distance_cm, INT speed_cps,
     motion_direction_t direction, uint32_t *command_id)
 {
+    return motion_move_limited_cm(distance_cm, speed_cps, direction, 0u, command_id);
+}
+
+ER motion_move_limited_cm(float distance_cm, INT speed_cps,
+    motion_direction_t direction, uint32_t run_ms, uint32_t *command_id)
+{
     motion_command_t command = {0};
     float counts = distance_cm * ENC_LEFT_COUNTS_PER_REV /
         (3.14159265f * ENC_WHEEL_DIAMETER_CM);
@@ -259,6 +267,7 @@ ER motion_move_cm(float distance_cm, INT speed_cps,
     command.direction = direction;
     command.target_speed_cps = speed_cps;
     command.target_distance_counts = (INT)(counts + 0.5f);
+    command.run_ms = run_ms;
     command.safety_generation = b2_safety_stop_generation();
     return motion_send_command_with_id(&command, command_id);
 }

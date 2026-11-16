@@ -15,6 +15,7 @@
 #include "obstacle_scan.h"
 #include "s5_navigation.h"
 #include "s5_mission.h"
+#include "s5_startup.h"
 
 /* The B1 wire format uses 9/7-bit obstacle fields.  B5's approved
  * application ranges are 0..400 cm (distance/clearance) and 0..100 cm
@@ -735,11 +736,13 @@ static bool begin_viewpoint(int degrees)
 {
     S5EchoReading front = s5_ultrasonic_read_front();
     return (front.status == S5_ECHO_OK || front.status == S5_ECHO_OPEN_SPACE) &&
-        front.cm > ROBOT_BYPASS_MIN_TURN_CM && front.cm <= S5_MAX_RANGE_CM &&
+        front.cm > ROBOT_BYPASS_FRONT_TURN_CM && front.cm <= S5_MAX_RANGE_CM &&
         s5_navigation_probe_begin(degrees);
 }
 static void live_controller_mode(void)
 {
+    unsigned startup_hits = 0u;
+    uint32_t last_startup_log_ms = 0u;
     S5Controller c;
     S5Scan coarse = {0}, fine = {0};
     bool coarse_ready = false, fine_ready = false;
@@ -821,6 +824,23 @@ static void live_controller_mode(void)
                 sensor_unavailable = true;
             }
         }
+        /* Do not enter the irreversible emergency_halt loop because the
+         * ultrasonic module has not produced usable startup echoes yet.
+         * Keep polling while stopped; require consecutive valid samples.
+         * Once armed, existing moving sensor-fault handling is unchanged. */
+        if (!s5_startup_ready(&startup_hits, in.front_valid)) {
+            s5_navigation_pause();
+            s5_controller_init(&c);
+            coarse_ready = fine_ready = stop_requested = false;
+            s5_mission_publish(S5_MISSION_FOLLOW);
+            if (cycle_start.lo - last_startup_log_ms >= 1000u) {
+                last_startup_log_ms = cycle_start.lo;
+                tm_printf((UB*)"[S5-STARTUP-WAIT] echo=%s valid_hits=%d; motors stopped, retrying\n",
+                          s5_echo_status_name(reading.status), (int)startup_hits);
+            }
+            tk_dly_tsk(S5_ECHO_GAP_MS);
+            continue;
+        }
         /* STOP/PAUSE must revoke motion but keep sensing and telemetry
          * running. Previously the dashboard repeated the last distance
          * indefinitely after a mission stop, even after a sensor fault. */
@@ -901,7 +921,7 @@ static void live_controller_mode(void)
         }
         /* Establish the original line before starting an avoidance cycle.
          * A robot placed off the line waits, even with an obstacle ahead. */
-        if (!ROBOT_CLEAR_PATH_FORWARD && c.state == S5_FOLLOW && !s5_navigation_has_line_reference()) {
+        if (c.state == S5_FOLLOW && !s5_navigation_has_line_reference()) {
             tk_dly_tsk(S5_ECHO_GAP_MS);
             continue;
         }
@@ -918,11 +938,23 @@ static void live_controller_mode(void)
                       (int)(c.last_coarse.points[2].distance_cm * 100.0f),
                       (int)(c.last_coarse.points[0].distance_cm * 100.0f),
                       (int)(c.last_coarse.points[4].distance_cm * 100.0f),
-                      (int)ROBOT_BYPASS_SIDE_CLEAR_CM, (int)ROBOT_BYPASS_MIN_TURN_CM);
+                      (int)ROBOT_BYPASS_SIDE_CLEAR_CM, (int)ROBOT_BYPASS_FRONT_TURN_CM);
         cmd = s5_controller_step(&c, &in);
-        if (c.state == S5_WAIT_ROUTE && !look_attempted &&
+        if (in.fine_ready) {
+            unsigned coarse_valid = 0u, fine_valid = 0u;
+            for (int i = 0; i < S5_SCAN_COUNT; ++i) {
+                if (c.last_coarse.points[i].valid) coarse_valid |= 1u << i;
+                if (in.fine.points[i].valid) fine_valid |= 1u << i;
+            }
+            tm_printf((UB*)"[S5-SCAN-RESULT] state=%s command=%s error=%s coarse_mask=%u fine_mask=%u front_x100=%d width_x100=%d side=%d\n",
+                      s5_state_name(c.state), s5_command_name(cmd), s5_error_name(c.error),
+                      coarse_valid, fine_valid,
+                      (int)(c.last_coarse.points[2].distance_cm * 100.0f),
+                      (int)(c.profile.estimated_width_cm * 100.0f), (int)c.side);
+        }
+        if (!ROBOT_OBSTACLE_TEST && c.state == S5_WAIT_ROUTE && !look_attempted &&
             c.error == S5_ERR_NO_CLEAR_ROUTE && in.front_valid &&
-            cm > ROBOT_BYPASS_MIN_TURN_CM && s5_navigation_stopped()) {
+            cm > ROBOT_BYPASS_FRONT_TURN_CM && s5_navigation_stopped()) {
             look_first_side = s5_probe_side(&c.last_coarse);
             if (look_first_side != S5_SIDE_NONE) {
                 look_attempted = true;
@@ -1029,11 +1061,20 @@ EXPORT void s5_task(INT stacd, void *exinf)
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] %s %s LINE-TURN-V2: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
+    tm_printf((UB*)"[FW-ID] %s %s B5-BLUE-ROUTE45: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
               __DATE__, __TIME__, (int)ROBOT_ENABLE_BYPASS,
               (int)ROBOT_SCAN_SAFE_MIN_DEG, (int)ROBOT_SCAN_SAFE_MAX_DEG,
               (int)ROBOT_STOP_CM, (int)ROBOT_RELEASE_CM, (int)ROBOT_STRAIGHT_TRIM_PERMILLE);
     tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
+    tm_printf((UB*)"[S5-TEST] obstacle_test=%d bounded_reverse=%d reverse_cm=8 rear_space=operator_checked startup_clear_cm=%d\n",
+              (int)ROBOT_OBSTACLE_TEST, (int)ROBOT_TEST_BOUNDED_REVERSE, (int)ROBOT_STOP_CM);
+    tm_printf((UB*)"[S5-FW] CLOSERETREAT-V47 encoder_distance=1 speed_cps=%d turn_deg=%d sensor_turn_guard_x100=%d opening_pivot_x100=%d\n",
+              (int)ROBOT_BYPASS_SPEED_CPS, (int)ROBOT_BYPASS_TURN_DEG, (int)(ROBOT_BYPASS_FRONT_TURN_CM * 100.0f),
+              (int)(ROBOT_BYPASS_SIDE_CLEAR_CM * 100.0f));
+    tm_printf((UB*)"[S5-GEOMETRY] sensor_offset_x100=%d uncertainty_x100=%d pivot_turn_guard_x100=%d\n",
+              (int)(ROBOT_SENSOR_FORWARD_OFFSET_CM * 100.0f),
+              (int)(ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM * 100.0f),
+              (int)(ROBOT_BYPASS_MIN_TURN_CM * 100.0f));
     if (!s5_ultrasonic_init()) {
         s5_mission_publish(S5_MISSION_FAULT);
         b2_request_stop();

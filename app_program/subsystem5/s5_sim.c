@@ -56,7 +56,7 @@ S5SimResult s5_sim_run(S5Scenario scenario, S5Trace trace, void *user)
                      scenario != S5_SCENARIO_ROUTE_BLOCKED &&
                      (scenario != S5_SCENARIO_ROUTE_CLEARS || route_clear);
         in.front_valid = scenario != S5_SCENARIO_FRONT_TIMEOUT;
-        in.front_cm = scenario == S5_SCENARIO_CLEAR_PATH ? 90.0f : 16.0f;
+        in.front_cm = scenario == S5_SCENARIO_CLEAR_PATH ? 90.0f : S5_STOP_CM;
         in.stopped = scenario != S5_SCENARIO_STOP_TIMEOUT &&
                      r.controller.ticks_in_state >= 2;
         in.coarse_ready = r.controller.ticks_in_state >= 2;

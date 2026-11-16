@@ -14,7 +14,7 @@
 #define B2_SPEED_LOG_MS 500u
 
 /* Provisional loaded-robot trial, not a completed motor calibration.
- * Applies only to forward DRIVE; set enable to 0 to restore shared 15% base.
+ * Applies to forward DRIVE/MOVE; set enable to 0 to restore shared 15% base.
  * PWM still includes the existing speed term, PI and breakaway kick.
  */
 #ifndef B2_FORWARD_FEEDFORWARD_TRIAL

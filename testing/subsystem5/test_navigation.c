@@ -36,6 +36,8 @@ typedef struct {
     int status;
     uint32_t sample_time_ms, command_id;
     bool physically_stopped;
+    float left_distance_mm, right_distance_mm;
+    int fault;
 } motion_status_snapshot_t;
 static uint32_t clock_ms = 100u;
 static uint32_t next_id = 10u;
@@ -45,7 +47,7 @@ static unsigned permission_calls;
 static bool allowed, line_valid = true, jam_queue;
 static uint32_t snapshot_delay;
 static B3_STATE line_state = {3000u, 1000u, B3_LINE_F_DETECTED};
-static motion_status_snapshot_t status = {MOTION_STATUS_IDLE, 100u, 0u, true};
+static motion_status_snapshot_t status = {MOTION_STATUS_IDLE, 100u, 0u, true, 0.0f, 0.0f, 0};
 static motion_status_snapshot_t result;
 static int last_turn, last_direction, last_angle;
 static int last_drive_direction, last_drive_steer;
@@ -106,6 +108,7 @@ static ER issue(uint32_t *id)
     assert(allowed);
     *id = next_id++;
     status.command_id = *id;
+    status.left_distance_mm = status.right_distance_mm = 0.0f;
     status.status = MOTION_STATUS_RUNNING;
     status.physically_stopped = false;
     return E_OK;
@@ -125,6 +128,12 @@ static ER motion_move_cm(float cm, INT speed, int direction, uint32_t *id)
     last_direction = direction;
     ++move_calls;
     return issue(id);
+}
+static uint32_t last_run_ms;
+static ER motion_move_limited_cm(float cm, INT speed, int direction, uint32_t run_ms, uint32_t *id)
+{
+    last_run_ms = run_ms;
+    return motion_move_cm(cm, speed, direction, id);
 }
 #include "../../app_program/subsystem5/s5_bridge.c"
 #include "../../app_program/subsystem5/s5_navigation.c"
