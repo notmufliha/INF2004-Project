@@ -32,7 +32,7 @@ const context = vm.createContext({ window: { S1Wire: W }, document,
 const html = fs.readFileSync(path.join(__dirname, "../../../tools/dashboard/index.html"), "utf8");
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
 function telemetry(distance, seq) {
-  const values = { ver: 1, seq, state: 8, line: 2, obs_d_cm: distance,
+  const values = { ver: W.WIRE_VERSION, seq, state: 8, line: 2, obs_d_cm: distance,
     obs_w_cm: 127, obs_lc_cm: 511, obs_rc_cm: 511 };
   context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, values));
   vm.runInContext("onTelemetry(frame)", context);
@@ -55,7 +55,7 @@ assert(!element("dist-chart").innerHTML.includes("NaN"));
 context.event = { type: 3, seq: 1, type_name: "error", err: 161, detail: 3, err_text: "B5 no reliable ultrasonic echo" };
 vm.runInContext("onEvent(event)", context);
 assert(element("events").children[0].children[1].textContent.includes("no falling edge"));
-assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY, { ver: 1, obs_d_cm: 400 })).obs_open_space, false);
+assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY, { ver: W.WIRE_VERSION, obs_d_cm: 400 })).obs_open_space, false);
 
 // Every command button: publish one 3-byte frame on <prefix>/cmd, and the
 // car's ack (or a missing ack) shows up in the command log.
@@ -76,7 +76,7 @@ buttons.forEach((text, i) => {
   const [cmd] = W.unpack(W.COMMAND, sent.f);
   assert.equal(cmd.cmd, W.COMMANDS[text.split(" ")[0]], text);
   assert.equal(cmd.seq, i);
-  context.ack = W.decode("cmd/ack", W.pack(W.ACK, { ver: 1, seq: i, cmd: cmd.cmd, ok: 1,
+  context.ack = W.decode("cmd/ack", W.pack(W.ACK, { ver: W.WIRE_VERSION, seq: i, cmd: cmd.cmd, ok: 1,
     result: text === "PING" ? 1 : text === "STATUS" ? 2 : 0 }));
   clock += 40;
   vm.runInContext("onAck(ack)", context);

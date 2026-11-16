@@ -332,7 +332,7 @@ publish_status (uint32_t now_ms)
               (INT)status.stats.rx_rejected);
 }
 
-/** @brief Publish the telemetry snapshot (28 bytes, FR-B1-3). */
+/** @brief Publish the telemetry snapshot (29 bytes, FR-B1-3). */
 static void
 publish_telemetry (uint32_t now_ms)
 {
@@ -348,7 +348,7 @@ publish_telemetry (uint32_t now_ms)
                COMM_TOPIC_TELEMETRY);
 }
 
-/** @brief Print one queued event and publish it (5..9 bytes, FR-B1-4). */
+/** @brief Print one queued event and publish it (6..9 bytes, FR-B1-4). */
 static void
 publish_event (const comm_pack_event_t * p_event)
 {
@@ -359,8 +359,7 @@ publish_event (const comm_pack_event_t * p_event)
         case EVT_BARCODE:
         {
             UINT code = p_event->val_a;
-            UINT letter = code == COMM_BARCODE_Z_CODE ? (UINT)'Z' :
-                (UINT)COMM_BARCODE_FIRST - 1U + code;
+            UINT letter = (UINT)COMM_BARCODE_FIRST - 1U + code;
             tm_printf((UB *)"s1: EVENT barcode '%c' -> %s\n",
                       (INT)letter,
                       comm_names_nav((comm_nav_cmd_t)p_event->val_e));

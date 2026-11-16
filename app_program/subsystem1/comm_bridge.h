@@ -48,14 +48,14 @@ typedef enum
 #define COMM_TOPIC_CMD_SUFFIX "cmd" /* the one topic we subscribe to */
 
 #define COMM_TOPIC_MAX   64U /* bytes incl. NUL, full topic name   */
-#define COMM_PAYLOAD_MAX 32U /* bytes, one frame (telemetry: 28)   */
+#define COMM_PAYLOAD_MAX 32U /* bytes, one frame (telemetry: 29)   */
 #define COMM_CMD_MAX     3U  /* bytes, one received command        */
 
 /* Online / Last-Will message: 1 byte, the first byte of the status
- * frame (wire version 1 in bits 7..5, online flag in bit 4).  Never
+ * frame (wire version 2 in bits 7..5, online flag in bit 4).  Never
  * 0x00: lwIP takes the will message's length with strlen(). */
-#define COMM_STATUS_ONLINE  "\x30"
-#define COMM_STATUS_OFFLINE "\x20"
+#define COMM_STATUS_ONLINE  "\x50"
+#define COMM_STATUS_OFFLINE "\x40"
 
 /** @brief MQTT connection state, as reported by mqtt_utk.c. */
 typedef enum

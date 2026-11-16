@@ -14,7 +14,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  const WIRE_VERSION = 1;
+  const WIRE_VERSION = 2; // v2: barcode letter 5 bits (A..Z), action 4 bits
 
   const ROBOT_STATES = ["INIT", "IDLE", "LINE_FOLLOW", "NAV_COMMAND", "HUMP",
     "OBSTACLE_SCAN", "OBSTACLE_AVOID", "LINE_RECOVERY", "SAFE_STOP"];
@@ -22,9 +22,10 @@
     "CONNECTED", "RECONNECTING", "OFFLINE", "DISABLED"];
   const MOTION_STATES = ["STATIONARY", "ACCELERATING", "TURNING",
     "CLIMBING_HUMP", "HUMP_PEAK", "DESCENDING_HUMP", "SUDDEN_IMPACT", "UNKNOWN"];
-  const NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"];
+  const NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN",
+    "STOP", "SLOW", "NORMAL", "SPIN", "FINISH"];
   const AVOID = ["NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"];
-  const BARCODES = ["-", "A", "B", "C", "D", "Z"];
+  const BARCODES = ["-", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"]; // code 1..26
   const EVENT_TYPES = ["barcode", "hump", "obstacle", "error"];
   const MODES = ["AUTO", "LINE", "TEST"];
   const COMMANDS = { START: 1, STOP: 2, ESTOP: 3, PAUSE: 4, RESUME: 5,
@@ -60,13 +61,13 @@
   const TELEMETRY = [["ver", 3], ["seq", 16], ["t_ds", 20], ["state", 4],
     ["faults", 8], ["spd_l", 14, true], ["spd_r", 14, true],
     ["enc_l", 24, true], ["enc_r", 24, true], ["ir_l", 12], ["ir_c", 12],
-    ["ir_r", 1], ["line", 3], ["barcode", 3], ["nav", 3], ["motion", 3],
+    ["ir_r", 1], ["line", 3], ["barcode", 5], ["nav", 4], ["motion", 3],
     ["pitch_dd", 10, true], ["hump_valid", 1], ["hump_last_mm", 7],
     ["hump_peak_mm", 7], ["obs_d_cm", 9], ["obs_w_cm", 7], ["obs_lc_cm", 9],
     ["obs_rc_cm", 9]];
   const EVENT_HEADER = [["ver", 3], ["type", 2], ["seq", 8], ["t_ds", 20]];
   const EVENT_BODY = [
-    [["code", 3], ["nav", 3]],
+    [["code", 5], ["nav", 4]],
     [["valid", 1], ["height_mm", 7], ["peak_mm", 7]],
     [["d_cm", 9], ["w_cm", 7], ["lc_cm", 9], ["rc_cm", 9], ["action", 3]],
     [["err", 8], ["detail", 8]]];
