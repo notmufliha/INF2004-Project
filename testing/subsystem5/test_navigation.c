@@ -81,6 +81,21 @@ static ER motion_get_status(motion_status_snapshot_t *out)
     *out = status;
     return E_OK;
 }
+/* B2 fault acknowledgement (START), as in motion_command.c. */
+static uint32_t acked_fault_id;
+static bool acked_fault_valid;
+static void motion_acknowledge_fault(void)
+{
+    if (status.status == MOTION_STATUS_FAULT || status.status == MOTION_STATUS_TIMEOUT) {
+        acked_fault_id = status.command_id;
+        acked_fault_valid = true;
+    }
+}
+static bool motion_fault_active(const motion_status_snapshot_t *s)
+{
+    return (s->status == MOTION_STATUS_FAULT || s->status == MOTION_STATUS_TIMEOUT) &&
+        !(acked_fault_valid && acked_fault_id == s->command_id);
+}
 static ER motion_get_result(uint32_t id, motion_status_snapshot_t *out)
 {
     if (result.command_id != id) return E_OBJ;
@@ -347,6 +362,31 @@ int main(void)
     assert(!s5_bridge_ready() && !allowed);
     assert(s5_navigation_error() == S5_ERR_LINE_TIMEOUT);
     assert(!s5_bridge_request(S5_CMD_GO_LEFT, &p));
+    /* A line fault is not re-armed by a motor-fault acknowledgement. */
+    line_valid = true;
+    tick(120.0f);
+    assert(!s5_bridge_ready() && s5_navigation_error() == S5_ERR_LINE_TIMEOUT);
+    /* Motor stall: NAV_FAULT used to be permanent (reflash).  It stays while
+     * the stall is unacknowledged, and re-arms once START acknowledged it
+     * in B2 and cleared the fault flags. */
+    navigation_error = S5_ERR_MOTION_TIMEOUT; /* as fault_stop() on a stall */
+    status.status = MOTION_STATUS_FAULT;
+    status.command_id = 77u;
+    faults = FAULT_MOTOR_STALL;
+    tick(120.0f);
+    assert(!s5_bridge_ready());
+    motion_acknowledge_fault();
+    tick(120.0f);
+    assert(!s5_bridge_ready()); /* stall flag still raised */
+    faults = 0u;
+    tick(120.0f);
+    assert(s5_bridge_ready() && s5_navigation_error() == S5_ERR_NONE);
+    /* A new stall (another command) faults again. */
+    status.status = MOTION_STATUS_FAULT; /* the mock STOP set CANCELLED */
+    status.command_id = 78u;
+    tick(120.0f);
+    assert(!s5_bridge_ready() && s5_navigation_error() == S5_ERR_MOTION_TIMEOUT);
+    puts("PASS motor stall: B5 navigation re-arms after START acknowledges it, not before");
     puts("PASS B5 real navigation adapter: B2 IDs, safety gate, B3 recovery, heading restoration, handoff, stale-line STOP, rear rejection");
     return 0;
 }

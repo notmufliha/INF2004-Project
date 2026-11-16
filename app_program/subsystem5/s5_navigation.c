@@ -213,6 +213,22 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     S5Action action;
     ER line_error;
     ER motion_error;
+    if (initialized && mode == NAV_FAULT &&
+        navigation_error == S5_ERR_MOTION_TIMEOUT &&
+        motion_get_status(&status) == E_OK && !motion_fault_active(&status) &&
+        !(fault_get() & (FAULT_MOTOR_STALL | FAULT_ENCODER))) {
+        /* A motor stall/encoder fault used to leave B5 in NAV_FAULT for
+         * good (mission FAULT, so the controller safe-stopped on every
+         * START) until the car was reflashed.  Once the operator's START
+         * has acknowledged it in B2, re-arm.  The controller still needs
+         * that START before anything moves. */
+        mode = NAV_FOLLOW;
+        navigation_error = S5_ERR_NONE;
+        clear_hits = 0u;
+        invalid_front_hits = 0u;
+        s5_maneuver_init(&maneuver);
+        tm_printf((UB*)"[S5-NAV] motor fault acknowledged; navigation re-armed\n");
+    }
     if (!ready()) { (void)stop_motor(); return; }
     motion_error = motion_get_status(&status);
     line_error = b3_get_timed_state(&line, &sample);
@@ -220,7 +236,7 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
      * Using an earlier clock wrapped its age and latched a false fault. */
     if (!now_ms(&in.now_ms) || motion_error != E_OK ||
         in.now_ms - status.sample_time_ms > 200u ||
-        status.status == MOTION_STATUS_FAULT || status.status == MOTION_STATUS_TIMEOUT ||
+        motion_fault_active(&status) ||
         (fault_get() & (FAULT_MOTOR_STALL | FAULT_ENCODER))) {
         fault_stop(S5_ERR_MOTION_TIMEOUT);
         return;

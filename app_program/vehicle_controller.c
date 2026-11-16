@@ -190,9 +190,41 @@ static void apply_wheel_minimum(motion_command_t *command, bool allow_pivot)
     command->steering_permille = steering < 0 ? -magnitude : magnitude;
 }
 
-static void update_junction_state(VEHICLE_CONTROLLER *c, UB line_flags)
+/* True while the barcode sensor has been on black for a crossing tape's
+ * worth of travel.  Distance comes from the measured wheel speeds. */
+static bool crossing_tape(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
 {
-    bool junction = (line_flags & LINE_F_JUNCTION) != 0u &&
+    uint32_t dt_ms = c->travel_time_valid ? in->now_ms - c->travel_last_ms : 0u;
+    INT left = in->motion.left_speed_cps;
+    INT right = in->motion.right_speed_cps;
+    uint32_t counts_per_s;
+
+    c->travel_last_ms = in->now_ms;
+    c->travel_time_valid = true;
+    if (!in->motion_valid || dt_ms > 100u) dt_ms = 0u; /* paused or stale */
+    if (left < 0) left = -left;
+    if (right < 0) right = -right;
+    counts_per_s = (uint32_t)(left + right) / 2u;
+    if (in->right != c->gp28_level) {
+        c->gp28_level = in->right;
+        c->gp28_run_um = 0u;
+    } else if (c->gp28_run_um < 1000000u) {
+        c->gp28_run_um += counts_per_s * dt_ms * VC_UM_PER_COUNT / 1000u;
+    }
+    if (c->gp28_run_um >= VC_FLOOR_LEARN_UM) {
+        c->floor_level = c->gp28_level;
+        c->floor_known = true;
+    }
+    return c->floor_known && c->gp28_level != c->floor_level &&
+        c->gp28_run_um >= VC_JUNCTION_MIN_UM &&
+        c->curve_steer < VC_JUNCTION_MAX_CURVE_STEER;
+}
+
+static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    UB line_flags = in->line_flags;
+    bool tape = crossing_tape(c, in);
+    bool junction = tape && (line_flags & LINE_F_JUNCTION) != 0u &&
         (line_flags & LINE_F_DETECTED) != 0u &&
         (line_flags & LINE_F_LOST) == 0u;
 
@@ -245,8 +277,16 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
             /* B2 latches stall/encoder faults until reboot and every step
              * safe-stops while one is set, so after one stall no dashboard
              * command could move the car again.  START is the operator's
-             * acknowledgement: clear them; B2 re-raises them if still real. */
+             * acknowledgement: clear them; B2 re-raises them if still real.
+             * B2 also keeps publishing the stalled command's FAULT status
+             * until it runs a new command (which nobody would send), and
+             * B5 latched on it: acknowledge it there too, and give B5 a
+             * moment to re-arm before its mission FAULT counts again. */
             fault_clear(FAULT_MOTOR_STALL | FAULT_ENCODER);
+            motion_acknowledge_fault();
+            c->ack_grace_pending = true;
+            c->stall_retries = 0u;
+            c->hold_active = c->tolerate_active = false;
         }
         break;
     case RCMD_RESUME:
@@ -311,10 +351,62 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         stop_motion(c);
         return;
     }
+    if (c->ack_grace_pending) {
+        c->ack_grace_pending = false;
+        c->tolerate_active = true;
+        c->tolerate_until_ms = in->now_ms + VC_FAULT_ACK_GRACE_MS;
+    }
+    if (c->hold_active && (int32_t)(c->hold_until_ms - in->now_ms) <= 0) {
+        c->hold_active = false;
+    }
+    if (c->tolerate_active &&
+        (int32_t)(c->tolerate_until_ms - in->now_ms) <= 0) {
+        c->tolerate_active = false;
+    }
+    if (c->stall_retries != 0u &&
+        in->now_ms - c->last_stall_ms >= VC_STALL_RETRY_RESET_MS) {
+        c->stall_retries = 0u;
+    }
+    /* Motor stall (wheel blocked or too slow): stop, wait, and try again a
+     * couple of times before giving up.  Encoder/IMU faults never retry. */
+    if (in->motion_valid &&
+        ((in->faults & FAULT_MOTOR_STALL) != 0u ||
+         (motion_fault_active(&in->motion) &&
+          in->motion.fault == MOTION_FAULT_STALL)) &&
+        (in->faults & (FAULT_ENCODER | FAULT_IMU)) == 0u) {
+        if (c->stall_retries < VC_STALL_AUTO_RETRIES) {
+            c->stall_retries++;
+            c->last_stall_ms = in->now_ms;
+            motion_acknowledge_fault();
+            fault_clear(FAULT_MOTOR_STALL);
+            c->hold_until_ms = in->now_ms + VC_STALL_RETRY_MS;
+            c->tolerate_until_ms = c->hold_until_ms + VC_FAULT_ACK_GRACE_MS;
+            c->hold_active = c->tolerate_active = true;
+            c->drive_sent = false;
+            c->last_speed = c->last_steer = 0;
+            c->error_filter_valid = false;
+            stop_motion(c);
+            tm_printf((UB *)"[VC] motor stall: automatic retry %d of %d in %d ms\n",
+                      (INT)c->stall_retries, (INT)VC_STALL_AUTO_RETRIES,
+                      (INT)VC_STALL_RETRY_MS);
+            return;
+        }
+        tm_printf((UB *)"[VC] motor stall: %d retries failed; stopped. Clear the wheels and press START\n",
+                  (INT)VC_STALL_AUTO_RETRIES);
+        safe_stop(c);
+        return;
+    }
+    if (c->hold_active) {
+        stop_motion(c); /* stall retry pause */
+        return;
+    }
+    if (in->obstacle_fault && c->tolerate_active) {
+        stop_motion(c); /* B5 re-arming after an acknowledged fault */
+        return;
+    }
     if (!in->motion_valid || !in->imu_valid || in->hazard || in->obstacle_fault ||
         (in->faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU)) ||
-        in->motion.status == MOTION_STATUS_FAULT ||
-        in->motion.status == MOTION_STATUS_TIMEOUT) {
+        motion_fault_active(&in->motion)) {
         tm_printf((UB *)"[VC-STOP-REASON] motion_valid=%d imu_valid=%d hazard=%d obstacle_fault=%d faults=%d motion_status=%d\n",
                   (INT)in->motion_valid, (INT)in->imu_valid, (INT)in->hazard,
                   (INT)in->obstacle_fault, (INT)in->faults, (INT)in->motion.status);
@@ -381,7 +473,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
     if (line_detected) c->line_recovery_active = false;
-    update_junction_state(c, in->line_flags);
+    update_junction_state(c, in);
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
         c->pending_navigation == B3_NAV_NONE &&
         nav >= B3_NAV_LEFT && nav <= B3_NAV_UTURN) {
@@ -706,6 +798,7 @@ static void controller_task(INT stacd, void *exinf)
             in.left = (UH)line.ir_left;
             in.centre = (UH)line.ir_centre;
             in.line_flags = (UB)line.line_flags;
+            in.right = (UB)line.ir_right;
         }
         in.barcode_active = b3_barcode_active();
         in.imu_valid = imu.b_valid && now.lo - imu.timestamp_ms <= VC_IMU_MAX_AGE_MS;
