@@ -51,15 +51,15 @@
  * steering signal appears when one of them reaches a line edge.  The car
  * then has just the sensor gap left before the line is lost, so it must
  * correct hard and at once.  Steering is the team's original, tested
- * mapping on the normalised difference (right - left): a 40-count deadband,
- * rising to full steer at a 400-count difference (one sensor ~40% onto the
+ * mapping on the normalised difference (right - left): a 60-count deadband,
+ * rising to full steer at a 650-count difference (one sensor ~65% onto the
  * white).  The Pololu weighted position, 500 * (R - L) / (R + L) for two
  * sensors, gave only ~270 permille with one sensor half off the line,
  * against 800 here: the car ran straight off at curves.
  * CALIBRATE on the course: lower FULL_SCALE (stronger) if curves are
  * missed, raise it (gentler) if the car weaves on straights. */
-#define B3_LINE_STEER_DEADBAND (40)
-#define B3_LINE_STEER_ERROR_FULL_SCALE (400)
+#define B3_LINE_STEER_DEADBAND (60)
+#define B3_LINE_STEER_ERROR_FULL_SCALE (650)
 /* 800 permille: inner wheel at 0.2x, outer at 1.8x (before the 5000 cps
  * outer-wheel limit), so sharp curves can be followed. */
 #define B3_LINE_STEER_MAX (800)

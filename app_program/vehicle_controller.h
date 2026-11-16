@@ -21,7 +21,7 @@
 #define VC_LINE_SEARCH_STEER 250
 /* Line just lost: first turn hard toward the side it was last seen (what
  * Pololu's saturated position + PD does) for this long, then sweep. */
-#define VC_LINE_REACQUIRE_MS 1000u
+#define VC_LINE_REACQUIRE_MS 1500u
 #define VC_JUNCTION_CONFIRM_SAMPLES 3u
 /* Curve speed: at full steer the base speed drops to VC_CURVE_MIN_PERMILLE.
  * The slowdown follows the hardest recent steering and relaxes by

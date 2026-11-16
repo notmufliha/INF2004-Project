@@ -1029,7 +1029,7 @@ EXPORT void s5_task(INT stacd, void *exinf)
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] %s %s B5-BLUE-ROUTE45: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
+    tm_printf((UB*)"[FW-ID] %s %s LINE-TURN-V2: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
               __DATE__, __TIME__, (int)ROBOT_ENABLE_BYPASS,
               (int)ROBOT_SCAN_SAFE_MIN_DEG, (int)ROBOT_SCAN_SAFE_MAX_DEG,
               (int)ROBOT_STOP_CM, (int)ROBOT_RELEASE_CM, (int)ROBOT_STRAIGHT_TRIM_PERMILLE);
