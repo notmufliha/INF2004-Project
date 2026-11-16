@@ -55,6 +55,7 @@ with tempfile.TemporaryDirectory(prefix="b5_complete_") as folder:
         binary = Path(folder) / (name + (".exe" if os.name == "nt" else ""))
         run([CC, *(["-mno-ms-bitfields"] if os.name == "nt" else []), "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
              *(["-DROBOT_CLEAR_PATH_FORWARD=0"] if name in ("maneuver", "navigation") else []),
+             *(["-DROBOT_CLEAR_PATH_FORWARD=1"] if name in ("clear_forward", "navigation_clear_forward") else []),
              "-Iapp_program/subsystem5",
              *sources, "-o", str(binary)])
         output = run([str(binary)])

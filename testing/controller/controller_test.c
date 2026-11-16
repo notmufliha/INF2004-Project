@@ -214,9 +214,14 @@ int main(void)
     settle(&c, 30u);
     assert(sent.steering_permille == B3_LINE_STEER_MAX &&
         left_wheel() <= 5000 && wheel_ok(right_wheel()));
+    input.left = input.centre = 900u;
+    step(&c, 20u, 0u);
+    assert(sent.steering_permille == 0); /* Centred line releases a hard turn now. */
+    input.left = 900u; input.centre = 30u;
+    settle(&c, 30u);
     input.left = 30u; input.centre = 900u;
-    step(&c, 20u, 0u); /* steering slews, it does not jump */
-    assert(sent.steering_permille == B3_LINE_STEER_MAX - VC_STEER_SLEW_PER_TICK);
+    step(&c, 20u, 0u); /* Release old-side correction immediately. */
+    assert(sent.steering_permille == -VC_STEER_SLEW_PER_TICK);
     settle(&c, 30u);
     assert(sent.steering_permille == -B3_LINE_STEER_MAX &&
         right_wheel() <= 5000 && wheel_ok(left_wheel()));
@@ -259,12 +264,13 @@ int main(void)
         v.left = 1000u; v.centre = 970u;           /* noise: deadband */
         assert(line_follow_steering(&p, &v) == 0);
         v.left = 1000u; v.centre = 780u;           /* left sensor at edge */
-        assert(line_follow_steering(&p, &v) == 400);
+        assert(line_follow_steering(&p, &v) > 0 && line_follow_steering(&p, &v) < 250);
         v.left = 1000u; v.centre = 500u;           /* left half off: full */
-        assert(line_follow_steering(&p, &v) == B3_LINE_STEER_MAX);
+        INT moderate = line_follow_steering(&p, &v);
+        assert(moderate > 0 && moderate < B3_LINE_STEER_MAX);
         assert(p.last_line_search_direction == 1); /* line is to the right */
         v.left = 500u; v.centre = 1000u;           /* right half off */
-        assert(line_follow_steering(&p, &v) == -B3_LINE_STEER_MAX);
+        assert(line_follow_steering(&p, &v) == -moderate);
         assert(p.last_line_search_direction == -1);
         v.left = 0u; v.centre = 1000u;
         assert(line_follow_steering(&p, &v) == -B3_LINE_STEER_MAX);

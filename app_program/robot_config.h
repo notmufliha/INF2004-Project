@@ -48,9 +48,9 @@
 #define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
 #define ROBOT_BYPASS_SPEED_CPS 600
 #define ROBOT_BYPASS_TURN_DEG 45
-/* Clear path: drive straight off tape, use line steering whenever tape is seen. */
+/* Line-following branch: recover the tape instead of driving straight off it. */
 #ifndef ROBOT_CLEAR_PATH_FORWARD
-#define ROBOT_CLEAR_PATH_FORWARD 1
+#define ROBOT_CLEAR_PATH_FORWARD 0
 #endif
 /* Bypass offset uses encoder distance: obstacle edge + chassis + margin. */
 /* Straight forward DRIVE trim: positive counters left drift by requesting

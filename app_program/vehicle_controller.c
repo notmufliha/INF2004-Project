@@ -144,7 +144,7 @@ static void apply_wheel_minimum(motion_command_t *command)
         return;
     }
     if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 1000) return;
-    if (magnitude <= 200) {
+    if (magnitude <= 500) {
         /* Preserve gentle corrections at startup. The old limiter made
          * v=100, s=-25 into a full pivot because both wheels were below
          * their sustainable speed. Scale the base instead of the radius. */
@@ -510,12 +510,16 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     command.steering_permille = line_follow_steering(c, in);
     /* Smooth steering changes so the car does not jerk between corrections. */
     if (c->drive_sent) {
-        if (command.steering_permille > c->last_steer + VC_STEER_SLEW_PER_TICK) {
-            command.steering_permille = c->last_steer + VC_STEER_SLEW_PER_TICK;
-        } else if (command.steering_permille <
-                   c->last_steer - VC_STEER_SLEW_PER_TICK) {
-            command.steering_permille = c->last_steer - VC_STEER_SLEW_PER_TICK;
-        }
+        INT previous = c->last_steer;
+        INT requested = command.steering_permille;
+        if ((requested < 0 && previous > 0) || (requested > 0 && previous < 0))
+            previous = 0; /* Stop steering away from the newly observed line. */
+        /* Ramp stronger corrections; release weaker corrections immediately
+         * so old steering does not carry the robot across the line. */
+        if (requested > 0 && requested > previous + VC_STEER_SLEW_PER_TICK)
+            command.steering_permille = previous + VC_STEER_SLEW_PER_TICK;
+        else if (requested < 0 && requested < previous - VC_STEER_SLEW_PER_TICK)
+            command.steering_permille = previous - VC_STEER_SLEW_PER_TICK;
     }
     c->last_steer = command.steering_permille;
     c->follow_steer = command.steering_permille;
