@@ -16,6 +16,9 @@ static motion_status_snapshot_t g_motion_status;
 static motion_status_snapshot_t g_results[MOTION_RESULT_HISTORY];
 static UINT g_result_next;
 static bool gb_status_ready;
+/* Command whose FAULT/TIMEOUT the operator acknowledged (START). */
+static uint32_t g_acked_fault_id;
+static bool gb_acked_fault_valid;
 #if TK_SUPPORT_SMP
 static T_SPLOCK g_status_lock;
 #endif
@@ -365,4 +368,45 @@ ER motion_update_status(const motion_status_snapshot_t *snapshot)
     motion_retain(snapshot);
     motion_unlock(status);
     return E_OK;
+}
+
+static bool motion_terminal_fault(const motion_status_snapshot_t *snapshot)
+{
+    return snapshot->status == MOTION_STATUS_FAULT ||
+        snapshot->status == MOTION_STATUS_TIMEOUT;
+}
+
+void motion_acknowledge_fault(void)
+{
+    UINT status;
+    if (!gb_status_ready)
+    {
+        return;
+    }
+    motion_lock(&status);
+    if (motion_terminal_fault(&g_motion_status))
+    {
+        g_acked_fault_id = g_motion_status.command_id;
+        gb_acked_fault_valid = true;
+    }
+    motion_unlock(status);
+}
+
+bool motion_fault_active(const motion_status_snapshot_t *snapshot)
+{
+    UINT status;
+    bool acknowledged;
+    if (snapshot == NULL || !motion_terminal_fault(snapshot))
+    {
+        return false;
+    }
+    if (!gb_status_ready)
+    {
+        return true;
+    }
+    motion_lock(&status);
+    acknowledged = gb_acked_fault_valid &&
+        g_acked_fault_id == snapshot->command_id;
+    motion_unlock(status);
+    return !acknowledged;
 }
