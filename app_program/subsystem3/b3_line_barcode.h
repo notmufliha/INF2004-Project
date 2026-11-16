@@ -12,6 +12,8 @@
 
 /* WARNING: Validate the 20 ms period against sensor response and car speed. */
 #define B3_LINE_UPDATE_MS (20U)
+/* ADC conversions averaged per line-sensor reading (noise). */
+#define B3_ADC_OVERSAMPLE (8U)
 /* Provisional measured endpoints, 2026-11-13; higher ADC means black.
  * White maximum / black minimum from stationary same-firmware captures.
  * GP26 is physically right, GP27 left. Recheck after mounting changes.

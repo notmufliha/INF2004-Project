@@ -33,6 +33,11 @@
  * (0 to full 800 in about 0.1 s), and speed may rise by at most
  * VC_SPEED_RISE_PER_TICK counts/s per tick.  Slowing down is immediate. */
 #define VC_STEER_SLEW_PER_TICK 150
+/* Easing off a correction: full 800 to straight in 3 ticks (60 ms). */
+#define VC_STEER_RELEASE_PER_TICK 300
+/* Following never pivots: on a hard turn the inner wheel stays at
+ * VC_MIN_WHEEL_CPS and the outer runs at least this many times faster. */
+#define VC_FOLLOW_MIN_OUTER_RATIO 3
 #define VC_SPEED_RISE_PER_TICK 100
 /* CALIBRATE: slowest wheel speed (counts/s) the loaded motors hold without
  * stalling; about 25 mm/s.  A curve's inner wheel is never asked to run
@@ -69,6 +74,8 @@ typedef struct {
     INT last_line_search_direction; /* -1 left / +1 right: last line side */
     INT line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */
     INT last_error; /* previous PD error, for the derivative term */
+    INT filtered_error; /* low-passed sensor difference */
+    bool error_filter_valid; /* filtered_error holds a following sample */
     INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
     INT last_steer, last_speed; /* last DRIVE sent, for smoothing */
     INT follow_steer; /* last steering sent while following the line */

@@ -190,6 +190,13 @@ static void confirm_junction(VEHICLE_CONTROLLER *c)
     step(c, 20u, 0u);
 }
 
+/* One unfiltered steering sample: the mapping, without the low-pass. */
+static INT steer_once(VEHICLE_CONTROLLER *p, const VC_INPUT *v)
+{
+    p->error_filter_valid = false;
+    return line_follow_steering(p, v);
+}
+
 int main(void)
 {
     VEHICLE_CONTROLLER c = fresh();
@@ -215,13 +222,20 @@ int main(void)
     assert(sent.steering_permille == B3_LINE_STEER_MAX &&
         left_wheel() <= 5000 && wheel_ok(right_wheel()));
     input.left = input.centre = 900u;
-    step(&c, 20u, 0u);
-    assert(sent.steering_permille == 0); /* Centred line releases a hard turn now. */
+    step(&c, 20u, 0u); /* Centred: ease off at most the release rate, no snap. */
+    assert(sent.steering_permille < B3_LINE_STEER_MAX &&
+        sent.steering_permille >= B3_LINE_STEER_MAX - VC_STEER_RELEASE_PER_TICK);
+    step(&c, 20u, 0u); step(&c, 20u, 0u); step(&c, 20u, 0u);
+    assert(sent.steering_permille == 0); /* straight within 4 ticks */
     input.left = 900u; input.centre = 30u;
     settle(&c, 30u);
     input.left = 30u; input.centre = 900u;
-    step(&c, 20u, 0u); /* Release old-side correction immediately. */
-    assert(sent.steering_permille == -VC_STEER_SLEW_PER_TICK);
+    step(&c, 20u, 0u); /* Reversal is rate-limited too, no full swing. */
+    assert(sent.steering_permille ==
+        B3_LINE_STEER_MAX - VC_STEER_RELEASE_PER_TICK);
+    /* (filtered error is 0 here, so the full release step applies) */
+    step(&c, 20u, 0u); step(&c, 20u, 0u); step(&c, 20u, 0u);
+    assert(sent.steering_permille < 0); /* turning back within 80 ms */
     settle(&c, 30u);
     assert(sent.steering_permille == -B3_LINE_STEER_MAX &&
         right_wheel() <= 5000 && wheel_ok(left_wheel()));
@@ -260,21 +274,35 @@ int main(void)
         VEHICLE_CONTROLLER p = {0};
         VC_INPUT v = {0};
         v.left = 1000u; v.centre = 1000u;          /* centred */
-        assert(line_follow_steering(&p, &v) == 0);
+        assert(steer_once(&p, &v) == 0);
         v.left = 1000u; v.centre = 970u;           /* noise: deadband */
-        assert(line_follow_steering(&p, &v) == 0);
+        assert(steer_once(&p, &v) == 0);
         v.left = 1000u; v.centre = 780u;           /* left sensor at edge */
-        assert(line_follow_steering(&p, &v) > 0 && line_follow_steering(&p, &v) < 250);
+        assert(steer_once(&p, &v) > 0 && steer_once(&p, &v) < 250);
         v.left = 1000u; v.centre = 500u;           /* left half off: full */
-        INT moderate = line_follow_steering(&p, &v);
+        INT moderate = steer_once(&p, &v);
         assert(moderate > 0 && moderate < B3_LINE_STEER_MAX);
         assert(p.last_line_search_direction == 1); /* line is to the right */
         v.left = 500u; v.centre = 1000u;           /* right half off */
-        assert(line_follow_steering(&p, &v) == -moderate);
+        assert(steer_once(&p, &v) == -moderate);
         assert(p.last_line_search_direction == -1);
         v.left = 0u; v.centre = 1000u;
-        assert(line_follow_steering(&p, &v) == -B3_LINE_STEER_MAX);
+        assert(steer_once(&p, &v) == -B3_LINE_STEER_MAX);
     }
+    /* Straight with GP26 noise: alternating +-110 single-sample spikes
+     * (~11 raw counts on its 100-count span) used to cross the deadband
+     * every tick; the low-pass keeps the steering straight. */
+    {
+        VEHICLE_CONTROLLER p = {0};
+        VC_INPUT v = {0};
+        v.centre = 900u;
+        for (UINT i = 0u; i < 20u; ++i) {
+            v.left = (i & 1u) ? 1000u : 790u;
+            INT s = line_follow_steering(&p, &v);
+            if (i > 0u) assert(s == 0);
+        }
+    }
+    puts("PASS straight-line ADC noise filtered, no steering flicker");
     input.hump = true; step(&c, 20u, 0u);
     assert(c.state == ROBOT_HUMP && sent.target_speed_cps <= 2500);
     command(&c, RCMD_SPEED, 0u); step(&c, 20u, 0u);
@@ -390,11 +418,14 @@ int main(void)
     settle(&c, 30u);
     INT straight_speed = sent.target_speed_cps;
     assert(sent.steering_permille == 0 && straight_speed == 1000);
-    /* Sharp curve at 20%: inner wheel would be far below the minimum, so it
-     * stops (pivot) instead of stalling; outer keeps turning; slower. */
+    /* Sharp curve at 20%: inner wheel would be far below the minimum.  While
+     * following it is held AT the minimum (no pivot lurch); outer at least
+     * VC_FOLLOW_MIN_OUTER_RATIO times faster; slower than straight. */
     input.left = 900u; input.centre = 30u; settle(&c, 10u);
-    assert(sent.steering_permille > 0 && right_wheel() == 0 &&
-        left_wheel() > 0 && sent.target_speed_cps <= straight_speed * 6 / 10);
+    assert(sent.steering_permille > 0 && wheel_ok(right_wheel()) &&
+        right_wheel() > 0 &&
+        left_wheel() >= right_wheel() * VC_FOLLOW_MIN_OUTER_RATIO - 2 &&
+        sent.target_speed_cps <= straight_speed * 7 / 10);
     /* Moderate curve: inner wheel raised to the sustainable minimum. */
     input.left = 840u; input.centre = 500u; settle(&c, 10u);
     assert(sent.steering_permille > 0 && wheel_ok(right_wheel()) &&
@@ -602,7 +633,7 @@ int main(void)
         motion_command_t gentle = {0};
         gentle.target_speed_cps = 100;
         gentle.steering_permille = steering;
-        apply_wheel_minimum(&gentle);
+        apply_wheel_minimum(&gentle, false);
         assert(gentle.steering_permille == steering);
         assert(gentle.target_speed_cps * (1000 - (steering < 0 ? -steering : steering)) /
             1000 >= VC_MIN_WHEEL_CPS);

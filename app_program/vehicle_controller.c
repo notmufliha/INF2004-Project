@@ -92,10 +92,20 @@ static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
      * Positive difference: the left sensor is coming off the line on its
      * side, so the line lies to the right: steer right (positive). */
     INT error = (INT)in->left - (INT)in->centre;
-    INT magnitude = error < 0 ? -error : error;
+    INT magnitude;
     INT steering = 0;
 
     (void)line_position(c, in); /* keep the last-seen side for recovery */
+    /* Low-pass the difference (half old, half new: ~20 ms lag at 50 Hz).
+     * GP26's black/white span is only ~100 ADC counts, so a few counts of
+     * noise move its normalised value by ~100 and flicked the steering
+     * across the deadband on straights. */
+    if (c->error_filter_valid) {
+        error = (c->filtered_error + error) / 2;
+    }
+    c->filtered_error = error;
+    c->error_filter_valid = true;
+    magnitude = error < 0 ? -error : error;
     if (magnitude > B3_LINE_STEER_DEADBAND) {
         magnitude -= B3_LINE_STEER_DEADBAND;
         if (magnitude > B3_LINE_STEER_ERROR_FULL_SCALE -
@@ -128,8 +138,11 @@ static INT line_search_direction(uint32_t elapsed_ms, INT first_direction)
 }
 
 /* Convert the requested curve into wheel speeds the motors can hold.
- * B2 drives left = v(1+s), right = v(1-s) with s in permille. */
-static void apply_wheel_minimum(motion_command_t *command)
+ * B2 drives left = v(1+s), right = v(1-s) with s in permille.
+ * allow_pivot: a hard turn may stop the inner wheel (line search only).
+ * While following, a stopped inner wheel made the car pivot and lurch at
+ * every hard correction, so there the inner wheel keeps the minimum. */
+static void apply_wheel_minimum(motion_command_t *command, bool allow_pivot)
 {
     INT steering = command->steering_permille;
     INT magnitude = steering < 0 ? -steering : steering;
@@ -155,7 +168,14 @@ static void apply_wheel_minimum(motion_command_t *command)
     }
     outer /= 1000;
     if (outer < VC_MIN_WHEEL_CPS) outer = VC_MIN_WHEEL_CPS;
-    if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 500) {
+    if (!allow_pivot) {
+        /* Never slower outside than a 500-permille turn after the scaling
+         * above, so wheel speeds have no step at 500: outer >= 3x min. */
+        if (outer < (int64_t)VC_MIN_WHEEL_CPS * VC_FOLLOW_MIN_OUTER_RATIO) {
+            outer = (int64_t)VC_MIN_WHEEL_CPS * VC_FOLLOW_MIN_OUTER_RATIO;
+        }
+        inner = VC_MIN_WHEEL_CPS;
+    } else if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 500) {
         inner = VC_MIN_WHEEL_CPS;      /* raise to the sustainable minimum */
     } else {
         inner = 0;                     /* pivot around the inner wheel */
@@ -217,6 +237,7 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
             if (!c->running) {
                 c->line_recovery_active = false;
                 c->follow_steer = 0;
+                c->error_filter_valid = false;
             }
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
@@ -330,6 +351,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->drive_sent = false;
         c->last_steer = c->last_error = c->curve_steer = c->last_speed = 0;
         c->follow_steer = 0;
+        c->error_filter_valid = false;
         c->line_pos = B3_LINE_POS_CENTRE;
         c->last_line_search_direction = 0;
         c->recovery_ms = in->now_ms;
@@ -379,6 +401,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->line_seen_ms = in->now_ms;
     }
     if (c->navigation == 0u && !line_detected) {
+        c->error_filter_valid = false; /* a reacquired line starts fresh */
         if (ROBOT_CLEAR_PATH_FORWARD) {
             set_state(c, ROBOT_LINE_RECOVERY);
             if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
@@ -395,7 +418,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
                  c->follow_steer <= -VC_CURVE_REACQUIRE_MIN_STEER)) {
                 command.steering_permille = c->follow_steer;
             }
-            apply_wheel_minimum(&command);
+            apply_wheel_minimum(&command, true); /* B5 clear-path: unchanged */
             command.safety_generation = in->safety_generation;
             c->last_steer = c->last_error = c->curve_steer = 0;
             c->line_recovery_active = false;
@@ -450,7 +473,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             (1000 + search_steer);
         c->last_steer = command.steering_permille;
         c->last_error = direction * B3_LINE_POS_CENTRE;
-        apply_wheel_minimum(&command);
+        apply_wheel_minimum(&command, true);
         command.safety_generation = in->safety_generation;
         if (motion_send_command(&command) == E_OK) {
 #if VC_STEERING_DIAGNOSTICS
@@ -512,14 +535,21 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (c->drive_sent) {
         INT previous = c->last_steer;
         INT requested = command.steering_permille;
-        if ((requested < 0 && previous > 0) || (requested > 0 && previous < 0))
-            previous = 0; /* Stop steering away from the newly observed line. */
-        /* Ramp stronger corrections; release weaker corrections immediately
-         * so old steering does not carry the robot across the line. */
-        if (requested > 0 && requested > previous + VC_STEER_SLEW_PER_TICK)
-            command.steering_permille = previous + VC_STEER_SLEW_PER_TICK;
-        else if (requested < 0 && requested < previous - VC_STEER_SLEW_PER_TICK)
-            command.steering_permille = previous - VC_STEER_SLEW_PER_TICK;
+        INT previous_mag = previous < 0 ? -previous : previous;
+        INT requested_mag = requested < 0 ? -requested : requested;
+        bool same_side = (requested >= 0) == (previous >= 0);
+        /* Turning harder ramps at the SLEW rate.  Easing off, or crossing
+         * to the other side, ramps at the faster RELEASE rate: quick enough
+         * that old steering does not carry the car across the line, but no
+         * longer a one-tick snap from full turn to straight, which jerked
+         * the car on every correction. */
+        INT rate = (same_side && requested_mag > previous_mag) ?
+            VC_STEER_SLEW_PER_TICK : VC_STEER_RELEASE_PER_TICK;
+        if (requested > previous + rate) {
+            command.steering_permille = previous + rate;
+        } else if (requested < previous - rate) {
+            command.steering_permille = previous - rate;
+        }
     }
     c->last_steer = command.steering_permille;
     c->follow_steer = command.steering_permille;
@@ -578,7 +608,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
     }
     if (in->hump) command.target_speed_cps /= 2;
-    apply_wheel_minimum(&command);
+    apply_wheel_minimum(&command, false);
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {
 #if VC_STEERING_DIAGNOSTICS
