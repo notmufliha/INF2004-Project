@@ -22,6 +22,11 @@ static unsigned initial_line_hits;
 static uint32_t initial_line_sample;
 static bool line_reference;
 static bool (*rear_sensor)(float);
+/* Normal reverse requires rear sensing; bounded floor-test retreat is explicit. */
+static bool reverse_path_clear(void)
+{
+    return rear_sensor ? rear_sensor(ROBOT_BYPASS_REVERSE_CM) : ROBOT_TEST_BOUNDED_REVERSE;
+}
 static S5Error navigation_error;
 static uint32_t probe_id, probe_started_ms;
 static bool probe_complete;
@@ -70,7 +75,10 @@ static bool request(S5Command command, const S5Profile *profile)
     }
     if (!ready() || !now_ms(&now)) return false;
     if (command == S5_CMD_FIND_LINE) {
-        if (mode != NAV_AVOID || maneuver.state != S5_MAN_TURN_IN)
+        if (ROBOT_BYPASS_EXACT_SEQUENCE && maneuver.state != S5_MAN_COMPLETE)
+            return false; /* Fixed sequence retains ownership through its last turn. */
+        if (mode != NAV_AVOID || (maneuver.state != S5_MAN_TURN_IN &&
+            !(maneuver.state == S5_MAN_COMPLETE)))
             return false;
         mode = NAV_RECOVER;
         comm_set_robot_state(ROBOT_LINE_RECOVERY);
@@ -78,7 +86,8 @@ static bool request(S5Command command, const S5Profile *profile)
     }
     if (command == S5_CMD_RESUME) {
         bool recovered = mode == NAV_RECOVER && maneuver.state == S5_MAN_COMPLETE;
-        bool obstacle_removed = mode == NAV_STOP && maneuver.state == S5_MAN_IDLE &&
+        bool obstacle_removed = ((mode == NAV_STOP && maneuver.state == S5_MAN_IDLE) ||
+                                (mode == NAV_REVERSE && maneuver.state == S5_MAN_COMPLETE)) &&
                                 s5_navigation_stopped();
         if (!recovered && !obstacle_removed)
             return false;
@@ -91,7 +100,7 @@ static bool request(S5Command command, const S5Profile *profile)
     if (mode != NAV_STOP && !(mode == NAV_REVERSE && maneuver.state == S5_MAN_COMPLETE))
         return false;
     if (command == S5_CMD_REVERSE &&
-        (!rear_sensor || !rear_sensor(ROBOT_BYPASS_REVERSE_CM))) return false;
+        !reverse_path_clear()) return false;
     s5_maneuver_init(&maneuver);
     if (!s5_maneuver_begin(&maneuver, command, profile,
                            ROBOT_BYPASS_MAX_DEPTH_CM, now)) return false;
@@ -105,8 +114,9 @@ static bool request(S5Command command, const S5Profile *profile)
 }
 static bool motion_complete(void)
 {
-    return (mode == NAV_AVOID && maneuver.state == S5_MAN_TURN_IN &&
+    return (!ROBOT_BYPASS_EXACT_SEQUENCE && mode == NAV_AVOID && maneuver.state == S5_MAN_TURN_IN &&
             maneuver.pending_id == 0u) ||
+           (mode == NAV_AVOID && maneuver.state == S5_MAN_COMPLETE) ||
            (mode == NAV_REVERSE && maneuver.state == S5_MAN_COMPLETE);
 }
 static bool line_found(void)
@@ -164,7 +174,7 @@ bool s5_navigation_probe_begin(int degrees)
         !now_ms(&now) || degrees == 0 || degrees < -120 || degrees > 120) return false;
     b2_request_forward();
     if (!b2_safety_motion_allowed() || motion_turn_degrees(degrees < 0 ? -degrees : degrees,
-        ROBOT_BYPASS_SPEED_CPS, degrees < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id) != E_OK || !id)
+        ROBOT_BYPASS_TURN_SPEED_CPS, degrees < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id) != E_OK || !id)
         return false;
     probe_id = id;
     probe_degrees = degrees;
@@ -197,6 +207,7 @@ bool s5_navigation_probe_bypass(const S5Profile *profile)
     /* The viewpoint turn already completed. Start the diagonal offset,
      * rather than restoring heading and submitting another outward turn. */
     maneuver.state = S5_MAN_OFFSET;
+    maneuver.outward_turn_complete = true;
     probe_complete = false;
     mode = NAV_AVOID;
     tm_printf((UB*)"[S5-LOOK-ADVANCE] side=%d offset_cm_x100=%d pass_cm_x100=%d\n",
@@ -232,11 +243,12 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     in.line_junction = (line.line_flags & B3_LINE_F_JUNCTION) != 0u;
     in.front_valid = front_valid;
     in.front_cm = front_cm;
+    in.motion_progress_cm = (status.left_distance_mm + status.right_distance_mm) / 20.0f;
     in.stopped = status.physically_stopped;
     if (!in.line_valid) { fault_stop(S5_ERR_LINE_TIMEOUT); return; }
     if (mode == NAV_PROBE) {
         motion_status_snapshot_t terminal;
-        if (!front_valid || !(front_cm > ROBOT_BYPASS_MIN_TURN_CM) ||
+        if (!front_valid || !(front_cm > ROBOT_BYPASS_FRONT_TURN_CM) ||
             front_cm > S5_MAX_RANGE_CM || in.now_ms - probe_started_ms >= ROBOT_BYPASS_LEG_TIMEOUT_MS) {
             fault_stop(!front_valid ? S5_ERR_FRONT_SENSOR : S5_ERR_INSUFFICIENT_CLEARANCE);
             return;
@@ -264,7 +276,7 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         bool valid_front = front_valid && front_cm > 0.0f && front_cm <= S5_MAX_RANGE_CM;
         if (!valid_front) {
             if (invalid_front_hits < S5_FRONT_INVALID_LIMIT) ++invalid_front_hits;
-            if (mode == NAV_FOLLOW && !stop_queued && clear_hits >= ROBOT_CLEAR_CONFIRM &&
+            if (!ROBOT_OBSTACLE_TEST && mode == NAV_FOLLOW && !stop_queued && clear_hits >= ROBOT_CLEAR_CONFIRM &&
                 invalid_front_hits < S5_FRONT_INVALID_LIMIT &&
                 in.now_ms - last_clear_ms <= ROBOT_FRONT_GLITCH_GRACE_MS) {
                 /* Keep the existing, unexpired clearance. Do not fabricate
@@ -272,11 +284,10 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
                 return;
             }
         } else invalid_front_hits = 0u;
-        /* Hysteresis: require release distance to START, but keep following
-         * down to STOP distance. Stopping at RELEASE left the robot parked
-         * between STOP and RELEASE forever, outside the scan trigger. */
-        bool clearance = mode == NAV_FOLLOW && !stop_queued &&
-                         clear_hits >= ROBOT_CLEAR_CONFIRM ?
+        /* The obstacle test can start anywhere above STOP after three valid
+         * readings. Normal line mode retains release-distance hysteresis. */
+        bool clearance = (ROBOT_OBSTACLE_TEST || (mode == NAV_FOLLOW && !stop_queued &&
+                         clear_hits >= ROBOT_CLEAR_CONFIRM)) ?
                          front_cm > ROBOT_STOP_CM : front_cm >= ROBOT_RELEASE_CM;
         if (!valid_front || !clearance) {
             clear_hits = 0u;
@@ -286,7 +297,7 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         }
         last_clear_ms = in.now_ms;
         if (clear_hits < ROBOT_CLEAR_CONFIRM) ++clear_hits;
-        if (clear_hits < ROBOT_CLEAR_CONFIRM || (!ROBOT_CLEAR_PATH_FORWARD && !line_reference)) { (void)stop_motor(); return; }
+        if (clear_hits < ROBOT_CLEAR_CONFIRM || !line_reference) { (void)stop_motor(); return; }
         b2_request_forward();
         if (!b2_safety_motion_allowed()) return; /* Wait for STOP ACK. */
         /* Normal DRIVE belongs to the vehicle controller. */
@@ -300,7 +311,10 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     }
     /* Keep the bypass/recovery handoff explicit: no return-to-line leg
      * starts before the high-level controller requests FIND_LINE. */
-    if (mode == NAV_AVOID && maneuver.state == S5_MAN_TURN_IN && !maneuver.pending_id)
+    if (!ROBOT_BYPASS_EXACT_SEQUENCE && mode == NAV_AVOID &&
+        maneuver.state == S5_MAN_TURN_IN && !maneuver.pending_id &&
+        !(ROBOT_BYPASS_LINE_HANDOFF && maneuver.outward_turn_complete &&
+          maneuver.left_original_line && in.line_detected))
         return;
     if (maneuver.state == S5_MAN_COMPLETE) return;
     if (maneuver.pending_id) {
@@ -308,11 +322,22 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         if (motion_get_result(maneuver.pending_id, &result) == E_OK) {
             in.motion_terminal = true;
             in.motion_success = result.status == MOTION_STATUS_COMPLETED;
+            if (!in.motion_success)
+                tm_printf((UB*)"[S5-MOTOR-RESULT] id=%d status=%d fault=%d result_stopped=%d live_stopped=%d\n",
+                          (int)result.command_id, (int)result.status, (int)result.fault,
+                          (int)result.physically_stopped, (int)status.physically_stopped);
             in.result_id = result.command_id;
             in.stopped = result.physically_stopped && status.physically_stopped;
+            in.motion_progress_cm = (result.left_distance_mm + result.right_distance_mm) / 20.0f;
+            if (in.motion_progress_cm > 0.0f &&
+                (maneuver.state == S5_MAN_OFFSET || maneuver.state == S5_MAN_PASS ||
+                 maneuver.state == S5_MAN_SEARCH || maneuver.state == S5_MAN_REPLAN_ADVANCE))
+                tm_printf((UB*)"[S5-LEG-RESULT] id=%d planned_cm_x100=%d measured_cm_x100=%d stopped=%d\n",
+                          (int)result.command_id, (int)(maneuver.active_move_cm * 100.0f),
+                          (int)(in.motion_progress_cm * 100.0f), (int)in.stopped);
         }
     }
-    in.rear_clear = rear_sensor && rear_sensor(ROBOT_BYPASS_REVERSE_CM);
+    in.rear_clear = reverse_path_clear();
     if (maneuver.pending_id &&
         (maneuver.state == S5_MAN_TURN_OUT || maneuver.state == S5_MAN_FORWARD ||
          maneuver.state == S5_MAN_TURN_IN || maneuver.state == S5_MAN_ALIGN ||
@@ -322,16 +347,33 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         tm_printf((UB*)"[S5-TURN-GUARD] side=%d front_cm_x100=%d valid=%d\n",
                   (int)maneuver.side, (int)(front_cm * 100.0f), (int)front_valid);
     }
+    bool was_reactive = maneuver.reactive;
+    float prior_offset_target = maneuver.offset_cm;
     action = s5_maneuver_step(&maneuver, &in);
+    if (ROBOT_BYPASS_EXACT_SEQUENCE && maneuver.state == S5_MAN_FORWARD &&
+        maneuver.offset_cm < prior_offset_target)
+        tm_printf((UB*)"[S5-TURN-READY] completed_cm_x100=%d geometry_min_cm_x100=%d blocked_stage_min_cm_x100=%d next=scheduled_opposite_turn\n",
+                  (int)(maneuver.offset_done_cm * 100.0f), (int)(maneuver.minimum_offset_cm * 100.0f),
+                  (int)(ROBOT_BYPASS_BLOCKED_FIRST_MIN_CM * 100.0f));
+    if (!was_reactive && maneuver.reactive)
+        tm_printf((UB*)"[S5-REPLAN] side=%d front_valid=%d cm_x100=%d parallel_lock=%d pass_required_x100=%d\n",
+                  (int)maneuver.side, (int)front_valid, (int)(front_cm * 100.0f),
+                  (int)maneuver.reactive_parallel_lock,
+                  (int)(maneuver.reactive_required_cm * 100.0f));
     if (action.type == S5_ACT_STOP) {
         (void)stop_motor();
         if (maneuver.waiting_clear && in.now_ms - last_turn_guard_log_ms >= 1000u) {
             last_turn_guard_log_ms = in.now_ms;
             tm_printf((UB*)"[S5-FORWARD-WAIT] state=%d front_cm_x100=%d release_cm=%d clear_hits=%d\n",
                 (int)maneuver.state, (int)(front_cm * 100.0f),
-                (int)ROBOT_RELEASE_CM, (int)maneuver.clear_hits);
+                (int)ROBOT_BYPASS_MOVE_RELEASE_CM, (int)maneuver.clear_hits);
         }
-        if (maneuver.state == S5_MAN_FAILED) fault_stop(maneuver.error);
+        if (maneuver.state == S5_MAN_FAILED) {
+            tm_printf((UB*)"[S5-STOP-DETAIL] front_cm_x100=%d valid=%d turn_min_cm_x100=%d command_id=%d\n",
+                      (int)(front_cm * 100.0f), (int)front_valid,
+                      (int)(ROBOT_BYPASS_FRONT_TURN_CM * 100.0f), (int)status.command_id);
+            fault_stop(maneuver.error);
+        }
         return;
     }
     /* B2's clearance heartbeat remains active only with fresh actual
@@ -343,12 +385,13 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         if (!b2_safety_motion_allowed()) { fault_stop(S5_ERR_STOP_TIMEOUT); return; }
         if (action.type == S5_ACT_TURN)
             error = motion_turn_degrees(action.turn_deg < 0 ? -action.turn_deg : action.turn_deg,
-                ROBOT_BYPASS_SPEED_CPS,
+                ROBOT_BYPASS_TURN_SPEED_CPS,
                 action.turn_deg < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id);
         else
-            error = motion_move_cm(action.distance_cm < 0 ? -action.distance_cm : action.distance_cm,
+            error = motion_move_limited_cm(action.distance_cm < 0 ? -action.distance_cm : action.distance_cm,
                 ROBOT_BYPASS_SPEED_CPS,
-                action.distance_cm < 0 ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD, &id);
+                action.distance_cm < 0 ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD,
+                ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_DISTANCE_MODE && action.distance_cm > 0 ? ROBOT_BYPASS_FORWARD_MS : 0u, &id);
         if (error != E_OK || !s5_maneuver_submitted(&maneuver, id)) {
             fault_stop(S5_ERR_MOTION_TIMEOUT);
             return;

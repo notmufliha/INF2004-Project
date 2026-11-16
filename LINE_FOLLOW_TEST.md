@@ -24,7 +24,7 @@ Flash the UF2 and test a straight section, then curves. Start with the line
 centered beneath the two sensors. Inspect `[VC-STEER]` values if weaving
 continues; floor/load-specific tuning still requires physical feedback.
 
-V2 turn recovery: ROBOT_CLEAR_PATH_FORWARD defaults to0 on line_follow_v3.
+Line recovery always searches for the tape when the line is lost.
 Captured log held left briefly then steer0 while both sensors reported lost.
 The default now uses last-side turn recovery for1500 ms, followed by bounded
 widening search; total search timeout remains8000 ms. An exhausted search
@@ -33,3 +33,31 @@ the black line to the sensors before startup. V1 steering stability changes
 remain. Controller tests exercise the production default; optional clear-path
 tests explicitly opt in. Controller suite and all18 branch B5 groups pass.
 Physical course completion still requires testing.
+
+
+## Integrated obstacle bypass
+
+The robot starts with smooth line following (`ROBOT_OBSTACLE_TEST=0`). Buddy 5 pauses the vehicle controller on an
+obstacle and runs the bypass imported from `Buddy_5_Obstacle_Avoidance`.
+The straight-driving mode has been removed; startup requires a detected line.
+
+With `ROBOT_BYPASS_LINE_HANDOFF=1` (the normal default), once the robot has
+left the original tape and completed the outward left/right turn, fresh black
+on either line sensor stops the bypass immediately throughout all remaining
+movement legs, later turns, and recovery states. Three distinct fresh black
+samples at physical rest confirm the handoff. No additional bypass alignment
+turn is issued; the vehicle controller resumes smooth line following after
+front clearance is confirmed. Stale line samples stop motion. The original
+bounded search remains available if the first contact is lost while stopping.
+
+Floor validation (not performed by host tests):
+1. Start on black tape with a clear front path; verify smooth following.
+2. Place an obstacle ahead; verify following pauses, scan completes, and the
+   robot chooses a clear side. Repeat for left and right bypasses.
+3. Put black tape across the post-turn route; verify motion stops on contact,
+   then following resumes without completing the remaining bypass turns.
+4. Repeat with both sensors on black and with a short transient black contact.
+5. Keep the front blocked during reacquisition; verify forward motion waits.
+
+Host checks: `python testing/subsystem5/run_complete_tests.py`,
+`testing/controller/run_tests.ps1`, and `testing/subsystem2/host/run_tests.ps1`.

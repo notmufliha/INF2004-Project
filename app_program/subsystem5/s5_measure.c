@@ -41,7 +41,7 @@ static bool agreeing(float first, float second)
 }
 
 /* Three pairwise-agreeing readings are needed within the separated batch.
- * Scans use three pings; general/front consensus keeps the five-ping batch.
+ * Scans and front consensus use five pings, tolerating two missed returns.
  * Do not use a median of invalid or inconsistent measurements as clearance. */
 static bool measure_one_batch(float *out_cm, bool forward, bool stop_on_close,
                              uint8_t samples)
@@ -191,7 +191,7 @@ static bool measure_stable(float *out_cm, bool forward, bool stop_on_close, uint
 
 bool s5_measure_stable_cm(float *out_cm) { return measure_stable(out_cm, false, false, ROBOT_ECHO_SAMPLES); }
 bool s5_measure_front_cm(float *out_cm) { return measure_stable(out_cm, true, true, ROBOT_ECHO_SAMPLES); }
-bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false, 3u); }
+bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false, ROBOT_ECHO_SAMPLES); }
 
 /* Chatter protection: an invalid or close moving echo still stops the
  * motors immediately. A cluster of such events imposes a timed hold,

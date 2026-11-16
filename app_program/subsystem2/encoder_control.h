@@ -31,7 +31,7 @@ void encoder_get_invalid_counts(UW *left, UW *right);
  * Never tune these values from a cancelled, timed-out or faulted turn.
  */
 #define ENC_TURN_LEFT_SCALE      1.1285046f
-#define ENC_TURN_RIGHT_SCALE     1.1571429f
+#define ENC_TURN_RIGHT_SCALE     1.2342857f /* Slight reduction: old 48-degree travel instead of 50. */
 
 /* Preliminary encoder calibration values. */
 #define ENC_LEFT_COUNTS_PER_REV  2499

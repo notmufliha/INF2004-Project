@@ -43,11 +43,15 @@ int main(void)
     assert(cursor == ROBOT_ECHO_SAMPLES);
     load(S5_ECHO_OK, 120.0f);
     assert(s5_measure_scan_cm(&cm) && cm == 120.0f);
-    assert(cursor == 3u); /* Scan consensus finishes in three agreeing pings. */
+    assert(cursor == 5u); /* Three agreeing readings within five pings. */
     load(S5_ECHO_OK, 120.0f);
     readings[1] = (S5EchoReading){S5_ECHO_NO_FALL, 0u, 0.0f};
     assert(s5_measure_scan_cm(&cm) && cm == 120.0f);
-    assert(cursor == 6u); /* Two valid echoes cannot authorize the first batch. */
+    assert(cursor == 5u); /* One missed echo no longer invalidates the batch. */
+    load(S5_ECHO_OK, 19.30f);
+    readings[1] = readings[3] = (S5EchoReading){S5_ECHO_OUT_OF_RANGE, 59260u, 1016.3f};
+    assert(s5_measure_scan_cm(&cm) && cm > 19.29f && cm < 19.31f);
+    assert(cursor == 5u); /* Captured intermittent misses retain measured near range. */
     load(S5_ECHO_NO_RISE, 0.0f);
     assert(!s5_measure_stable_cm(&cm)); /* Strict measurements never invent ranges. */
     load(S5_ECHO_NO_RISE, 0.0f);

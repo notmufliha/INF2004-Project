@@ -27,6 +27,11 @@ def run(command):
 
 
 groups = {
+    "navigation_handoff": ["app_program/subsystem5/s5_logic.c", "app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_navigation_handoff.c"],
+    "line_handoff": ["app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_line_handoff.c"],
+    "reactive": ["app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_reactive.c"],
+    "detour": ["app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_detour.c"],
+    "obstacle_start": ["app_program/subsystem5/s5_logic.c", "app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_obstacle_start.c"],
     "mission_safety": ["testing/subsystem5/test_mission_safety.c"],
     "measurement": ["testing/subsystem5/measure_test.c"],
     "controller": ["app_program/subsystem5/s5_logic.c",
@@ -34,14 +39,9 @@ groups = {
                    "testing/subsystem5/host_sim_main.c"],
     "maneuver": ["app_program/subsystem5/s5_maneuver.c",
                  "testing/subsystem5/test_maneuver.c"],
-    "clear_forward": ["app_program/subsystem5/s5_maneuver.c",
-                      "testing/subsystem5/test_clear_forward.c"],
     "navigation": ["app_program/subsystem5/s5_logic.c",
                    "app_program/subsystem5/s5_maneuver.c",
                    "testing/subsystem5/test_navigation.c"],
-    "navigation_clear_forward": ["app_program/subsystem5/s5_logic.c",
-                   "app_program/subsystem5/s5_maneuver.c",
-                   "testing/subsystem5/test_navigation_clear_forward.c"],
     "scan": ["app_program/subsystem5/s5_logic.c",
              "testing/subsystem5/test_scan.c"],
     "line_input": ["testing/subsystem5/test_line_input.c", "app_program/subsystem3/b3_code39.c",
@@ -54,10 +54,12 @@ with tempfile.TemporaryDirectory(prefix="b5_complete_") as folder:
     for name, sources in groups.items():
         binary = Path(folder) / (name + (".exe" if os.name == "nt" else ""))
         run([CC, *(["-mno-ms-bitfields"] if os.name == "nt" else []), "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
-             *(["-DROBOT_CLEAR_PATH_FORWARD=0"] if name in ("maneuver", "navigation") else []),
-             *(["-DROBOT_CLEAR_PATH_FORWARD=1"] if name in ("clear_forward", "navigation_clear_forward") else []),
+             *(["-DROBOT_OBSTACLE_TEST=0"] if name not in ("obstacle_start", "detour", "reactive") else ["-DROBOT_OBSTACLE_TEST=1"]),
+             *(["-DROBOT_BYPASS_LINE_HANDOFF=0"] if name not in ("line_handoff", "navigation_handoff") else []),
+             *(["-DROBOT_BYPASS_EXACT_SEQUENCE=0"] if name == "reactive" else []),
+             *(["-DROBOT_SENSOR_FORWARD_OFFSET_CM=0.0f"] if name not in ("obstacle_start", "detour", "reactive") else []),
              "-Iapp_program/subsystem5",
-             *sources, "-o", str(binary)])
+             *sources, "-lm", "-o", str(binary)])
         output = run([str(binary)])
         print(output.splitlines()[-1])
 
@@ -66,7 +68,9 @@ with tempfile.TemporaryDirectory(prefix="b5_complete_") as folder:
     config.write_text('#include "app_program/robot_config.h"\n'
                       '#ifndef EXPECT_BYPASS\n#define EXPECT_BYPASS 1\n#endif\n'
                       '_Static_assert(ROBOT_ENABLE_BYPASS == EXPECT_BYPASS, "startup profile");\n'
-                      '_Static_assert(ROBOT_FORWARD_STOP_MODE == 0, "motor owner");\n')
+                      '_Static_assert(ROBOT_FORWARD_STOP_MODE == 0, "motor owner");\n'
+                      '_Static_assert(ROBOT_OBSTACLE_TEST == 0, "line following boot");\n'
+                      '_Static_assert(ROBOT_BYPASS_LINE_HANDOFF == 1, "black line handoff");\n')
     for flags, expected_ok in (([], True),
                               (["-DROBOT_ENABLE_BYPASS=0", "-DEXPECT_BYPASS=0"], True),
                               (["-DROBOT_MOTION_TEST=1"], False)):

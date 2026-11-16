@@ -402,36 +402,6 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (c->navigation == 0u && !line_detected) {
         c->error_filter_valid = false; /* a reacquired line starts fresh */
-        if (ROBOT_CLEAR_PATH_FORWARD) {
-            set_state(c, ROBOT_LINE_RECOVERY);
-            if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
-            command.type = MOTION_CMD_DRIVE;
-            command.direction = MOTION_DIR_FORWARD;
-            command.target_speed_cps = speed / 2;
-            command.steering_permille = 0;
-            /* Lost the line on a curve: it left on the side the car was
-             * already turning toward.  Keep that turn briefly so the car
-             * swings back onto the tape instead of driving straight off
-             * the outside of the bend.  Only then drive straight. */
-            if (in->now_ms - c->line_seen_ms < VC_CURVE_REACQUIRE_MS &&
-                (c->follow_steer >= VC_CURVE_REACQUIRE_MIN_STEER ||
-                 c->follow_steer <= -VC_CURVE_REACQUIRE_MIN_STEER)) {
-                command.steering_permille = c->follow_steer;
-            }
-            apply_wheel_minimum(&command, true); /* B5 clear-path: unchanged */
-            command.safety_generation = in->safety_generation;
-            c->last_steer = c->last_error = c->curve_steer = 0;
-            c->line_recovery_active = false;
-            if (motion_send_command(&command) == E_OK) {
-#if VC_STEERING_DIAGNOSTICS
-                report_steering(c, in, &command);
-#endif
-                c->stopped = false;
-                c->drive_sent = true;
-                c->last_drive_ms = in->now_ms;
-            } else if (!c->drive_sent || in->now_ms - c->last_drive_ms >= 60u) safe_stop(c);
-            return;
-        }
         uint32_t recovery_elapsed;
         INT direction;
         INT search_steer = VC_LINE_SEARCH_STEER;
@@ -728,7 +698,7 @@ static void controller_task(INT stacd, void *exinf)
          * sample. Arm boot motion only after producers are actually ready. */
         bool boot_sensors_ready = in.line_valid && in.imu_valid &&
             in.motion_valid && !in.hazard && !in.obstacle_fault &&
-            (ROBOT_CLEAR_PATH_FORWARD || (in.line_flags & LINE_F_DETECTED)) &&
+            (in.line_flags & LINE_F_DETECTED) &&
             !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU));
         /* B5 needs an enabled mission to establish line reference and
          * clearance. Keep boot arming pending until it actually permits

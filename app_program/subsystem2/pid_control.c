@@ -35,8 +35,14 @@
 /* Static friction: a commanded wheel that has not moved for
  * PID_KICK_AFTER_MS gets PID_KICK_PWM extra until it moves, well before the
  * 500 ms stall fault. */
-#define PID_KICK_PWM 8.0f
+#define PID_KICK_PWM 12.0f
 #define PID_KICK_AFTER_MS 100
+/* Loaded robot stalled at a 145 cps finishing target during a 45-degree
+ * turn. Keep unfinished MOVE/TURN wheels above the usable speed floor. */
+#define PID_BOUNDED_MIN_CPS 300.0f
+#define PID_BOUNDED_MIN_PWM 22
+#define PID_MOVE_MIN_CPS 150.0f
+#define PID_MOVE_ACCEL_MM_S2 80.0f
 #define PID_KI 0.005f
 #define PID_I_LIMIT 10.0f
 #define PID_PI 3.14159265f
@@ -77,6 +83,8 @@ typedef struct
     float right_integral;
     INT left_sign;
     INT right_sign;
+    INT left_applied_pwm, right_applied_pwm;
+    float left_profile_speed, right_profile_speed;
     bool settling;
     bool stopped;
     uint32_t generation;
@@ -264,6 +272,8 @@ static void pid_begin(pid_state_t *state, const motion_command_t *command)
     state->refreshed_ms = state->now_ms;
     state->left_progress_ms = state->now_ms;
     state->right_progress_ms = state->now_ms;
+    state->left_applied_pwm = state->right_applied_pwm = 0;
+    state->left_profile_speed = state->right_profile_speed = 0.0f;
     state->settling = command->type == MOTION_CMD_STOP;
     state->settling_since_ms = state->now_ms;
     pid_set_directions(state);
@@ -337,6 +347,12 @@ static void pid_guard(pid_state_t *state)
     {
         return;
     }
+    if (state->command.type == MOTION_CMD_MOVE && state->command.run_ms &&
+        !state->settling && state->now_ms - state->started_ms >= state->command.run_ms) {
+        b2_safety_force_stop();
+        state->settling = true;
+        state->settling_since_ms = state->now_ms;
+    }
     if (state->command.type == MOTION_CMD_DRIVE &&
         state->now_ms - state->refreshed_ms >= PID_WATCHDOG_MS)
     {
@@ -384,6 +400,9 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
         *integral = candidate;
     }
     output = base + PID_KP * error + *integral;
+    /* Braking can leave a negative integral. Once a wheel is stuck, do not
+     * let that stale braking term cancel the static-friction kick. */
+    if (stuck && output < base) output = base;
     if (output > PID_MAX_PWM)
     {
         return PID_MAX_PWM;
@@ -423,10 +442,19 @@ static motion_profile_t pid_profile(pid_state_t *state)
         profile.right_speed *= right_scale;
         return profile;
     }
-    return motion_profile_targets(speed,
+    motion_profile_t profile = motion_profile_targets(speed,
         state->command.steering_permille / 1000.0f,
         state->left_mm * state->left_sign,
         state->right_mm * state->right_sign, target, bounded, true);
+    if (bounded) {
+        float minimum = (state->command.type == MOTION_CMD_MOVE ? PID_MOVE_MIN_CPS : PID_BOUNDED_MIN_CPS) * pid_mm_per_count(true);
+        if (minimum > speed) minimum = speed;
+        if (!profile.left_reached && profile.left_speed > 0.0f && profile.left_speed < minimum)
+            profile.left_speed = minimum;
+        if (!profile.right_reached && profile.right_speed > 0.0f && profile.right_speed < minimum)
+            profile.right_speed = minimum;
+    }
+    return profile;
 }
 
 static bool pid_stalled(pid_state_t *state, motion_profile_t profile)
@@ -479,11 +507,12 @@ static void pid_report_speed(pid_state_t *state, motion_profile_t profile,
 }
 #endif
 
-/* Preserve the original feed-forward for MOVE, TURN and reverse driving. */
+/* Forward MOVE uses the same per-wheel feed-forward as straight DRIVE.
+ * TURN/reverse retain their stronger base for loaded rotation. */
 static float pid_base_pwm(const pid_state_t *state, bool left)
 {
 #if B2_FORWARD_FEEDFORWARD_TRIAL
-    if (state->command.type == MOTION_CMD_DRIVE &&
+    if ((state->command.type == MOTION_CMD_DRIVE || state->command.type == MOTION_CMD_MOVE) &&
         state->command.direction == MOTION_DIR_FORWARD)
     {
         return left ? (float)B2_LEFT_BASE_PWM : (float)B2_RIGHT_BASE_PWM;
@@ -514,12 +543,60 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
         left_cps * state->left_sign, &state->left_integral, dt,
-        state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
+        state->command.type != MOTION_CMD_MOVE && state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
         pid_base_pwm(state, true));
     right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
         right_cps * state->right_sign, &state->right_integral, dt,
-        state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
+        state->command.type != MOTION_CMD_MOVE && state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
         pid_base_pwm(state, false));
+    /* Captured left-turn failure: the unfinished left wheel stayed still
+     * at 30% while the right wheel had finished. Use the existing 35%
+     * ceiling for breakaway only; stall/deadline guards remain unchanged. */
+    if (state->command.type == MOTION_CMD_TURN) {
+        if (profile.left_speed > 0.0f && state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS)
+            left_pwm = PID_MAX_PWM;
+        if (profile.right_speed > 0.0f && state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS)
+            right_pwm = PID_MAX_PWM;
+    }
+    /* Loaded TURN/MOVE wheels can stop between kick pulses at the 15%
+     * feed-forward base. Supply holding torque only while below target;
+     * allow PI braking when faster than target and zero PWM when reached. */
+    if (state->command.type == MOTION_CMD_TURN) {
+        if (profile.left_speed > 0.0f &&
+            left_cps * state->left_sign < profile.left_speed / pid_mm_per_count(true) &&
+            left_pwm < PID_BOUNDED_MIN_PWM) left_pwm = PID_BOUNDED_MIN_PWM;
+        if (profile.right_speed > 0.0f &&
+            right_cps * state->right_sign < profile.right_speed / pid_mm_per_count(false) &&
+            right_pwm < PID_BOUNDED_MIN_PWM) right_pwm = PID_BOUNDED_MIN_PWM;
+    }
+    if (state->command.type == MOTION_CMD_MOVE ||
+        (state->command.type == MOTION_CMD_DRIVE && state->command.direction == MOTION_DIR_FORWARD)) {
+        /* Absolute breakaway floor, ramped only while the encoder is still.
+         * Adding 12 points to the small forward base could not start a load.
+         * Reach 26% after 300 ms, before the unchanged 500 ms stall guard. */
+        float left_start = (state->now_ms - state->left_progress_ms - PID_KICK_AFTER_MS) * 0.13f;
+        float right_start = (state->now_ms - state->right_progress_ms - PID_KICK_AFTER_MS) * 0.13f;
+        if (left_start < 0.0f) left_start = 0.0f;
+        if (right_start < 0.0f) right_start = 0.0f;
+        if (left_start > 26.0f) left_start = 26.0f;
+        if (right_start > 26.0f) right_start = 26.0f;
+        if (profile.left_speed > 0.0f && left_pwm < (INT)left_start) left_pwm = (INT)left_start;
+        if (profile.right_speed > 0.0f && right_pwm < (INT)right_start) right_pwm = (INT)right_start;
+    }
+    /* Ramp forward MOVE torque instead of toggling instantly between PI
+     * braking and the loaded-wheel floor. Reached targets stop immediately. */
+    if (state->command.type == MOTION_CMD_MOVE) {
+        if (profile.left_speed > 0.0f) {
+            if (left_pwm > state->left_applied_pwm + 1) left_pwm = state->left_applied_pwm + 1;
+            if (left_pwm < state->left_applied_pwm - 1) left_pwm = state->left_applied_pwm - 1;
+        }
+        if (profile.right_speed > 0.0f) {
+            if (right_pwm > state->right_applied_pwm + 1) right_pwm = state->right_applied_pwm + 1;
+            if (right_pwm < state->right_applied_pwm - 1) right_pwm = state->right_applied_pwm - 1;
+        }
+    }
+    state->left_applied_pwm = left_pwm;
+    state->right_applied_pwm = right_pwm;
     state->left_history[slot] = state->left_now;
     state->right_history[slot] = state->right_now;
     state->time_history[slot] = state->now_ms;
@@ -589,6 +666,13 @@ static void pid_execute(pid_state_t *state)
         return;
     }
     profile = pid_profile(state);
+    if (state->command.type == MOTION_CMD_MOVE) {
+        float rise = PID_MOVE_ACCEL_MM_S2 * (state->now_ms - state->previous_ms) / 1000.0f;
+        if (profile.left_speed > state->left_profile_speed + rise) profile.left_speed = state->left_profile_speed + rise;
+        if (profile.right_speed > state->right_profile_speed + rise) profile.right_speed = state->right_profile_speed + rise;
+        state->left_profile_speed = profile.left_speed;
+        state->right_profile_speed = profile.right_speed;
+    }
     if (profile.left_reached && profile.right_reached)
     {
         b2_safety_force_stop();
@@ -609,6 +693,7 @@ static void pid_execute(pid_state_t *state)
 void pid_init(void)
 {
     b2_safety_force_stop();
+    tm_printf((UB *)"[B2-FW] CLOSERETREAT-V47 move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway=35; stall guards active\n");
 }
 
 void pid_cyclic_handler(void *p_exinf)

@@ -64,6 +64,9 @@ typedef struct
      * Explicit deadlines must be 100..60000 ms.
      */
     uint32_t timeout_ms;
+    /* MOVE only: optional successful stop after this run time (100..60000).
+     * Distance, safety, stall and deadline limits still apply. */
+    uint32_t run_ms;
     /*
      * Unique identifier assigned by the command interface.
      * The same identifier is returned in motion status.
@@ -160,6 +163,8 @@ ER motion_speed_from_percent(INT percent, INT *speed_cps);
 /* Task-context convenience APIs. All still require Buddy 5 clearance. */
 ER motion_move_cm(float distance_cm, INT speed_cps,
     motion_direction_t direction, uint32_t *command_id);
+ER motion_move_limited_cm(float distance_cm, INT speed_cps,
+    motion_direction_t direction, uint32_t run_ms, uint32_t *command_id);
 ER motion_turn_degrees(INT angle, INT speed_cps,
     motion_turn_direction_t direction, uint32_t *command_id);
 

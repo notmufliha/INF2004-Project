@@ -20,7 +20,8 @@ code = r'''
 #include "HEADER"
 typedef unsigned UINT;
 #define S5_TRIG_PIN 16u
-#define ROBOT_NO_TARGET_FORWARD 1
+#define ROBOT_NO_TARGET_FORWARD 0
+#define ROBOT_COMPLETED_FAR_ECHO 1
 #define S5_ECHO_PIN 17u
 #define GPIO_MODE_OUT 1
 #define GPIO_OE_CLR 0x20u
@@ -116,7 +117,7 @@ int main(void) {
     assert(read_width(55000u).status == S5_ECHO_OUT_OF_RANGE);
     assert(read_width(70000u).status == S5_ECHO_NO_FALL);
     triggered = false; width = 0u;
-    assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
+    assert(s5_ultrasonic_read_front().status == S5_ECHO_NO_RISE);
     triggered = false; width = 25000u;
     assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
     triggered = false; width = 1500u;
@@ -125,12 +126,15 @@ int main(void) {
     assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
     triggered = false; width = 55000u;
     assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
+    triggered = false; width = 59260u; /* Captured startup/jerk log. */
+    assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
     triggered = false; width = 70000u;
     assert(s5_ultrasonic_read_front().status == S5_ECHO_NO_FALL);
     for (unsigned i = 0; i < 12u; ++i) {
         uint32_t started_us = clock_us;
         triggered = false; width = i % 3u == 0u ? 0u : i % 3u == 1u ? 38000u : 55000u;
-        assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
+        assert(s5_ultrasonic_read_front().status ==
+               (width == 0u ? S5_ECHO_NO_RISE : S5_ECHO_OPEN_SPACE));
         assert(clock_us - started_us < 130000u); /* Hardware time, below 350-ms lease. */
     }
     assert(read_width(1500u).status == S5_ECHO_OK); /* Recovers on next fresh pulse. */
