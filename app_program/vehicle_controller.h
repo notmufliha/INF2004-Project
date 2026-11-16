@@ -74,6 +74,8 @@
  * from the acknowledged fault; its mission FAULT is tolerated (motors
  * stopped) for this long instead of safe-stopping again. */
 #define VC_FAULT_ACK_GRACE_MS 600u
+/* STOP barcode: time standing at the crossing before going straight on. */
+#define VC_NAV_STOP_MS 3000u
 
 typedef struct {
     uint32_t now_ms, safety_generation;
@@ -118,6 +120,7 @@ typedef struct {
     bool ack_grace_pending, hold_active, tolerate_active;
     uint32_t hold_until_ms, tolerate_until_ms, last_stall_ms;
     UINT stall_retries;
+    bool slow_mode; /* SLOW barcode: half following speed until NORMAL */
     UB navigation, pending_navigation;
 } VEHICLE_CONTROLLER;
 

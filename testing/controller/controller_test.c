@@ -69,7 +69,7 @@ ER motion_move_cm(float cm, INT speed, motion_direction_t dir, uint32_t *id)
 }
 ER motion_turn_degrees(INT angle, INT speed, motion_turn_direction_t dir, uint32_t *id)
 {
-    assert((angle == 90 || angle == 180) && speed > 0);
+    assert((angle == 90 || angle == 180 || angle == 360) && speed > 0);
     sent.type = MOTION_CMD_TURN;
     sent.target_angle_deg = angle;
     sent.turn_direction = dir;
@@ -569,6 +569,71 @@ int main(void)
     c = fresh(); command(&c, RCMD_START, 0u);
     input.now_ms = UINT32_MAX - 10u; step(&c, 0u, 0u); step(&c, 20u, 0u);
     assert(drives == 2u);
+
+    /* Barcode actions beyond the four turns. */
+    {
+        INT normal_speed;
+        /* SLOW / NORMAL act at once, without a crossing. */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        input.left = input.centre = 700u; input.line_flags = LINE_F_DETECTED;
+        settle(&c, 60u);
+        normal_speed = sent.target_speed_cps;
+        assert(normal_speed == 1000);
+        step(&c, 20u, B3_NAV_SLOW);
+        assert(c.slow_mode && c.pending_navigation == B3_NAV_NONE);
+        settle(&c, 5u);
+        assert(sent.target_speed_cps == normal_speed / 2);
+        step(&c, 20u, B3_NAV_NORMAL);
+        settle(&c, 60u);
+        assert(!c.slow_mode && sent.target_speed_cps == normal_speed);
+        step(&c, 20u, B3_NAV_SLOW);
+        command(&c, RCMD_STOP, 0u); command(&c, RCMD_START, 0u);
+        assert(!c.slow_mode); /* a new run starts at normal speed */
+
+        /* STOP: stand 3 s at the crossing, then cross it straight. */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_STOP);
+        confirm_junction(&c);
+        assert(c.navigation == B3_NAV_STOP && c.state == ROBOT_NAV_COMMAND);
+        settle(&c, VC_NAV_STOP_MS / 20u - 2u);
+        assert(c.navigation == B3_NAV_STOP && c.navigation_id == 0u &&
+            c.running);
+        settle(&c, 3u);
+        assert(c.navigation == B3_NAV_STRAIGHT && c.navigation_id == 42u);
+
+        /* SPIN: one 360-degree turn at the crossing, then follow again. */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_SPIN);
+        confirm_junction(&c);
+        step(&c, 20u, 0u);
+        assert(sent.type == MOTION_CMD_TURN && sent.target_angle_deg == 360 &&
+            c.navigation_id == 42u);
+        result = (motion_status_snapshot_t){0};
+        result.status = MOTION_STATUS_COMPLETED;
+        result.physically_stopped = true; result_ready = true;
+        step(&c, 20u, 0u); step(&c, 20u, 0u);
+        assert(c.running && c.navigation == 0u && c.state == ROBOT_LINE_FOLLOW);
+        result_ready = false;
+
+        /* FINISH: stop at the crossing and end the run (START restarts). */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_FINISH);
+        confirm_junction(&c);
+        step(&c, 20u, 0u);
+        assert(!c.running && c.state == ROBOT_IDLE && c.stopped);
+        UINT before_finish = drives;
+        settle(&c, 20u);
+        assert(drives == before_finish);
+        command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
+        assert(c.running && drives == before_finish + 1u);
+
+        /* LINE_ONLY mode ignores every barcode action. */
+        c = fresh(); command(&c, RCMD_MODE, MODE_LINE_ONLY);
+        command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_SLOW); step(&c, 20u, B3_NAV_FINISH);
+        assert(!c.slow_mode && c.pending_navigation == B3_NAV_NONE);
+    }
+    puts("PASS barcode actions: SLOW/NORMAL now, STOP 3 s, SPIN 360, FINISH ends the run");
 
     /* Motor stall: stop, wait, retry (twice); then stay stopped until
      * START, which restarts even though B2 still publishes the stalled

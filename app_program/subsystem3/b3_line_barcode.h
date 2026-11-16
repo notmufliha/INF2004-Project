@@ -78,28 +78,36 @@
 	 ((int)(left) - (int)(centre)) <= B3_LINE_JUNCTION_BALANCE && \
 	 ((int)(centre) - (int)(left)) <= B3_LINE_JUNCTION_BALANCE)
 
+/* Barcode letter code, as on the wire (v2): 0 = none, A..Z = 1..26. */
 typedef enum {
 	B3_BARCODE_NONE = 0,
-	B3_BARCODE_A,
-	B3_BARCODE_B,
-	B3_BARCODE_C,
-	B3_BARCODE_D,
-	B3_BARCODE_Z
+	B3_BARCODE_A = 1,
+	B3_BARCODE_Z = 26
 } B3_BARCODE;
+#define B3_BARCODE_CODE(letter) ((uint8_t)((letter) - 'A' + 1))
 
+/* Action for a barcode (values = comm_nav_cmd_t, 4 bits on the wire).
+ * LEFT..UTURN, STOP, SPIN and FINISH wait for the next crossing; SLOW and
+ * NORMAL change the following speed as soon as the barcode is read. */
 typedef enum {
 	B3_NAV_NONE = 0,
 	B3_NAV_LEFT,
 	B3_NAV_RIGHT,
 	B3_NAV_STRAIGHT,
-	B3_NAV_UTURN
+	B3_NAV_UTURN,
+	B3_NAV_STOP,    /* stop 3 s at the crossing, then go straight */
+	B3_NAV_SLOW,    /* half following speed until NORMAL          */
+	B3_NAV_NORMAL,  /* normal following speed                     */
+	B3_NAV_SPIN,    /* 360-degree spin at the crossing, straight  */
+	B3_NAV_FINISH,  /* stop at the crossing and end the run       */
+	B3_NAV_COUNT
 } B3_NAV_COMMAND;
 
 /**
  * @brief Packed current readings and most recently decoded navigation data.
  *
  * The packed attribute is supported by the RP2040 GNU C toolchain used by
- * this project. Its packed 34-bit payload occupies 5 bytes on this toolchain;
+ * this project. Its packed 37-bit payload occupies 5 bytes on this toolchain;
  * allocation order is compiler-specific, so this is not a wire-format type.
  */
 typedef struct __attribute__((__packed__)) {
@@ -107,8 +115,8 @@ typedef struct __attribute__((__packed__)) {
 	unsigned int ir_centre : 12;
 	unsigned int ir_right : 1;
 	unsigned int line_flags : 3;
-	unsigned int last_barcode : 3;
-	unsigned int last_nav_command : 3;
+	unsigned int last_barcode : 5;
+	unsigned int last_nav_command : 4;
 } B3_STATE;
 
 _Static_assert(sizeof(B3_STATE) == 5U,

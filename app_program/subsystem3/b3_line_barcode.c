@@ -52,16 +52,38 @@ static volatile uint8_t g_edge_overflow;
 static volatile uint32_t g_last_edge_us;
 static volatile uint8_t g_edge_seen;
 
-/* Route table: which decoded letter queues which junction action.
- * Every letter is decoded and logged on the serial console; only letters
- * listed here act.  The dashboard can display A, B, C, D and Z. */
-static const struct {
-	char letter;
-	uint8_t barcode;
-	uint8_t nav;
-} b3_routes[] = {
-	{ 'A', B3_BARCODE_A, B3_NAV_STRAIGHT },
-	{ 'Z', B3_BARCODE_Z, B3_NAV_RIGHT },
+/* Route table: the action of every letter A..Z (index = letter - 'A').
+ * A and Z keep the course actions (A straight, Z right); the others cycle
+ * LEFT, RIGHT, STRAIGHT, UTURN, STOP, SLOW, NORMAL, SPIN, FINISH.
+ * Turns, STOP, SPIN and FINISH run at the next crossing; SLOW and NORMAL
+ * at once.  The dashboard shows every letter and action (wire v2). */
+static const uint8_t b3_routes[26] = {
+	B3_NAV_STRAIGHT, /* A (course) */
+	B3_NAV_LEFT,     /* B */
+	B3_NAV_RIGHT,    /* C */
+	B3_NAV_UTURN,    /* D */
+	B3_NAV_STOP,     /* E */
+	B3_NAV_SLOW,     /* F */
+	B3_NAV_NORMAL,   /* G */
+	B3_NAV_SPIN,     /* H */
+	B3_NAV_FINISH,   /* I */
+	B3_NAV_LEFT,     /* J */
+	B3_NAV_RIGHT,    /* K */
+	B3_NAV_STRAIGHT, /* L */
+	B3_NAV_UTURN,    /* M */
+	B3_NAV_STOP,     /* N */
+	B3_NAV_SLOW,     /* O */
+	B3_NAV_NORMAL,   /* P */
+	B3_NAV_SPIN,     /* Q */
+	B3_NAV_FINISH,   /* R */
+	B3_NAV_LEFT,     /* S */
+	B3_NAV_RIGHT,    /* T */
+	B3_NAV_STRAIGHT, /* U */
+	B3_NAV_UTURN,    /* V */
+	B3_NAV_STOP,     /* W */
+	B3_NAV_SLOW,     /* X */
+	B3_NAV_NORMAL,   /* Y */
+	B3_NAV_RIGHT,    /* Z (course) */
 };
 static ID g_adc_device;
 static uint8_t g_b3_started;
@@ -443,8 +465,8 @@ static void b3_set_barcode_state(uint8_t barcode, uint8_t nav)
 		return;
 	}
 
-	g_b3_state.last_barcode = barcode & 0x07U;
-	g_b3_state.last_nav_command = nav & 0x07U;
+	g_b3_state.last_barcode = barcode & 0x1FU;
+	g_b3_state.last_nav_command = nav & 0x0FU;
 	error = tk_unl_mtx(mtx_b3_state);
 	if (error != E_OK) {
 		CHECK(error, "B3 state unlock");
@@ -526,27 +548,28 @@ static void b3_process_edge(const B3_EDGE *edge,
 
 static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
 {
-	static const char *const nav_names[] = {
-		"NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"
+	static const char *const nav_names[B3_NAV_COUNT] = {
+		"NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN",
+		"STOP 3 s", "SLOW", "NORMAL speed", "SPIN 360", "FINISH"
 	};
-	size_t index;
+	uint8_t nav;
+	bool now;
 
-	for (index = 0U; index < sizeof(b3_routes) / sizeof(b3_routes[0]);
-	     ++index) {
-		if (b3_routes[index].letter == symbol) {
-			tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s at next junction\n",
-				  symbol, decoder->last_reversed != 0U ?
-				  "(reversed)" : "(forward)",
-				  decoder->last_partial != 0U ?
-				  " (partial: one '*' lost)" : "",
-				  nav_names[b3_routes[index].nav]);
-			b3_publish_barcode(b3_routes[index].barcode,
-					   b3_routes[index].nav);
-			return;
-		}
+	if (symbol < 'A' || symbol > 'Z') {
+		tm_printf((UB *)"[B3] barcode *%c* read %s; not a letter, ignored\n",
+			  symbol, decoder->last_reversed != 0U ?
+			  "(reversed)" : "(forward)");
+		return;
 	}
-	tm_printf((UB *)"[B3] barcode *%c* read %s; not in route table, ignored\n",
-		  symbol, decoder->last_reversed != 0U ? "(reversed)" : "(forward)");
+	nav = b3_routes[symbol - 'A'];
+	now = nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL;
+	tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s %s\n",
+		  symbol, decoder->last_reversed != 0U ?
+		  "(reversed)" : "(forward)",
+		  decoder->last_partial != 0U ?
+		  " (partial: one '*' lost)" : "",
+		  nav_names[nav], now ? "now" : "at next junction");
+	b3_publish_barcode(B3_BARCODE_CODE(symbol), nav);
 }
 
 static void b3_log_reject(const B3_CODE39_DECODER *decoder)
@@ -588,8 +611,7 @@ EXPORT bool b3_barcode_active(void)
 static void b3_publish_barcode(uint8_t barcode, uint8_t nav)
 {
 	uint8_t command = nav;
-	UB barcode_character = barcode == B3_BARCODE_Z ?
-		(UB)'Z' : (UB)('A' + barcode - 1U);
+	UB barcode_character = (UB)('A' + barcode - 1U);
 	ER error;
 
 	b3_set_barcode_state(barcode, nav);

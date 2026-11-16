@@ -270,6 +270,7 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
                 c->line_recovery_active = false;
                 c->follow_steer = 0;
                 c->error_filter_valid = false;
+                c->slow_mode = false; /* a new run starts at normal speed */
             }
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
@@ -468,7 +469,15 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         set_state(c, ROBOT_OBSTACLE_SCAN);
         return;
     }
+    /* Speed barcodes act as soon as they are read, not at a crossing. */
+    if (c->mode == MODE_AUTO && (nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL)) {
+        c->slow_mode = nav == B3_NAV_SLOW;
+        tm_printf((UB *)"[VC] barcode: %s speed\n",
+                  c->slow_mode ? "half" : "normal");
+        nav = B3_NAV_NONE;
+    }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
+    if (c->slow_mode) speed /= 2;
     if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
@@ -476,7 +485,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     update_junction_state(c, in);
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
         c->pending_navigation == B3_NAV_NONE &&
-        nav >= B3_NAV_LEFT && nav <= B3_NAV_UTURN) {
+        nav >= B3_NAV_LEFT && nav < B3_NAV_COUNT) {
         c->pending_navigation = nav;
     }
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
@@ -596,6 +605,24 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             }
             return;
         }
+        if (c->navigation == B3_NAV_FINISH) {
+            /* End of the run: stopped, B5 disarmed, START begins again. */
+            stop_motion(c);
+            c->running = false;
+            c->paused = false;
+            c->navigation = 0u;
+            c->navigation_id = 0u;
+            set_state(c, ROBOT_IDLE);
+            tm_printf((UB *)"[VC] barcode FINISH: run complete\n");
+            return;
+        }
+        if (c->navigation == B3_NAV_STOP) {
+            /* Wait at the crossing, then cross it like STRAIGHT. */
+            stop_motion(c);
+            if (in->now_ms - c->navigation_ms < VC_NAV_STOP_MS) return;
+            c->navigation = B3_NAV_STRAIGHT;
+            c->navigation_ms = in->now_ms;
+        }
         if (in->now_ms - c->navigation_ms > VC_RECOVERY_MS) {
             safe_stop(c);
             return;
@@ -604,6 +631,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         ER error;
         if (c->navigation == B3_NAV_STRAIGHT) {
             error = motion_move_cm(10.0f, speed, MOTION_DIR_FORWARD, &c->navigation_id);
+        } else if (c->navigation == B3_NAV_SPIN) {
+            error = motion_turn_degrees(360, speed, MOTION_TURN_RIGHT,
+                &c->navigation_id);
         } else {
             error = motion_turn_degrees(c->navigation == B3_NAV_UTURN ? 180 : 90,
                 speed, c->navigation == B3_NAV_RIGHT ? MOTION_TURN_RIGHT : MOTION_TURN_LEFT,
