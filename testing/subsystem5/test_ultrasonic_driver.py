@@ -20,7 +20,9 @@ code = r'''
 #include "HEADER"
 typedef unsigned UINT;
 #define S5_TRIG_PIN 16u
+#ifndef ROBOT_NO_TARGET_FORWARD
 #define ROBOT_NO_TARGET_FORWARD 0
+#endif
 #define ROBOT_COMPLETED_FAR_ECHO 1
 #define S5_ECHO_PIN 17u
 #define GPIO_MODE_OUT 1
@@ -117,7 +119,8 @@ int main(void) {
     assert(read_width(55000u).status == S5_ECHO_OUT_OF_RANGE);
     assert(read_width(70000u).status == S5_ECHO_NO_FALL);
     triggered = false; width = 0u;
-    assert(s5_ultrasonic_read_front().status == S5_ECHO_NO_RISE);
+    assert(s5_ultrasonic_read_front().status ==
+           (ROBOT_NO_TARGET_FORWARD ? S5_ECHO_OPEN_SPACE : S5_ECHO_NO_RISE));
     triggered = false; width = 25000u;
     assert(s5_ultrasonic_read_front().status == S5_ECHO_OPEN_SPACE);
     triggered = false; width = 1500u;
@@ -134,7 +137,7 @@ int main(void) {
         uint32_t started_us = clock_us;
         triggered = false; width = i % 3u == 0u ? 0u : i % 3u == 1u ? 38000u : 55000u;
         assert(s5_ultrasonic_read_front().status ==
-               (width == 0u ? S5_ECHO_NO_RISE : S5_ECHO_OPEN_SPACE));
+               (width == 0u && !ROBOT_NO_TARGET_FORWARD ? S5_ECHO_NO_RISE : S5_ECHO_OPEN_SPACE));
         assert(clock_us - started_us < 130000u); /* Hardware time, below 350-ms lease. */
     }
     assert(read_width(1500u).status == S5_ECHO_OK); /* Recovers on next fresh pulse. */
@@ -149,6 +152,8 @@ with tempfile.TemporaryDirectory() as tmp:
     src.write_text(code)
     # MinGW does not ship libubsan. Keep sanitizer coverage on Unix builds.
     sanitizer = [] if os.name == 'nt' else ['-fsanitize=undefined']
-    subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
-                    *sanitizer, str(src), '-o', str(exe)], check=True)
-    subprocess.run([str(exe)], check=True)
+    for no_target in (0, 1):
+        subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                        f'-DROBOT_NO_TARGET_FORWARD={no_target}',
+                        *sanitizer, str(src), '-o', str(exe)], check=True)
+        subprocess.run([str(exe)], check=True)

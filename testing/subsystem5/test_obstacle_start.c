@@ -187,7 +187,7 @@ int main(void)
     S5Controller c;
     S5Input in = {0};
     assert(ROBOT_OBSTACLE_TEST == 1);
-    assert(ROBOT_NO_TARGET_FORWARD == 0 && ROBOT_NO_TARGET_SCAN == 0);
+    assert(ROBOT_NO_TARGET_FORWARD == 1 && ROBOT_NO_TARGET_SCAN == 0);
     s5_controller_init(&c);
     in.front_valid = true; in.front_cm = 50.1f;
     assert(s5_controller_step(&c, &in) == S5_CMD_NONE);

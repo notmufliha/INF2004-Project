@@ -61,3 +61,10 @@ Floor validation (not performed by host tests):
 
 Host checks: `python testing/subsystem5/run_complete_tests.py`,
 `testing/controller/run_tests.ps1`, and `testing/subsystem2/host/run_tests.ps1`.
+
+Startup no-target policy: `ROBOT_NO_TARGET_FORWARD=1` and
+`ROBOT_COMPLETED_FAR_ECHO=1` allow line following when there is no ultrasonic
+target. Logs label this `OPEN_SPACE_ASSUMED`; it is not a measured distance.
+A disconnected echo wire is indistinguishable from no target. Real close
+echoes still stop motion, and malformed/stuck-high/no-fall pulses remain faults.
+Scan boundary rays retain their separate strict policy.
