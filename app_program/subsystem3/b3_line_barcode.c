@@ -349,10 +349,13 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 EXPORT void b3_barcode_task(INT stacd, void *exinf)
 {
 	B3_EDGE edge;
-	B3_CODE39_DECODER decoder = {0};
+	/* Static: the scan buffer (~470 bytes) does not fit beside tm_printf
+	 * on the 2 KB task stack. */
+	static B3_CODE39_DECODER decoder;
 
 	(void)stacd;
 	(void)exinf;
+	b3_code39_reset(&decoder);
 
 	for (;;) {
 		char symbol;
@@ -531,9 +534,11 @@ static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
 	for (index = 0U; index < sizeof(b3_routes) / sizeof(b3_routes[0]);
 	     ++index) {
 		if (b3_routes[index].letter == symbol) {
-			tm_printf((UB *)"[B3] barcode *%c* read %s -> %s at next junction\n",
+			tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s at next junction\n",
 				  symbol, decoder->last_reversed != 0U ?
 				  "(reversed)" : "(forward)",
+				  decoder->last_partial != 0U ?
+				  " (partial: one '*' lost)" : "",
 				  nav_names[b3_routes[index].nav]);
 			b3_publish_barcode(b3_routes[index].barcode,
 					   b3_routes[index].nav);
@@ -551,17 +556,26 @@ static void b3_log_reject(const B3_CODE39_DECODER *decoder)
 		"bars not clearly wide/narrow (dirty strip, speed change or sensor threshold)",
 		"not a Code 39 character",
 		"gap between characters wrong",
-		"stop character missing"
+		"scan ended right after '*' (payload not crossed)",
+		"bars seen but no '*' (sensor off the strip, or speed changed)"
 	};
 	static uint16_t logged = 0U;
 
 	if (decoder->reject_count != logged) {
 		logged = decoder->reject_count;
-		tm_printf((UB *)"[B3] barcode after start '*' rejected: %s (payload '%c')\n",
-			  decoder->last_reject < 5U ?
+		tm_printf((UB *)"[B3] barcode scan rejected: %s (payload '%c', %d elements)\n",
+			  decoder->last_reject < 6U ?
 			  reasons[decoder->last_reject] : "?",
 			  decoder->last_reject_char != '\0' ?
-			  decoder->last_reject_char : '?');
+			  decoder->last_reject_char : '?',
+			  (int)decoder->reject_elements);
+		/* Widths in ms, in crossing order (bar, space, bar, ...): send
+		 * these lines when tuning B3_CODE39_* thresholds. */
+		tm_printf((UB *)"[B3-WIDTHS]");
+		for (uint8_t i = 0U; i < decoder->reject_elements; ++i) {
+			tm_printf((UB *)" %d", (int)(decoder->reject_widths_us[i] / 1000U));
+		}
+		tm_printf((UB *)"\n");
 	}
 }
 
