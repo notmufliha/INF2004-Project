@@ -26,12 +26,12 @@
  * same and cannot be detected by this single-sensor policy. Set 0 for
  * strict stop-on-missing-echo behavior. See the separate scan policy below. */
 #ifndef ROBOT_NO_TARGET_FORWARD
-#define ROBOT_NO_TARGET_FORWARD 0
+#define ROBOT_NO_TARGET_FORWARD 1
 #endif
-/* Floor test: completed far/no-target pulses nominate assumed open space.
+/* Completed far/no-target pulses also nominate assumed open space.
  * Unlike NO_TARGET_FORWARD, a missing rise never authorizes movement. */
 #ifndef ROBOT_COMPLETED_FAR_ECHO
-#define ROBOT_COMPLETED_FAR_ECHO ROBOT_OBSTACLE_TEST
+#define ROBOT_COMPLETED_FAR_ECHO 1
 #endif
 /* Apply the same explicit open-space assumption to scan boundary rays.
  * A missing/disconnected sensor cannot be distinguished from no target.
