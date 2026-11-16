@@ -532,10 +532,10 @@ static void test_controlled_forward_speed(void)
     float previous = state.left_profile_speed;
     for (INT i = 0; i < 10; ++i) {
         tick(&state, 0, 0);
-        CHECK(state.left_profile_speed - previous <= 0.401f);
+        CHECK(state.left_profile_speed - previous <= 0.801f);
         previous = state.left_profile_speed;
     }
-    CHECK(state.left_profile_speed < 5.0f); /* No full-speed launch. */
+    CHECK(state.left_profile_speed < 10.0f); /* Smooth ramp, below full-speed launch. */
     for (INT i = 0; i < 30; ++i) tick(&state, 13, 13); /* Logged 1300 cps overspeed. */
     CHECK(pwm_left < 22 && pwm_right < 22); /* Moving wheels get braking, not torque floor. */
     state.left_mm = state.right_mm = 100000.0f * pid_mm_per_count(true) - 15.0f;

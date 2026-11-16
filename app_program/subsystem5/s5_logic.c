@@ -115,6 +115,16 @@ static S5Side opening_side(float left, float right)
     if (l && (!r || left + ROBOT_BYPASS_SIDE_TIE_CM >= right)) return S5_SIDE_LEFT;
     return r ? S5_SIDE_RIGHT : S5_SIDE_NONE;
 }
+/* Predict only a candidate after a completed bounded retreat from a static
+ * obstacle. Live front guards still decide whether rotation may execute. */
+static S5Scan retreat_candidate(S5Scan scan)
+{
+    for (int i = 0; i < S5_SCAN_COUNT; ++i)
+        if (valid_range(&scan.points[i]))
+            scan.points[i].distance_cm += ROBOT_BYPASS_REVERSE_CM *
+                s5_cos_deg((float)scan.points[i].angle_deg - 90.0f);
+    return scan;
+}
 S5Side s5_probe_side(const S5Scan *scan)
 {
     if (!scan) return S5_SIDE_NONE;
@@ -461,8 +471,12 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                     c->encounter_front_cm > 0.0f &&
                     in->coarse.points[2].distance_cm < c->encounter_front_cm)
                     c->encounter_front_cm = in->coarse.points[2].distance_cm;
-                c->side = opening_side(side_range(&in->coarse, S5_SIDE_LEFT),
-                                       side_range(&in->coarse, S5_SIDE_RIGHT));
+                S5Scan side_scan = in->coarse;
+                if (ROBOT_TEST_BOUNDED_REVERSE && c->encounter_front_cm > 0.0f &&
+                    c->encounter_front_cm <= ROBOT_BYPASS_FRONT_TURN_CM + 3.0f)
+                    side_scan = retreat_candidate(side_scan);
+                c->side = opening_side(side_range(&side_scan, S5_SIDE_LEFT),
+                                       side_range(&side_scan, S5_SIDE_RIGHT));
                 int nearest = in->coarse.nearest_index;
                 /* Refine the candidate corridor, not the blocked opposite
                  * edge. Each sweep still includes the front at 90 degrees. */
@@ -511,6 +525,7 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                 S5Scan candidate = c->last_coarse;
                 bool retreat = ROBOT_TEST_BOUNDED_REVERSE &&
                     c->encounter_front_cm <= ROBOT_BYPASS_FRONT_TURN_CM + 3.0f;
+                if (retreat) candidate = retreat_candidate(candidate);
                 candidate.points[2] = (S5ScanPoint){90u,
                     c->encounter_front_cm + (retreat ? ROBOT_BYPASS_REVERSE_CM : 0.0f), true};
                 S5Profile planned = profile_from_openings(&candidate);
@@ -521,7 +536,9 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                         if (valid_range(ray) &&
                             ((planned.bypass_side == S5_SIDE_LEFT && ray->angle_deg < 90u) ||
                              (planned.bypass_side == S5_SIDE_RIGHT && ray->angle_deg > 90u)) &&
-                            s5_turn_range_cm(ray->distance_cm, ray->angle_deg) >= ROBOT_BYPASS_SIDE_CLEAR_CM)
+                            s5_turn_range_cm(ray->distance_cm + (retreat ?
+                                ROBOT_BYPASS_REVERSE_CM * s5_cos_deg((float)ray->angle_deg - 90.0f) : 0.0f),
+                                ray->angle_deg) >= ROBOT_BYPASS_SIDE_CLEAR_CM)
                             confirmed = true;
                     }
                     if (confirmed) {

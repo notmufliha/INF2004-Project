@@ -61,7 +61,8 @@
 #else
 #define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
 #endif
-#define ROBOT_BYPASS_SPEED_CPS 450
+#define ROBOT_BYPASS_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 540)
+#define ROBOT_BYPASS_TURN_SPEED_CPS 450
 #define ROBOT_BYPASS_FORWARD_MS 5000u
 #define ROBOT_BYPASS_EXTRA_DIAGONAL_CM 10.0f
 /* Fixed test route: if the first diagonal is blocked after meaningful travel,
@@ -92,14 +93,15 @@
  * measured floor runs. Latest trial: 90 (+9% left / -9% right), reduced
  * from 100 after reported right drift; earlier 80 drifted left. */
 #ifndef ROBOT_STRAIGHT_TRIM_PERMILLE
-#define ROBOT_STRAIGHT_TRIM_PERMILLE 0
+#define ROBOT_STRAIGHT_TRIM_PERMILLE -20
 #endif
 #if ROBOT_STRAIGHT_TRIM_PERMILLE < -150 || ROBOT_STRAIGHT_TRIM_PERMILLE > 150
 #error "Straight-drive trim must be between -150 and 150 permille."
 #endif
 #define ROBOT_BYPASS_REVERSE_CM 8.0f
-#define ROBOT_BYPASS_MIDDLE_DISTANCE_SCALE (ROBOT_BYPASS_EXACT_SEQUENCE ? 0.75f : 1.0f)
-#define ROBOT_BYPASS_MIDDLE_MAX_CM 15.0f
+#define ROBOT_BYPASS_MIDDLE_DISTANCE_SCALE 1.0f
+#define ROBOT_BYPASS_MIDDLE_MAX_CM 22.0f
+#define ROBOT_BYPASS_DIAGONAL_DISTANCE_SCALE 0.80f
 /* User-requested bounded retreat for floor tests; no rear sensor fitted.
  * Operator must keep rear space clear. Normal operation requires rear sensing. */
 #ifndef ROBOT_TEST_BOUNDED_REVERSE

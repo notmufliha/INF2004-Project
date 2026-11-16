@@ -1,3 +1,11 @@
+V47 active update: close-start scans with all measured rays inside current pivot clearance can nominate a side using conservative static-obstacle range projections after planned8 cm retreat. Same projection used for candidate fine-side confirmation; raw scans remain measured and unchanged. This fixes planning deadlock requiring pre-retreat clearance before allowing retreat. Reverse once, then live front pivot guard still vetoes rotation if clearance did not increase. Captured7.54,7.63,7.20,7.20,7.11 cm regression chooses left fine scan, reverse, GO_LEFT after15.20 cm front. Speed720, middle22 cm cap and shortened matched diagonals retained. Keep rear space clear; no rear sensor fitted. Physical test pending.
+
+V46 active update: exact-sequence first diagonal target multiplied by0.80 after optional diagonal reserve. Current centred20 cm box nominal46.77->37.42 cm. Third forward leg still targets measured first-leg travel, so both diagonals match instead of applying another20 percent reduction on return. Applies to either bypass side. Middle22 cm cap and720 cps travel target/80 mm/s^2 acceleration retained. Clearance may still clip travel. Host tests verify shorter initial/return planning and full mirrored sequence; physical box clearance needs testing.
+
+V45 active update: travel target540->720 counts/s (+33 percent); MOVE acceleration40->80 mm/s^2 with existing PWM slew,35 percent maximum, braking and stop guards retained. Middle scale0.75->1.0 and cap15->22 cm in all recalculation paths. Actual leg remains geometry/clearance bounded, not unconditional22 cm. Straight DRIVE trim -20 permille, turn speed450 and turn calibration unchanged. Encoder distances retained so faster target does not extend route lengths. Physical verification needed for increased speed and22 cm middle-leg clearance.
+
+V44 active update: forward/bypass travel target raised450->540 counts/s (20 percent); separate bypass TURN speed450 retains prior turn speed/calibration. Straight zero-steering forward DRIVE trim=-20 permille: left target98 percent/right102 percent of nominal physical wheel speed, compensating reported right drift. Trim does not affect turns, reverse, steered DRIVE or encoder-distance bypass MOVE. Distance-based bypass and15 cm middle cap retained; acceleration/PWM ceilings unchanged so actual speed rise depends on load and leg length. Host motor3703 assertions,21 B5 groups and controller suites pass. Verify straight heading physically before obstacle runs.
+
 V43 active update: scan consensus uses five pings per angle instead of three, retaining requirement for three pairwise-agreeing measured returns and existing bounded retry. Two misses in a batch can now be tolerated without inventing clear rays. Still one coarse and one fine sweep; stationary sweep duration increases. Regression confirms19.30 cm near return with two59260 us out-of-range misses is retained. Missing-all and inconsistent measurements still fail. 15 cm middle-leg cap retained. All21 B5 groups pass. Intermittent sensor returns still require physical verification.
 
 V42 active update: exact-sequence middle leg capped at 15 cm across initial and first-leg-progress recalculations. Captured route grew from17.81 to28.14 cm after first-leg interruption; cap prevents this growth. Interrupted middle MOVE commands subtract measured pass_done_cm from the same capped total. First/final diagonals unchanged. Shortened route needs physical verification for box clearance. All21 B5 test groups pass.
@@ -28,7 +36,7 @@ V30: Captured startup gap 8.59 cm is below 9.3 cm turning guard. Start this test
 
 # Subsystems 1, 2, 3 and 5: build and test
 
-## Active obstacle test build: SCAN5-V43
+## Active obstacle test build: CLOSERETREAT-V47
 
 Startup correction: forward assistance now ramps an absolute PWM floor toward
 26% after 100 ms without encoder progress, reaching it by about 300 ms. The
@@ -132,7 +140,7 @@ Forward bypass STOP/restart remain 20/25 cm; normal DRIVE uses 50/55 cm.
 Missing echoes, impact, stalls and deadlines remain stops. A fixed route
 cannot certify clear space around a keyboard, cable or table edge.
 
-Flash build_make/robot_scan5_v43.uf2 and confirm [S5-FW] SCAN5-V43 and
+Flash build_make/robot_closeretreat_v47.uf2 and confirm [S5-FW] CLOSERETREAT-V47 and
 speed_cps=450. Verify physical turns/travel on a clear floor: encoder CPR,
 wheel diameter, track and turn correction values remain provisional. The
 supplied log has no independent physical angle/distance measurement, so no

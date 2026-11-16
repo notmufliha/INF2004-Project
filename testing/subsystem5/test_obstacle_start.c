@@ -80,6 +80,29 @@ static void single_scan_regression(void)
 int main(void)
 {
     {
+        S5Controller close;
+        S5Input sample = {0};
+        s5_controller_init(&close);
+        sample.front_valid = true; sample.front_cm = 7.20f;
+        assert(s5_controller_step(&close, &sample) == S5_CMD_STOP);
+        sample.stopped = true;
+        assert(s5_controller_step(&close, &sample) == S5_CMD_SCAN_COARSE);
+        const float ranges[] = {7.54f, 7.63f, 7.20f, 7.20f, 7.11f};
+        sample.coarse_ready = true;
+        for (int i = 0; i < S5_SCAN_COUNT; ++i)
+            sample.coarse.points[i] = (S5ScanPoint){70 + i * 10, ranges[i], true};
+        assert(s5_controller_step(&close, &sample) == S5_CMD_SCAN_FINE);
+        assert(close.side == S5_SIDE_LEFT && close.fine_center_deg == 80u);
+        sample.coarse_ready = false; sample.fine_ready = true;
+        for (int i = 0; i < S5_SCAN_COUNT; ++i)
+            sample.fine.points[i] = (S5ScanPoint){70 + i * 5, 7.20f, true};
+        assert(s5_controller_step(&close, &sample) == S5_CMD_REVERSE);
+        assert(close.reverse_attempts == 1u);
+        sample.fine_ready = false; sample.motion_complete = true;
+        sample.front_cm = 15.20f;
+        assert(s5_controller_step(&close, &sample) == S5_CMD_GO_LEFT);
+    }
+    {
         /* Captured clear scan: front 99.18 cm, error NONE, prior encounter.
          * Confirmed clear-scan cancellation must release the encounter latch. */
         S5Controller clear_scan;

@@ -42,7 +42,7 @@
 #define PID_BOUNDED_MIN_CPS 300.0f
 #define PID_BOUNDED_MIN_PWM 22
 #define PID_MOVE_MIN_CPS 150.0f
-#define PID_MOVE_ACCEL_MM_S2 40.0f
+#define PID_MOVE_ACCEL_MM_S2 80.0f
 #define PID_KI 0.005f
 #define PID_I_LIMIT 10.0f
 #define PID_PI 3.14159265f
@@ -693,7 +693,7 @@ static void pid_execute(pid_state_t *state)
 void pid_init(void)
 {
     b2_safety_force_stop();
-    tm_printf((UB *)"[B2-FW] SCAN5-V43 move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=40 turn_breakaway=35; stall guards active\n");
+    tm_printf((UB *)"[B2-FW] CLOSERETREAT-V47 move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway=35; stall guards active\n");
 }
 
 void pid_cyclic_handler(void *p_exinf)

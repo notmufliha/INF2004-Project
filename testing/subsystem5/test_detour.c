@@ -18,8 +18,9 @@ int main(void)
         float swept = sqrtf(ROBOT_CHASSIS_HALF_LENGTH_CM * ROBOT_CHASSIS_HALF_LENGTH_CM +
                             ROBOT_CHASSIS_HALF_WIDTH_CM * ROBOT_CHASSIS_HALF_WIDTH_CM);
         assert(ROBOT_BYPASS_MIN_TURN_CM > swept + 0.4f);
-        assert(fabsf(m.offset_cm - 46.7696f) < 0.01f);
-        assert(fabsf(m.pass_cm - 15.0f) < 0.01f);
+        assert(fabsf(m.offset_cm - 37.4157f) < 0.01f);
+        assert(fabsf(m.search_limit_cm - m.offset_cm) < 0.01f);
+        assert(fabsf(m.pass_cm - 22.0f) < 0.01f);
         unsigned turns = 0u, moves = 0u;
         int heading = 0;
         int outward = side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG;

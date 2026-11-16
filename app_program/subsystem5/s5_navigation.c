@@ -174,7 +174,7 @@ bool s5_navigation_probe_begin(int degrees)
         !now_ms(&now) || degrees == 0 || degrees < -120 || degrees > 120) return false;
     b2_request_forward();
     if (!b2_safety_motion_allowed() || motion_turn_degrees(degrees < 0 ? -degrees : degrees,
-        ROBOT_BYPASS_SPEED_CPS, degrees < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id) != E_OK || !id)
+        ROBOT_BYPASS_TURN_SPEED_CPS, degrees < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id) != E_OK || !id)
         return false;
     probe_id = id;
     probe_degrees = degrees;
@@ -381,7 +381,7 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         if (!b2_safety_motion_allowed()) { fault_stop(S5_ERR_STOP_TIMEOUT); return; }
         if (action.type == S5_ACT_TURN)
             error = motion_turn_degrees(action.turn_deg < 0 ? -action.turn_deg : action.turn_deg,
-                ROBOT_BYPASS_SPEED_CPS,
+                ROBOT_BYPASS_TURN_SPEED_CPS,
                 action.turn_deg < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id);
         else
             error = motion_move_limited_cm(action.distance_cm < 0 ? -action.distance_cm : action.distance_cm,

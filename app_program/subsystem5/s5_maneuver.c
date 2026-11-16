@@ -61,6 +61,7 @@ bool s5_maneuver_begin(S5Maneuver *m, S5Command command,
          * Keep forward travel between the two opposite 45-degree turns. */
         m->minimum_offset_cm = m->offset_cm;
         m->offset_cm += ROBOT_BYPASS_EXTRA_DIAGONAL_CM;
+        m->offset_cm *= ROBOT_BYPASS_DIAGONAL_DISTANCE_SCALE;
         m->pass_cm = (m->reactive_required_cm - m->offset_cm * cosf(angle)) * ROBOT_BYPASS_MIDDLE_DISTANCE_SCALE;
         if (m->pass_cm < 5.0f) m->pass_cm = 5.0f;
         if (ROBOT_BYPASS_EXACT_SEQUENCE && m->pass_cm > ROBOT_BYPASS_MIDDLE_MAX_CM)
