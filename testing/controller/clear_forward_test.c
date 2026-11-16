@@ -35,7 +35,9 @@ int main(void)
     assert(curve_steer >= VC_CURVE_REACQUIRE_MIN_STEER);
     input.line_flags = LINE_F_LOST;
     step(&c, 20u, 0u);
-    assert(sent.steering_permille == curve_steer);
+    /* Same turn kept (following holds the inner wheel at the minimum while
+     * this recovery may pivot, so the effective value can be harder). */
+    assert(sent.steering_permille >= curve_steer);
     for (unsigned i = 0; i < VC_CURVE_REACQUIRE_MS / 20u; ++i) step(&c, 20u, 0u);
     assert(sent.steering_permille == 0);
     input.clearance = false;

@@ -386,16 +386,23 @@ static ER b3_read_adc(uint8_t channel, uint16_t *value)
 		return E_PAR;
 	}
 
-	result = tk_srea_dev(g_adc_device, (W)channel, &adc_word, 1U,
-			     &actual_size);
-	if (result != E_OK) {
-		return result;
-	}
-	if (actual_size != 1 || adc_word > 4095U) {
-		return E_IO;
+	uint32_t sum = 0U;
+
+	/* Average several conversions: GP26's black/white span is only ~100
+	 * counts, so single-sample ADC noise moved the steering signal. */
+	for (unsigned i = 0U; i < B3_ADC_OVERSAMPLE; ++i) {
+		result = tk_srea_dev(g_adc_device, (W)channel, &adc_word, 1U,
+				     &actual_size);
+		if (result != E_OK) {
+			return result;
+		}
+		if (actual_size != 1 || adc_word > 4095U) {
+			return E_IO;
+		}
+		sum += adc_word & 0x0FFFU;
 	}
 
-	*value = (uint16_t)(adc_word & 0x0FFFU);
+	*value = (uint16_t)(sum / B3_ADC_OVERSAMPLE);
 	return E_OK;
 }
 
