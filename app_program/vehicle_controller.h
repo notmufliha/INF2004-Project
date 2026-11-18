@@ -76,8 +76,8 @@
  * centimetres later. */
 #define VC_STRADDLE_JCT_WINDOW_UM 25000u
 /* ...but only while the car is following steadily.  A car crooked to the
- * line (just after a barcode re-read reverse, a barcode turn, a line
- * search or a restart from standstill) drives ACROSS it at a steep angle: left then right sensor touch
+ * line (just after a barcode re-read reverse, a turn, a line search or a
+ * pivot) drives ACROSS it at a steep angle: left then right sensor touch
  * within 25 mm, exactly like a junction tape.  That made the car turn left
  * near the barcode (2026-11-18).  A junction candidate counts only when it
  * starts at least VC_JCT_SETTLE_UM after the last such event (as
@@ -145,19 +145,21 @@
 #define VC_STRADDLE_RECOVER_START 200
 #define VC_STRADDLE_RECOVER_RAMP 40
 #define VC_STRADDLE_OUTSIDE_STEER B3_LINE_STEER_MAX
-#define VC_STRADDLE_OUTSIDE_MS 1000u
-/* Bend: the line leaves the SAME sensor again within VC_STRADDLE_CURVE_MS
- * of the last exit, or leaves a sensor it had stayed under for at least
- * VC_STRADDLE_HELD_MS (the car could not turn as tight as the bend:
- * 2026-11-18 log, left sensor black for 1 s at the hump).  No coasting:
- * the turn toward that side starts at VC_STRADDLE_CURVE_ARC at once. */
+#define VC_STRADDLE_OUTSIDE_MS 1500u
+/* Curve: the line leaves the SAME sensor again within VC_STRADDLE_CURVE_MS
+ * of the last exit.  The car is in a bend, so no coasting: the arc toward
+ * that side starts at VC_STRADDLE_CURVE_ARC at once and keeps the car
+ * turning with the bend instead of drifting out between touches. */
 #define VC_STRADDLE_CURVE_MS 1000u
-#define VC_STRADDLE_HELD_MS 250u
-#define VC_STRADDLE_CURVE_ARC 600
-/* Spread layout: from this much steering the inner wheel may stop (pivot),
- * as barcode-robust's lost-line turn did.  Without it the wheel-speed
- * limits capped every turn at ~500-565 permille (radius ~11 cm), too wide
- * for the hump bend. */
+#define VC_STRADDLE_CURVE_ARC 350
+/* Double turn (the hump): the line stayed under one sensor for 1 s while
+ * steering was capped at ~500-565 (wheel-speed limits keep the inner wheel
+ * at its minimum), i.e. the car could not turn as tight as the bend.  Only
+ * then (one sensor black for >= VC_STRADDLE_HELD_PIVOT_MS, steering >= 700)
+ * may the inner wheel stop.  Normal touches last 300-450 ms; a 250 ms
+ * version of this rule (commit 3e849eb) pivoted on every touch and made
+ * the car zig-zag from full left to full right. */
+#define VC_STRADDLE_HELD_PIVOT_MS 700u
 #define VC_STRADDLE_PIVOT_STEER 700
 /* Neither sensor has touched the line for this long: assume it is really
  * lost (end of line, or off the course) and run the normal line search. */
@@ -260,7 +262,7 @@ typedef struct {
     /* Junction evidence, for the run log and the spread layout. */
     bool tape_now, jct_waiting_logged;
     bool jct_left_seen, jct_right_seen;
-    bool jct_candidate_steady;
+    bool jct_candidate_steady, pivoting;
     uint32_t jct_block_um; /* travel at the last unsteady moment */
     uint32_t jct_left_um, jct_right_um;
     UB navigation, pending_navigation;

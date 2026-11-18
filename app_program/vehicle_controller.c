@@ -184,9 +184,8 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
              c->straddle_last_exit != c->straddle_side) ?
             VC_STRADDLE_FLIP_COAST_MS : VC_STRADDLE_COAST_MS;
         c->straddle_arc_start = VC_STRADDLE_RECOVER_START;
-        if ((c->straddle_last_exit == c->straddle_side &&
-             in->now_ms - c->straddle_exit_ms < VC_STRADDLE_CURVE_MS) ||
-            in->now_ms - c->straddle_side_ms >= VC_STRADDLE_HELD_MS) {
+        if (c->straddle_last_exit == c->straddle_side &&
+            in->now_ms - c->straddle_exit_ms < VC_STRADDLE_CURVE_MS) {
             c->straddle_coast_ms = 0u;            /* in a bend */
             c->straddle_arc_start = VC_STRADDLE_CURVE_ARC;
         }
@@ -201,9 +200,7 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         if (in->now_ms - c->straddle_outside_ms < VC_STRADDLE_OUTSIDE_MS) {
             return true;
         }
-        /* The arc toward the exit side found nothing: the line is more
-         * likely the other way (the car over-turned), so search there. */
-        c->last_line_search_direction = -c->straddle_outside;
+        c->last_line_search_direction = c->straddle_outside;
         c->straddle_outside = 0;
         c->straddle_lost = true;
         return false;
@@ -1048,13 +1045,11 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     {
         INT steer_mag = command.steering_permille < 0 ?
             -command.steering_permille : command.steering_permille;
-        /* Pivot only in a real bend: the line left a sensor, or has been
-         * under one sensor for VC_STRADDLE_HELD_MS (not every touch). */
-        bool bend = c->straddle_outside != 0 ||
-            (c->straddle_side != 0 &&
-             in->now_ms - c->straddle_side_ms >= VC_STRADDLE_HELD_MS);
-        apply_wheel_minimum(&command, c->line_straddle && bend &&
-                            !in->barcode_active &&
+        /* Pivot only when one sensor has held the line long enough that
+         * the car clearly cannot turn as tight as the bend. */
+        bool held = c->line_straddle && c->straddle_side != 0 &&
+            in->now_ms - c->straddle_side_ms >= VC_STRADDLE_HELD_PIVOT_MS;
+        apply_wheel_minimum(&command, held && !in->barcode_active &&
                             steer_mag >= VC_STRADDLE_PIVOT_STEER);
     }
     command.safety_generation = in->safety_generation;
