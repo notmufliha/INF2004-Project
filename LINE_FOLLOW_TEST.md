@@ -39,7 +39,7 @@ Physical course completion still requires testing.
 
 The robot starts with smooth line following (`ROBOT_OBSTACLE_TEST=0`). Buddy 5 pauses the vehicle controller on an
 obstacle and runs the bypass imported from `Buddy_5_Obstacle_Avoidance`.
-The straight-driving mode has been removed; startup requires a detected line.
+The straight-driving mode has been removed; startup follows visible tape or performs a bounded line search.
 
 With `ROBOT_BYPASS_LINE_HANDOFF=1` (the normal default), once the robot has
 left the original tape and completed the outward left/right turn, fresh black
@@ -68,3 +68,9 @@ target. Logs label this `OPEN_SPACE_ASSUMED`; it is not a measured distance.
 A disconnected echo wire is indistinguishable from no target. Real close
 echoes still stop motion, and malformed/stuck-high/no-fall pulses remain faults.
 Scan boundary rays retain their separate strict policy.
+
+Startup line acquisition no longer waits for black before enabling navigation.
+Fresh line/IMU/motor samples and confirmed front clearance arm the controller;
+it follows black tape immediately, or uses the existing bounded steering search
+when initially off tape. The search stops on its existing timeout. STOP/ESTOP,
+stale sensors, impacts, motor faults and close obstacles still prevent movement.

@@ -5,6 +5,13 @@
 int main(void)
 {
     assert(s5_navigation_init());
+    line_state.line_flags = 0u;
+    for (unsigned n = 0; n < ROBOT_CLEAR_CONFIRM; ++n) {
+        clock_ms += 65u;
+        s5_navigation_tick(true, 400.0f, true);
+    }
+    assert(allowed && !s5_navigation_has_line_reference());
+    assert(drive_calls == 0u); /* VC can now search rather than deadlock. */
     for (int direction = 0; direction < 2; ++direction) {
         S5Profile p = {0};
         p.valid = true;

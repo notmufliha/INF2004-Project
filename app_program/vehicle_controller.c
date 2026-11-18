@@ -698,9 +698,10 @@ static void controller_task(INT stacd, void *exinf)
          * sample. Arm boot motion only after producers are actually ready. */
         bool boot_sensors_ready = in.line_valid && in.imu_valid &&
             in.motion_valid && !in.hazard && !in.obstacle_fault &&
-            (in.line_flags & LINE_F_DETECTED) &&
             !(in.faults & (FAULT_MOTOR_STALL | FAULT_ENCODER | FAULT_IMU));
-        /* B5 needs an enabled mission to establish line reference and
+        /* Start the normal bounded line search if fresh sensors see white;
+         * requiring black here prevents the robot from ever finding tape.
+         * B5 needs an enabled mission to establish line reference and
          * clearance. Keep boot arming pending until it actually permits
          * DRIVE; a transient fault during warmup must not consume START. */
         if (autostart_pending && boot_sensors_ready && in.clearance &&
