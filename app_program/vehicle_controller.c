@@ -212,6 +212,50 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     return true;   /* centred between the sensors */
 }
 
+/* Spread layout: hide a line sensor that is reading barcode bars (see
+ * VC_BAR_EDGES).  Modifies the controller's copy of the input. */
+static void bar_filter(VEHICLE_CONTROLLER *c, VC_INPUT *in)
+{
+    bool left_on = B3_LINE_CENTRE_ACTIVE(in->centre);
+    bool right_on = B3_LINE_LEFT_ACTIVE(in->left);
+
+    if ((!in->barcode_active && !c->strip_active) ||
+        c->strip_edges < VC_BAR_STRIP_EDGES) {
+        c->bars_active = false;
+        return;
+    }
+    if (!c->bars_active) {
+        c->bars_active = true;
+        c->bar_edges_l = c->bar_edges_r = 0u;
+        c->bar_ignore = 0;
+        c->bar_prev_l = left_on;
+        c->bar_prev_r = right_on;
+    }
+    if (left_on && !c->bar_prev_l && c->bar_edges_l < 255u) c->bar_edges_l++;
+    if (right_on && !c->bar_prev_r && c->bar_edges_r < 255u) c->bar_edges_r++;
+    c->bar_prev_l = left_on;
+    c->bar_prev_r = right_on;
+    if (c->bar_ignore == 0) {
+        INT side = 0;
+
+        if (c->bar_edges_l >= VC_BAR_EDGES && c->bar_edges_r == 0u) side = -1;
+        if (c->bar_edges_r >= VC_BAR_EDGES && c->bar_edges_l == 0u) side = 1;
+        if (side != 0) {
+            c->bar_ignore = side;
+            /* The bar touches were not the line: forget them. */
+            if (c->straddle_side == side) {
+                c->straddle_side = 0;
+                c->straddle_deep = false;
+            }
+            if (c->straddle_outside == side) c->straddle_outside = 0;
+            tm_printf((UB *)"[VC] %s line sensor is reading barcode bars: ignored on this strip\n",
+                      side < 0 ? "left" : "right");
+        }
+    }
+    if (c->bar_ignore < 0) in->centre = 0u;
+    if (c->bar_ignore > 0) in->left = 0u;
+}
+
 /* Barcode re-read (see VC_BARCODE_RESCANS).  Returns true while it owns
  * the motors.  Phase 1: stop.  Phase 2: reverse, then line following
  * crosses the strip again. */
@@ -716,6 +760,12 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
     if (c->slow_mode) speed /= 2;
     if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
+    VC_INPUT filtered;
+    if (c->line_straddle) {
+        filtered = *in;
+        bar_filter(c, &filtered);
+        in = &filtered;
+    }
     if (c->line_straddle) {
         /* Standing still (START, after a turn, a stall retry or a
          * clearance wait) is not "no line seen for a while". */
@@ -723,13 +773,14 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             c->straddle_black_ms = in->now_ms;
         }
         line_detected = straddle_following(c, in);
+        if (c->bars_active) c->straddle_outside = 0; /* bars, not exits */
     } else {
         line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
             ((in->line_flags & LINE_F_LOST) == 0u);
     }
     if (line_detected) c->line_recovery_active = false;
     if (c->rescan_phase != 0u || c->navigation != 0u ||
-        c->line_recovery_active || !c->drive_sent) {
+        c->line_recovery_active || !c->drive_sent || c->bars_active) {
         c->jct_block_um = c->travel_um;   /* not following steadily */
     }
     if (c->rescan_phase == 0u) {
@@ -747,7 +798,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (!c->strip_active) {
             c->strip_active = true;
             c->strip_start_um = c->travel_um;
+            c->strip_edges = 0u;
         }
+        if (c->strip_edges < 255u) c->strip_edges++;
         c->strip_last_um = c->travel_um;
     } else if (c->strip_active &&
                c->travel_um - c->strip_last_um >= VC_STRIP_END_UM) {
@@ -881,6 +934,17 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
                 }
                 run_log_event(in->now_ms, RUN_EV_NAV_DONE,
                               (uint16_t)c->navigation);
+                if (c->line_straddle && c->navigation != B3_NAV_STRAIGHT) {
+                    /* Turn ended short on purpose (VC_TURN_SHORT_DEG):
+                     * keep turning the same way until a sensor finds the
+                     * line, then follow it. */
+                    c->straddle_lost = true;
+                    c->straddle_outside = 0;
+                    c->line_recovery_active = false;
+                    c->last_line_search_direction =
+                        (c->navigation == B3_NAV_RIGHT ||
+                         c->navigation == B3_NAV_SPIN) ? 1 : -1;
+                }
                 c->navigation = 0u;
                 c->navigation_id = 0u;
             } else if (in->now_ms - c->navigation_ms > 65000u) {
@@ -915,10 +979,13 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (c->navigation == B3_NAV_STRAIGHT) {
             error = motion_move_cm(10.0f, speed, MOTION_DIR_FORWARD, &c->navigation_id);
         } else if (c->navigation == B3_NAV_SPIN) {
-            error = motion_turn_degrees(360, speed, MOTION_TURN_RIGHT,
-                &c->navigation_id);
+            error = motion_turn_degrees(
+                c->line_straddle ? 360 - VC_TURN_SHORT_DEG : 360, speed,
+                MOTION_TURN_RIGHT, &c->navigation_id);
         } else {
-            error = motion_turn_degrees(c->navigation == B3_NAV_UTURN ? 180 : 90,
+            INT angle = c->navigation == B3_NAV_UTURN ? 180 : 90;
+            if (c->line_straddle) angle -= VC_TURN_SHORT_DEG;
+            error = motion_turn_degrees(angle,
                 speed, c->navigation == B3_NAV_RIGHT ? MOTION_TURN_RIGHT : MOTION_TURN_LEFT,
                 &c->navigation_id);
         }
