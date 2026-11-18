@@ -711,7 +711,7 @@ int main(void)
         assert(c.state == ROBOT_LINE_FOLLOW && !c.line_recovery_active &&
             sent.type == MOTION_CMD_DRIVE && sent.steering_permille == 0);
         /* Right sensor touches the line: gentle, proportional correction. */
-        input.left = 400u; input.line_flags = LINE_F_DETECTED;
+        input.left = 250u; input.line_flags = LINE_F_DETECTED;
         settle(&c, 10u);
         assert(c.state == ROBOT_LINE_FOLLOW && sent.steering_permille > 0 &&
             sent.steering_permille < B3_LINE_STEER_MAX / 2);
@@ -727,7 +727,7 @@ int main(void)
         input.centre = 0u; input.line_flags = LINE_F_LOST;
         settle(&c, 10u);
         assert(c.state == ROBOT_LINE_FOLLOW &&
-            sent.steering_permille == -VC_STRADDLE_OUTSIDE_STEER);
+            c.follow_steer == -VC_STRADDLE_OUTSIDE_STEER);
         settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u);
         assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
         settle(&c, 5u);
@@ -748,6 +748,31 @@ int main(void)
         assert(c.state == ROBOT_LINE_FOLLOW && sent.steering_permille == 0);
     }
     puts("PASS spread sensors: centred on floor follows, out-past-sensor turns, blind -> search");
+
+    /* Layout auto-detect: a crossing tape keeps the spread layout; the
+     * line under both sensors for 6 cm means they are close together. */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 10u);
+        input.left = input.centre = 1000u;           /* 18 mm tape */
+        input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+        settle(&c, 12u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 5u);
+        assert(c.line_straddle);
+        input.left = input.centre = 1000u;
+        input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+        settle(&c, 40u);                              /* 67 mm */
+        assert(!c.line_straddle);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 2u);                               /* close: really lost */
+        assert(c.state == ROBOT_LINE_RECOVERY);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS layout auto-detect: line under both sensors -> close-together following");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {

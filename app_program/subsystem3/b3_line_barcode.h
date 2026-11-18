@@ -30,7 +30,7 @@
  * in its floor reading made it look "on the line" all the time.  Readings
  * darker than black + 2 * (black - white) + 100 (car lifted) are never learned. */
 #ifndef B3_LINE_LEARN_RANGE
-#define B3_LINE_LEARN_RANGE (1)
+#define B3_LINE_LEARN_RANGE (0) /* off: barcode-robust's fixed endpoints */
 #endif
 /* Zero is off-line; all other values use the measured channel endpoints. */
 #define B3_LINE_RAW_LOST_BELOW (1U)

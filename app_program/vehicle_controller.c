@@ -151,6 +151,21 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             c->straddle_side = 0;   /* crossing tape: both black */
             c->straddle_deep = false;
         }
+        if (left_on && right_on) {
+            if (!c->straddle_both) {
+                c->straddle_both = true;
+                c->straddle_both_um = c->travel_um;
+            } else if (c->travel_um - c->straddle_both_um >=
+                       VC_LAYOUT_CLOSE_UM) {
+                /* Far longer than a crossing tape: the line is under both
+                 * sensors, so they are mounted close together. */
+                c->line_straddle = false;
+                tm_printf((UB *)"[VC] both line sensors on black for %d mm: close-together layout, using close-layout following\n",
+                          (INT)(VC_LAYOUT_CLOSE_UM / 1000u));
+            }
+        } else {
+            c->straddle_both = false;
+        }
         return true;
     }
     if (c->straddle_deep && c->straddle_side != 0) {
@@ -159,6 +174,7 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     }
     c->straddle_side = 0;
     c->straddle_deep = false;
+    c->straddle_both = false;
     if (c->straddle_lost) return false;
     if (c->straddle_outside != 0) {
         if (in->now_ms - c->straddle_outside_ms < VC_STRADDLE_OUTSIDE_MS) {
