@@ -56,6 +56,12 @@ turn did, and such an exit turns back at once (600, no coast). If the turn
 toward the exit side finds nothing in 1 s, the search starts the OTHER way.
 Hardware: GP26 (right) reads tape at raw ~290-400 vs floor ~200-258; GP27
 (left) reads ~1000-3000. Check GP26's height/angle against GP27's.
+False junction near the barcode (2026-11-18): after the re-read reverse the
+car was crooked and drove across the line, left then right sensor within
+25 mm, which the spread rule took for a junction tape. A junction candidate
+now counts only after 8 cm of steady following (no reverse, barcode turn,
+line search or restart since). While crossing barcode bars steering is held
+within +-400 and never pivots, so the first pass reads more often.
 
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.

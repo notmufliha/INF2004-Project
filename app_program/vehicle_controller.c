@@ -380,12 +380,25 @@ static bool straddle_junction(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
                               bool tape)
 {
     bool left_recent, right_recent;
+    bool left_on = B3_LINE_CENTRE_ACTIVE(in->centre);  /* robot's left */
+    bool right_on = B3_LINE_LEFT_ACTIVE(in->left);     /* robot's right */
 
-    if (B3_LINE_CENTRE_ACTIVE(in->centre)) {   /* robot's left sensor */
+    left_recent = c->jct_left_seen &&
+        c->travel_um - c->jct_left_um <= VC_STRADDLE_JCT_WINDOW_UM;
+    right_recent = c->jct_right_seen &&
+        c->travel_um - c->jct_right_um <= VC_STRADDLE_JCT_WINDOW_UM;
+    if ((left_on && !right_recent) || (right_on && !left_recent)) {
+        /* One side only (so far): a junction would start here.  Was the
+         * car following steadily up to now?  Frozen once the second side
+         * also touches. */
+        c->jct_candidate_steady =
+            c->travel_um - c->jct_block_um >= VC_JCT_SETTLE_UM;
+    }
+    if (left_on) {
         c->jct_left_seen = true;
         c->jct_left_um = c->travel_um;
     }
-    if (B3_LINE_LEFT_ACTIVE(in->left)) {       /* robot's right sensor */
+    if (right_on) {
         c->jct_right_seen = true;
         c->jct_right_um = c->travel_um;
     }
@@ -393,8 +406,9 @@ static bool straddle_junction(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
         c->travel_um - c->jct_left_um <= VC_STRADDLE_JCT_WINDOW_UM;
     right_recent = c->jct_right_seen &&
         c->travel_um - c->jct_right_um <= VC_STRADDLE_JCT_WINDOW_UM;
-    return (left_recent && right_recent) ||
-        (tape && (left_recent || right_recent));
+    return c->jct_candidate_steady &&
+        ((left_recent && right_recent) ||
+         (tape && (left_recent || right_recent)));
 }
 
 static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
@@ -717,6 +731,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             ((in->line_flags & LINE_F_LOST) == 0u);
     }
     if (line_detected) c->line_recovery_active = false;
+    if (c->rescan_phase != 0u || c->navigation != 0u ||
+        c->line_recovery_active || !c->drive_sent) {
+        c->jct_block_um = c->travel_um;   /* not following steadily */
+    }
     if (c->rescan_phase == 0u) {
         update_junction_state(c, in);
     } else {
@@ -943,6 +961,13 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (seek > VC_STRADDLE_SEEK_MAX) seek = VC_STRADDLE_SEEK_MAX;
         command.steering_permille = c->straddle_touch * seek;
     }
+    if (c->line_straddle && in->barcode_active) {
+        if (command.steering_permille > VC_BARCODE_MAX_STEER) {
+            command.steering_permille = VC_BARCODE_MAX_STEER;
+        } else if (command.steering_permille < -VC_BARCODE_MAX_STEER) {
+            command.steering_permille = -VC_BARCODE_MAX_STEER;
+        }
+    }
     /* Smooth steering changes so the car does not jerk between corrections. */
     if (c->drive_sent) {
         INT previous = c->last_steer;
@@ -1029,6 +1054,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             (c->straddle_side != 0 &&
              in->now_ms - c->straddle_side_ms >= VC_STRADDLE_HELD_MS);
         apply_wheel_minimum(&command, c->line_straddle && bend &&
+                            !in->barcode_active &&
                             steer_mag >= VC_STRADDLE_PIVOT_STEER);
     }
     command.safety_generation = in->safety_generation;
