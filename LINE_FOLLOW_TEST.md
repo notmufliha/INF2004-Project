@@ -58,6 +58,14 @@ steering is held within +-400 while crossing barcode bars. For the double
 turn (hump) only: the inner wheel may stop (pivot) when one sensor has held
 the line for >= 700 ms and steering is >= 700.
 
+Barcode turns (spread): B2 turns 20 deg short (70 / 160 / 340), then the car
+keeps turning the same way until a line sensor finds the line, then follows
+it (a U-turn that stopped short used to drive off straight: both sensors on
+floor looked "centred"). Barcode beside the line: a line sensor that turns
+black twice on a barcode strip (GP28 >= 3 changes) while the other does not
+is reading bars and is ignored until the strip is passed (`[VC] left line
+sensor is reading barcode bars` in the log); no junction on a strip.
+
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.
 

@@ -88,6 +88,20 @@
  * +-VC_BARCODE_MAX_STEER and never pivots: swinging over the strip
  * changes the barcode sensor's speed and spoils the bar widths. */
 #define VC_BARCODE_MAX_STEER 400
+/* Spread layout, barcode beside the line: the line sensor on the barcode
+ * side passes over the bars, and each bar looked like the line (the car
+ * steered toward the barcode, and bar + line looked like a junction).
+ * While the barcode sensor is on a strip, a line sensor that turns black
+ * VC_BAR_EDGES times (the other sensor not at all) is reading bars and is
+ * ignored until the strip is passed; no junction is taken on a strip. */
+#define VC_BAR_EDGES 2u
+#define VC_BAR_STRIP_EDGES 3u /* GP28 changes before a strip counts as bars
+                               * (a junction tape gives one black run) */
+/* Barcode turns (spread layout) stop this many degrees short, then keep
+ * turning the same way until a line sensor finds the line.  B2's turn is
+ * not exact (a U-turn stopped far short and the car drove off straight):
+ * both sensors on floor after a turn is NOT "centred". */
+#define VC_TURN_SHORT_DEG 20
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
@@ -255,6 +269,7 @@ typedef struct {
     bool rejects_known, rescan_pending;
     bool strip_active, strip_known; /* GP28 strip episode (rescan) */
     UB strip_level;
+    UB strip_edges;        /* GP28 changes in this episode (bars: many) */
     uint32_t strip_start_um, strip_last_um;
     UH seen_rejects;
     uint32_t rescan_id, rescan_ms, rescan_back_um;
@@ -262,7 +277,11 @@ typedef struct {
     /* Junction evidence, for the run log and the spread layout. */
     bool tape_now, jct_waiting_logged;
     bool jct_left_seen, jct_right_seen;
-    bool jct_candidate_steady, pivoting;
+    bool jct_candidate_steady;
+    /* Barcode bars under a line sensor (see VC_BAR_EDGES). */
+    bool bars_active, bar_prev_l, bar_prev_r;
+    UB bar_edges_l, bar_edges_r;
+    INT bar_ignore; /* -1 left / +1 right sensor ignored, 0 none */
     uint32_t jct_block_um; /* travel at the last unsteady moment */
     uint32_t jct_left_um, jct_right_um;
     UB navigation, pending_navigation;

@@ -80,7 +80,9 @@ ER motion_move_cm(float cm, INT speed, motion_direction_t dir, uint32_t *id)
 }
 ER motion_turn_degrees(INT angle, INT speed, motion_turn_direction_t dir, uint32_t *id)
 {
-    assert((angle == 90 || angle == 180 || angle == 360) && speed > 0);
+    assert((angle == 90 || angle == 180 || angle == 360 ||
+            angle == 90 - VC_TURN_SHORT_DEG || angle == 180 - VC_TURN_SHORT_DEG ||
+            angle == 360 - VC_TURN_SHORT_DEG) && speed > 0);
     sent.type = MOTION_CMD_TURN;
     sent.target_angle_deg = angle;
     sent.turn_direction = dir;
@@ -955,6 +957,70 @@ int main(void)
         input.centre = 0u; input.line_flags = LINE_F_LOST;
     }
     puts("PASS pivot only when a sensor holds the line >= 700 ms (hump), not per touch");
+
+    /* U-turn (spread): B2 turns 160 deg, then the car keeps turning left
+     * until a sensor finds the line; both on floor is not "centred". */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 60u);
+        step(&c, 20u, B3_NAV_UTURN);
+        input.left = input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
+        for (UINT i = 0u; i < 8u && c.navigation == 0u; ++i) step(&c, 20u, 0u);
+        assert(c.navigation == B3_NAV_UTURN);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        input.motion.physically_stopped = true;
+        step(&c, 20u, 0u);
+        assert(sent.type == MOTION_CMD_TURN &&
+            sent.target_angle_deg == 180 - VC_TURN_SHORT_DEG &&
+            sent.turn_direction == MOTION_TURN_LEFT);
+        result_ready = true; result.status = MOTION_STATUS_COMPLETED;
+        result.physically_stopped = true;
+        step(&c, 20u, 0u);
+        assert(c.navigation == 0u);
+        result_ready = false;
+        settle(&c, 10u);                      /* both on floor: still turning */
+        assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_DRIVE &&
+            sent.steering_permille < 0);
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED; /* found */
+        step(&c, 20u, 0u);
+        assert(c.state == ROBOT_LINE_FOLLOW);
+        input.centre = 0u; input.line_flags = LINE_F_LOST;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS U-turn: turns short, then keeps turning until a sensor finds the line");
+
+    /* Barcode beside the line: the left line sensor flickers over the bars
+     * (the right one never).  It is ignored on the strip: no steering
+     * toward the barcode, no junction. */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 60u);
+        step(&c, 20u, B3_NAV_LEFT);
+        input.barcode_active = true;
+        for (UINT i = 0u; i < 40u; ++i) {
+            input.right = (UB)((i / 2u) & 1u);           /* GP28 bars */
+            input.centre = ((i / 3u) & 1u) ? 1000u : 0u; /* left sensor bars */
+            input.line_flags = input.centre ? LINE_F_DETECTED : LINE_F_LOST;
+            if (i == 30u) input.left = 400u;             /* line touches right */
+            if (i == 33u) input.left = 0u;
+            step(&c, 20u, 0u);
+        }
+        assert(c.bar_ignore == -1 && !c.junction_latched &&
+            c.navigation == 0u && !c.approach_active);
+        assert(c.follow_steer >= 0);       /* not pulled toward the bars */
+        input.barcode_active = false; input.centre = 0u; input.right = 0u;
+        input.line_flags = LINE_F_LOST;
+        settle(&c, 30u);
+        assert(!c.bars_active && c.pending_navigation == B3_NAV_LEFT);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS barcode bars under a line sensor: ignored, no fake junction");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {
