@@ -624,9 +624,20 @@ int main(void)
     b3_line_cal_init(&startup_left_cal);
     permission = true;
     if (setjmp(task_done) == 0) controller_task(0, NULL);
-    assert(drives > 0u && first_calibrated_drive_tick == 5u);
+    assert(drives > 0u && first_calibrated_drive_tick == 0u);
     calibrated_startup = false;
-    puts("PASS low-output calibration feeds autostart on third black sample without extra delay");
+    puts("PASS startup searches immediately with fresh white samples, then follows calibrated black");
+    c = fresh(); (void)c;
+    force_no_line = true;
+    boot_handshake = true; boot_mission_enabled = false;
+    clock_ms = 22000u;
+    task_ticks = remote_head = remote_count = 0u;
+    permission = false;
+    if (setjmp(task_done) == 0) controller_task(0, NULL);
+    assert(drives > 0u && boot_mission_enabled);
+    assert(published == ROBOT_LINE_RECOVERY);
+    force_no_line = boot_handshake = false;
+    puts("PASS startup off tape enables B5 clearance and issues bounded line-search DRIVE");
     assert(vehicle_controller_start() == E_OK);
     /* Small corrections retain their radius even at the startup speed. */
     for (INT steering = -200; steering <= 200; steering += 25) {

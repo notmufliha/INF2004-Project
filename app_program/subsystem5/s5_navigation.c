@@ -297,10 +297,11 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         }
         last_clear_ms = in.now_ms;
         if (clear_hits < ROBOT_CLEAR_CONFIRM) ++clear_hits;
-        if (clear_hits < ROBOT_CLEAR_CONFIRM || !line_reference) { (void)stop_motor(); return; }
+        if (clear_hits < ROBOT_CLEAR_CONFIRM) { (void)stop_motor(); return; }
         b2_request_forward();
         if (!b2_safety_motion_allowed()) return; /* Wait for STOP ACK. */
-        /* Normal DRIVE belongs to the vehicle controller. */
+        /* VC owns normal following and bounded startup line search.
+         * Line reference gates bypass planning, not permission to find tape. */
         stop_queued = false;
         mode = NAV_FOLLOW;
         return;
