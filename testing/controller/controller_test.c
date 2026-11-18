@@ -721,15 +721,20 @@ int main(void)
         settle(&c, 10u);
         assert(c.state == ROBOT_LINE_FOLLOW && sent.steering_permille == 0);
         /* Sharp curve: the line passes right under the left sensor and out
-         * past it.  Keep turning left, then search left. */
+         * past it.  Coast, then a growing arc left, then search left. */
         input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
         settle(&c, 10u);
         assert(c.follow_steer <= -B3_LINE_STEER_MAX + 20); /* before wheel limits */
         input.centre = 0u; input.line_flags = LINE_F_LOST;
-        settle(&c, 10u);
+        settle(&c, VC_STRADDLE_COAST_MS / 20u - 1u);
+        assert(c.state == ROBOT_LINE_FOLLOW && c.follow_steer == 0); /* coast */
+        settle(&c, 5u);
+        assert(c.state == ROBOT_LINE_FOLLOW && c.follow_steer < 0 &&
+            c.follow_steer > -VC_STRADDLE_OUTSIDE_STEER);       /* gentle arc */
+        settle(&c, 25u);
         assert(c.state == ROBOT_LINE_FOLLOW &&
             c.follow_steer == -VC_STRADDLE_OUTSIDE_STEER);
-        settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u);
+        settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u - 34u);
         assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
         settle(&c, 5u);
         assert(c.state == ROBOT_LINE_RECOVERY); /* stays lost */
@@ -750,6 +755,25 @@ int main(void)
     }
     puts("PASS spread sensors: centred on floor follows, out-past-sensor turns, blind -> search");
 
+    /* The 2026-11-18 zig-zag: right exit, then left exit.  The second exit
+     * is on the other side, so the car coasts longer instead of swinging
+     * the line straight back across. */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 10u);
+        input.left = 1000u; input.line_flags = LINE_F_DETECTED; settle(&c, 5u);
+        input.left = 0u; input.line_flags = LINE_F_LOST; settle(&c, 3u);
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED; settle(&c, 5u);
+        input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, VC_STRADDLE_FLIP_COAST_MS / 20u - 2u);
+        assert(c.state == ROBOT_LINE_FOLLOW && c.follow_steer == 0);
+        settle(&c, 4u);
+        assert(c.follow_steer < 0);
+    }
+    puts("PASS spread sensors: exit on the other side coasts longer (no zig-zag)");
+
     /* Layout auto-detect: a crossing tape keeps the spread layout; the
      * line under both sensors for 6 cm means they are close together. */
     {
@@ -767,6 +791,8 @@ int main(void)
         input.left = input.centre = 1000u;
         input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
         settle(&c, 40u);                              /* 67 mm */
+        assert(c.line_straddle);
+        settle(&c, 25u);                              /* 109 mm */
         assert(!c.line_straddle);
         input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
         settle(&c, 2u);                               /* close: really lost */
@@ -836,9 +862,14 @@ int main(void)
         input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
         input.motion.physically_stopped = false;
         settle(&c, 10u);
-        input.barcode_active = true; settle(&c, 30u);   /* ~50 mm of bars */
-        input.barcode_active = false; settle(&c, 25u);  /* B3 quiet time */
+        for (UINT i = 0u; i < 30u; ++i) {             /* ~50 mm of bars */
+            input.right = (UB)((i / 3u) & 1u ? 0u : 1u);
+            step(&c, 20u, 0u);
+        }
+        input.right = 0u; settle(&c, 10u);            /* paused-scan reject */
         input.barcode_rejects = 1u; step(&c, 20u, 0u);
+        assert(c.rescan_phase == 0u && c.rescan_pending); /* still on strip */
+        settle(&c, 14u);                              /* strip passed */
         assert(c.rescan_phase == 1u && c.state == ROBOT_NAV_COMMAND);
         assert(c.rescan_back_um > 130000u && c.rescan_back_um < 160000u);
         step(&c, 20u, 0u);

@@ -85,30 +85,39 @@
 /* STOP barcode: time standing at the crossing before going straight on. */
 #define VC_NAV_STOP_MS 3000u
 /* Line-sensor layout.
- * 1: sensors SPREAD OUT, the 18 mm line runs between them.
+ * 1 (default): sensors SPREAD OUT, the 18 mm line runs between them.
  *   Centred, both read floor (white): that is "on the line", not lost.
  *   One sensor on black: steer toward it.  Both black: a crossing tape.
- * 0 (default): sensors close together, both on the line when centred.
+ * 0: sensors close together, both on the line when centred.
  * Changeable at run time through VEHICLE_CONTROLLER.line_straddle.
  * Auto-detect: with 1, both sensors on black for VC_LAYOUT_CLOSE_UM of
  * travel (a crossing tape is only 18 mm) means they are close together:
  * the controller switches to the close layout until reboot. */
 #ifndef VC_LINE_STRADDLE
-#define VC_LINE_STRADDLE 0 /* the team's car: sensors together */
+#define VC_LINE_STRADDLE 1 /* spread; switches itself if together */
 #endif
 /* Spread layout: steering reaches B3_LINE_STEER_MAX when one sensor reads
  * this much black (0..1000).  Lower = harder corrections (curves missed?),
  * higher = gentler (weaving on straights?). */
 #define VC_STRADDLE_FULL_SCALE B3_LINE_STEER_ERROR_FULL_SCALE
-#define VC_LAYOUT_CLOSE_UM 60000u
-/* A sensor this black has the line right under it; if the line then
- * leaves it, it may have gone OUT past that sensor (sharp curve)... */
+#define VC_LAYOUT_CLOSE_UM 100000u /* 10 cm; a crossing tape is 18 mm */
+/* A sensor this black had the line under it.  When it then reads floor
+ * again the line is either back between the sensors (usual: the car's
+ * correction worked) or went OUT past it (sharp curve).  Turning hard
+ * toward that side at once pushed a centred line across to the other
+ * sensor, then back: the zig-zag of the 2026-11-18 run logs.  So, as in
+ * BlackberryDealer/INF2004_Project: first coast straight for COAST_MS
+ * (FLIP_COAST_MS when the exit is on the other side from the last one),
+ * then turn toward the exit side with a gentle arc, RECOVER_START permille
+ * growing RECOVER_RAMP per 20 ms tick up to OUTSIDE_STEER.  Not found
+ * after OUTSIDE_MS: the normal line search. */
 #define VC_STRADDLE_DEEP 700
-/* ...so keep turning that way at this steer for up to this long.  If the
- * line was in fact back in the middle, the other sensor meets it and the
- * car corrects back: one small wiggle. */
+#define VC_STRADDLE_COAST_MS 120u
+#define VC_STRADDLE_FLIP_COAST_MS 400u
+#define VC_STRADDLE_RECOVER_START 200
+#define VC_STRADDLE_RECOVER_RAMP 40
 #define VC_STRADDLE_OUTSIDE_STEER B3_LINE_STEER_MAX
-#define VC_STRADDLE_OUTSIDE_MS 700u
+#define VC_STRADDLE_OUTSIDE_MS 1500u
 /* Neither sensor has touched the line for this long: assume it is really
  * lost (end of line, or off the course) and run the normal line search. */
 #define VC_STRADDLE_BLIND_MS 3000u
@@ -118,6 +127,10 @@
 #define VC_BARCODE_RESCANS 1u
 #define VC_RESCAN_MARGIN_UM 50000u   /* 5 cm before the first bar */
 #define VC_RESCAN_MAX_UM 400000u     /* never reverse more than 40 cm */
+/* The strip is over when GP28 has not changed for this much travel; only
+ * then does the re-read reverse (a pause on the strip also ends a B3 scan,
+ * and reversing then backed up from the middle of the barcode). */
+#define VC_STRIP_END_UM 40000u
 #define VC_RESCAN_TIMEOUT_MS 8000u
 #define VC_RESCAN_FORGET_MS 10000u   /* then a new barcode gets new tries */
 
@@ -170,7 +183,9 @@ typedef struct {
     bool line_straddle;
     INT straddle_side;     /* -1/+1: only that sensor is on black, else 0 */
     bool straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
-    INT straddle_outside;  /* -1/+1: line believed outside that sensor */
+    INT straddle_outside;  /* -1/+1: line left past that sensor (maybe) */
+    INT straddle_last_exit;  /* side of the previous exit */
+    uint32_t straddle_coast_ms;
     bool straddle_lost;    /* lost until a sensor sees black again */
     bool straddle_both;    /* both sensors on black since straddle_both_um */
     uint32_t straddle_both_um;
@@ -178,10 +193,13 @@ typedef struct {
     /* Barcode re-read after a rejected scan. */
     UB rescan_phase;       /* 0 none, 1 stopping, 2 reversing */
     UINT rescan_tries;
-    bool rejects_known, barcode_was_active;
+    bool rejects_known, rescan_pending;
+    bool strip_active, strip_known; /* GP28 strip episode (rescan) */
+    UB strip_level;
+    uint32_t strip_start_um, strip_last_um;
     UH seen_rejects;
     uint32_t rescan_id, rescan_ms, rescan_back_um;
-    uint32_t travel_um, barcode_start_um; /* odometer, wraps */
+    uint32_t travel_um; /* odometer, wraps */
     /* Junction evidence, for the run log and the spread layout. */
     bool tape_now, jct_sum_active, jct_waiting_logged;
     uint32_t jct_sum_um;
