@@ -25,12 +25,12 @@ EXPORT void subsystem5_test(void)
     TEST_INIT();
     TEST_CHECK("S5-U01", s5_echo_us_to_cm(1000u) > 17.0f &&
                s5_echo_us_to_cm(1000u) < 17.3f, "echo conversion");
-    TEST_CHECK("S5-U02", s5_servo_pulse_us(90u) == 1500u, "servo centre");
+    TEST_CHECK("S5-U02", s5_servo_pulse_us(90u) == ROBOT_SCAN_SERVO_CENTER_US, "servo centre");
     TEST_CHECK("S5-U03", l.controller.state == S5_DONE && l.controller.side == S5_SIDE_LEFT, "left route");
     TEST_CHECK("S5-U04", r.controller.state == S5_DONE && r.controller.side == S5_SIDE_RIGHT, "right route");
     TEST_CHECK("S5-U05", b.controller.state == S5_WAIT_ROUTE && b.controller.reverse_attempts == 0u, "blocked pause and rescan");
     TEST_CHECK("S5-U06", rev.controller.state == S5_DONE && rev.controller.route_waits > 0u, "rescan and turn");
-    TEST_CHECK("S5-U07", inv.controller.state == S5_DONE && inv.controller.side == S5_SIDE_LEFT, "valid inner opening retained");
+    TEST_CHECK("S5-U07", inv.controller.state == S5_DONE && inv.controller.side == S5_SIDE_RIGHT, "prefer fully measured opening");
     TEST_CHECK("S5-U08", stop.controller.error == S5_ERR_STOP_TIMEOUT, "stop timeout");
     TEST_CHECK("S5-U09", move.controller.error == S5_ERR_MOTION_TIMEOUT, "motion timeout");
     TEST_CHECK("S5-U10", back.controller.state == S5_WAIT_ROUTE, "blocked without reverse");

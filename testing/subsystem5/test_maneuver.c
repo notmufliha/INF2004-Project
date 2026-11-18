@@ -174,7 +174,7 @@ int main(void)
     leg(S5_ACT_TURN, 0.0f, -ROBOT_BYPASS_TURN_DEG);
     in.front_cm = 25.0f;
     leg(S5_ACT_MOVE, 5.0f, 0);
-    in.front_cm = ROBOT_STOP_CM;
+    in.front_cm = ROBOT_BYPASS_MOVE_STOP_CM;
     assert(tick().type == S5_ACT_STOP && m.waiting_clear && m.error == S5_ERR_NONE);
     reset(S5_SIDE_LEFT);
     m.state = S5_MAN_OFFSET;

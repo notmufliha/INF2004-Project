@@ -1,5 +1,6 @@
 #include "subsystem5.h"
 #include "s5_mission.h"
+#include "../robot_config.h"
 #include "../subsystem2/b2_motor.h"
 #if TK_SUPPORT_SMP
 #include <tk/smp.h>
@@ -62,7 +63,7 @@ void s5_mission_front(bool valid, float cm)
 {
     UINT irq;
     lock(&irq);
-    if (valid) approach_slow = cm > 0.0f && cm <= 30.0f;
+    if (valid) approach_slow = cm > 0.0f && cm <= ROBOT_OBSTACLE_APPROACH_CM;
     unlock(irq);
 }
 bool s5_mission_approach_slow(void)

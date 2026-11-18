@@ -223,7 +223,7 @@ void vehicle_controller_init(VEHICLE_CONTROLLER *c)
     *c = (VEHICLE_CONTROLLER){0};
     c->line_pos = B3_LINE_POS_CENTRE;
     c->mode = MODE_AUTO;
-    c->speed_percent = 20u;
+    c->speed_percent = ROBOT_DEFAULT_DRIVE_PERCENT;
     c->state = ROBOT_INIT;
     stop_motion(c);
     set_state(c, ROBOT_IDLE);
@@ -377,7 +377,8 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
-    if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
+    if (in->approach_slow && speed > ROBOT_OBSTACLE_APPROACH_SPEED_CPS)
+        speed = ROBOT_OBSTACLE_APPROACH_SPEED_CPS;
     line_detected = ((in->line_flags & LINE_F_DETECTED) != 0u) &&
         ((in->line_flags & LINE_F_LOST) == 0u);
     if (line_detected) c->line_recovery_active = false;

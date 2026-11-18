@@ -417,8 +417,8 @@ int main(void)
     assert(sent.target_speed_cps == VC_MIN_WHEEL_CPS);
     settle(&c, 30u);
     INT straight_speed = sent.target_speed_cps;
-    assert(sent.steering_permille == 0 && straight_speed == 1000);
-    /* Sharp curve at 20%: inner wheel would be far below the minimum.  While
+    assert(sent.steering_permille == 0 && straight_speed == (INT)ROBOT_DEFAULT_DRIVE_PERCENT * 50);
+    /* On a sharp curve the inner wheel would be far below the minimum. While
      * following it is held AT the minimum (no pivot lurch); outer at least
      * VC_FOLLOW_MIN_OUTER_RATIO times faster; slower than straight. */
     input.left = 900u; input.centre = 30u; settle(&c, 10u);

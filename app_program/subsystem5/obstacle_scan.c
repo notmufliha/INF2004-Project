@@ -9,7 +9,7 @@
 /* Calibrate against the actual servo and sensor mounting. Servo must settle
  * before measuring; avoid ultrasonic cross-talk by spacing trigger pulses. */
 #ifndef S5_SERVO_SETTLE_MS
-#define S5_SERVO_SETTLE_MS 200
+#define S5_SERVO_SETTLE_MS ROBOT_SCAN_SERVO_SETTLE_MS
 #endif
 #ifndef S5_ECHO_GAP_MS
 #define S5_ECHO_GAP_MS 65

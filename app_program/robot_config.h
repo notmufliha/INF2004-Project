@@ -63,10 +63,18 @@
 #else
 #define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
 #endif
-#define ROBOT_BYPASS_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 540)
-#define ROBOT_BYPASS_TURN_SPEED_CPS 450
+#define ROBOT_DEFAULT_DRIVE_PERCENT 25u
+#define ROBOT_OBSTACLE_APPROACH_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 540)
+#define ROBOT_OBSTACLE_APPROACH_CM (ROBOT_OBSTACLE_TEST ? 30.0f : 80.0f)
+#define ROBOT_BYPASS_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 680)
+#define ROBOT_BYPASS_TURN_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 450 : 560)
+#define ROBOT_COURSE_RETURN_SPEED_CPS 620
 #define ROBOT_BYPASS_FORWARD_MS 5000u
 #define ROBOT_BYPASS_EXTRA_DIAGONAL_CM 10.0f
+#define ROBOT_COURSE_BYPASS_TURN_DEG 45
+#define ROBOT_COURSE_BYPASS_LEG_CM 20.0f
+#define ROBOT_COURSE_BOX_DEPTH_CM 20.0f
+#define ROBOT_BYPASS_SIDE_TIE_CM 0.5f
 /* Fixed test route: if the first diagonal is blocked after meaningful travel,
  * take the scheduled opposite turn once rotation clearance is confirmed. */
 #define ROBOT_BYPASS_BLOCKED_FIRST_MIN_CM 20.0f
@@ -144,18 +152,20 @@
 #else
 #define ROBOT_BYPASS_SIDE_CLEAR_CM 25.0f
 #endif
-/* Treat small side-range differences as noise and consistently prefer left. */
-/* Only near-equal readings may prefer left in the floor bypass test. */
-#define ROBOT_BYPASS_SIDE_TIE_CM (ROBOT_OBSTACLE_TEST ? 1.0f : 10.0f)
 
 /* Visible ultrasonic silhouette only; centimetres. Measure chassis before
  * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse. */
 #define ROBOT_SCAN_SAFE_MIN_DEG 70u
 #define ROBOT_SCAN_SAFE_MAX_DEG 110u
-/* Mounted scanner is mirrored: old 110-degree pulse looked physically left.
- * Planner bearings remain 70=left, 90=front, 110=right. */
+#define ROBOT_SCAN_SERVO_SETTLE_MS 130u
+/* Current mount points left at the lower pulse. Planner bearings are
+ * 70=left, 90=front, 110=right. */
 #ifndef ROBOT_SCAN_SERVO_REVERSED
-#define ROBOT_SCAN_SERVO_REVERSED 1
+#define ROBOT_SCAN_SERVO_REVERSED 0
+#endif
+/* Center pulse for the mounted sensor. */
+#ifndef ROBOT_SCAN_SERVO_CENTER_US
+#define ROBOT_SCAN_SERVO_CENTER_US 1450
 #endif
 #define ROBOT_OBSTACLE_SMALL_CM 10.0f
 #if ROBOT_OBSTACLE_TEST
@@ -271,11 +281,11 @@
 #define ROBOT_BYPASS_MOVE_RELEASE_CM 35.0f
 #endif
 #else
-#define ROBOT_STOP_CM 16.0f
-#define ROBOT_RELEASE_CM 21.0f
+#define ROBOT_STOP_CM 65.0f
+#define ROBOT_RELEASE_CM 70.0f
 #define ROBOT_SCAN_OBJECT_CM 40.0f
-#define ROBOT_BYPASS_MOVE_STOP_CM ROBOT_STOP_CM
-#define ROBOT_BYPASS_MOVE_RELEASE_CM ROBOT_RELEASE_CM
+#define ROBOT_BYPASS_MOVE_STOP_CM 16.0f
+#define ROBOT_BYPASS_MOVE_RELEASE_CM 21.0f
 #endif
 #define ROBOT_CLEAR_CONFIRM 3u
 /* While already following, tolerate isolated invalid echoes for at most

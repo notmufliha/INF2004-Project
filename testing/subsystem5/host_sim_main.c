@@ -35,7 +35,7 @@ int main(void)
         if (i == S5_SCENARIO_RIGHT_CLEAR)
             ok = ok && r.controller.side == S5_SIDE_RIGHT;
         if (i == S5_SCENARIO_INVALID_COARSE)
-            ok = ok && r.controller.side == S5_SIDE_LEFT; /* Valid inner ray remains usable. */
+            ok = ok && r.controller.side == S5_SIDE_RIGHT; /* Both right rays were measured. */
         ok = ok && r.controller.reverse_attempts == 0u;
         if (i == S5_SCENARIO_ROUTE_CLEARS || i == S5_SCENARIO_BOTH_BLOCKED)
             ok = ok && r.controller.route_waits > 0u;

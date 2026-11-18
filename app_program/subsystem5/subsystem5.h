@@ -25,7 +25,7 @@
 #define S5_SAFE_MIN_DEG ROBOT_SCAN_SAFE_MIN_DEG
 #define S5_SAFE_MAX_DEG ROBOT_SCAN_SAFE_MAX_DEG
 #define S5_SERVO_STEP_DEG 2u
-#define S5_SERVO_STEP_DELAY_MS 35u
+#define S5_SERVO_STEP_DELAY_MS 25u
 
 /* Autonomous B2/B3 adapter follows the robot configuration. With bypass
  * disabled, retain the existing guarded forward/STOP demonstration. */
@@ -69,7 +69,7 @@
 #define S5_SCAN_COOLDOWN_MS 3000u
 #define S5_CONFIRM_HITS 3u
 #define S5_PICO_DEMO_PAUSE_MS 15000u
-#define S5_SERVO_SETTLE_MS 200u
+#define S5_SERVO_SETTLE_MS ROBOT_SCAN_SERVO_SETTLE_MS
 #define S5_ECHO_GAP_MS 65u
 
 IMPORT void s5_task(INT stacd, void *exinf);

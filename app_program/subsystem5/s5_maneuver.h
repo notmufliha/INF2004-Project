@@ -54,6 +54,7 @@ typedef struct {
     int alignment_heading_deg;
     bool left_original_line;
     bool outward_turn_complete;
+    bool equal_leg_route;
     bool issuing;
     bool waiting_clear;
     unsigned clear_hits;
@@ -76,6 +77,8 @@ void s5_maneuver_init(S5Maneuver *m);
 bool s5_maneuver_begin(S5Maneuver *m, S5Command command,
                        const S5Profile *profile, float depth_bound_cm,
                        uint32_t now_ms);
+bool s5_maneuver_plan_equal_legs(S5Maneuver *m, float obstacle_front_cm, bool probe_turned);
+bool s5_maneuver_course_room(const S5Profile *profile, S5Side side, float obstacle_front_cm);
 S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in);
 /* A rejected submission is a terminal STOP, not an assumed completion. */
 bool s5_maneuver_submitted(S5Maneuver *m, uint32_t command_id);

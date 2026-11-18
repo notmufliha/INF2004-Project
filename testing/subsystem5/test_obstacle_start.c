@@ -60,7 +60,7 @@ static void single_scan_regression(void)
         else if (scenario == 3u) assert(decision == S5_CMD_GO_RIGHT);
         else if (scenario == 6u) assert(decision == S5_CMD_GO_RIGHT);
         else if (scenario == 7u) assert(decision == S5_CMD_GO_LEFT);
-        else if (scenario == 8u) assert(decision == S5_CMD_GO_RIGHT);
+        else if (scenario == 8u) assert(decision == S5_CMD_GO_LEFT); /* Prefer measured clearance. */
         else assert(c.state == S5_WAIT_ROUTE);
         in.coarse_ready = false;
         for (unsigned tick = 0; tick < 500u; ++tick) {
@@ -213,18 +213,15 @@ int main(void)
     assert(s5_bridge_request(S5_CMD_STOP, NULL));
     assert(reverse_path_clear()); /* Explicit bounded floor-test retreat enabled. */
     assert(c.state == S5_COARSE && move_calls == 0u);
-    /* Replay the latest COM6 scan through the mirrored mount mapping. */
-    const float shaft_ranges[5] = {11.42f, 11.42f, 11.56f, 11.85f, 12.96f};
+    /* Replay an earlier COM6 scan in logical bearing order. */
+    const float coarse_ranges[5] = {12.96f, 11.85f, 11.56f, 11.42f, 11.42f};
     assert(s5_servo_mount_angle(90u) == 90u);
-    assert(s5_servo_mount_angle(70u) == 110u);
-    assert(s5_servo_mount_angle(110u) == 70u);
     in.coarse_ready = true;
     in.coarse.nearest_index = 3;
     for (int i = 0; i < S5_SCAN_COUNT; ++i) {
         in.coarse.points[i].angle_deg = (uint16_t)(70 + i * 10);
         in.coarse.points[i].valid = true;
-        unsigned physical = s5_servo_mount_angle(in.coarse.points[i].angle_deg);
-        in.coarse.points[i].distance_cm = shaft_ranges[(physical - 70u) / 10u];
+        in.coarse.points[i].distance_cm = coarse_ranges[i];
     }
     S5Command bypass = s5_controller_step(&c, &in);
     assert(bypass == S5_CMD_SCAN_FINE);

@@ -103,10 +103,15 @@ static bool request(S5Command command, const S5Profile *profile)
         !reverse_path_clear()) return false;
     s5_maneuver_init(&maneuver);
     if (!s5_maneuver_begin(&maneuver, command, profile,
-                           ROBOT_BYPASS_MAX_DEPTH_CM, now)) return false;
+                           (ROBOT_OBSTACLE_TEST || ROBOT_BYPASS_EXACT_SEQUENCE ?
+                            ROBOT_BYPASS_MAX_DEPTH_CM : ROBOT_COURSE_BOX_DEPTH_CM), now)) return false;
+    if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE &&
+        command != S5_CMD_REVERSE &&
+        !s5_maneuver_plan_equal_legs(&maneuver, profile->center_y_cm, false)) return false;
     tm_printf((UB*)"[S5-ROUTE] side=%d offset_cm_x100=%d pass_cm_x100=%d search_limit_cm_x100=%d course_bounds=%d\n",
               (int)maneuver.side, (int)(maneuver.offset_cm * 100.0f),
-              (int)(maneuver.pass_cm * 100.0f), (int)(maneuver.search_limit_cm * 100.0f),
+              (int)(maneuver.pass_cm * 100.0f),
+              (int)(maneuver.search_limit_cm * 100.0f),
               profile ? (int)profile->uses_course_bounds : 0);
     mode = command == S5_CMD_REVERSE ? NAV_REVERSE : NAV_AVOID;
     comm_set_robot_state(ROBOT_OBSTACLE_AVOID);
@@ -198,20 +203,18 @@ bool s5_navigation_probe_bypass(const S5Profile *profile)
     uint32_t now;
     if (!profile || !profile->valid || mode != NAV_STOP || !probe_complete ||
         !s5_navigation_stopped() || !now_ms(&now)) return false;
-    int expected = profile->bypass_side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG;
+    int expected = profile->bypass_side == S5_SIDE_LEFT ? -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG;
     if (profile->bypass_side == S5_SIDE_NONE || probe_degrees != expected) return false;
     s5_maneuver_init(&maneuver);
     if (!s5_maneuver_begin(&maneuver,
         profile->bypass_side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT,
-        profile, ROBOT_BYPASS_MAX_DEPTH_CM, now)) return false;
-    /* The viewpoint turn already completed. Start the diagonal offset,
-     * rather than restoring heading and submitting another outward turn. */
-    maneuver.state = S5_MAN_OFFSET;
-    maneuver.outward_turn_complete = true;
+        profile, ROBOT_COURSE_BOX_DEPTH_CM, now)) return false;
+    if (!s5_maneuver_plan_equal_legs(&maneuver, profile->center_y_cm, true)) return false;
     probe_complete = false;
     mode = NAV_AVOID;
     tm_printf((UB*)"[S5-LOOK-ADVANCE] side=%d offset_cm_x100=%d pass_cm_x100=%d\n",
-        (int)maneuver.side, (int)(maneuver.offset_cm * 100.0f), (int)(maneuver.pass_cm * 100.0f));
+        (int)maneuver.side, (int)(maneuver.offset_cm * 100.0f),
+        (int)(maneuver.pass_cm * 100.0f));
     return true;
 }
 
@@ -243,7 +246,8 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     in.line_junction = (line.line_flags & B3_LINE_F_JUNCTION) != 0u;
     in.front_valid = front_valid;
     in.front_cm = front_cm;
-    in.motion_progress_cm = (status.left_distance_mm + status.right_distance_mm) / 20.0f;
+    if (!maneuver.equal_leg_route || status.command_id == maneuver.pending_id)
+        in.motion_progress_cm = (status.left_distance_mm + status.right_distance_mm) / 20.0f;
     in.stopped = status.physically_stopped;
     if (!in.line_valid) { fault_stop(S5_ERR_LINE_TIMEOUT); return; }
     if (mode == NAV_PROBE) {
@@ -254,10 +258,11 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
             return;
         }
         if (motion_get_result(probe_id, &terminal) == E_OK) {
-            if (terminal.status != MOTION_STATUS_COMPLETED || !terminal.physically_stopped || !in.stopped) {
+            if (terminal.status != MOTION_STATUS_COMPLETED || !terminal.physically_stopped) {
                 fault_stop(S5_ERR_MOTION_TIMEOUT);
                 return;
             }
+            if (!in.stopped) return;
             probe_complete = true;
             mode = NAV_STOP;
             (void)stop_motor();
@@ -314,7 +319,8 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
      * starts before the high-level controller requests FIND_LINE. */
     if (!ROBOT_BYPASS_EXACT_SEQUENCE && mode == NAV_AVOID &&
         maneuver.state == S5_MAN_TURN_IN && !maneuver.pending_id &&
-        !(ROBOT_BYPASS_LINE_HANDOFF && maneuver.outward_turn_complete &&
+        !(ROBOT_BYPASS_LINE_HANDOFF && !maneuver.equal_leg_route &&
+          maneuver.outward_turn_complete &&
           maneuver.left_original_line && in.line_detected))
         return;
     if (maneuver.state == S5_MAN_COMPLETE) return;
@@ -331,7 +337,8 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
             in.stopped = result.physically_stopped && status.physically_stopped;
             in.motion_progress_cm = (result.left_distance_mm + result.right_distance_mm) / 20.0f;
             if (in.motion_progress_cm > 0.0f &&
-                (maneuver.state == S5_MAN_OFFSET || maneuver.state == S5_MAN_PASS ||
+                (maneuver.state == S5_MAN_OFFSET ||
+                 maneuver.state == S5_MAN_PASS ||
                  maneuver.state == S5_MAN_SEARCH || maneuver.state == S5_MAN_REPLAN_ADVANCE))
                 tm_printf((UB*)"[S5-LEG-RESULT] id=%d planned_cm_x100=%d measured_cm_x100=%d stopped=%d\n",
                           (int)result.command_id, (int)(maneuver.active_move_cm * 100.0f),
@@ -390,7 +397,8 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
                 action.turn_deg < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id);
         else
             error = motion_move_limited_cm(action.distance_cm < 0 ? -action.distance_cm : action.distance_cm,
-                ROBOT_BYPASS_SPEED_CPS,
+                maneuver.equal_leg_route && maneuver.state == S5_MAN_SEARCH ?
+                    ROBOT_COURSE_RETURN_SPEED_CPS : ROBOT_BYPASS_SPEED_CPS,
                 action.distance_cm < 0 ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD,
                 ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_DISTANCE_MODE && action.distance_cm > 0 ? ROBOT_BYPASS_FORWARD_MS : 0u, &id);
         if (error != E_OK || !s5_maneuver_submitted(&maneuver, id)) {

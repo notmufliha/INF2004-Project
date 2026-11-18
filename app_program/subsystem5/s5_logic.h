@@ -32,6 +32,7 @@ typedef enum {
 } S5Command;
 typedef enum { S5_SIDE_NONE, S5_SIDE_LEFT, S5_SIDE_RIGHT } S5Side;
 S5Side s5_probe_side(const S5Scan *scan);
+bool s5_probe_corridor_blocked(const S5Scan *scan);
 typedef enum {
     S5_ERR_NONE, S5_ERR_FRONT_SENSOR, S5_ERR_STOP_TIMEOUT,
     S5_ERR_SCAN_TIMEOUT, S5_ERR_NO_CLEAR_ROUTE,
@@ -99,6 +100,8 @@ S5Profile s5_profile_from_scans(const S5Scan *coarse, const S5Scan *fine, S5Side
 /* Clipped or single-hit narrow scans may use explicit course size limits. Requires a
  * clear outer ray; executor rechecks the new heading before translation. */
 S5Profile s5_profile_from_course_bounds(const S5Scan *coarse, const S5Scan *fine);
+S5Profile s5_profile_from_probe(const S5Profile *profile, const S5Scan *coarse,
+                                const S5Scan *view, S5Side side, float front_cm);
 /* Shared size-aware recommendation; does not authorise physical motion. */
 S5Side s5_plan_bypass(S5Profile *profile, const S5Scan *coarse);
 const char *s5_state_name(S5State s);
