@@ -19,10 +19,14 @@
  * GP26 is physically right, GP27 left. Recheck after mounting changes.
  */
 #define B3_LINE_RAW_LOW_IS_BLACK (0U)
-#define B3_LINE_GP26_WHITE (245U)
-#define B3_LINE_GP26_BLACK (346U)
-#define B3_LINE_GP27_WHITE (212U)
-#define B3_LINE_GP27_BLACK (777U)
+/* 2026-11-18 spread-sensor run logs: GP26 floor 188-258, tape 290-400;
+ * GP27 floor 120-217, tape 870-3000.  GP27's old black (777) was below
+ * almost every tape reading, so it jumped from 0 to 1000 at the line edge
+ * and the steering was on/off; these give graded edge readings. */
+#define B3_LINE_GP26_WHITE (260U)
+#define B3_LINE_GP26_BLACK (360U)
+#define B3_LINE_GP27_WHITE (220U)
+#define B3_LINE_GP27_BLACK (1400U)
 /* 1: once a sensor has seen both floor and tape (slide the car across the
  * line once after power-up), normalise with its own learned white/black
  * instead of the fixed endpoints above.  Needed whenever the sensors are

@@ -82,7 +82,8 @@ ER motion_turn_degrees(INT angle, INT speed, motion_turn_direction_t dir, uint32
 {
     assert((angle == 90 || angle == 180 || angle == 360 ||
             angle == 90 - VC_TURN_SHORT_DEG || angle == 180 - VC_TURN_SHORT_DEG ||
-            angle == 360 - VC_TURN_SHORT_DEG) && speed > 0);
+            angle == 360 - VC_TURN_SHORT_DEG || angle == VC_SPIN_STEP_DEG) &&
+           speed > 0);
     sent.type = MOTION_CMD_TURN;
     sent.target_angle_deg = angle;
     sent.turn_direction = dir;
@@ -743,7 +744,8 @@ int main(void)
         assert(c.state == ROBOT_LINE_FOLLOW &&
             c.follow_steer == -VC_STRADDLE_OUTSIDE_STEER);
         settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u - 34u);
-        assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
+        assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_TURN &&
+            sent.turn_direction == MOTION_TURN_LEFT);    /* spin search left */
         settle(&c, 5u);
         assert(c.state == ROBOT_LINE_RECOVERY); /* stays lost */
         input.centre = 300u; input.line_flags = LINE_F_DETECTED; /* graze */
@@ -982,8 +984,9 @@ int main(void)
         assert(c.navigation == 0u);
         result_ready = false;
         settle(&c, 10u);                      /* both on floor: still turning */
-        assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_DRIVE &&
-            sent.steering_permille < 0);
+        assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_TURN &&
+            sent.target_angle_deg == VC_SPIN_STEP_DEG &&
+            sent.turn_direction == MOTION_TURN_LEFT);    /* on the spot */
         input.centre = 1000u; input.line_flags = LINE_F_DETECTED; /* found */
         step(&c, 20u, 0u);
         assert(c.state == ROBOT_LINE_FOLLOW);
@@ -1021,6 +1024,71 @@ int main(void)
         input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
     }
     puts("PASS barcode bars under a line sensor: ignored, no fake junction");
+
+    /* Quadratic steering (spread): a small error barely steers, a full one
+     * steers fully; no residue after the line is centred again. */
+    {
+        VEHICLE_CONTROLLER p = {0};
+        VC_INPUT v = {0};
+        p.line_straddle = true;
+        v.left = 200u; v.centre = 0u;
+        INT small = 0;
+        for (UINT i = 0u; i < 10u; ++i) small = line_follow_steering(&p, &v);
+        assert(small > 0 && small <= 40);
+        v.left = 1000u;
+        INT big = 0;
+        for (UINT i = 0u; i < 12u; ++i) big = line_follow_steering(&p, &v);
+        assert(big == B3_LINE_STEER_MAX);
+        v.left = 0u;
+        INT rest = 1;
+        for (UINT i = 0u; i < 12u; ++i) rest = line_follow_steering(&p, &v);
+        assert(rest == 0);
+    }
+    puts("PASS spread steering: quadratic, smoothed, settles to exactly 0");
+
+    /* Line search on the spot: 15 deg steps toward the last side, 90 deg,
+     * then back the other way; the line found during a step stops it. */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 5u);
+        c.straddle_lost = true; c.last_line_search_direction = 1;
+        step(&c, 20u, 0u);
+        assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_TURN &&
+            sent.turn_direction == MOTION_TURN_RIGHT);
+        for (UINT k = 0u; k < VC_SPIN_FIRST_STEPS; ++k) {
+            result_ready = true; result.status = MOTION_STATUS_COMPLETED;
+            step(&c, 20u, 0u);                  /* step done, next issued */
+            result_ready = false; step(&c, 20u, 0u);
+        }
+        assert(sent.type == MOTION_CMD_TURN &&
+            sent.turn_direction == MOTION_TURN_LEFT && c.spin_sweep == 1u);
+        UINT stops_before = stops;
+        input.centre = 600u; input.line_flags = LINE_F_DETECTED; /* found */
+        step(&c, 20u, 0u);
+        assert(stops == stops_before + 1u && c.spin_id == 0u &&
+            c.state == ROBOT_LINE_FOLLOW);
+        step(&c, 20u, 0u);
+        assert(sent.type == MOTION_CMD_DRIVE);
+        input.centre = 0u; input.line_flags = LINE_F_LOST;
+    }
+    puts("PASS line search: in-place steps, widening sweep, stops cleanly when found");
+
+    /* Junction: both sensors >= 700 at once for 2 ticks is a crossing even
+     * right after START (no steady-following wait needed). */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 3u);
+        step(&c, 20u, B3_NAV_RIGHT);
+        input.left = input.centre = 900u; input.line_flags = LINE_F_DETECTED;
+        for (UINT i = 0u; i < 6u && c.navigation == 0u; ++i) step(&c, 20u, 0u);
+        assert(c.navigation == B3_NAV_RIGHT);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+    }
+    puts("PASS junction: both sensors black at once counts immediately");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {

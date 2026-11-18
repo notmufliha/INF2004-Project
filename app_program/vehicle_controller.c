@@ -103,6 +103,23 @@ static INT line_follow_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         B3_LINE_STEER_ERROR_FULL_SCALE;
 
     (void)line_position(c, in); /* keep the last-seen side for recovery */
+#if VC_STRADDLE_QUADRATIC
+    if (c->line_straddle) {
+        INT mag = error < 0 ? -error : error;
+        INT target = error * mag / 1000 * B3_LINE_STEER_MAX / 1000;
+
+        if (c->error_filter_valid) {
+            INT diff = target - c->filtered_error;
+            INT move = diff / 2;
+            if (move == 0) move = diff;  /* integer halving never reaches 0 */
+            target = c->filtered_error + move;
+        }
+        c->filtered_error = target;
+        c->error_filter_valid = true;
+        c->last_error = error;
+        return target;
+    }
+#endif
     /* Low-pass the difference (half old, half new: ~20 ms lag at 50 Hz).
      * GP26's black/white span is only ~100 ADC counts, so a few counts of
      * noise move its normalised value by ~100 and flicked the steering
@@ -310,6 +327,43 @@ static bool barcode_rescan(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
     return false;
 }
 
+/* Spread layout line search: rotate on the spot in VC_SPIN_STEP_DEG
+ * steps, widening sweeps (see VC_SPIN_STEP_DEG). */
+static void straddle_spin_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    if (c->spin_id != 0u) {
+        motion_status_snapshot_t result;
+
+        if (motion_get_result(c->spin_id, &result) == E_OK) {
+            c->spin_id = 0u;
+            c->spin_steps++;
+        } else if (in->now_ms - c->spin_ms > VC_SPIN_STEP_TIMEOUT_MS) {
+            stop_motion(c);
+            c->spin_id = 0u;
+            c->spin_steps++;
+        } else {
+            return;                      /* step still turning */
+        }
+    }
+    if (c->spin_steps >= c->spin_target) {
+        c->spin_dir = -c->spin_dir;      /* sweep back, further */
+        c->spin_steps = 0u;
+        c->spin_sweep++;
+        c->spin_target = VC_SPIN_FIRST_STEPS * (c->spin_sweep + 1u);
+    }
+    if (!in->motion.physically_stopped) {
+        stop_motion(c);
+        return;
+    }
+    if (motion_turn_degrees(VC_SPIN_STEP_DEG, VC_SPIN_SPEED_CPS,
+                            c->spin_dir > 0 ? MOTION_TURN_RIGHT :
+                            MOTION_TURN_LEFT, &c->spin_id) == E_OK) {
+        c->stopped = false;
+        c->drive_sent = false;
+        c->spin_ms = in->now_ms;
+    }
+}
+
 /* Widening search: sweep 600 ms toward the side the line was last seen,
  * then 1200 ms the other way, 1800 ms back, and so on.  Each reversal
  * crosses the starting heading and swings further out than the last. */
@@ -447,6 +501,14 @@ static bool straddle_junction(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
         c->travel_um - c->jct_left_um <= VC_STRADDLE_JCT_WINDOW_UM;
     right_recent = c->jct_right_seen &&
         c->travel_um - c->jct_right_um <= VC_STRADDLE_JCT_WINDOW_UM;
+    if (in->left >= VC_STRADDLE_JCT_BOTH && in->centre >= VC_STRADDLE_JCT_BOTH) {
+        if (c->jct_both_ticks < 255u) c->jct_both_ticks++;
+    } else {
+        c->jct_both_ticks = 0u;
+    }
+    if (c->jct_both_ticks >= VC_STRADDLE_JCT_BOTH_TICKS) {
+        return true;       /* both under a crossing at once: certain */
+    }
     return c->jct_candidate_steady &&
         ((left_recent && right_recent) ||
          (tape && (left_recent || right_recent)));
@@ -874,9 +936,19 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             c->recovery_ms = in->now_ms;
             c->line_recovery_active = true;
             run_log_event(in->now_ms, RUN_EV_LINE_LOST, 0u);
+            c->spin_dir = c->last_line_search_direction != 0 ?
+                c->last_line_search_direction : 1;
+            c->spin_steps = 0u;
+            c->spin_sweep = 0u;
+            c->spin_target = VC_SPIN_FIRST_STEPS;
+            c->spin_id = 0u;
         }
         recovery_elapsed = in->now_ms - c->recovery_ms;
         set_state(c, ROBOT_LINE_RECOVERY);
+        if (c->line_straddle && recovery_elapsed < VC_LINE_SEARCH_MS) {
+            straddle_spin_search(c, in);
+            return;
+        }
         if (recovery_elapsed >= VC_LINE_SEARCH_MS) {
             /* Search exhausted: stop but stay armed.  Line following
              * resumes by itself once B3 sees the line again (e.g. the car
@@ -996,6 +1068,13 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     set_state(c, in->hump ? ROBOT_HUMP : ROBOT_LINE_FOLLOW);
+    if (c->spin_id != 0u) {
+        /* Line found during an in-place search step: stop the turn first
+         * (a DRIVE in the same tick would race B2's stop). */
+        stop_motion(c);
+        c->spin_id = 0u;
+        return;
+    }
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;

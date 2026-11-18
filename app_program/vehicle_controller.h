@@ -102,6 +102,27 @@
  * not exact (a U-turn stopped far short and the car drove off straight):
  * both sensors on floor after a turn is NOT "centred". */
 #define VC_TURN_SHORT_DEG 20
+/* Spread layout steering (BlackberryDealer/INF2004_Project's law, own
+ * code): target = e * |e| / 1000 scaled to B3_LINE_STEER_MAX, e = right -
+ * left (normalised).  Small errors give almost no steering (smooth
+ * straights), large ones strong steering; no deadband step. */
+#define VC_STRADDLE_QUADRATIC 1
+/* Spread layout, line lost: rotate ON THE SPOT (B2 turns of
+ * VC_SPIN_STEP_DEG) toward the side the line was last seen, stopping as
+ * soon as a sensor sees it; widening sweeps: 90 deg one way, back 180,
+ * then 270...  (LordPercivalXII/INF2004_Project searches in place so the
+ * car stays over the line; the old pivot around one wheel drove it away
+ * from the corner.)  Gives up (stops, stays armed) after
+ * VC_LINE_SEARCH_MS. */
+#define VC_SPIN_STEP_DEG 15
+#define VC_SPIN_FIRST_STEPS 6u
+#define VC_SPIN_SPEED_CPS 400
+#define VC_SPIN_STEP_TIMEOUT_MS 1500u
+/* Junction, spread layout: both sensors >= this at once for
+ * VC_STRADDLE_JCT_BOTH_TICKS ticks is a crossing for certain (the 18 mm
+ * line cannot cover both spread sensors), steady or not. */
+#define VC_STRADDLE_JCT_BOTH 700
+#define VC_STRADDLE_JCT_BOTH_TICKS 2u
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
@@ -282,6 +303,11 @@ typedef struct {
     bool bars_active, bar_prev_l, bar_prev_r;
     UB bar_edges_l, bar_edges_r;
     INT bar_ignore; /* -1 left / +1 right sensor ignored, 0 none */
+    /* In-place line search (spread layout). */
+    uint32_t spin_id, spin_ms;
+    INT spin_dir;
+    UINT spin_steps, spin_target, spin_sweep;
+    UINT jct_both_ticks;
     uint32_t jct_block_um; /* travel at the last unsteady moment */
     uint32_t jct_left_um, jct_right_um;
     UB navigation, pending_navigation;
