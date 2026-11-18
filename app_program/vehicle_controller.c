@@ -147,6 +147,7 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         if (left_on != right_on) {
             INT side = left_on ? -1 : 1;
             if (side != c->straddle_side) c->straddle_deep = false;
+            c->straddle_touch = side;
             c->straddle_side = side;
             if ((left_on ? left : right) >= VC_STRADDLE_DEEP) {
                 c->straddle_deep = true;
@@ -242,6 +243,14 @@ static bool barcode_rescan(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
         tm_printf((UB *)"[VC] barcode re-read: %s, driving over it again\n",
                   done ? "backed up" : "reverse timed out");
         c->rescan_phase = 0u;
+        /* Junction evidence gathered while reversing over the barcode and
+         * the line is not a junction ahead (it made the car turn left
+         * 50 mm after the re-read, 2026-11-18). */
+        c->junction_latched = false;
+        c->junction_enter_samples = c->junction_clear_samples = 0u;
+        c->jct_left_seen = c->jct_right_seen = false;
+        c->approach_active = false;
+        c->gp28_run_um = 0u;
         c->drive_sent = false;           /* fresh, gentle start */
         c->last_steer = c->last_speed = 0;
         c->error_filter_valid = false;
@@ -701,7 +710,11 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             ((in->line_flags & LINE_F_LOST) == 0u);
     }
     if (line_detected) c->line_recovery_active = false;
-    update_junction_state(c, in);
+    if (c->rescan_phase == 0u) {
+        update_junction_state(c, in);
+    } else {
+        (void)crossing_tape(c, in);  /* odometer only while re-reading */
+    }
     /* GP28 strip episode: from its first change to VC_STRIP_END_UM of
      * travel without one (the barcode re-read reverses over all of it). */
     if (!c->strip_known) {
@@ -912,6 +925,16 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             if (arc > VC_STRADDLE_OUTSIDE_STEER) arc = VC_STRADDLE_OUTSIDE_STEER;
         }
         command.steering_permille = c->straddle_outside * arc;
+    } else if (c->line_straddle && c->straddle_touch != 0 &&
+               !B3_LINE_LEFT_ACTIVE(in->left) &&
+               !B3_LINE_CENTRE_ACTIVE(in->centre) &&
+               in->now_ms - c->straddle_black_ms >= VC_STRADDLE_SEEK_MS) {
+        /* Both on floor for a while: drift toward the last touched side. */
+        INT seek = VC_STRADDLE_SEEK_START + VC_STRADDLE_SEEK_RAMP *
+            (INT)((in->now_ms - c->straddle_black_ms - VC_STRADDLE_SEEK_MS) /
+                  VC_PERIOD_MS);
+        if (seek > VC_STRADDLE_SEEK_MAX) seek = VC_STRADDLE_SEEK_MAX;
+        command.steering_permille = c->straddle_touch * seek;
     }
     /* Smooth steering changes so the car does not jerk between corrections. */
     if (c->drive_sent) {

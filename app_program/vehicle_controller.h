@@ -123,7 +123,10 @@
  * then turn toward the exit side with a gentle arc, RECOVER_START permille
  * growing RECOVER_RAMP per 20 ms tick up to OUTSIDE_STEER.  Not found
  * after OUTSIDE_MS: the normal line search. */
-#define VC_STRADDLE_DEEP 700
+/* 450, not 700: the right sensor (GP26) reads the tape at only ~450-750
+ * normalised, so its exits never counted and the car drove straight on
+ * after right bends (2026-11-18 test). */
+#define VC_STRADDLE_DEEP 450
 #define VC_STRADDLE_COAST_MS 120u
 #define VC_STRADDLE_FLIP_COAST_MS 400u
 #define VC_STRADDLE_RECOVER_START 200
@@ -139,6 +142,16 @@
 /* Neither sensor has touched the line for this long: assume it is really
  * lost (end of line, or off the course) and run the normal line search. */
 #define VC_STRADDLE_BLIND_MS 3000u
+/* Seek: both sensors on floor for VC_STRADDLE_SEEK_MS -> drift gently
+ * toward the side that last touched the line (SEEK_START permille, +RAMP
+ * per tick, up to SEEK_MAX).  A centred line is then met by the other
+ * sensor (a slow, small weave); a line that slipped out past a sensor
+ * without a strong reading (car offset after a bend) is found again
+ * instead of the car driving straight off the course. */
+#define VC_STRADDLE_SEEK_MS 400u
+#define VC_STRADDLE_SEEK_START 100
+#define VC_STRADDLE_SEEK_RAMP 15
+#define VC_STRADDLE_SEEK_MAX 450
 /* Barcode re-read: after a rejected scan (B3 beeps twice), stop, reverse
  * past the start of the strip by VC_RESCAN_MARGIN_UM and drive over it
  * again.  At most VC_BARCODE_RESCANS tries per barcode; 0 disables. */
@@ -200,6 +213,7 @@ typedef struct {
     /* Spread sensor layout (VC_LINE_STRADDLE). */
     bool line_straddle;
     INT straddle_side;     /* -1/+1: only that sensor is on black, else 0 */
+    INT straddle_touch;    /* -1/+1: the sensor that last touched alone */
     bool straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
     INT straddle_outside;  /* -1/+1: line left past that sensor (maybe) */
     INT straddle_last_exit;  /* side of the previous exit */
