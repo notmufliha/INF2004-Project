@@ -744,12 +744,17 @@ int main(void)
         assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
         settle(&c, 5u);
         assert(c.state == ROBOT_LINE_RECOVERY); /* stays lost */
-        input.centre = 500u; input.line_flags = LINE_F_DETECTED;
+        input.centre = 300u; input.line_flags = LINE_F_DETECTED; /* graze */
         step(&c, 20u, 0u);
         assert(c.state == ROBOT_LINE_FOLLOW);
-        /* No sensor touches the line for VC_STRADDLE_BLIND_MS: lost. */
+        /* No sensor touches the line for VC_STRADDLE_BLIND_MS: lost.  Before
+         * that the car drifts toward the side that last touched (seek). */
         input.centre = 0u; input.line_flags = LINE_F_LOST;
-        settle(&c, VC_STRADDLE_BLIND_MS / 20u - 2u);
+        settle(&c, VC_STRADDLE_SEEK_MS / 20u - 1u);
+        assert(c.state == ROBOT_LINE_FOLLOW && c.follow_steer == 0);
+        settle(&c, 30u);
+        assert(c.follow_steer < 0 && c.follow_steer >= -VC_STRADDLE_SEEK_MAX);
+        settle(&c, VC_STRADDLE_BLIND_MS / 20u - VC_STRADDLE_SEEK_MS / 20u - 31u);
         assert(c.state == ROBOT_LINE_FOLLOW);
         settle(&c, 3u);
         assert(c.state == ROBOT_LINE_RECOVERY);
@@ -976,6 +981,39 @@ int main(void)
         input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
     }
     puts("PASS rejected barcode: back up once and read it again");
+
+    /* 2026-11-18 run 1: the barcode is read (reversed) while backing up
+     * and the sensors sweep over the line; afterwards the car must not
+     * turn until a real junction ahead. */
+    {
+        c = fresh(); c.line_straddle = true; c.approach_um = 50000u;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.motion.physically_stopped = false;
+        settle(&c, 30u);
+        input.barcode_rejects = 5u; step(&c, 20u, 0u);
+        settle(&c, 30u);
+        assert(c.rescan_phase == 1u);
+        input.motion.physically_stopped = true; step(&c, 20u, 0u);
+        assert(c.rescan_phase == 2u);
+        input.motion.physically_stopped = false;
+        step(&c, 20u, B3_NAV_LEFT);                   /* read while reversing */
+        input.left = input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
+        settle(&c, 5u);                               /* line under both */
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        result_ready = true; result.status = MOTION_STATUS_COMPLETED;
+        result.physically_stopped = true;
+        step(&c, 20u, 0u);
+        assert(c.rescan_phase == 0u && !c.junction_latched &&
+            c.pending_navigation == B3_NAV_LEFT);
+        settle(&c, 60u);                              /* 10 cm, no junction */
+        assert(c.navigation == 0u && c.pending_navigation == B3_NAV_LEFT);
+        result_ready = false;
+        input.barcode_rejects = 0u;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS re-read: line crossed while reversing is not a junction");
 
     /* Avoidance owns motor commands until the line/heading handoff. */
     c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);

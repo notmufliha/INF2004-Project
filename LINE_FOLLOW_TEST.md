@@ -43,6 +43,11 @@ MEASURE: line sensors to wheel axle, minus ~10 mm) so it turns with its
 wheels on the junction instead of into the floor beside the new line.
 Bends: the line leaving the same sensor again within 1 s turns back toward
 it at once (arc from 350), no coasting.
+Offset after a bend: an exit counts as "line may be outside" from 450
+(was 700: GP26 reads tape at only ~450-750), and with both sensors on floor
+for 0.4 s the car drifts gently toward the side that last touched the line
+(seek, up to 450 permille). Junction evidence is ignored while reversing
+for a barcode re-read and cleared afterwards.
 
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.
