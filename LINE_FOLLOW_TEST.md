@@ -1,3 +1,25 @@
+# Branch `line-follow-v3` (from `line-barcode-spread` 9d14af4)
+
+Line following reworked from two other INF2004 projects (ideas only, own
+code; neither repo has a licence):
+- **Graded sensor readings**: fixed endpoints from the 2026-11-18 logs
+  (GP26 260/360, GP27 220/1400). GP27's old black (777) was below nearly
+  every tape reading, so it jumped 0 -> 1000 at the line edge: on/off
+  steering.
+- **Quadratic steering** (BlackberryDealer): target = e*|e|/1000 scaled to
+  800, e = right - left, smoothed by half each 20 ms tick. Small errors
+  barely steer (smooth straights), big ones steer fully.
+- **Self-finding in place** (LordPercivalXII): line lost (or after a barcode
+  turn) -> B2 turns of 15 deg on the spot toward the last side, 90 deg, then
+  back the other way 180, then 270 ...; stops the moment a sensor sees the
+  line. The old search pivoted round one wheel and drove away from the
+  corner.
+- **Junction**: also both sensors >= 70% at the same time for 2 ticks
+  (LordPercivalXII) -> immediate junction; the 25 mm window rule stays.
+- LordPercivalXII measured 13 cm from line sensors to wheel axle on their
+  car; ours uses `VC_JUNCTION_APPROACH_MM` 50 mm. Measure ours: if turns at
+  junctions start too early, raise it.
+
 # Spread sensors + barcode re-read (branch `line-barcode-spread`)
 
 ## Run log (send us real data)
