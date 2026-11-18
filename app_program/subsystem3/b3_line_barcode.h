@@ -145,6 +145,9 @@ IMPORT ID mtx_b3_state;
  */
 IMPORT ER b3_init(void);
 
+/** Latest raw ADC readings of the two line sensors (GP26, GP27). */
+IMPORT void b3_line_raw(uint16_t *gp26, uint16_t *gp27);
+
 /**
  * @brief Configure GP28 and start the line-sampling and barcode tasks.
  * @return E_OK on success or an initialization/task-start error.

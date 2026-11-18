@@ -122,3 +122,26 @@ not PWM. `measL`/`measR` are the existing measured wheel speeds in counts/s;
 `age` is their snapshot age in milliseconds. Feedback precedes the new command,
 so compare successive records, not a single record as an instantaneous response.
 No sensor thresholds, steering gains or motor targets are changed by logging.
+
+## Line following v4 (`VC_FOLLOW_V4`, default on)
+
+A clean rewrite of following, line search, junction turns, barcode reading,
+obstacle bypass, ramp handling and lift-stop. `VC_FOLLOW_V4 0` and
+`ROBOT_BOX_BYPASS 0` bring back the previous controller and B5 bypass.
+
+| Behaviour | v4 |
+|---|---|
+| Speed | cruise 120 mm/s (dashboard 29 %), slow 100 mm/s near an obstacle and for 150 mm after a bypass, barcode reads at 60 mm/s |
+| Steering (`vc_follow.c`) | error = left − right (normalised); target = e·\|e\|/1000; smoothed 1/4 per 10 ms; no deadband or slew limiter |
+| Curves | base speed cut up to 50 % with \|steering\|; wheel split ±50 mm/s at full error; inner wheel ≥ 1/3 of base |
+| Line leaves a sensor | coast 120 ms (400 ms if it left on the other side last time), then an arc toward that side growing 20 ‰ per 10 ms |
+| Lost | both white ≥ 200 ms **and** ≥ 60 mm after the line went black under one sensor; centred (both white after only a grey graze) is never lost |
+| Line search | spin 60° toward the side last seen, 120° back, 60° again; either sensor on tape = found; 5 s → run stops |
+| Junction | nL + nR ≥ 1400 for ≥ 10 mm, classified 30 mm later: both sensors ≥ 900 = cross-junction |
+| Barcode turn | decoded action waits for a cross-junction: stop, forward 60 mm, turn 90° (U-turn 180° left), follow |
+| Barcode read | on the first bars (≥ 3 GP28 edges): stop, reverse past the strip start (+110 mm), wait 600 ms, read at 60 mm/s; failed pass → back to its start (+10 mm), up to 2 retries |
+| Obstacle (`subsystem5/s5_box.c`) | slow at 60 cm, stop at 40 cm (2 agreeing pings), creep to 25 cm, scan; single narrow echo = ramp glint → continue; bypass on the side needing the smaller shift: turn 90 out, lateral leg, turn 90 back, pass leg (distance + 15 cm depth + 10 cm tail), turn 45 in, accept a 15–75 mm wide tape crossing 50–120 % of lateral·√2 along, forward 60 mm, turn 45 back; lateral > 30 cm or pass > 80 cm, side echo < 6 cm, or 20 s without the line → stop |
+| Ramp | while B4 reports a hump / pitch ≥ 2° (held 480 ms and 150 mm after) the obstacle stop distance is 25 cm |
+| Lift-stop | both line sensors raw ≥ 3500 for 300 ms, or the IMU reads lifted/tilted for 60 ms → stop, START needed |
+
+Host tests: `testing/controller/vc_follow_test.c` (in `run_tests.ps1`).

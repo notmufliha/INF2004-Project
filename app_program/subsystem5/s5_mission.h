@@ -9,4 +9,7 @@ void s5_mission_publish(S5MissionState state);
 S5MissionState s5_mission_state(void);
 void s5_mission_front(bool valid, float cm);
 bool s5_mission_approach_slow(void);
+/* VC: the car is on (or just past) a ramp: shorter obstacle stop. */
+void s5_mission_set_ramp(bool on_ramp);
+bool s5_mission_ramp(void);
 #endif

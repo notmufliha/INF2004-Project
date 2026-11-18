@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $binary = Join-Path $env:TEMP 'inf2004-controller-test.exe'
-& gcc -std=c11 -mno-ms-bitfields -Wall -Wextra -Werror -Wno-cast-function-type (Join-Path $PSScriptRoot 'controller_test.c') -o $binary
+# controller_test.c covers the previous controller: build it with v4 off.
+& gcc -std=c11 -mno-ms-bitfields -Wall -Wextra -Werror -Wno-cast-function-type -DVC_FOLLOW_V4=0 -DROBOT_BOX_BYPASS=0 (Join-Path $PSScriptRoot 'controller_test.c') -o $binary
 if ($LASTEXITCODE -ne 0) { throw 'Controller compilation failed' }
 & $binary
 if ($LASTEXITCODE -ne 0) { throw 'Controller tests failed' }
@@ -28,3 +29,9 @@ $lineInputBinary = Join-Path $env:TEMP 'inf2004-line-input-test.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Line input compilation failed' }
 & $lineInputBinary
 if ($LASTEXITCODE -ne 0) { throw 'Line input tests failed' }
+
+$v4Binary = Join-Path $env:TEMP 'inf2004-vc-follow-test.exe'
+& gcc -std=c11 -Wall -Wextra -Werror (Join-Path $PSScriptRoot 'vc_follow_test.c') (Join-Path $PSScriptRoot '..\..pp_programc_follow.c') -o $v4Binary
+if ($LASTEXITCODE -ne 0) { throw 'vc_follow compilation failed' }
+& $v4Binary
+if ($LASTEXITCODE -ne 0) { throw 'vc_follow tests failed' }

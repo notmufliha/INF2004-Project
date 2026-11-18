@@ -16,6 +16,7 @@
 #include "s5_navigation.h"
 #include "s5_mission.h"
 #include "s5_startup.h"
+#include "s5_box.h"
 
 /* The B1 wire format uses 9/7-bit obstacle fields.  B5's approved
  * application ranges are 0..400 cm (distance/clearance) and 0..100 cm
@@ -1102,7 +1103,12 @@ EXPORT void s5_task(INT stacd, void *exinf)
         (void)s5_ultrasonic_read_detailed();
         tk_dly_tsk(S5_ECHO_GAP_MS);
     }
+#if ROBOT_BOX_BYPASS
+    if (0) live_controller_mode();   /* kept for ROBOT_BOX_BYPASS 0 */
+    s5_box_mode();
+#else
     live_controller_mode();
+#endif
 #else
     stationary_profile_mode();
 #endif
