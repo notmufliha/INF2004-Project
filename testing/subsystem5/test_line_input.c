@@ -79,6 +79,7 @@ static ER tk_dly_tsk(unsigned ms)
 static ID app_start_task(FP entry, INT pri, UW core, const char *name)
 { assert(entry && (pri == 16 || pri == 17) && core == TP_PRC1 && name); return 5; }
 #define B3_BUZZER_H
+#define RUN_LOG_ENABLE 0
 typedef enum { B3_BEEP_READ = 0, B3_BEEP_REJECT } B3_BEEP;
 static void b3_buzzer_init(void) {}
 static void b3_buzzer_beep(B3_BEEP p, uint32_t t) { (void)p; (void)t; }

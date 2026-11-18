@@ -5,6 +5,7 @@
 #include "subsystem4/imu_vc.h"
 #include "subsystem4/subsystem4.h"
 #include "subsystem5/s5_mission.h"
+#include "run_log.h"
 
 #if VC_STEERING_DIAGNOSTICS
 static void report_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
@@ -324,6 +325,12 @@ static bool crossing_tape(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     counts_per_s = (uint32_t)(left + right) / 2u;
     c->travel_um += counts_per_s * dt_ms * VC_UM_PER_COUNT / 1000u;
     if (in->right != c->gp28_level) {
+        if (c->floor_known && c->gp28_level != c->floor_level &&
+            c->gp28_run_um >= 2000u) {
+            /* Barcode sensor back on floor: how long was it off it? */
+            run_log_event(in->now_ms, RUN_EV_GP28_RUN,
+                          (uint16_t)(c->gp28_run_um / 1000u));
+        }
         c->gp28_level = in->right;
         c->gp28_run_um = 0u;
     } else if (c->gp28_run_um < 1000000u) {
@@ -334,17 +341,56 @@ static bool crossing_tape(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         c->floor_known = true;
     }
     return c->floor_known && c->gp28_level != c->floor_level &&
-        c->gp28_run_um >= VC_JUNCTION_MIN_UM &&
-        c->curve_steer < VC_JUNCTION_MAX_CURVE_STEER;
+        c->gp28_run_um >= VC_JUNCTION_MIN_UM;
+}
+
+/* Spread layout: crossing or branch under the line sensors. */
+static bool straddle_junction(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
+                              bool tape)
+{
+    INT sum = (INT)in->left + (INT)in->centre;
+
+    if (sum >= VC_STRADDLE_JCT_SUM) {
+        if (!c->jct_sum_active) {
+            c->jct_sum_active = true;
+            c->jct_sum_um = c->travel_um;
+        }
+        if (c->travel_um - c->jct_sum_um >= VC_STRADDLE_JCT_MIN_UM) {
+            return true;
+        }
+    } else {
+        c->jct_sum_active = false;
+    }
+    return tape && (in->left >= VC_STRADDLE_DEEP ||
+                    in->centre >= VC_STRADDLE_DEEP);
 }
 
 static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
 {
     UB line_flags = in->line_flags;
     bool tape = crossing_tape(c, in);
-    bool junction = tape && (line_flags & LINE_F_JUNCTION) != 0u &&
-        (line_flags & LINE_F_DETECTED) != 0u &&
-        (line_flags & LINE_F_LOST) == 0u;
+    bool junction;
+
+    c->tape_now = tape;
+    if (c->line_straddle) {
+        junction = straddle_junction(c, in, tape);
+    } else {
+        /* Both line sensors sit on the line all the time here, so only
+         * the barcode sensor crossing the tape tells a junction.  B3's
+         * JUNCTION flag (both >= 800 and within 150) is not required: a
+         * car slightly off-centre at the tape failed it. */
+        junction = tape && (line_flags & LINE_F_DETECTED) != 0u &&
+            c->curve_steer < VC_JUNCTION_MAX_CURVE_STEER;
+        if (tape && !junction && c->pending_navigation != B3_NAV_NONE &&
+            !c->jct_waiting_logged) {
+            c->jct_waiting_logged = true;
+            run_log_event(in->now_ms, RUN_EV_NAV_WAITING,
+                          (uint16_t)c->curve_steer);
+            tm_printf((UB *)"[VC] tape under GP28 with a turn pending, not a junction: curve_steer=%d flags=%d\n",
+                      (INT)c->curve_steer, (INT)line_flags);
+        }
+        if (!tape) c->jct_waiting_logged = false;
+    }
 
     if (junction) {
         c->junction_clear_samples = 0u;
@@ -352,6 +398,12 @@ static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             c->junction_enter_samples++;
         }
         if (c->junction_enter_samples >= VC_JUNCTION_CONFIRM_SAMPLES) {
+            if (!c->junction_latched) {
+                run_log_event(in->now_ms, RUN_EV_JUNCTION,
+                              (uint16_t)c->pending_navigation);
+                tm_printf((UB *)"[VC] junction (pending turn %d)\n",
+                          (INT)c->pending_navigation);
+            }
             c->junction_latched = true;
         }
     } else {
@@ -648,6 +700,8 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->rescan_ms = in->now_ms;
         tm_printf((UB *)"[VC] barcode rejected: backing up %d mm to read it again\n",
                   (INT)(c->rescan_back_um / 1000u));
+        run_log_event(in->now_ms, RUN_EV_RESCAN,
+                      (uint16_t)(c->rescan_back_um / 1000u));
     }
     if (c->rescan_phase != 0u && barcode_rescan(c, in, speed)) return;
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
@@ -655,6 +709,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->navigation = c->pending_navigation;
         c->pending_navigation = B3_NAV_NONE;
         c->navigation_ms = in->now_ms;
+        run_log_event(in->now_ms, RUN_EV_NAV_START, (uint16_t)c->navigation);
         stop_motion(c);
         set_state(c, ROBOT_NAV_COMMAND);
         return;
@@ -672,6 +727,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (!c->line_recovery_active) {
             c->recovery_ms = in->now_ms;
             c->line_recovery_active = true;
+            run_log_event(in->now_ms, RUN_EV_LINE_LOST, 0u);
         }
         recovery_elapsed = in->now_ms - c->recovery_ms;
         set_state(c, ROBOT_LINE_RECOVERY);
@@ -730,6 +786,8 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
                     safe_stop(c);
                     return;
                 }
+                run_log_event(in->now_ms, RUN_EV_NAV_DONE,
+                              (uint16_t)c->navigation);
                 c->navigation = 0u;
                 c->navigation_id = 0u;
             } else if (in->now_ms - c->navigation_ms > 65000u) {
@@ -1010,6 +1068,34 @@ static void controller_task(INT stacd, void *exinf)
                       (INT)in.obstacle_fault, (INT)in.clearance, (INT)in.faults);
         }
         vehicle_controller_step(&c, &in, nav);
+        if (c.running != was_running) {
+            run_log_event(in.now_ms, c.running ? RUN_EV_START : RUN_EV_STOP,
+                          (uint16_t)c.state);
+        }
+        if (c.running) {
+            RUN_TICK tick = {0};
+            tick.t_ms = in.now_ms;
+            tick.travel_mm = c.travel_um / 1000u;
+            tick.n26 = in.left;
+            tick.n27 = in.centre;
+            tick.steer = (int16_t)c.last_steer;
+            tick.speed = (int16_t)c.last_speed;
+            tick.curve = (int16_t)c.curve_steer;
+            tick.state = (uint8_t)c.state;
+            tick.pending = c.pending_navigation;
+            tick.nav = c.navigation;
+            tick.bits = (uint16_t)(
+                (in.right ? RUN_BIT_GP28 : 0u) |
+                ((in.line_flags & LINE_F_DETECTED) ? RUN_BIT_DETECTED : 0u) |
+                ((in.line_flags & LINE_F_LOST) ? RUN_BIT_LOST : 0u) |
+                ((in.line_flags & LINE_F_JUNCTION) ? RUN_BIT_JFLAG : 0u) |
+                (c.tape_now ? RUN_BIT_TAPE : 0u) |
+                (c.junction_latched ? RUN_BIT_JLATCH : 0u) |
+                (in.barcode_active ? RUN_BIT_BARCODE : 0u) |
+                (c.floor_known ? RUN_BIT_FLOOR : 0u) |
+                (c.line_straddle ? RUN_BIT_STRADDLE : 0u));
+            run_log_tick(&tick);
+        }
         s5_mission_enable(((autostart_pending && boot_sensors_ready) || c.running) && !c.estop && !c.paused &&
                           c.mode != MODE_TEST && c.speed_percent != 0u);
         /* Hazards stop this tick even when coalesced with recovery. A later
@@ -1022,5 +1108,6 @@ static void controller_task(INT stacd, void *exinf)
 ER vehicle_controller_start(void)
 {
     ID task = app_start_task((FP)controller_task, 6, TP_PRC1, "vehicle_controller");
-    return task < E_OK ? task : E_OK;
+    if (task < E_OK) return task;
+    return (ER)run_log_start();
 }

@@ -1,5 +1,32 @@
 # Spread sensors + barcode re-read (branch `line-barcode-spread`)
 
+## Run log (send us real data)
+
+The car records the last ~24 s of every run (one row per 20 ms: raw and
+normalised line sensors, GP28, flags, junction evidence, state, steering,
+speed, pending/active barcode turn) plus events: `BARCODE_READ`,
+`BARCODE_REJECT`, `GP28_RUN` (mm the barcode sensor was on black),
+`JUNCTION`, `NAV_WAITING` (tape seen with a turn pending but not accepted:
+arg = curve_steer), `NAV_START`, `NAV_DONE`, `LINE_LOST`, `RESCAN`.
+
+1. Drive the car over the barcode + junction (no USB needed), stop it.
+2. Plug it into the laptop, close other serial monitors, then from the repo:
+   `powershell -ExecutionPolicy Bypass -File tools\capture_run_log.ps1 -Note "B then junction, sensors together"`
+3. `git add logs` / `git commit -m "Run log: ..."` / `git push`.
+
+## Junctions
+
+Sensors together (default, `VC_LINE_STRADDLE 0`): both line sensors are on
+the line all the time, so a junction is the barcode sensor GP28 on black
+for >= 13 mm. B3's balanced both-black flag is no longer required (an
+off-centre car failed it), and only a hard curve (`curve_steer` >= 600, was
+300: normal corrections exceeded 300) blocks it. If GP28 does not pass over
+the junction tape at all (branch on the other side), the log shows no
+`GP28_RUN` of ~18 mm there: then we need a different signal.
+
+Spread layout (`VC_LINE_STRADDLE 1`): junction = left + right >= 1400 for
+10 mm, or a GP28 tape with one sensor fully black (side branch).
+
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.
 

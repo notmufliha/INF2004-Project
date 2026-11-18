@@ -151,6 +151,7 @@ change it only by team agreement. Write down every task you create.
 | 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
 | 4 | 18–19 | task_imu_sampling_task – 18 – any; task_imu_analysis_task – 19 – any; task_monitor_task – 19 – any (ROBOT_MODE=0 only) |
 | 5 | 20–21 | |
+| shared | 22 | run_log – 22 – any (run recorder dump, app_program/run_log.c) |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
 
