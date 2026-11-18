@@ -52,26 +52,11 @@ static uint16_t mirror_mask(uint16_t mask)
     return mirrored;
 }
 
-static void reject(B3_CODE39_DECODER *decoder, B3_CODE39_REJECT reason)
-{
-    decoder->last_reject = (uint8_t)reason;
-    decoder->last_reject_char = decoder->payload;
-    decoder->reject_count++;
-}
-
-static void reset_candidate(B3_CODE39_DECODER *decoder)
-{
-    decoder->run_count = 0U;
-    decoder->in_barcode = 0U;
-    decoder->payload_valid = 0U;
-    decoder->payload = '\0';
-    decoder->reversed = 0U;
-}
-
 void b3_code39_reset(B3_CODE39_DECODER *decoder)
 {
     if (decoder != NULL) {
         *decoder = (B3_CODE39_DECODER){0};
+        decoder->skip_first = 1U;
     }
 }
 
@@ -174,92 +159,266 @@ static bool valid_intercharacter_gap(const B3_CODE39_DECODER *decoder,
             (uint64_t)narrow_space_us * 2U;
 }
 
+/* One character position of the scan, read both ways. */
+typedef struct {
+    uint16_t mask;        /* 0: no clean wide/narrow split */
+    char forward;         /* character read in crossing order, or '\0' */
+    char reverse;         /* character if the strip was crossed backwards */
+    uint32_t narrow_space_us;
+} B3_CODE39_BLOCK;
+
+static void read_block(const B3_CODE39_DECODER *decoder, uint8_t offset,
+                       B3_CODE39_BLOCK *block)
+{
+    block->narrow_space_us = 0U;
+    block->mask = element_mask(decoder, offset, &block->narrow_space_us);
+    block->forward = block->mask != 0U ? b3_code39_lookup(block->mask) : '\0';
+    block->reverse = block->mask != 0U ?
+        b3_code39_lookup(mirror_mask(block->mask)) : '\0';
+}
+
+static bool is_payload(char character)
+{
+    return character != '\0' && character != '*';
+}
+
+static bool gap_ok(const B3_CODE39_DECODER *decoder, uint8_t gap_index,
+                   const B3_CODE39_BLOCK *next)
+{
+    return valid_intercharacter_gap(decoder, gap_index,
+                                    (uint8_t)(gap_index + 1U),
+                                    next->narrow_space_us);
+}
+
+/* Whole "*X*" starting at offset, crossed either way. */
+static bool full_read(const B3_CODE39_DECODER *decoder, uint8_t offset,
+                      char *symbol, uint8_t *reversed)
+{
+    B3_CODE39_BLOCK start;
+    B3_CODE39_BLOCK payload;
+    B3_CODE39_BLOCK stop;
+
+    read_block(decoder, offset, &start);
+    read_block(decoder, (uint8_t)(offset + 10U), &payload);
+    read_block(decoder, (uint8_t)(offset + 20U), &stop);
+    if (start.mask == 0U || payload.mask == 0U || stop.mask == 0U ||
+        !gap_ok(decoder, (uint8_t)(offset + 9U), &payload) ||
+        !gap_ok(decoder, (uint8_t)(offset + 19U), &stop)) {
+        return false;
+    }
+    if (start.forward == '*' && stop.forward == '*' &&
+        is_payload(payload.forward)) {
+        *symbol = payload.forward;
+        *reversed = 0U;
+        return true;
+    }
+    if (start.reverse == '*' && stop.reverse == '*' &&
+        is_payload(payload.reverse)) {
+        *symbol = payload.reverse;
+        *reversed = 1U;
+        return true;
+    }
+    return false;
+}
+
+/* A frame character next to a payload, and the scan direction. */
+typedef struct {
+    char frame;
+    char payload;
+    uint8_t reversed;
+} B3_CODE39_READING;
+
+/* Two neighbouring characters at offset: a frame '*' next to a payload
+ * ("*X" with the stop lost, or "X*" with the start lost), either way.
+ * Returns the payload, or '\0'; *conflict when two readings disagree. */
+static char partial_read(const B3_CODE39_DECODER *decoder, uint8_t offset,
+                         uint8_t *reversed, bool *conflict)
+{
+    B3_CODE39_BLOCK first;
+    B3_CODE39_BLOCK second;
+    char found = '\0';
+    uint8_t found_reversed = 0U;
+    const B3_CODE39_READING *candidate;
+    uint8_t index;
+
+    read_block(decoder, offset, &first);
+    read_block(decoder, (uint8_t)(offset + 10U), &second);
+    if (first.mask == 0U || second.mask == 0U ||
+        !gap_ok(decoder, (uint8_t)(offset + 9U), &second)) {
+        return '\0';
+    }
+    {
+        const B3_CODE39_READING readings[4] = {
+            { first.forward, second.forward, 0U },  /* "*X" forwards  */
+            { second.forward, first.forward, 0U },  /* "X*" forwards  */
+            { first.reverse, second.reverse, 1U },  /* backwards, start */
+            { second.reverse, first.reverse, 1U },  /* backwards, end   */
+        };
+        for (index = 0U; index < 4U; ++index) {
+            candidate = &readings[index];
+            if (candidate->frame != '*' || !is_payload(candidate->payload)) {
+                continue;
+            }
+            if (found != '\0' && (found != candidate->payload ||
+                                  found_reversed != candidate->reversed)) {
+                *conflict = true;
+                return '\0';
+            }
+            found = candidate->payload;
+            found_reversed = candidate->reversed;
+        }
+    }
+    *reversed = found_reversed;
+    return found;
+}
+
+static void reject(B3_CODE39_DECODER *decoder, B3_CODE39_REJECT reason,
+                   char character)
+{
+    uint8_t index;
+
+    decoder->last_reject = (uint8_t)reason;
+    decoder->last_reject_char = character;
+    decoder->reject_count++;
+    for (index = 0U; index < decoder->count; ++index) {
+        decoder->reject_widths_us[index] = decoder->widths_us[index];
+    }
+    decoder->reject_elements = decoder->count;
+}
+
+/* Why a scan with bars in it gave no symbol: look beside the first '*'. */
+static void diagnose(B3_CODE39_DECODER *decoder, bool conflict)
+{
+    B3_CODE39_BLOCK block;
+    B3_CODE39_BLOCK next;
+    uint8_t offset;
+
+    if (conflict) {
+        reject(decoder, B3_CODE39_REJECT_PATTERN, '?');
+        return;
+    }
+    for (offset = 0U; (uint8_t)(offset + 9U) <= decoder->count; ++offset) {
+        read_block(decoder, offset, &block);
+        if (block.forward != '*' && block.reverse != '*') {
+            continue;
+        }
+        if ((uint8_t)(offset + 19U) > decoder->count) {
+            reject(decoder, B3_CODE39_REJECT_STOP, '\0');
+            return;
+        }
+        read_block(decoder, (uint8_t)(offset + 10U), &next);
+        if (next.mask == 0U) {
+            reject(decoder, B3_CODE39_REJECT_RATIO, '\0');
+        } else if (!is_payload(next.forward) && !is_payload(next.reverse)) {
+            reject(decoder, B3_CODE39_REJECT_PATTERN, '\0');
+        } else {
+            reject(decoder, B3_CODE39_REJECT_GAP,
+                   block.forward == '*' ? next.forward : next.reverse);
+        }
+        return;
+    }
+    reject(decoder, B3_CODE39_REJECT_NO_START, '\0');
+}
+
+static void emit(B3_CODE39_DECODER *decoder, char character, uint8_t reversed,
+                 uint8_t partial, char *symbol)
+{
+    *symbol = character;
+    decoder->last_reversed = reversed;
+    decoder->last_partial = partial;
+    decoder->scan_done = 1U;
+}
+
+/* The scan is over (quiet floor): decode whatever it holds, then start a
+ * new one.  A scan already decoded while streaming is simply dropped. */
+static bool finish_scan(B3_CODE39_DECODER *decoder, char *symbol)
+{
+    bool decoded = false;
+    uint8_t offset;
+    uint8_t reversed = 0U;
+    char character;
+
+    if (decoder->scan_done == 0U && decoder->count >= 9U) {
+        for (offset = 0U;
+             (uint8_t)(offset + B3_CODE39_RUN_COUNT) <= decoder->count;
+             ++offset) {
+            if (full_read(decoder, offset, &character, &reversed)) {
+                emit(decoder, character, reversed, 0U, symbol);
+                decoded = true;
+                break;
+            }
+        }
+        if (!decoded) {
+            char found = '\0';
+            uint8_t found_reversed = 0U;
+            bool conflict = false;
+
+            for (offset = 0U;
+                 (uint8_t)(offset + B3_CODE39_PARTIAL_COUNT) <= decoder->count &&
+                 !conflict;
+                 ++offset) {
+                character = partial_read(decoder, offset, &reversed, &conflict);
+                if (character == '\0') {
+                    continue;
+                }
+                if (found != '\0' &&
+                    (found != character || found_reversed != reversed)) {
+                    conflict = true;
+                }
+                found = character;
+                found_reversed = reversed;
+            }
+            if (found != '\0' && !conflict) {
+                emit(decoder, found, found_reversed, 1U, symbol);
+                decoded = true;
+            } else {
+                diagnose(decoder, conflict);
+            }
+        }
+    }
+    decoder->count = 0U;
+    decoder->scan_done = 0U;
+    return decoded;
+}
+
 static void append_run(B3_CODE39_DECODER *decoder, uint8_t level,
                        uint32_t width_us, char *symbol, bool *decoded)
 {
-    uint32_t narrow_space_us = 0U;
-    uint16_t mask;
-    char character;
     uint8_t index;
+    uint8_t reversed = 0U;
+    char character;
 
-    if (width_us == 0U) {
-        reset_candidate(decoder);
+    if (decoder->skip_first != 0U) {
+        /* The floor before the first edge seen: not part of a barcode. */
+        decoder->skip_first = 0U;
         return;
     }
-
-    if (decoder->in_barcode == 0U) {
-        /* Slide a nine-element window until a start character appears,
-         * read either forwards or backwards. */
-        if (decoder->run_count == 9U) {
-            for (index = 1U; index < 9U; ++index) {
-                decoder->widths_us[index - 1U] = decoder->widths_us[index];
-                decoder->levels[index - 1U] = decoder->levels[index];
-            }
-            decoder->run_count = 8U;
-        }
-        index = decoder->run_count;
-        decoder->widths_us[index] = width_us;
-        decoder->levels[index] = level;
-        decoder->run_count++;
-        if (decoder->run_count == 9U) {
-            mask = element_mask(decoder, 0U, &narrow_space_us);
-            if (mask == CODE39_START_STOP_MASK ||
-                mask == mirror_mask(CODE39_START_STOP_MASK)) {
-                decoder->in_barcode = 1U;
-                decoder->payload_valid = 0U;
-                decoder->payload = '\0';
-                decoder->reversed = mask == CODE39_START_STOP_MASK ? 0U : 1U;
-            }
-        }
+    if (width_us >= B3_CODE39_QUIET_US) {
+        /* Long floor (or a long black like the junction tape): it ends the
+         * scan before it and is not itself an element. */
+        if (finish_scan(decoder, symbol)) *decoded = true;
         return;
     }
-
-    if (decoder->run_count >= B3_CODE39_RUN_COUNT) {
-        reset_candidate(decoder);
-        return;
+    if (decoder->count >= B3_CODE39_MAX_ELEMENTS) {
+        /* Keep the most recent elements; drop a bar/space pair so the
+         * colours stay aligned. */
+        for (index = 2U; index < B3_CODE39_MAX_ELEMENTS; ++index) {
+            decoder->widths_us[index - 2U] = decoder->widths_us[index];
+            decoder->levels[index - 2U] = decoder->levels[index];
+        }
+        decoder->count = (uint8_t)(B3_CODE39_MAX_ELEMENTS - 2U);
     }
-    index = decoder->run_count;
-    decoder->widths_us[index] = width_us;
-    decoder->levels[index] = level;
-    decoder->run_count++;
+    decoder->widths_us[decoder->count] = width_us;
+    decoder->levels[decoder->count] = level;
+    decoder->count++;
 
-    if (decoder->run_count == 19U) {
-        mask = element_mask(decoder, 10U, &narrow_space_us);
-        if (decoder->reversed != 0U) {
-            mask = mirror_mask(mask);
-        }
-        character = mask != 0U ? b3_code39_lookup(mask) : '\0';
-        decoder->payload = character;
-        if (mask == 0U) {
-            reject(decoder, B3_CODE39_REJECT_RATIO);
-            reset_candidate(decoder);
-        } else if (character == '\0' || character == '*') {
-            reject(decoder, B3_CODE39_REJECT_PATTERN);
-            reset_candidate(decoder);
-        } else if (!valid_intercharacter_gap(decoder, 9U, 10U,
-                                             narrow_space_us)) {
-            reject(decoder, B3_CODE39_REJECT_GAP);
-            reset_candidate(decoder);
-        } else {
-            decoder->payload_valid = 1U;
-        }
-        return;
-    }
-
-    if (decoder->run_count == B3_CODE39_RUN_COUNT) {
-        mask = element_mask(decoder, 20U, &narrow_space_us);
-        if (decoder->reversed != 0U) {
-            mask = mirror_mask(mask);
-        }
-        if (decoder->payload_valid != 0U && mask == CODE39_START_STOP_MASK &&
-            valid_intercharacter_gap(decoder, 19U, 20U, narrow_space_us)) {
-            *symbol = decoder->payload;
-            *decoded = true;
-            decoder->last_reversed = decoder->reversed;
-        } else if (decoder->payload_valid != 0U) {
-            reject(decoder, B3_CODE39_REJECT_STOP);
-        }
-        reset_candidate(decoder);
+    /* Report a clean "*X*" as soon as its last bar ends. */
+    if (decoder->scan_done == 0U &&
+        decoder->count >= B3_CODE39_RUN_COUNT &&
+        full_read(decoder, (uint8_t)(decoder->count - B3_CODE39_RUN_COUNT),
+                  &character, &reversed)) {
+        emit(decoder, character, reversed, 0U, symbol);
+        *decoded = true;
     }
 }
 
@@ -316,9 +475,18 @@ bool b3_code39_feed(B3_CODE39_DECODER *decoder, uint8_t level,
 bool b3_code39_poll(B3_CODE39_DECODER *decoder, uint32_t now_us,
                     char *symbol)
 {
-    if (decoder == NULL || symbol == NULL || decoder->have_pending == 0U ||
-        now_us - decoder->pending_us < B3_CODE39_MIN_RUN_US) {
+    bool decoded = false;
+
+    if (decoder == NULL || symbol == NULL || decoder->have_level == 0U) {
         return false;
     }
-    return commit_pending(decoder, symbol);
+    if (decoder->have_pending != 0U &&
+        now_us - decoder->pending_us >= B3_CODE39_MIN_RUN_US) {
+        decoded = commit_pending(decoder, symbol);
+    }
+    if (decoder->have_pending == 0U && decoder->count != 0U &&
+        now_us - decoder->run_start_us >= B3_CODE39_QUIET_US) {
+        if (finish_scan(decoder, symbol)) decoded = true;
+    }
+    return decoded;
 }

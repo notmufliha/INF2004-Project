@@ -50,10 +50,13 @@ for line in run("vectors").splitlines():
     data = bytes.fromhex(hexstr)
     d = s1_wire.decode(kind, data)
     s1_wire.describe(kind, d)                       # must not raise
-    if kind == "telemetry" and d.get("barcode") == 5:
+    if kind == "telemetry" and d.get("barcode") == 26:
         check("Z barcode telemetry name", d["barcode_name"], "Z")
-    if kind == "event" and d.get("code") == 5:
+    if kind == "event" and d.get("code") == 26:
         check("Z barcode event name", d["code_name"], "Z")
+    if kind == "event" and d.get("code") == 9:
+        check("I barcode event name", d["code_name"], "I")
+        check("FINISH action name", d["nav_name"], "FINISH")
     check(f"{kind} version", d["ver"], s1_wire.WIRE_VERSION)
     for p in pairs:
         key, val = p.split("=")
@@ -85,14 +88,14 @@ C = s1_wire.COMMAND
 bad = [  # (frame hex, expected result code)
     ("2e00", 8),                                     # 2 bytes
     ("2e002c00", 8),                                 # 4 bytes
-    (s1_wire.pack(C, {"ver": 2, "cmd": 2}).hex(), 9),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 2, "reserved": 1}).hex(), 10),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 0}).hex(), 11),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 12}).hex(), 11),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 7, "arg": 101}).hex(), 12),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 6, "arg": 3}).hex(), 12),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 11, "arg": 0}).hex(), 12),
-    (s1_wire.pack(C, {"ver": 1, "cmd": 2, "arg": 5}).hex(), 13),
+    (s1_wire.pack(C, {"ver": 1, "cmd": 2}).hex(), 9),  # old v1
+    (s1_wire.pack(C, {"ver": s1_wire.WIRE_VERSION, "cmd": 2, "reserved": 1}).hex(), 10),
+    (s1_wire.pack(C, {"ver": s1_wire.WIRE_VERSION, "cmd": 0}).hex(), 11),
+    (s1_wire.pack(C, {"ver": s1_wire.WIRE_VERSION, "cmd": 12}).hex(), 11),
+    (s1_wire.pack(C, {"ver": s1_wire.WIRE_VERSION, "cmd": 7, "arg": 101}).hex(), 12),
+    (s1_wire.pack(C, {"ver": s1_wire.WIRE_VERSION, "cmd": 6, "arg": 3}).hex(), 12),
+    (s1_wire.pack(C, {"ver": s1_wire.WIRE_VERSION, "cmd": 11, "arg": 0}).hex(), 12),
+    (s1_wire.pack(C, {"ver": s1_wire.WIRE_VERSION, "cmd": 2, "arg": 5}).hex(), 13),
 ]
 out = run("decode", "\n".join(f for f, _ in bad) + "\n").splitlines()
 for (f, want), res in zip(bad, out):
@@ -109,8 +112,8 @@ for text in ["FLY", "SPEED 101", "SPEED -5", "STOP now", "MODE FLY",
         pass
 
 # 1-byte online / Last Will messages
-check("online byte", s1_wire.decode_status(b"\x30"), {"ver": 1, "online": 1})
-check("offline byte", s1_wire.decode_status(b"\x20"), {"ver": 1, "online": 0})
+check("online byte", s1_wire.decode_status(b"\x50"), {"ver": 2, "online": 1})
+check("offline byte", s1_wire.decode_status(b"\x40"), {"ver": 2, "online": 0})
 
 # 3. 24-bit encoder unwrap, forwards and backwards across the wrap.
 #    Valid while consecutive frames differ by < 2^23 counts (real worst

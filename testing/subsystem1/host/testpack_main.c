@@ -159,8 +159,8 @@ make_telemetry (const telem_case_t * p_case)
     telem.ir_centre    = comm_pack_sat_u(p_case->ir_c, COMM_IR_MAX) & 0xFFFU;
     telem.ir_right     = p_case->ir_r & 1U;
     telem.line_flags   = p_case->line & 7U;
-    telem.barcode      = p_case->barcode & 7U;
-    telem.nav          = p_case->nav & 7U;
+    telem.barcode      = p_case->barcode & 0x1FU;
+    telem.nav          = p_case->nav & 0xFU;
     telem.motion       = p_case->motion & 7U;
     telem.pitch_ddeg   = comm_pack_twos(comm_pack_sat_s(p_case->pitch,
                                                         COMM_PITCH_MAX),
@@ -232,7 +232,7 @@ event_vector (uint32_t type, uint8_t seq, uint32_t tds, uint32_t val_a,
               uint32_t val_b, uint32_t val_c, uint32_t val_d, uint32_t val_e,
               uint32_t flag)
 {
-    static const int32_t want_len[4] = {5, 6, 9, 7};
+    static const int32_t want_len[4] = {6, 6, 9, 7};
     comm_pack_event_t    event       = {0};
     uint8_t              buf[COMM_PAYLOAD_MAX];
     int32_t              len;
@@ -243,7 +243,7 @@ event_vector (uint32_t type, uint8_t seq, uint32_t tds, uint32_t val_a,
     event.val_b   = val_b & 0x1FFU;
     event.val_c   = val_c & 0x1FFU;
     event.val_d   = val_d & 0x1FFU;
-    event.val_e   = val_e & 7U;
+    event.val_e   = val_e & 0xFU;
     event.flag    = flag & 1U;
     len = comm_pack_event(buf, COMM_PAYLOAD_MAX, seq, &event);
     check_eq("event length", len, want_len[type & 3U]);
@@ -351,7 +351,9 @@ vectors (void)
         {3000, 2987, 16777216 + 42, 123456, 812, 2400, 0, LINE_F_DETECTED, 1,
          -45, 1, 23, 31, 250, 12, 30, 9, 42, 2100, ROBOT_HUMP,
          FAULT_NO_ECHO | FAULT_IMU, 2, NAV_RIGHT},
-        {.barcode = 5U, .nav = NAV_RIGHT},
+        {.barcode = 26U, .nav = NAV_RIGHT},  /* Z */
+        {.barcode = 5U, .nav = NAV_WAIT},    /* E */
+        {.barcode = 31U, .nav = 15U},        /* field maxima */
     };
     uint32_t index;
 
@@ -363,7 +365,9 @@ vectors (void)
 
     event_vector(EVT_BARCODE, 0U, 0U, 1U, 0U, 0U, 0U, NAV_LEFT, 0U);
     event_vector(EVT_BARCODE, 255U, 0xFFFFFU, 4U, 0U, 0U, 0U, NAV_UTURN, 0U);
-    event_vector(EVT_BARCODE, 12U, 431U, 5U, 0U, 0U, 0U, NAV_RIGHT, 0U);
+    event_vector(EVT_BARCODE, 12U, 431U, 26U, 0U, 0U, 0U, NAV_RIGHT, 0U);
+    event_vector(EVT_BARCODE, 13U, 432U, 9U, 0U, 0U, 0U, NAV_FINISH, 0U);
+    event_vector(EVT_BARCODE, 14U, 433U, 31U, 0U, 0U, 0U, 15U, 0U);
     event_vector(EVT_HUMP, 7U, 160U, 23U, 31U, 0U, 0U, 0U, 1U);
     event_vector(EVT_HUMP, 8U, 161U, 0U, 0U, 0U, 0U, 0U, 0U);
     event_vector(EVT_OBSTACLE, 9U, 420U, 25U, 12U, 30U, 9U, AVOID_LEFT, 0U);

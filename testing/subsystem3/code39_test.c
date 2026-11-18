@@ -51,6 +51,35 @@ static void finish(void)
         decoded_count++;
         decoded_symbol = symbol;
     }
+    /* The floor after the strip: the scan ends and is decoded as a whole. */
+    if (b3_code39_poll(&decoder, now_us + B3_CODE39_MIN_RUN_US +
+                       B3_CODE39_QUIET_US, &symbol)) {
+        decoded_count++;
+        decoded_symbol = symbol;
+    }
+}
+
+/* Cross the given elements (first is a bar) WITHOUT resetting the decoder,
+ * from and back to 2 s of floor, as the car does lap after lap. */
+static uint8_t track_level;
+static void cross(const uint32_t *widths, uint8_t count, uint8_t reversed)
+{
+    char symbol = '\0';
+    for (uint8_t n = 0U; n < count; ++n) {
+        uint8_t i = reversed != 0U ? (uint8_t)(count - 1U - n) : n;
+        track_level ^= 1U;
+        feed(track_level, now_us);
+        now_us += widths[i];
+    }
+    track_level ^= 1U;
+    feed(track_level, now_us);
+    for (uint32_t t = 0U; t < 2000000U; t += 1000U) { /* 1 ms task poll */
+        now_us += 1000U;
+        if (b3_code39_poll(&decoder, now_us, &symbol)) {
+            decoded_count++;
+            decoded_symbol = symbol;
+        }
+    }
 }
 
 /* Element widths of *X* in scan order: 9 + gap + 9 + gap + 9 = 29. */
@@ -181,11 +210,25 @@ int main(void)
          0U, 0U, 0U, 1000U); /* gap 3x narrow */
     assert(decoded_count == 0U && decoder.reject_count == 1U &&
            decoder.last_reject == B3_CODE39_REJECT_GAP);
+    /* Stop misread as 'B': the clean "*A" is still a valid partial read. */
     scan(mask_of('A'), mask_of('B'), NARROW_US, NARROW_US * 5U / 2U,
-         NARROW_US, 0U, 0U, 0U, 1000U); /* stop is not '*' */
-    assert(decoded_count == 0U &&
-           decoder.last_reject == B3_CODE39_REJECT_STOP &&
-           decoder.last_reject_char == 'A');
+         NARROW_US, 0U, 0U, 0U, 1000U);
+    assert(decoded_count == 1U && decoded_symbol == 'A' &&
+           decoder.last_partial == 1U);
+    /* Bars with no '*' anywhere: rejected, widths kept for the log. */
+    {
+        uint32_t junk[11] = { 10000U, 10000U, 10000U, 10000U, 10000U,
+                              10000U, 10000U, 10000U, 10000U, 10000U,
+                              10000U };
+        b3_code39_reset(&decoder);
+        decoded_count = 0U; now_us = 1000U; track_level = 0U;
+        feed(track_level, now_us); now_us += 2000000U;
+        cross(junk, 11U, 0U);
+        assert(decoded_count == 0U && decoder.reject_count == 1U &&
+               decoder.last_reject == B3_CODE39_REJECT_NO_START &&
+               decoder.reject_elements == 11U &&
+               decoder.reject_widths_us[3] == 10000U);
+    }
     puts("PASS C39-05 rejects with reasons");
 
     /* C39-06: printed narrow 10 ms / wide 25 ms, blurred by 6 ms per edge
@@ -207,6 +250,106 @@ int main(void)
     assert(decoded_count == 1U && decoded_symbol == 'Z');
     blur_us = 0U;
     puts("PASS C39-06 bar/space blur");
+
+    /* C39-07: one frame character lost (sensor reached the strip late, or
+     * left it early): "A*" and "*A", both directions, blurred. */
+    {
+        uint32_t w[29];
+        uint8_t count = build(w, mask_of('A'), STAR, NARROW_US,
+                              NARROW_US * 5U / 2U, NARROW_US);
+        for (uint8_t n = 0U; n < count; ++n) {
+            if ((n & 1U) == 0U) w[n] -= 4000U; else w[n] += 4000U;
+        }
+        for (uint8_t reversed = 0U; reversed < 2U; ++reversed) {
+            for (uint8_t lost_start = 0U; lost_start < 2U; ++lost_start) {
+                b3_code39_reset(&decoder);
+                decoded_count = 0U; now_us = 1000U; track_level = 0U;
+                feed(track_level, now_us); now_us += 2000000U;
+                /* Physical strip "*A*": lose its first or last 10 elements
+                 * as crossed in this direction. */
+                const uint32_t *part = (lost_start ^ reversed) != 0U ?
+                    &w[10] : &w[0];
+                cross(part, 19U, reversed);
+                assert(decoded_count == 1U && decoded_symbol == 'A');
+                assert(decoder.last_partial == 1U &&
+                       decoder.last_reversed == reversed);
+            }
+        }
+    }
+    puts("PASS C39-07 partial reads: start or stop '*' lost, both directions");
+
+    /* C39-08: "read once, then never again".  Lap after lap without a
+     * reset: barcode, a junction tape crossing (one long black), a few
+     * stray marks, then the barcodes again, both ways.  Every pass reads. */
+    {
+        uint32_t a[29];
+        uint32_t z[29];
+        const uint32_t junction[1] = { 220000U };
+        const uint32_t stray[5] = { 9000U, 30000U, 7000U, 40000U, 12000U };
+        uint8_t count = build(a, mask_of('A'), STAR, 12000U, 30000U, 12000U);
+        (void)build(z, mask_of('Z'), STAR, 12000U, 30000U, 12000U);
+        b3_code39_reset(&decoder);
+        decoded_count = 0U; now_us = 5000U; track_level = 1U;
+        feed(track_level, now_us); now_us += 300000U;
+        for (uint8_t lap = 0U; lap < 4U; ++lap) {
+            uint32_t before = decoded_count;
+            cross(lap & 1U ? z : a, count, (uint8_t)(lap >> 1));
+            assert(decoded_count == before + 1U &&
+                   decoded_symbol == (lap & 1U ? 'Z' : 'A'));
+            cross(junction, 1U, 0U);
+            cross(stray, 5U, 0U);
+            assert(decoded_count == before + 1U);
+        }
+    }
+    puts("PASS C39-08 every lap reads; junction tape and stray marks in between");
+
+    /* C39-09: a 2 ms flicker inside a bar of the stop '*' is merged by the
+     * chatter filter; a longer 4 ms one splits the stop, but the clean
+     * "*A" in front still reads (partial). */
+    {
+        uint32_t w[29];
+        uint8_t count = build(w, mask_of('A'), STAR, NARROW_US,
+                              NARROW_US * 5U / 2U, NARROW_US);
+        for (uint32_t flicker = 2000U; flicker <= 4000U; flicker += 2000U) {
+            b3_code39_reset(&decoder);
+            decoded_count = 0U; now_us = 1000U;
+            uint8_t level = 0U;
+            feed(level, now_us); now_us += 2000000U;
+            for (uint8_t i = 0U; i < count; ++i) {
+                level ^= 1U;
+                feed(level, now_us);
+                if (i == 22U) { /* a wide bar of the stop '*' */
+                    feed(level ^ 1U, now_us + 8000U);
+                    feed(level, now_us + 8000U + flicker);
+                }
+                now_us += w[i];
+            }
+            level ^= 1U;
+            feed(level, now_us);
+            now_us += 1000U;
+            finish();
+            assert(decoded_count == 1U && decoded_symbol == 'A');
+        }
+    }
+    puts("PASS C39-09 flicker in the stop character");
+
+    /* C39-10: the "read once, then never" cascade.  The old streaming
+     * decoder took the trailing '*' of a pass whose start was missed as a
+     * new start and kept it across the floor; it then swallowed the start
+     * of the next pass, whose trailing '*' latched again, and so on: 0 of
+     * the following clean passes decoded.  A quiet floor must end a scan. */
+    {
+        uint32_t w[29];
+        uint8_t count = build(w, mask_of('A'), STAR, 12000U, 30000U, 12000U);
+        b3_code39_reset(&decoder);
+        decoded_count = 0U; now_us = 1000U; track_level = 0U;
+        feed(track_level, now_us); now_us += 2000000U;
+        cross(&w[10], 19U, 0U);            /* met the strip late: "A*" */
+        uint32_t after_late = decoded_count;
+        for (uint8_t pass = 0U; pass < 5U; ++pass) cross(w, count, 0U);
+        assert(decoded_count == after_late + 5U && decoded_symbol == 'A');
+    }
+    puts("PASS C39-10 a missed start never blocks the following passes");
 
     puts("PASS: Code 39 full set both directions, speed drift, chatter, wrap and rejection");
     return 0;

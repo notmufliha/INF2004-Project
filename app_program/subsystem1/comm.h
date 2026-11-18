@@ -48,7 +48,9 @@ typedef enum
     ROBOT_STATE_COUNT
 } comm_robot_state_t;
 
-/** @brief Navigation command decoded from a barcode (3 bits). */
+/** @brief Action decoded from a barcode (4 bits on the wire, v2).
+ * LEFT..UTURN, STOP, SPIN and FINISH run at the next crossing; SLOW and
+ * NORMAL change the following speed at once (B3 route table A..Z). */
 typedef enum
 {
     NAV_NONE = 0,
@@ -56,6 +58,11 @@ typedef enum
     NAV_RIGHT,
     NAV_STRAIGHT,
     NAV_UTURN,
+    NAV_WAIT,     /* stop 3 s at the crossing, then go straight   */
+    NAV_SLOW,     /* follow at half speed from now on             */
+    NAV_NORMAL,   /* back to the normal following speed           */
+    NAV_SPIN,     /* spin 360 degrees at the crossing, go straight */
+    NAV_FINISH,   /* stop at the crossing and end the run         */
     NAV_COUNT
 } comm_nav_cmd_t;
 
@@ -109,11 +116,9 @@ typedef enum
     MODE_COUNT
 } comm_run_mode_t;
 
-/* A..D are 1..4; Z is 5; 0 = none yet (3 bits). */
+/* Barcode letter code: A..Z are 1..26, 0 = none yet (5 bits, wire v2). */
 #define COMM_BARCODE_FIRST  'A'
-#define COMM_BARCODE_LAST   'D'
-#define COMM_BARCODE_Z      'Z'
-#define COMM_BARCODE_Z_CODE 5U
+#define COMM_BARCODE_LAST   'Z'
 
 /* IMU motion state: B4's imu_motion_state_t, 0..7 (3 bits). */
 #define COMM_MOTION_COUNT   8U
@@ -190,9 +195,8 @@ typedef struct
     UINT hump_valid   : 1;  /* hump heights are measured       */
 
     UINT enc_left     : 24; /* low 24 bits of B2's total count */
-    UINT barcode      : 3;  /* 0 none, 1..4 = A..D, 5 = Z     */
-    UINT nav          : 3;  /* comm_nav_cmd_t of last barcode  */
-    UINT spare1       : 2;
+    UINT barcode      : 5;  /* 0 none, 1..26 = A..Z            */
+    UINT spare1       : 3;
 
     UINT enc_right    : 24;
     UINT hump_last_mm : 7;  /* height of the most recent hump  */
@@ -201,7 +205,8 @@ typedef struct
     UINT pitch_ddeg   : 10; /* 0.1 deg, two's complement      */
     UINT hump_peak_mm : 7;  /* highest hump this run           */
     UINT obs_width_cm : 7;  /* 127 = not measured              */
-    UINT spare3       : 8;
+    UINT nav          : 4;  /* comm_nav_cmd_t of last barcode  */
+    UINT spare3       : 4;
 
     UINT obs_dist_cm  : 9;  /* 511 = no echo / not measured    */
     UINT obs_left_cm  : 9;  /* left clearance                  */

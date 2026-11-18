@@ -21,8 +21,8 @@
 #define MS_PER_DS      100U
 #define DIST_INVALID   0x1FFU   /* 9-bit field all ones           */
 #define WIDTH_INVALID  0x7FU    /* 7-bit field all ones           */
-#define BARCODE_MASK   0x07U
-#define NAV_MASK       0x07U
+#define BARCODE_MASK   0x1FU
+#define NAV_MASK       0x0FU
 #define ACTION_MASK    0x07U
 #define ROBOT_MASK     0x0FU
 #define MOTION_MASK    0x07U
@@ -148,7 +148,7 @@ comm_get_telemetry (comm_telemetry_t * p_out)
     }
 }
 
-/** @brief Report a decoded barcode A..D or Z and its command (B3). */
+/** @brief Report a decoded barcode A..Z and its action (B3). */
 ER
 comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
 {
@@ -156,14 +156,11 @@ comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
     ER                result = E_PAR;
     uint32_t          code;
 
-    if (((letter >= (uint8_t)COMM_BARCODE_FIRST &&
-          letter <= (uint8_t)COMM_BARCODE_LAST) ||
-         letter == (uint8_t)COMM_BARCODE_Z) &&
+    if ((letter >= (uint8_t)COMM_BARCODE_FIRST) &&
+        (letter <= (uint8_t)COMM_BARCODE_LAST) &&
         ((uint32_t)nav < (uint32_t)NAV_COUNT))
     {
-        code = letter == (uint8_t)COMM_BARCODE_Z ?
-            COMM_BARCODE_Z_CODE :
-            ((uint32_t)letter - (uint32_t)COMM_BARCODE_FIRST) + 1U;
+        code = ((uint32_t)letter - (uint32_t)COMM_BARCODE_FIRST) + 1U;
         event.type  = EVT_BARCODE;
         event.val_a = code & BARCODE_MASK;
         event.val_e = (UINT)nav & NAV_MASK;

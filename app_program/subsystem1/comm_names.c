@@ -13,7 +13,8 @@ static const char * const g_link_names[COMM_STATE_COUNT] =
 
 static const char * const g_nav_names[NAV_COUNT] =
 {
-    "NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"
+    "NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN",
+    "STOP", "SLOW", "NORMAL", "SPIN", "FINISH"
 };
 
 static const char * const g_avoid_names[AVOID_COUNT] =

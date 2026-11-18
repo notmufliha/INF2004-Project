@@ -199,4 +199,17 @@ ER motion_get_result(uint32_t command_id,
  */
 ER motion_update_status(const motion_status_snapshot_t *p_status);
 
+/*
+ * Operator acknowledgement of a finished FAULT/TIMEOUT (e.g. a stall).
+ * B2 keeps publishing that terminal status until it runs a new command,
+ * and every consumer stopped on it, so nothing could send that command:
+ * the car stayed stopped until it was reflashed.  After this call the
+ * status of the command that faulted no longer counts as active; a fault
+ * of any later command still does.
+ */
+void motion_acknowledge_fault(void);
+
+/* True for a FAULT/TIMEOUT status that has not been acknowledged. */
+bool motion_fault_active(const motion_status_snapshot_t *p_status);
+
 #endif
