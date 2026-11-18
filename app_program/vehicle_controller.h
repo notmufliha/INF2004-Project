@@ -76,6 +76,38 @@
 #define VC_FAULT_ACK_GRACE_MS 600u
 /* STOP barcode: time standing at the crossing before going straight on. */
 #define VC_NAV_STOP_MS 3000u
+/* Line-sensor layout.
+ * 1 (default): sensors SPREAD OUT, the 18 mm line runs between them.
+ *   Centred, both read floor (white): that is "on the line", not lost.
+ *   One sensor on black: steer toward it.  Both black: a crossing tape.
+ * 0: sensors close together, both on the line when centred (old layout).
+ * Changeable at run time through VEHICLE_CONTROLLER.line_straddle. */
+#ifndef VC_LINE_STRADDLE
+#define VC_LINE_STRADDLE 1
+#endif
+/* Spread layout: steering reaches B3_LINE_STEER_MAX when one sensor reads
+ * this much black (0..1000).  Lower = harder corrections (curves missed?),
+ * higher = gentler (weaving on straights?). */
+#define VC_STRADDLE_FULL_SCALE 1000
+/* A sensor this black has the line right under it; if the line then
+ * leaves it, it may have gone OUT past that sensor (sharp curve)... */
+#define VC_STRADDLE_DEEP 900
+/* ...so keep turning that way at this steer for up to this long.  If the
+ * line was in fact back in the middle, the other sensor meets it and the
+ * car corrects back: one small wiggle. */
+#define VC_STRADDLE_OUTSIDE_STEER 500
+#define VC_STRADDLE_OUTSIDE_MS 700u
+/* Neither sensor has touched the line for this long: assume it is really
+ * lost (end of line, or off the course) and run the normal line search. */
+#define VC_STRADDLE_BLIND_MS 3000u
+/* Barcode re-read: after a rejected scan (B3 beeps twice), stop, reverse
+ * past the start of the strip by VC_RESCAN_MARGIN_UM and drive over it
+ * again.  At most VC_BARCODE_RESCANS tries per barcode; 0 disables. */
+#define VC_BARCODE_RESCANS 1u
+#define VC_RESCAN_MARGIN_UM 50000u   /* 5 cm before the first bar */
+#define VC_RESCAN_MAX_UM 400000u     /* never reverse more than 40 cm */
+#define VC_RESCAN_TIMEOUT_MS 8000u
+#define VC_RESCAN_FORGET_MS 10000u   /* then a new barcode gets new tries */
 
 typedef struct {
     uint32_t now_ms, safety_generation;
@@ -84,6 +116,7 @@ typedef struct {
     bool obstacle_active, obstacle_fault;
     bool approach_slow;
     UH left, centre;
+    UH barcode_rejects; /* B3 rejected-scan counter (only increases) */
     UB right; /* barcode sensor GP28 level (0/1), beside the line */
     UB line_flags, faults;
     motion_status_snapshot_t motion;
@@ -121,6 +154,20 @@ typedef struct {
     uint32_t hold_until_ms, tolerate_until_ms, last_stall_ms;
     UINT stall_retries;
     bool slow_mode; /* SLOW barcode: half following speed until NORMAL */
+    /* Spread sensor layout (VC_LINE_STRADDLE). */
+    bool line_straddle;
+    INT straddle_side;     /* -1/+1: only that sensor is on black, else 0 */
+    bool straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
+    INT straddle_outside;  /* -1/+1: line believed outside that sensor */
+    bool straddle_lost;    /* lost until a sensor sees black again */
+    uint32_t straddle_outside_ms, straddle_black_ms;
+    /* Barcode re-read after a rejected scan. */
+    UB rescan_phase;       /* 0 none, 1 stopping, 2 reversing */
+    UINT rescan_tries;
+    bool rejects_known, barcode_was_active;
+    UH seen_rejects;
+    uint32_t rescan_id, rescan_ms, rescan_back_um;
+    uint32_t travel_um, barcode_start_um; /* odometer, wraps */
     UB navigation, pending_navigation;
 } VEHICLE_CONTROLLER;
 

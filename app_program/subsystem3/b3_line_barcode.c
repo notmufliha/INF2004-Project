@@ -4,6 +4,7 @@
  */
 #include "b3_line_barcode.h"
 #include "b3_code39.h"
+#include "b3_buzzer.h"
 #include "b3_line_cal.h"
 
 #include <stdbool.h>
@@ -51,6 +52,8 @@ static volatile uint8_t g_edge_overflow;
 /* Time of the latest GP28 edge, for "barcode in progress". */
 static volatile uint32_t g_last_edge_us;
 static volatile uint8_t g_edge_seen;
+/* Rejected barcode scans so far (the controller re-reads on a change). */
+static volatile uint16_t g_barcode_rejects;
 
 /* Route table: the action of every letter A..Z (index = letter - 'A').
  * A and Z keep the course actions (A straight, Z right); the others cycle
@@ -211,6 +214,7 @@ EXPORT ER b3_start(void)
 	}
 	B3_IO_PROC0_INTE3 |= B3_BARCODE_EDGE_BITS;
 
+	b3_buzzer_init();
 	task_id = app_start_task(b3_barcode_task, 17, TP_PRC1,
 				 "b3_barcode_task");
 	if (task_id < E_OK) {
@@ -288,6 +292,34 @@ static uint16_t b3_track_normalise(uint16_t raw, uint16_t white, uint16_t black)
     return b3_line_cal_scale(raw, white, black);
 }
 
+/* Learn this sensor's floor and tape readings (see B3_LINE_LEARN_RANGE).
+ * Readings far darker than tape (car lifted) are not learned. */
+static void b3_track_learn(B3_LINE_CAL *cal, uint16_t raw, uint16_t white,
+                           uint16_t black)
+{
+    /* Margin for moved sensors; GP26 accepts up to 548, GP27 up to 1907. */
+    if (raw <= black + 2U * (black - white) + 100U) {
+        (void)b3_line_cal_update(cal, raw);
+    }
+}
+
+/* Endpoints for one sensor: the learned range once it has seen both the
+ * floor and the tape, else the fixed measured ones. */
+static void b3_track_range(const B3_LINE_CAL *cal, uint16_t *white,
+                           uint16_t *black)
+{
+#if B3_LINE_LEARN_RANGE
+    if (b3_line_cal_ready(cal)) {
+        *white = cal->white;
+        *black = cal->black;
+    }
+#else
+    (void)cal;
+    (void)white;
+    (void)black;
+#endif
+}
+
 EXPORT void b3_line_task(INT stacd, void *exinf)
 {
 	uint16_t left;
@@ -297,6 +329,9 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	uint8_t right;
 	uint8_t flags;
 	ER error;
+	uint16_t left_white, left_black, centre_white, centre_black;
+	uint16_t reported_left = 0U, reported_centre = 0U;
+	uint32_t report_ms = 0U;
 	B3_LINE_CAL left_cal;
 	B3_LINE_CAL centre_cal;
 	bool calibration_reported = false;
@@ -325,13 +360,19 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-		/* Keep observations for diagnostics; tracking uses measured endpoints. */
-        (void)b3_line_cal_update(&left_cal, left);
-        (void)b3_line_cal_update(&centre_cal, centre);
-        left_norm = b3_track_normalise(left, B3_LINE_GP26_WHITE,
-                                       B3_LINE_GP26_BLACK);
-        centre_norm = b3_track_normalise(centre, B3_LINE_GP27_WHITE,
-                                         B3_LINE_GP27_BLACK);
+		/* Learn each sensor's range; fixed endpoints until it is known. */
+        b3_track_learn(&left_cal, left, B3_LINE_GP26_WHITE,
+                       B3_LINE_GP26_BLACK);
+        b3_track_learn(&centre_cal, centre, B3_LINE_GP27_WHITE,
+                       B3_LINE_GP27_BLACK);
+        left_white = B3_LINE_GP26_WHITE;
+        left_black = B3_LINE_GP26_BLACK;
+        centre_white = B3_LINE_GP27_WHITE;
+        centre_black = B3_LINE_GP27_BLACK;
+        b3_track_range(&left_cal, &left_white, &left_black);
+        b3_track_range(&centre_cal, &centre_white, &centre_black);
+        left_norm = b3_track_normalise(left, left_white, left_black);
+        centre_norm = b3_track_normalise(centre, centre_white, centre_black);
 		flags = 0U;
 		if (B3_LINE_LEFT_ACTIVE(left_norm) ||
 		    B3_LINE_CENTRE_ACTIVE(centre_norm)) {
@@ -355,9 +396,23 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
 		    b3_line_cal_ready(&centre_cal)) {
 			calibration_reported = true;
-			tm_printf((UB *)"[B3-CAL] observed GP26 min=%d max=%d; GP27 min=%d max=%d; tracking uses fixed thresholds\n",
+			tm_printf((UB *)"[B3-CAL] observed GP26 min=%d max=%d; GP27 min=%d max=%d; tracking uses %s\n",
 				  (int)left_cal.white, (int)left_cal.black,
-				  (int)centre_cal.white, (int)centre_cal.black);
+				  (int)centre_cal.white, (int)centre_cal.black,
+				  B3_LINE_LEARN_RANGE ? "these learned ranges" :
+				  "fixed thresholds");
+		}
+		/* Range in use, whenever it changes (at most once a second). */
+		if (report_ms < 1000U) report_ms += B3_LINE_UPDATE_MS;
+		if (report_ms >= 1000U &&
+		    (reported_left != (uint16_t)(left_black - left_white) ||
+		     reported_centre != (uint16_t)(centre_black - centre_white))) {
+			report_ms = 0U;
+			reported_left = (uint16_t)(left_black - left_white);
+			reported_centre = (uint16_t)(centre_black - centre_white);
+			tm_printf((UB *)"[B3-RANGE] GP26 white=%d black=%d; GP27 white=%d black=%d\n",
+				  (int)left_white, (int)left_black,
+				  (int)centre_white, (int)centre_black);
 		}
 		b3_delay(B3_LINE_UPDATE_MS);
 	}
@@ -397,6 +452,7 @@ EXPORT void b3_barcode_task(INT stacd, void *exinf)
 			b3_handle_symbol(symbol, &decoder);
 		}
 		b3_log_reject(&decoder);
+		b3_buzzer_poll(B3_TIMER_RAWL);
 		b3_delay(B3_BARCODE_TASK_POLL_MS);
 	}
 }
@@ -561,6 +617,7 @@ static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
 			  "(reversed)" : "(forward)");
 		return;
 	}
+	b3_buzzer_beep(B3_BEEP_READ, B3_TIMER_RAWL);
 	nav = b3_routes[symbol - 'A'];
 	now = nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL;
 	tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s %s\n",
@@ -586,6 +643,8 @@ static void b3_log_reject(const B3_CODE39_DECODER *decoder)
 
 	if (decoder->reject_count != logged) {
 		logged = decoder->reject_count;
+		g_barcode_rejects++;
+		b3_buzzer_beep(B3_BEEP_REJECT, B3_TIMER_RAWL);
 		tm_printf((UB *)"[B3] barcode scan rejected: %s (payload '%c', %d elements)\n",
 			  decoder->last_reject < 6U ?
 			  reasons[decoder->last_reject] : "?",
@@ -600,6 +659,11 @@ static void b3_log_reject(const B3_CODE39_DECODER *decoder)
 		}
 		tm_printf((UB *)"\n");
 	}
+}
+
+EXPORT uint16_t b3_barcode_rejects(void)
+{
+	return g_barcode_rejects;
 }
 
 EXPORT bool b3_barcode_active(void)
