@@ -58,8 +58,10 @@ ER motion_send_command(const motion_command_t *command)
         INT s = command->steering_permille;
         INT left = command->target_speed_cps * (1000 + s) / 1000;
         INT right = command->target_speed_cps * (1000 - s) / 1000;
-        assert(left == 0 || left >= VC_MIN_WHEEL_CPS - 1);
-        assert(right == 0 || right >= VC_MIN_WHEEL_CPS - 1);
+        /* Spread following may run the inner wheel down to B2's move
+         * minimum (VC_STRADDLE_MIN_INNER_CPS); never in the stall zone. */
+        assert(left == 0 || left >= VC_STRADDLE_MIN_INNER_CPS - 1);
+        assert(right == 0 || right >= VC_STRADDLE_MIN_INNER_CPS - 1);
         assert(left <= 5000 && right <= 5000 && (left > 0 || right > 0));
         if (calibrated_startup && drives == 0u) first_calibrated_drive_tick = task_ticks;
         ++drives;
@@ -735,15 +737,16 @@ int main(void)
         settle(&c, 10u);
         assert(c.follow_steer <= -B3_LINE_STEER_MAX + 20); /* before wheel limits */
         input.centre = 0u; input.line_flags = LINE_F_LOST;
-        settle(&c, VC_STRADDLE_COAST_MS / 20u - 1u);
-        assert(c.state == ROBOT_LINE_FOLLOW && c.follow_steer == 0); /* coast */
-        settle(&c, 5u);
-        assert(c.state == ROBOT_LINE_FOLLOW && c.follow_steer < 0 &&
-            c.follow_steer > -VC_STRADDLE_OUTSIDE_STEER);       /* gentle arc */
-        settle(&c, 25u);
+        /* The car was already steering hard left when the line left the
+         * left sensor: a curve tighter than the turn.  No straight coast:
+         * it keeps turning left at once. */
+        step(&c, 20u, 0u);
+        assert(c.state == ROBOT_LINE_FOLLOW && c.straddle_coast_ms == 0u &&
+            c.follow_steer <= -VC_STRADDLE_BEND_STEER);
+        settle(&c, 30u);
         assert(c.state == ROBOT_LINE_FOLLOW &&
             c.follow_steer == -VC_STRADDLE_OUTSIDE_STEER);
-        settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u - 34u);
+        settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u - 30u);
         assert(c.state == ROBOT_LINE_RECOVERY && sent.type == MOTION_CMD_TURN &&
             sent.turn_direction == MOTION_TURN_LEFT);    /* spin search left */
         settle(&c, 5u);
@@ -1089,6 +1092,67 @@ int main(void)
         input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
     }
     puts("PASS junction: both sensors black at once counts immediately");
+
+    /* Turning authority (spread): a full correction at following speed
+     * gives a 5:1 wheel ratio with the inner wheel >= 150 cps, i.e. ~667
+     * permille; the old 300 cps floor capped it near 500. */
+    {
+        motion_command_t m = {0};
+        m.target_speed_cps = 360; m.steering_permille = -800;
+        straddle_wheels(&m, false);
+        INT l = m.target_speed_cps * (1000 + m.steering_permille) / 1000;
+        INT r = m.target_speed_cps * (1000 - m.steering_permille) / 1000;
+        assert(l >= VC_STRADDLE_MIN_INNER_CPS - 1 && r <= 5 * l + 5 &&
+            m.steering_permille <= -650);
+        m.target_speed_cps = 700; m.steering_permille = 300;  /* gentle */
+        straddle_wheels(&m, false);
+        assert(m.steering_permille == 300 && m.target_speed_cps == 700);
+    }
+    puts("PASS spread wheels: 5:1 ratio, inner >= 150 cps, gentle steering untouched");
+
+    /* Light touch on a straight (little steering): the usual coast, so a
+     * centred line is not pushed across (no zig-zag). */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 10u);
+        input.centre = 500u; input.line_flags = LINE_F_DETECTED; settle(&c, 3u);
+        assert(-c.follow_steer < VC_STRADDLE_BEND_STEER);
+        input.centre = 0u; input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
+        assert(c.straddle_coast_ms == VC_STRADDLE_COAST_MS);
+    }
+    puts("PASS light touch on a straight still coasts (no zig-zag)");
+
+    /* Search never turns the car round: 60 one way, back 120, back 60 to
+     * the start heading, then stops (armed). */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 5u);
+        c.straddle_lost = true; c.last_line_search_direction = -1;
+        step(&c, 20u, 0u);
+        INT heading = 0, most = 0;
+        for (UINT k = 0u; k < 40u && !c.spin_done; ++k) {
+            INT dir = sent.turn_direction == MOTION_TURN_RIGHT ? 1 : -1;
+            result_ready = true; result.status = MOTION_STATUS_COMPLETED;
+            step(&c, 20u, 0u);
+            heading += dir * VC_SPIN_STEP_DEG;
+            if (heading > most) most = heading;
+            if (-heading > most) most = -heading;
+            result_ready = false; step(&c, 20u, 0u);
+        }
+        assert(c.spin_done && heading == 0 &&
+            most == (INT)VC_SPIN_FIRST_STEPS * VC_SPIN_STEP_DEG);
+        UINT turns = 0u;
+        for (UINT k = 0u; k < 10u; ++k) {
+            sent.type = MOTION_CMD_STOP; step(&c, 20u, 0u);
+            if (sent.type == MOTION_CMD_TURN) ++turns;
+        }
+        assert(turns == 0u);
+    }
+    puts("PASS search: +-60 deg then back to the start heading, never turns round");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {

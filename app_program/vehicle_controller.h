@@ -27,7 +27,7 @@
  * The slowdown follows the hardest recent steering and relaxes by
  * VC_CURVE_DECAY_PER_TICK each 20 ms tick, so the car stays slow through
  * the whole curve instead of speeding up between corrections. */
-#define VC_CURVE_MIN_PERMILLE 600
+#define VC_CURVE_MIN_PERMILLE 500 /* 50 % at full steer, as BlackberryDealer */
 #define VC_CURVE_DECAY_PER_TICK 40
 /* Smoothness: steering may change by at most this much per 20 ms tick
  * (0 to full 800 in about 0.1 s), and speed may rise by at most
@@ -115,7 +115,10 @@
  * from the corner.)  Gives up (stops, stays armed) after
  * VC_LINE_SEARCH_MS. */
 #define VC_SPIN_STEP_DEG 15
-#define VC_SPIN_FIRST_STEPS 6u
+/* 4 steps = 60 deg each side (BlackberryDealer sweeps +-60): 60 one way,
+ * 120 back, 60 back to the start heading, then stop.  Wider sweeps turned
+ * the car round and it followed the track backwards. */
+#define VC_SPIN_FIRST_STEPS 4u
 #define VC_SPIN_SPEED_CPS 400
 #define VC_SPIN_STEP_TIMEOUT_MS 1500u
 /* Junction, spread layout: both sensors >= this at once for
@@ -123,6 +126,19 @@
  * line cannot cover both spread sensors), steady or not. */
 #define VC_STRADDLE_JCT_BOTH 700
 #define VC_STRADDLE_JCT_BOTH_TICKS 2u
+/* Spread layout wheel speeds while following (BlackberryDealer's motion
+ * split): the inner wheel may slow to 1/VC_STRADDLE_MAX_RATIO of the outer
+ * (5:1, turn radius ~10 cm) and to VC_STRADDLE_MIN_INNER_CPS (B2's own
+ * move minimum, "move_min_cps=150" in its boot log).  The old floor of
+ * 300 cps with outer <= 3x capped turns at ~500-565 permille (radius
+ * ~13 cm): in curves the line outran the car ("goes straight a bit"). */
+#define VC_STRADDLE_MIN_INNER_CPS 150
+#define VC_STRADDLE_MAX_RATIO 5
+/* Line leaves a sensor while the car was ALREADY steering at least this
+ * hard toward that sensor: the curve is tighter than the turn, so keep
+ * turning (no coast, arc from the current steering).  Smaller steering:
+ * the usual coast (the line most likely went back between the sensors). */
+#define VC_STRADDLE_BEND_STEER 450
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
@@ -307,6 +323,7 @@ typedef struct {
     uint32_t spin_id, spin_ms;
     INT spin_dir;
     UINT spin_steps, spin_target, spin_sweep;
+    bool spin_done;
     UINT jct_both_ticks;
     uint32_t jct_block_um; /* travel at the last unsteady moment */
     uint32_t jct_left_um, jct_right_um;
