@@ -900,7 +900,7 @@ int main(void)
         command(&c, RCMD_START, 0u);
         input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
         input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
-        settle(&c, 20u);
+        settle(&c, 60u);
         step(&c, 20u, B3_NAV_LEFT);
         input.left = input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
         for (UINT i = 0u; i < 6u && !c.approach_active; ++i) step(&c, 20u, 0u);
@@ -1029,8 +1029,20 @@ int main(void)
         step(&c, 20u, 0u);
         assert(c.rescan_phase == 0u && !c.junction_latched &&
             c.pending_navigation == B3_NAV_LEFT);
-        settle(&c, 60u);                              /* 10 cm, no junction */
-        assert(c.navigation == 0u && c.pending_navigation == B3_NAV_LEFT);
+        settle(&c, 6u);
+        /* Crooked after the reverse: crosses the line, left then right
+         * sensor 10 mm apart.  Not a junction (not steady yet). */
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED; settle(&c, 3u);
+        input.centre = 0u; input.left = 400u; settle(&c, 3u);
+        input.left = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 50u);                              /* no junction */
+        assert(c.navigation == 0u && c.pending_navigation == B3_NAV_LEFT &&
+            !c.approach_active);
+        /* Steady now: a real crossing is a junction. */
+        input.left = input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
+        for (UINT i = 0u; i < 6u && !c.approach_active; ++i) step(&c, 20u, 0u);
+        assert(c.approach_active);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
         result_ready = false;
         input.barcode_rejects = 0u;
         input.motion.left_speed_cps = input.motion.right_speed_cps = 0;

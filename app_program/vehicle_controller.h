@@ -75,6 +75,19 @@
  * GP28's side).  Normal following touches one side, then the other only
  * centimetres later. */
 #define VC_STRADDLE_JCT_WINDOW_UM 25000u
+/* ...but only while the car is following steadily.  A car crooked to the
+ * line (just after a barcode re-read reverse, a barcode turn, a line
+ * search or a restart from standstill) drives ACROSS it at a steep angle: left then right sensor touch
+ * within 25 mm, exactly like a junction tape.  That made the car turn left
+ * near the barcode (2026-11-18).  A junction candidate counts only when it
+ * starts at least VC_JCT_SETTLE_UM after the last such event (as
+ * BlackberryDealer/INF2004_Project classifies junctions only in steady
+ * line tracking). */
+#define VC_JCT_SETTLE_UM 80000u
+/* While crossing barcode bars (spread layout) steering is held within
+ * +-VC_BARCODE_MAX_STEER and never pivots: swinging over the strip
+ * changes the barcode sensor's speed and spoils the bar widths. */
+#define VC_BARCODE_MAX_STEER 400
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
@@ -247,6 +260,8 @@ typedef struct {
     /* Junction evidence, for the run log and the spread layout. */
     bool tape_now, jct_waiting_logged;
     bool jct_left_seen, jct_right_seen;
+    bool jct_candidate_steady;
+    uint32_t jct_block_um; /* travel at the last unsteady moment */
     uint32_t jct_left_um, jct_right_um;
     UB navigation, pending_navigation;
 } VEHICLE_CONTROLLER;
