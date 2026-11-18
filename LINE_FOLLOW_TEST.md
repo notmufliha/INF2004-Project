@@ -9,14 +9,17 @@ centred (drive straight); one on black = steer toward it; both black = a
 crossing tape (junction). Before, both-on-floor counted as "line lost", so the
 car ran the hard line search between every correction: the jerkiness. The
 line counts as lost only when it went out past a sensor and was not found
-within 0.7 s, or no sensor touched it for 3 s. For the old close-together
-layout set `VC_LINE_STRADDLE 0`.
+within 0.7 s, or no sensor touched it for 3 s. Steering strength is the same
+as `barcode-robust` (deadband 60, full 800 at 650). If both sensors stay on
+black for 6 cm (a crossing tape is 18 mm), the sensors are close together and
+the car switches to `barcode-robust`'s close-layout following until reboot
+(`[VC] both line sensors on black ...` in the log). `VC_LINE_STRADDLE 0`
+forces the close layout from the start.
 
-**Sensor ranges.** `B3_LINE_LEARN_RANGE 1`: each sensor uses its own learned
-floor/tape readings once it has seen both, because moving the sensors changes
-them. After power-up, slide the car across the line once (both sensors over
-the tape), then put it down; don't lift it while running. `[B3-RANGE]` on the
-serial log shows the range in use.
+**Sensor ranges.** Fixed endpoints as in `barcode-robust` (default
+`B3_LINE_LEARN_RANGE 0`). Setting it to 1 learns each sensor's own floor/tape
+readings instead (slide the car across the line once after power-up; don't
+lift it), for when moved sensors no longer match the fixed values.
 
 **Barcode feedback.** GP22 buzzer (Robo Pico; buzzer switch ON): one high beep
 = barcode read (the letter is in the `[B3] barcode *X* read` log line), two
@@ -24,8 +27,8 @@ low beeps = bars crossed but rejected. In AUTO mode a rejected scan makes the
 car stop, reverse to 5 cm before the strip and drive over it again (once per
 barcode, `VC_BARCODE_RESCANS`).
 
-Tuning: weaving on straights -> raise `VC_STRADDLE_FULL_SCALE`; curves missed
--> lower it, or lower `VC_STRADDLE_DEEP`.
+Tuning: curves missed -> lower `B3_LINE_STEER_ERROR_FULL_SCALE` (both
+layouts) or `VC_STRADDLE_DEEP`; weaving on straights -> raise it.
 
 # Line-following stability build
 

@@ -81,21 +81,25 @@
  *   Centred, both read floor (white): that is "on the line", not lost.
  *   One sensor on black: steer toward it.  Both black: a crossing tape.
  * 0: sensors close together, both on the line when centred (old layout).
- * Changeable at run time through VEHICLE_CONTROLLER.line_straddle. */
+ * Changeable at run time through VEHICLE_CONTROLLER.line_straddle.
+ * Auto-detect: with 1, both sensors on black for VC_LAYOUT_CLOSE_UM of
+ * travel (a crossing tape is only 18 mm) means they are close together:
+ * the controller switches to the close layout until reboot. */
 #ifndef VC_LINE_STRADDLE
 #define VC_LINE_STRADDLE 1
 #endif
 /* Spread layout: steering reaches B3_LINE_STEER_MAX when one sensor reads
  * this much black (0..1000).  Lower = harder corrections (curves missed?),
  * higher = gentler (weaving on straights?). */
-#define VC_STRADDLE_FULL_SCALE 1000
+#define VC_STRADDLE_FULL_SCALE B3_LINE_STEER_ERROR_FULL_SCALE
+#define VC_LAYOUT_CLOSE_UM 60000u
 /* A sensor this black has the line right under it; if the line then
  * leaves it, it may have gone OUT past that sensor (sharp curve)... */
-#define VC_STRADDLE_DEEP 900
+#define VC_STRADDLE_DEEP 700
 /* ...so keep turning that way at this steer for up to this long.  If the
  * line was in fact back in the middle, the other sensor meets it and the
  * car corrects back: one small wiggle. */
-#define VC_STRADDLE_OUTSIDE_STEER 500
+#define VC_STRADDLE_OUTSIDE_STEER B3_LINE_STEER_MAX
 #define VC_STRADDLE_OUTSIDE_MS 700u
 /* Neither sensor has touched the line for this long: assume it is really
  * lost (end of line, or off the course) and run the normal line search. */
@@ -160,6 +164,8 @@ typedef struct {
     bool straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
     INT straddle_outside;  /* -1/+1: line believed outside that sensor */
     bool straddle_lost;    /* lost until a sensor sees black again */
+    bool straddle_both;    /* both sensors on black since straddle_both_um */
+    uint32_t straddle_both_um;
     uint32_t straddle_outside_ms, straddle_black_ms;
     /* Barcode re-read after a rejected scan. */
     UB rescan_phase;       /* 0 none, 1 stopping, 2 reversing */
