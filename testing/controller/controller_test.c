@@ -1123,6 +1123,45 @@ int main(void)
         assert(c.straddle_coast_ms == VC_STRADDLE_COAST_MS);
     }
     puts("PASS light touch on a straight still coasts (no zig-zag)");
+#if VC_BEND_HOLD
+    /* Bend hold (SITProjects line_track.c seek): the left sensor touching
+     * twice within 80 mm is a bend, and while both sensors are white the car
+     * keeps turning left instead of straightening and letting the line run
+     * out.  A single touch on a straight still releases to straight. */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 10u);
+        c.travel_um = 1000000u;
+        input.centre = 350u; input.line_flags = LINE_F_DETECTED;
+        settle(&c, 4u);                            /* touch 1 (light) */
+        assert(c.bend_side == 0 && c.bend_touch_side == -1);
+        c.travel_um += 10000u;
+        input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 6u);                            /* straight: released */
+        assert(c.bend_side == 0 && c.follow_steer > -VC_BEND_SEEK_MIN);
+        c.travel_um += 30000u;
+        input.centre = 350u; input.line_flags = LINE_F_DETECTED;
+        settle(&c, 4u);                            /* touch 2: bend */
+        assert(c.bend_side == -1 && c.follow_steer <= -VC_BEND_SEEK_MIN);
+        input.centre = 0u; input.line_flags = LINE_F_LOST;
+        for (UINT i = 0u; i < 15u; ++i) {
+            c.travel_um += 2000u;
+            step(&c, 20u, 0u);
+            assert(c.follow_steer <= -VC_BEND_SEEK_MIN); /* never straight */
+        }
+        assert(c.follow_steer <= -VC_BEND_SEEK_MAX + VC_STEER_SLEW_PER_TICK);
+        /* The right sensor briefly touching inside the bend: gentle,
+         * bend kept; a long right touch makes it a right bend. */
+        input.left = 350u; input.line_flags = LINE_F_DETECTED;
+        c.travel_um += 5000u; step(&c, 20u, 0u);
+        assert(c.bend_side == -1 && c.bend_counter);
+        c.travel_um += 70000u; step(&c, 20u, 0u);
+        assert(c.bend_side == 1 && !c.bend_counter);
+    }
+    puts("PASS bend: keeps turning with the bend while both sensors are white");
+#endif
 
     /* Search never turns the car round: 60 one way, back 120, back 60 to
      * the start heading, then stops (armed). */

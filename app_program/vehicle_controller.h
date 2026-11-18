@@ -225,6 +225,35 @@
 #define VC_STRADDLE_SEEK_START 100
 #define VC_STRADDLE_SEEK_RAMP 15
 #define VC_STRADDLE_SEEK_MAX 450
+/* Bend hold, after SITProjects/INF2004 line_track.c (MIT; same layout:
+ * two sensors straddling the tape, both white when centred).  On a bend the
+ * line keeps moving toward one sensor, so dropping to zero steering as soon
+ * as that sensor clears made the car straighten, let the line run out past
+ * the sensor and only then correct (the "go out, then come back" turns).
+ * A bend is: the same sensor touching again within VC_BEND_TOUCH_UM of the
+ * start of its last touch (their LINE_CURVE_TOUCH_MM 80), or one touch held
+ * for VC_BEND_HELD_UM.  The other sensor touching ends it.  In a bend, while
+ * both sensors read white, keep steering toward the bend: from
+ * VC_BEND_HOLD_PERMILLE of the touch's peak steering (at least
+ * VC_BEND_SEEK_MIN) growing to VC_BEND_SEEK_MAX over VC_BEND_RAMP_UM of
+ * white travel (their LINE_SEEK_RAMP_MM 20), so the turn never pauses.
+ * A centred line soon reaches the other sensor and ends the bend; after
+ * VC_BEND_LOST_UM of white (their LINE_LOST_MM 250) the normal outside /
+ * search logic takes over.  Touch steering itself is unchanged. */
+#ifndef VC_BEND_HOLD
+#define VC_BEND_HOLD 1
+#endif
+#define VC_BEND_TOUCH_UM 80000u
+#define VC_BEND_HELD_UM 30000u
+#define VC_BEND_HOLD_PERMILLE 700
+#define VC_BEND_SEEK_MIN 250
+#define VC_BEND_SEEK_MAX 600
+#define VC_BEND_RAMP_UM 20000u
+#define VC_BEND_LOST_UM 250000u
+/* The other sensor touching inside a bend steers back at half strength and
+ * keeps the bend, unless it stays black for VC_BEND_COUNTER_UM (their
+ * LINE_COUNTER_MM 100 / LINE_COUNTER_END_MM 40). */
+#define VC_BEND_COUNTER_UM 60000u
 /* Barcode re-read: after a rejected scan (B3 beeps twice), stop, reverse
  * past the start of the strip by VC_RESCAN_MARGIN_UM and drive over it
  * again.  At most VC_BARCODE_RESCANS tries per barcode; 0 disables. */
@@ -293,6 +322,15 @@ typedef struct {
     INT straddle_last_exit;  /* side of the previous exit */
     uint32_t straddle_coast_ms, straddle_exit_ms;
     INT straddle_arc_start;
+    /* Bend hold (VC_BEND_HOLD). */
+    INT bend_side;         /* -1/+1: in a bend that way, else 0 */
+    INT bend_touch_side;   /* side of the last single-sensor touch */
+    bool bend_touching;    /* that touch is still on */
+    INT bend_peak;         /* hardest steering toward it during the touch */
+    uint32_t bend_touch_um, bend_white_um;
+    bool bend_counter;     /* the other sensor is touching inside the bend */
+    INT bend_touch_now;
+    uint32_t bend_counter_um;
     /* Junction approach before a barcode turn. */
     bool approach_active;
     uint32_t approach_um, approach_start_um;

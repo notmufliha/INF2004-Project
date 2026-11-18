@@ -216,6 +216,16 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
                     toward : VC_STRADDLE_CURVE_ARC;
             }
         }
+#if VC_BEND_HOLD
+        if (c->bend_side == c->straddle_side) {
+            /* Known bend that way: keep turning, no coast (SITProjects:
+             * white after a bend edge is seeked, never driven straight). */
+            INT hold = c->bend_peak * VC_BEND_HOLD_PERMILLE / 1000;
+            if (hold < VC_BEND_SEEK_MIN) hold = VC_BEND_SEEK_MIN;
+            c->straddle_coast_ms = 0u;
+            if (c->straddle_arc_start < hold) c->straddle_arc_start = hold;
+        }
+#endif
         c->straddle_last_exit = c->straddle_side;
         c->straddle_exit_ms = in->now_ms;
     }
@@ -238,6 +248,102 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     }
     return true;   /* centred between the sensors */
 }
+
+#if VC_BEND_HOLD
+/* Bend hold (see VC_BEND_HOLD): returns the steering to use.  steer is the
+ * touch steering line_follow_steering() computed for this tick. */
+static INT straddle_bend(VEHICLE_CONTROLLER *c, const VC_INPUT *in, INT steer)
+{
+    bool left_on = B3_LINE_CENTRE_ACTIVE(in->centre);
+    bool right_on = B3_LINE_LEFT_ACTIVE(in->left);
+    INT side = (left_on == right_on) ? 0 : (left_on ? -1 : 1);
+
+    if (left_on && right_on) {
+        /* Crossing tape or junction: no evidence either way. */
+        c->bend_touching = false;
+        c->bend_counter = false;
+        return steer;
+    }
+    if (side != 0) {
+        INT toward = steer * side;
+        if (!c->bend_touching || side != c->bend_touch_now) {
+            /* A touch begins (SITProjects note_touch / note_counter). */
+            if (c->bend_side == -side) {
+                /* The other sensor inside a bend: usually the car a little
+                 * ahead of the bend, not the bend ending.  Keep the bend
+                 * and steer back gently (their LINE_COUNTER_*). */
+                c->bend_counter = true;
+            } else if (side != c->bend_touch_side) {
+                c->bend_side = 0;          /* other side: not that bend */
+            } else if (c->travel_um - c->bend_touch_um <= VC_BEND_TOUCH_UM) {
+                c->bend_side = side;       /* same side again soon: bend */
+            }
+            if (!c->bend_counter || c->bend_side != -side) {
+                c->bend_touch_side = side;
+                c->bend_touch_um = c->travel_um;
+                c->bend_peak = 0;
+            }
+            c->bend_counter_um = c->travel_um;
+            c->bend_touching = true;
+            c->bend_touch_now = side;
+        } else if (c->bend_counter) {
+            if (c->travel_um - c->bend_counter_um >= VC_BEND_COUNTER_UM) {
+                /* Black too long: a real turn the other way. */
+                c->bend_counter = false;
+                c->bend_side = side;
+                c->bend_touch_side = side;
+                c->bend_touch_um = c->bend_counter_um;
+                c->bend_peak = 0;
+            }
+        } else if (c->travel_um - c->bend_touch_um >= VC_BEND_HELD_UM) {
+            c->bend_side = side;           /* one long touch: bend */
+        }
+        c->bend_white_um = c->travel_um;
+        if (c->bend_counter) return steer / 2;
+        if (toward > c->bend_peak) c->bend_peak = toward;
+        if (c->bend_side == side && toward < VC_BEND_SEEK_MIN) {
+            /* Still turning with the bend while the edge only grazes. */
+            return side * VC_BEND_SEEK_MIN;
+        }
+        return steer;
+    }
+    /* Both white. */
+    if (c->bend_touching) {
+        c->bend_touching = false;
+        if (c->bend_counter) {
+            c->bend_counter = false;       /* short counter touch: keep bend */
+            c->bend_peak = 0;              /* ...but seek back gently */
+        }
+        c->bend_white_um = c->travel_um;
+    }
+    if (c->bend_side == 0) return steer;
+    {
+        uint32_t white = c->travel_um - c->bend_white_um;
+        INT start = c->bend_peak * VC_BEND_HOLD_PERMILLE / 1000;
+        INT seek;
+
+        if (white >= VC_BEND_LOST_UM) {
+            c->bend_side = 0;              /* hand over to outside/search */
+            return steer;
+        }
+        if (start < VC_BEND_SEEK_MIN) start = VC_BEND_SEEK_MIN;
+        if (start > VC_BEND_SEEK_MAX) start = VC_BEND_SEEK_MAX;
+        seek = start + (INT)((int64_t)(VC_BEND_SEEK_MAX - start) *
+                             (white > VC_BEND_RAMP_UM ? VC_BEND_RAMP_UM : white) /
+                             VC_BEND_RAMP_UM);
+        return c->bend_side * seek;
+    }
+}
+
+static void bend_reset(VEHICLE_CONTROLLER *c)
+{
+    c->bend_side = 0;
+    c->bend_touch_side = 0;
+    c->bend_touching = false;
+    c->bend_counter = false;
+    c->bend_peak = 0;
+}
+#endif
 
 /* Spread layout: hide a line sensor that is reading barcode bars (see
  * VC_BAR_EDGES).  Modifies the controller's copy of the input. */
@@ -856,6 +962,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->straddle_black_ms = in->now_ms;
         c->straddle_lost = false;
         c->straddle_outside = 0;
+#if VC_BEND_HOLD
+        bend_reset(c);
+#endif
     }
     if (!in->clearance || (in->faults & FAULT_NO_ECHO)) {
         if (c->state != ROBOT_OBSTACLE_SCAN) {
@@ -992,6 +1101,9 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (c->navigation == 0u && !line_detected) {
         c->error_filter_valid = false; /* a reacquired line starts fresh */
+#if VC_BEND_HOLD
+        bend_reset(c);
+#endif
         uint32_t recovery_elapsed;
         INT direction;
         INT search_steer = VC_LINE_SEARCH_STEER;
@@ -1147,6 +1259,18 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
      * zero steering, so a junction is still crossed straight, while a curve
      * is followed even when both sensors see the line. */
     command.steering_permille = line_follow_steering(c, in);
+#if VC_BEND_HOLD
+    if (c->line_straddle && c->straddle_outside == 0 && !in->barcode_active &&
+        c->rescan_phase == 0u) {
+        INT held = straddle_bend(c, in, command.steering_permille);
+        if (held != command.steering_permille) {
+            command.steering_permille = held;
+            c->straddle_black_ms = in->now_ms; /* no 0.4 s seek on top */
+        }
+    } else {
+        bend_reset(c);
+    }
+#endif
     if (c->line_straddle && c->straddle_outside != 0) {
         /* Line left a sensor: coast, then a growing arc toward it. */
         uint32_t elapsed = in->now_ms - c->straddle_outside_ms;
