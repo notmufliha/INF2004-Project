@@ -58,7 +58,7 @@ bool s5_maneuver_begin(S5Maneuver *m, S5Command command,
         m->pass_cm = ROBOT_BYPASS_MIDDLE_MAX_CM;
     if (ROBOT_BYPASS_EXACT_SEQUENCE) {
         /* Outward diagonal, parallel passing leg, inward diagonal.
-         * Keep forward travel between the two opposite 45-degree turns. */
+         * Keep forward travel between the two opposite turns. */
         m->minimum_offset_cm = m->offset_cm;
         m->offset_cm += ROBOT_BYPASS_EXTRA_DIAGONAL_CM;
         m->offset_cm *= ROBOT_BYPASS_DIAGONAL_DISTANCE_SCALE;

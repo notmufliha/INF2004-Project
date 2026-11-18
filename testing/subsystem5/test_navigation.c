@@ -260,7 +260,7 @@ int main(void)
     assert(turn_calls == 2u && last_turn == MOTION_TURN_RIGHT);
     finish_leg();
     tick(120.0f);
-    assert(move_calls == 2u && last_move == 63.0f);
+    assert(move_calls == 2u && last_move == maneuver.pass_cm);
     finish_leg();
     assert(s5_bridge_motion_complete());
     tick(120.0f);
@@ -286,7 +286,7 @@ int main(void)
     finish_leg();
     assert(!s5_bridge_line_found());
     for (unsigned i = 0u; i < 6u; ++i) tick(120.0f);
-    assert(turn_calls == 5u && last_angle == 15 && last_turn == MOTION_TURN_RIGHT);
+    assert(turn_calls == 5u && last_angle == ROBOT_BYPASS_ALIGN_STEP_DEG && last_turn == MOTION_TURN_RIGHT);
     finish_leg();
     line_state.line_flags = B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION;
     for (unsigned i = 0u; i < ROBOT_BYPASS_LINE_CONFIRM; ++i) tick(120.0f);
@@ -332,7 +332,8 @@ int main(void)
     }
     assert(s5_bridge_request(S5_CMD_STOP, &p));
     {
-        const int looks[] = {-45, 45, 45, -45};
+        const int looks[] = {-ROBOT_BYPASS_TURN_DEG, ROBOT_BYPASS_TURN_DEG,
+                             ROBOT_BYPASS_TURN_DEG, -ROBOT_BYPASS_TURN_DEG};
         int heading = 0;
         for (unsigned i = 0u; i < 4u; ++i) {
             assert(s5_navigation_probe_begin(looks[i]));
@@ -346,7 +347,7 @@ int main(void)
             heading += looks[i];
         }
         assert(heading == 0);
-        assert(s5_navigation_probe_begin(-45));
+        assert(s5_navigation_probe_begin(-ROBOT_BYPASS_TURN_DEG));
         s5_navigation_pause();
         assert(!allowed && !s5_navigation_probe_complete());
         puts("PASS chassis viewpoints wait for B2 completion, restore heading and cancel on pause");

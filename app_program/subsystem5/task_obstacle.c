@@ -891,25 +891,27 @@ static void live_controller_mode(void)
             look_clear_hits = 0u;
             if (look_stage == 1u) {
                 s5_coarse_scan(look_first_side == S5_SIDE_LEFT ? &look_left : &look_right);
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? 45 : -45)) emergency_halt("center viewpoint rejected");
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG)) emergency_halt("center viewpoint rejected");
                 look_stage = 2u;
             } else if (look_stage == 2u) {
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? 45 : -45)) emergency_halt("opposite viewpoint rejected");
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG)) emergency_halt("opposite viewpoint rejected");
                 look_stage = 3u;
             } else if (look_stage == 3u) {
                 s5_coarse_scan(look_first_side == S5_SIDE_LEFT ? &look_right : &look_left);
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -45 : 45)) emergency_halt("heading restore rejected");
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG)) emergency_halt("heading restore rejected");
                 look_stage = 4u;
             } else {
                 /* Same sensor origin, original heading restored. Side ray
-                 * angles include the +/-45 degree chassis look turns. */
+                 * angles include the chassis look turns. */
                 coarse.points[0] = look_left.points[0];
                 coarse.points[1] = look_left.points[2];
                 coarse.points[2] = (S5ScanPoint){90u, cm, in.front_valid};
                 coarse.points[3] = look_right.points[2];
                 coarse.points[4] = look_right.points[4];
-                const uint16_t bearings[5] = {25u, 45u, 90u, 135u, 155u};
-                for (int i = 0; i < S5_SCAN_COUNT; ++i) coarse.points[i].angle_deg = bearings[i];
+                coarse.points[0].angle_deg -= ROBOT_BYPASS_TURN_DEG;
+                coarse.points[1].angle_deg -= ROBOT_BYPASS_TURN_DEG;
+                coarse.points[3].angle_deg += ROBOT_BYPASS_TURN_DEG;
+                coarse.points[4].angle_deg += ROBOT_BYPASS_TURN_DEG;
                 coarse.nearest_index = s5_find_nearest(coarse.points, S5_SCAN_COUNT);
                 print_scan("WIDE", &coarse);
                 c.state = S5_COARSE;
@@ -960,7 +962,7 @@ static void live_controller_mode(void)
                 look_attempted = true;
                 look_clear_hits = 0u;
                 look_obstacle_cm = cm;
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -45 : 45)) emergency_halt("first viewpoint rejected");
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG)) emergency_halt("first viewpoint rejected");
                 look_stage = 1u;
                 s5_mission_publish(S5_MISSION_BUSY);
                 continue;
@@ -1061,7 +1063,7 @@ EXPORT void s5_task(INT stacd, void *exinf)
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] %s %s B5-BLUE-ROUTE45: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
+    tm_printf((UB*)"[FW-ID] %s %s B5-BLUE-ROUTE: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
               __DATE__, __TIME__, (int)ROBOT_ENABLE_BYPASS,
               (int)ROBOT_SCAN_SAFE_MIN_DEG, (int)ROBOT_SCAN_SAFE_MAX_DEG,
               (int)ROBOT_STOP_CM, (int)ROBOT_RELEASE_CM, (int)ROBOT_STRAIGHT_TRIM_PERMILLE);

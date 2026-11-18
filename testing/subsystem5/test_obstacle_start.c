@@ -255,7 +255,7 @@ int main(void)
     tick(18.0f);
     assert(turn_calls == 1u); /* Clearance cannot substitute an unplanned turn. */
     tick(18.0f); tick(18.0f); tick(18.0f);
-    assert(turn_calls == 2u && last_turn == MOTION_TURN_RIGHT && last_angle == 45);
+    assert(turn_calls == 2u && last_turn == MOTION_TURN_RIGHT && last_angle == ROBOT_BYPASS_TURN_DEG);
     for (unsigned i = 0; i < 200u && !s5_bridge_line_found(); ++i) {
         if (mode == NAV_AVOID && s5_bridge_motion_complete()) {
             assert(maneuver.state == S5_MAN_COMPLETE && turn_calls == 4u);
@@ -274,7 +274,7 @@ int main(void)
         if (turn_calls >= 3u && maneuver.state != S5_MAN_COMPLETE)
             assert(mode == NAV_AVOID); /* No mid-route FIND_LINE gate before right turn #2. */
     }
-    assert(turn_calls == 4u && last_turn == MOTION_TURN_LEFT && last_angle == 45);
+    assert(turn_calls == 4u && last_turn == MOTION_TURN_LEFT && last_angle == ROBOT_BYPASS_TURN_DEG);
     assert(s5_bridge_line_found());
     assert(s5_bridge_request(S5_CMD_RESUME, NULL));
     /* Replay the valid ranges from the crash log: stop at 47.55 cm,

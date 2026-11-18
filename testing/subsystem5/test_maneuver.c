@@ -57,7 +57,7 @@ static void timed_offset(void)
 }
 static void recovery(S5Side side, bool rotated_off_line)
 {
-    int out = side == S5_SIDE_LEFT ? -45 : 45;
+    int out = side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG;
     reset(side);
     leg(S5_ACT_TURN, 0.0f, out);
     in.line_detected = false;
@@ -93,7 +93,7 @@ static void recovery(S5Side side, bool rotated_off_line)
     assert(m.state == S5_MAN_ALIGN_CHECK);
     if (rotated_off_line) {
         in.now_ms += ROBOT_BYPASS_ALIGN_OBSERVE_MS;
-        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? 15 : -15);
+        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? ROBOT_BYPASS_ALIGN_STEP_DEG : -ROBOT_BYPASS_ALIGN_STEP_DEG);
         assert(m.state == S5_MAN_ALIGN_CHECK);
         in.line_detected = true;
     }
@@ -143,12 +143,12 @@ int main(void)
         assert(s5_maneuver_begin(&m, side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT,
                                   &p, 40.0f, in.now_ms));
         assert(m.lateral_cm == 46.0f); /* Full width, not half a guessed width. */
-        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? -45 : 45);
+        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG);
         in.line_detected = false;
         timed_offset();
-        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? 45 : -45);
+        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG);
         leg(S5_ACT_MOVE, m.pass_cm, 0);
-        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? 45 : -45);
+        leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG);
         assert(m.state == S5_MAN_SEARCH && m.left_original_line);
     }
     reset(S5_SIDE_RIGHT);
@@ -156,22 +156,22 @@ int main(void)
     p.uses_course_bounds = true;
     s5_maneuver_init(&m);
     assert(s5_maneuver_begin(&m, S5_CMD_GO_RIGHT, &p, 40.0f, in.now_ms));
-    leg(S5_ACT_TURN, 0.0f, 45);
+    leg(S5_ACT_TURN, 0.0f, ROBOT_BYPASS_TURN_DEG);
     in.front_cm = 50.0f; /* Partial clear corridor permits measured progress. */
     leg(S5_ACT_MOVE, 5.0f, 0);
     assert(m.state == S5_MAN_OFFSET && m.offset_done_cm == 5.0f);
     in.front_cm = 120.0f;
     leg(S5_ACT_MOVE, m.offset_cm - 5.0f, 0);
     assert(m.state == S5_MAN_FORWARD && fabsf(m.offset_done_cm - m.offset_cm) < 0.01f);
-    leg(S5_ACT_TURN, 0.0f, -45);
-    in.front_cm = 50.0f;
+    leg(S5_ACT_TURN, 0.0f, -ROBOT_BYPASS_TURN_DEG);
+    in.front_cm = 39.0f;
     leg(S5_ACT_MOVE, 5.0f, 0);
     assert(m.state == S5_MAN_PASS && m.pass_done_cm == 5.0f);
     in.front_cm = 120.0f;
     leg(S5_ACT_MOVE, m.pass_cm - 5.0f, 0);
     assert(m.state == S5_MAN_TURN_IN && m.pass_done_cm == m.pass_cm);
     reset(S5_SIDE_LEFT);
-    leg(S5_ACT_TURN, 0.0f, -45);
+    leg(S5_ACT_TURN, 0.0f, -ROBOT_BYPASS_TURN_DEG);
     in.front_cm = 25.0f;
     leg(S5_ACT_MOVE, 5.0f, 0);
     in.front_cm = ROBOT_STOP_CM;
@@ -199,7 +199,7 @@ int main(void)
     assert(tick().type == S5_ACT_STOP && m.error == S5_ERR_FRONT_SENSOR);
     reset(S5_SIDE_RIGHT);
     in.front_cm = 14.50f; /* New COM6 capture: GO_RIGHT must reach B2. */
-    leg(S5_ACT_TURN, 0.0f, 45);
+    leg(S5_ACT_TURN, 0.0f, ROBOT_BYPASS_TURN_DEG);
     in.front_cm = 78.21f;
     assert(tick().type == S5_ACT_MOVE); /* Forward after the completed turn. */
     reset(S5_SIDE_LEFT);
@@ -276,10 +276,10 @@ int main(void)
     m.left_original_line = true;
     in.line_detected = false;
     {
-        const int turns[] = {-15, 30, -45, 60, -75, 90};
+        const int turns[] = {-1, 2, -3, 4, -5, 6};
         for (i = 0u; i < ROBOT_BYPASS_ALIGN_SWEEPS; ++i) {
             in.now_ms += ROBOT_BYPASS_ALIGN_OBSERVE_MS;
-            leg(S5_ACT_TURN, 0.0f, turns[i]);
+            leg(S5_ACT_TURN, 0.0f, turns[i] * ROBOT_BYPASS_ALIGN_STEP_DEG);
         }
         in.now_ms += ROBOT_BYPASS_ALIGN_OBSERVE_MS;
         assert(tick().type == S5_ACT_STOP && m.error == S5_ERR_LINE_TIMEOUT);
