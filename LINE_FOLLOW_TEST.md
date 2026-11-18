@@ -1,3 +1,32 @@
+# Spread sensors + barcode re-read (branch `line-barcode-spread`)
+
+Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
+`barcode-robust` merged in.
+
+**Sensor layout.** `VC_LINE_STRADDLE 1` (vehicle_controller.h): the two line
+sensors are spread out so the 18 mm line runs BETWEEN them. Both on floor =
+centred (drive straight); one on black = steer toward it; both black = a
+crossing tape (junction). Before, both-on-floor counted as "line lost", so the
+car ran the hard line search between every correction: the jerkiness. The
+line counts as lost only when it went out past a sensor and was not found
+within 0.7 s, or no sensor touched it for 3 s. For the old close-together
+layout set `VC_LINE_STRADDLE 0`.
+
+**Sensor ranges.** `B3_LINE_LEARN_RANGE 1`: each sensor uses its own learned
+floor/tape readings once it has seen both, because moving the sensors changes
+them. After power-up, slide the car across the line once (both sensors over
+the tape), then put it down; don't lift it while running. `[B3-RANGE]` on the
+serial log shows the range in use.
+
+**Barcode feedback.** GP22 buzzer (Robo Pico; buzzer switch ON): one high beep
+= barcode read (the letter is in the `[B3] barcode *X* read` log line), two
+low beeps = bars crossed but rejected. In AUTO mode a rejected scan makes the
+car stop, reverse to 5 cm before the strip and drive over it again (once per
+barcode, `VC_BARCODE_RESCANS`).
+
+Tuning: weaving on straights -> raise `VC_STRADDLE_FULL_SCALE`; curves missed
+-> lower it, or lower `VC_STRADDLE_DEEP`.
+
 # Line-following stability build
 
 Branch: `line_follow_v3`. Firmware: `build_make/robot_line_turn_v2.uf2`.

@@ -70,7 +70,7 @@ fixed.
 | GP19 | S1 | WiFi/MQTT link-status LED (LED + 330 Ω to GND) |
 | GP20 | | |
 | GP21 | | |
-| GP22 | | |
+| GP22 | B3 | Robo Pico piezo buzzer (barcode read / rejected beeps), PWM slice 3 A |
 | GP26 | B3 | ADC0 line channel (mounted right) |
 | GP27 | B3 | ADC1 line channel (mounted left) |
 | GP28 | B3 | Digital barcode input |

@@ -1,4 +1,7 @@
 #include "mock_platform.h"
+/* The older tests below are for the close-together layout; the spread
+ * layout is tested by switching VEHICLE_CONTROLLER.line_straddle on. */
+#define VC_LINE_STRADDLE 0
 #include "../../app_program/vehicle_controller.c"
 #include <assert.h>
 #include <stdio.h>
@@ -62,8 +65,14 @@ ER motion_send_command(const motion_command_t *command)
     if (command->type == MOTION_CMD_STOP) ++stops;
     return E_OK;
 }
+static float reversed_cm;
 ER motion_move_cm(float cm, INT speed, motion_direction_t dir, uint32_t *id)
 {
+    if (dir == MOTION_DIR_REVERSE) { /* barcode re-read */
+        assert(cm > 0.0f && cm <= 40.0f && speed > 0);
+        reversed_cm = cm;
+        *id = 42u; return E_OK;
+    }
     assert(cm == 10.0f && speed > 0 && dir == MOTION_DIR_FORWARD);
     *id = 42u; return E_OK;
 }
@@ -120,6 +129,7 @@ INT tk_rcv_mbf(ID id, void *data, TMO timeout)
     return sizeof(REMOTE_CMD);
 }
 bool b3_barcode_active(void) { return false; }
+uint16_t b3_barcode_rejects(void) { return 0u; }
 ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
     clock_ms += snapshot_delay;
@@ -689,6 +699,101 @@ int main(void)
         input.obstacle_fault = false;
     }
     puts("PASS motor stall: 2 automatic retries, then START restarts without reflashing");
+
+    /* Spread sensors: the line runs BETWEEN them, so both on floor is the
+     * centred position, not a lost line (that ran the hard search between
+     * every correction: the jerky following). */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 50u);
+        assert(c.state == ROBOT_LINE_FOLLOW && !c.line_recovery_active &&
+            sent.type == MOTION_CMD_DRIVE && sent.steering_permille == 0);
+        /* Right sensor touches the line: gentle, proportional correction. */
+        input.left = 400u; input.line_flags = LINE_F_DETECTED;
+        settle(&c, 10u);
+        assert(c.state == ROBOT_LINE_FOLLOW && sent.steering_permille > 0 &&
+            sent.steering_permille < B3_LINE_STEER_MAX / 2);
+        /* Back between the sensors: straight again, still following. */
+        input.left = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 10u);
+        assert(c.state == ROBOT_LINE_FOLLOW && sent.steering_permille == 0);
+        /* Sharp curve: the line passes right under the left sensor and out
+         * past it.  Keep turning left, then search left. */
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
+        settle(&c, 10u);
+        assert(c.follow_steer <= -B3_LINE_STEER_MAX + 20); /* before wheel limits */
+        input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 10u);
+        assert(c.state == ROBOT_LINE_FOLLOW &&
+            sent.steering_permille == -VC_STRADDLE_OUTSIDE_STEER);
+        settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u);
+        assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
+        settle(&c, 5u);
+        assert(c.state == ROBOT_LINE_RECOVERY); /* stays lost */
+        input.centre = 500u; input.line_flags = LINE_F_DETECTED;
+        step(&c, 20u, 0u);
+        assert(c.state == ROBOT_LINE_FOLLOW);
+        /* No sensor touches the line for VC_STRADDLE_BLIND_MS: lost. */
+        input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, VC_STRADDLE_BLIND_MS / 20u - 2u);
+        assert(c.state == ROBOT_LINE_FOLLOW);
+        settle(&c, 3u);
+        assert(c.state == ROBOT_LINE_RECOVERY);
+        /* Both black on the spread layout = a crossing tape: straight. */
+        input.left = input.centre = 1000u;
+        input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+        settle(&c, 10u);
+        assert(c.state == ROBOT_LINE_FOLLOW && sent.steering_permille == 0);
+    }
+    puts("PASS spread sensors: centred on floor follows, out-past-sensor turns, blind -> search");
+
+    /* Rejected barcode: stop, reverse past the strip start, drive again. */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.motion.physically_stopped = false;
+        settle(&c, 10u);
+        input.barcode_active = true; settle(&c, 30u);   /* ~50 mm of bars */
+        input.barcode_active = false; settle(&c, 25u);  /* B3 quiet time */
+        input.barcode_rejects = 1u; step(&c, 20u, 0u);
+        assert(c.rescan_phase == 1u && c.state == ROBOT_NAV_COMMAND);
+        assert(c.rescan_back_um > 130000u && c.rescan_back_um < 160000u);
+        step(&c, 20u, 0u);
+        assert(c.rescan_phase == 1u); /* waits until really stopped */
+        input.motion.physically_stopped = true;
+        reversed_cm = 0.0f;
+        step(&c, 20u, 0u);
+        assert(c.rescan_phase == 2u && reversed_cm > 13.0f && reversed_cm < 16.0f);
+        result_ready = false; step(&c, 20u, 0u);
+        assert(c.rescan_phase == 2u);
+        result_ready = true; result.status = MOTION_STATUS_COMPLETED;
+        result.physically_stopped = true;
+        input.motion.physically_stopped = false;
+        step(&c, 20u, 0u); settle(&c, 2u);
+        assert(c.rescan_phase == 0u && c.state == ROBOT_LINE_FOLLOW &&
+            sent.type == MOTION_CMD_DRIVE);
+        result_ready = false;
+        /* Rejected again on the second pass: no endless reversing. */
+        input.barcode_rejects = 2u; step(&c, 20u, 0u);
+        assert(c.rescan_phase == 0u && c.state == ROBOT_LINE_FOLLOW);
+        /* A read barcode resets the tries; the next bad one re-reads. */
+        step(&c, 20u, B3_NAV_SLOW);
+        input.barcode_rejects = 3u; step(&c, 20u, 0u);
+        assert(c.rescan_phase == 1u);
+        /* Not in LINE_ONLY mode (no barcode actions there). */
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_MODE, MODE_LINE_ONLY); command(&c, RCMD_START, 0u);
+        settle(&c, 5u);
+        input.barcode_rejects = 4u; step(&c, 20u, 0u);
+        assert(c.rescan_phase == 0u);
+        input.barcode_rejects = 0u;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS rejected barcode: back up once and read it again");
 
     /* Avoidance owns motor commands until the line/heading handoff. */
     c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);

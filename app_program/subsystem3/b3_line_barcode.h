@@ -23,6 +23,15 @@
 #define B3_LINE_GP26_BLACK (346U)
 #define B3_LINE_GP27_WHITE (212U)
 #define B3_LINE_GP27_BLACK (777U)
+/* 1: once a sensor has seen both floor and tape (slide the car across the
+ * line once after power-up), normalise with its own learned white/black
+ * instead of the fixed endpoints above.  Needed whenever the sensors are
+ * moved: GP26's fixed span is only ~100 counts, so a few counts of change
+ * in its floor reading made it look "on the line" all the time.  Readings
+ * darker than black + 2 * (black - white) + 100 (car lifted) are never learned. */
+#ifndef B3_LINE_LEARN_RANGE
+#define B3_LINE_LEARN_RANGE (1)
+#endif
 /* Zero is off-line; all other values use the measured channel endpoints. */
 #define B3_LINE_RAW_LOST_BELOW (1U)
 
@@ -154,6 +163,9 @@ IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
  * bar widths are measured cleanly. */
 #define B3_BARCODE_ACTIVE_US (400000U)
 IMPORT bool b3_barcode_active(void);
+/* Count of rejected barcode scans (bars crossed, no valid *X*); it only
+ * increases.  The controller backs up and re-reads when it changes. */
+IMPORT uint16_t b3_barcode_rejects(void);
 
 /**
  * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.
