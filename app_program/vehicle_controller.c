@@ -53,6 +53,7 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     c->junction_clear_samples = 0u;
     c->junction_latched = false;
     c->rescan_phase = 0u;
+    c->rescan_pending = false;
     stop_motion(c);
     set_state(c, ROBOT_SAFE_STOP);
 }
@@ -172,6 +173,11 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     if (c->straddle_deep && c->straddle_side != 0) {
         c->straddle_outside = c->straddle_side;
         c->straddle_outside_ms = in->now_ms;
+        c->straddle_coast_ms =
+            (c->straddle_last_exit != 0 &&
+             c->straddle_last_exit != c->straddle_side) ?
+            VC_STRADDLE_FLIP_COAST_MS : VC_STRADDLE_COAST_MS;
+        c->straddle_last_exit = c->straddle_side;
     }
     c->straddle_side = 0;
     c->straddle_deep = false;
@@ -427,6 +433,9 @@ void vehicle_controller_init(VEHICLE_CONTROLLER *c)
     c->mode = MODE_AUTO;
     c->speed_percent = 20u;
     c->line_straddle = VC_LINE_STRADDLE != 0;
+    tm_printf((UB *)"[VC] line sensors: %s layout (VC_LINE_STRADDLE)\n",
+              c->line_straddle ? "SPREAD (line between them)" :
+              "TOGETHER (both on the line)");
     c->state = ROBOT_INIT;
     stop_motion(c);
     set_state(c, ROBOT_IDLE);
@@ -525,7 +534,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
 
     c->seen_rejects = in->barcode_rejects;
     c->rejects_known = true;
-    if (nav != B3_NAV_NONE && c->rescan_phase == 0u) c->rescan_tries = 0u;
+    if (nav != B3_NAV_NONE && c->rescan_phase == 0u) {
+        c->rescan_tries = 0u;      /* a barcode was read */
+        c->rescan_pending = false;
+    }
     if (c->rescan_tries != 0u && c->rescan_phase == 0u &&
         in->now_ms - c->rescan_ms >= VC_RESCAN_FORGET_MS) {
         c->rescan_tries = 0u;
@@ -678,10 +690,22 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (line_detected) c->line_recovery_active = false;
     update_junction_state(c, in);
-    if (in->barcode_active && !c->barcode_was_active) {
-        c->barcode_start_um = c->travel_um;   /* first bar of a strip */
+    /* GP28 strip episode: from its first change to VC_STRIP_END_UM of
+     * travel without one (the barcode re-read reverses over all of it). */
+    if (!c->strip_known) {
+        c->strip_known = true;
+        c->strip_level = in->right;
+    } else if (in->right != c->strip_level) {
+        c->strip_level = in->right;
+        if (!c->strip_active) {
+            c->strip_active = true;
+            c->strip_start_um = c->travel_um;
+        }
+        c->strip_last_um = c->travel_um;
+    } else if (c->strip_active &&
+               c->travel_um - c->strip_last_um >= VC_STRIP_END_UM) {
+        c->strip_active = false;
     }
-    c->barcode_was_active = in->barcode_active;
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
         c->pending_navigation == B3_NAV_NONE &&
         nav >= B3_NAV_LEFT && nav < B3_NAV_COUNT) {
@@ -690,8 +714,17 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     if (new_reject && c->mode == MODE_AUTO && c->navigation == 0u &&
         c->pending_navigation == B3_NAV_NONE && c->rescan_phase == 0u &&
         c->rescan_tries < VC_BARCODE_RESCANS) {
+        c->rescan_pending = true;   /* reverse once past the strip */
+    }
+    if (c->rescan_pending && (nav != B3_NAV_NONE ||
+                              c->pending_navigation != B3_NAV_NONE ||
+                              c->mode != MODE_AUTO || c->navigation != 0u)) {
+        c->rescan_pending = false;  /* read after all, or busy */
+    }
+    if (c->rescan_pending && !c->strip_active) {
+        c->rescan_pending = false;
         c->rescan_tries++;
-        c->rescan_back_um = c->travel_um - c->barcode_start_um +
+        c->rescan_back_um = c->travel_um - c->strip_start_um +
             VC_RESCAN_MARGIN_UM;
         if (c->rescan_back_um > VC_RESCAN_MAX_UM) {
             c->rescan_back_um = VC_RESCAN_MAX_UM;
@@ -844,9 +877,16 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
      * is followed even when both sensors see the line. */
     command.steering_permille = line_follow_steering(c, in);
     if (c->line_straddle && c->straddle_outside != 0) {
-        /* Line went out past a sensor: keep turning toward it. */
-        command.steering_permille =
-            c->straddle_outside * VC_STRADDLE_OUTSIDE_STEER;
+        /* Line left a sensor: coast, then a growing arc toward it. */
+        uint32_t elapsed = in->now_ms - c->straddle_outside_ms;
+        INT arc = 0;
+
+        if (elapsed >= c->straddle_coast_ms) {
+            arc = VC_STRADDLE_RECOVER_START + VC_STRADDLE_RECOVER_RAMP *
+                (INT)((elapsed - c->straddle_coast_ms) / VC_PERIOD_MS);
+            if (arc > VC_STRADDLE_OUTSIDE_STEER) arc = VC_STRADDLE_OUTSIDE_STEER;
+        }
+        command.steering_permille = c->straddle_outside * arc;
     }
     /* Smooth steering changes so the car does not jerk between corrections. */
     if (c->drive_sent) {

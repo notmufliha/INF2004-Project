@@ -16,7 +16,16 @@ arg = curve_steer), `NAV_START`, `NAV_DONE`, `LINE_LOST`, `RESCAN`.
 
 ## Junctions
 
-Sensors together (default, `VC_LINE_STRADDLE 0`): both line sensors are on
+Layout: `VC_LINE_STRADDLE 1` (spread) is the default again; if the line sits
+under both sensors for 10 cm the car switches itself to the together layout
+(`[VC] both line sensors on black ...`). The boot log says which is active.
+Spread: when the line leaves a sensor the car coasts 120 ms (400 ms if the
+exit is on the other side from the last one), then turns toward it in a
+growing arc (the 2026-11-18 logs zig-zagged: an immediate hard turn pushed
+the line across to the other sensor every 0.27 s). A rejected barcode is
+re-read only once GP28 has seen floor for 4 cm (the strip is passed).
+
+Sensors together (`VC_LINE_STRADDLE 0`): both line sensors are on
 the line all the time, so a junction is the barcode sensor GP28 on black
 for >= 13 mm. B3's balanced both-black flag is no longer required (an
 off-centre car failed it), and only a hard curve (`curve_steer` >= 600, was
