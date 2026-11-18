@@ -67,11 +67,14 @@
  * curve (the line itself can pass under GP28 there).  Was 300, which the
  * car's normal corrections on a straight exceed: barcode turns never ran. */
 #define VC_JUNCTION_MAX_CURVE_STEER 600
-/* Spread layout junction: left + right >= this (a crossing or branch under
- * the sensors) for at least VC_STRADDLE_JCT_MIN_UM of travel, or a GP28
- * tape with one line sensor fully black (>= VC_STRADDLE_DEEP). */
-#define VC_STRADDLE_JCT_SUM 1400
-#define VC_STRADDLE_JCT_MIN_UM 10000u
+/* Spread layout junction: BOTH line sensors touched black (>= 201) within
+ * the last VC_STRADDLE_JCT_WINDOW_UM of travel, not necessarily at the
+ * same moment (a tape crossed at an angle, and GP26 reads tape weakly:
+ * "both >= 1400 together for 10 mm" missed real junctions); or the GP28
+ * tape with either line sensor black in that window (side branch on
+ * GP28's side).  Normal following touches one side, then the other only
+ * centimetres later. */
+#define VC_STRADDLE_JCT_WINDOW_UM 25000u
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
@@ -201,8 +204,9 @@ typedef struct {
     uint32_t rescan_id, rescan_ms, rescan_back_um;
     uint32_t travel_um; /* odometer, wraps */
     /* Junction evidence, for the run log and the spread layout. */
-    bool tape_now, jct_sum_active, jct_waiting_logged;
-    uint32_t jct_sum_um;
+    bool tape_now, jct_waiting_logged;
+    bool jct_left_seen, jct_right_seen;
+    uint32_t jct_left_um, jct_right_um;
     UB navigation, pending_navigation;
 } VEHICLE_CONTROLLER;
 

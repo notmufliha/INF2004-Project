@@ -131,6 +131,11 @@ INT tk_rcv_mbf(ID id, void *data, TMO timeout)
 }
 bool b3_barcode_active(void) { return false; }
 uint16_t b3_barcode_rejects(void) { return 0u; }
+static UINT junction_beeps;
+void b3_buzzer_request(B3_BEEP pattern)
+{
+    if (pattern == B3_BEEP_JUNCTION) ++junction_beeps;
+}
 ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
 {
     clock_ms += snapshot_delay;
@@ -853,6 +858,32 @@ int main(void)
         input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
     }
     puts("PASS spread-layout junction: both sensors on the crossing, or a branch at GP28");
+
+    /* Tape crossed at an angle with a weak right sensor: left black, then
+     * right black 10 mm later, never both at once.  Still a junction;
+     * one touch each side 6 cm apart (normal following) is not. */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 20u);
+        step(&c, 20u, B3_NAV_LEFT);
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED; settle(&c, 3u);
+        input.centre = 0u; input.line_flags = LINE_F_LOST; settle(&c, 36u);
+        input.left = 400u; input.line_flags = LINE_F_DETECTED; settle(&c, 3u);
+        input.left = 0u; input.line_flags = LINE_F_LOST; settle(&c, 3u);
+        assert(c.navigation == 0u && !c.junction_latched);
+        junction_beeps = 0u;
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED; settle(&c, 3u);
+        input.centre = 0u; input.line_flags = LINE_F_LOST; settle(&c, 3u);
+        input.left = 400u; input.line_flags = LINE_F_DETECTED;
+        for (UINT i = 0u; i < 6u && c.navigation == 0u; ++i) step(&c, 20u, 0u);
+        assert(c.navigation == B3_NAV_LEFT && junction_beeps == 1u);
+        input.left = 0u;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS spread-layout junction: both sides touched within 25 mm, beeps");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {

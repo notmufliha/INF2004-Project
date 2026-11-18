@@ -6,6 +6,7 @@
 #include "subsystem4/subsystem4.h"
 #include "subsystem5/s5_mission.h"
 #include "run_log.h"
+#include "subsystem3/b3_buzzer.h"
 
 #if VC_STEERING_DIAGNOSTICS
 static void report_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
@@ -354,21 +355,22 @@ static bool crossing_tape(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
 static bool straddle_junction(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
                               bool tape)
 {
-    INT sum = (INT)in->left + (INT)in->centre;
+    bool left_recent, right_recent;
 
-    if (sum >= VC_STRADDLE_JCT_SUM) {
-        if (!c->jct_sum_active) {
-            c->jct_sum_active = true;
-            c->jct_sum_um = c->travel_um;
-        }
-        if (c->travel_um - c->jct_sum_um >= VC_STRADDLE_JCT_MIN_UM) {
-            return true;
-        }
-    } else {
-        c->jct_sum_active = false;
+    if (B3_LINE_CENTRE_ACTIVE(in->centre)) {   /* robot's left sensor */
+        c->jct_left_seen = true;
+        c->jct_left_um = c->travel_um;
     }
-    return tape && (in->left >= VC_STRADDLE_DEEP ||
-                    in->centre >= VC_STRADDLE_DEEP);
+    if (B3_LINE_LEFT_ACTIVE(in->left)) {       /* robot's right sensor */
+        c->jct_right_seen = true;
+        c->jct_right_um = c->travel_um;
+    }
+    left_recent = c->jct_left_seen &&
+        c->travel_um - c->jct_left_um <= VC_STRADDLE_JCT_WINDOW_UM;
+    right_recent = c->jct_right_seen &&
+        c->travel_um - c->jct_right_um <= VC_STRADDLE_JCT_WINDOW_UM;
+    return (left_recent && right_recent) ||
+        (tape && (left_recent || right_recent));
 }
 
 static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
@@ -409,6 +411,7 @@ static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
                               (uint16_t)c->pending_navigation);
                 tm_printf((UB *)"[VC] junction (pending turn %d)\n",
                           (INT)c->pending_navigation);
+                b3_buzzer_request(B3_BEEP_JUNCTION);
             }
             c->junction_latched = true;
         }
