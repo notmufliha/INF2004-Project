@@ -63,7 +63,15 @@
 #define VC_FLOOR_LEARN_UM 80000u
 /* Wheel travel per encoder count: pi * 65 mm / ~2420 counts. */
 #define VC_UM_PER_COUNT 84u
-#define VC_JUNCTION_MAX_CURVE_STEER 300
+/* Close layout: a GP28 tape is not a junction while the car is in a hard
+ * curve (the line itself can pass under GP28 there).  Was 300, which the
+ * car's normal corrections on a straight exceed: barcode turns never ran. */
+#define VC_JUNCTION_MAX_CURVE_STEER 600
+/* Spread layout junction: left + right >= this (a crossing or branch under
+ * the sensors) for at least VC_STRADDLE_JCT_MIN_UM of travel, or a GP28
+ * tape with one line sensor fully black (>= VC_STRADDLE_DEEP). */
+#define VC_STRADDLE_JCT_SUM 1400
+#define VC_STRADDLE_JCT_MIN_UM 10000u
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
@@ -77,16 +85,16 @@
 /* STOP barcode: time standing at the crossing before going straight on. */
 #define VC_NAV_STOP_MS 3000u
 /* Line-sensor layout.
- * 1 (default): sensors SPREAD OUT, the 18 mm line runs between them.
+ * 1: sensors SPREAD OUT, the 18 mm line runs between them.
  *   Centred, both read floor (white): that is "on the line", not lost.
  *   One sensor on black: steer toward it.  Both black: a crossing tape.
- * 0: sensors close together, both on the line when centred (old layout).
+ * 0 (default): sensors close together, both on the line when centred.
  * Changeable at run time through VEHICLE_CONTROLLER.line_straddle.
  * Auto-detect: with 1, both sensors on black for VC_LAYOUT_CLOSE_UM of
  * travel (a crossing tape is only 18 mm) means they are close together:
  * the controller switches to the close layout until reboot. */
 #ifndef VC_LINE_STRADDLE
-#define VC_LINE_STRADDLE 1
+#define VC_LINE_STRADDLE 0 /* the team's car: sensors together */
 #endif
 /* Spread layout: steering reaches B3_LINE_STEER_MAX when one sensor reads
  * this much black (0..1000).  Lower = harder corrections (curves missed?),
@@ -174,6 +182,9 @@ typedef struct {
     UH seen_rejects;
     uint32_t rescan_id, rescan_ms, rescan_back_um;
     uint32_t travel_um, barcode_start_um; /* odometer, wraps */
+    /* Junction evidence, for the run log and the spread layout. */
+    bool tape_now, jct_sum_active, jct_waiting_logged;
+    uint32_t jct_sum_um;
     UB navigation, pending_navigation;
 } VEHICLE_CONTROLLER;
 

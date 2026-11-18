@@ -5,6 +5,7 @@
 #include "b3_line_barcode.h"
 #include "b3_code39.h"
 #include "b3_buzzer.h"
+#include "../run_log.h"
 #include "b3_line_cal.h"
 
 #include <stdbool.h>
@@ -360,6 +361,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
+		run_log_raw(left, centre);
 		/* Learn each sensor's range; fixed endpoints until it is known. */
         b3_track_learn(&left_cal, left, B3_LINE_GP26_WHITE,
                        B3_LINE_GP26_BLACK);
@@ -618,6 +620,8 @@ static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
 		return;
 	}
 	b3_buzzer_beep(B3_BEEP_READ, B3_TIMER_RAWL);
+	run_log_event(0U, RUN_EV_BARCODE_READ,
+		      (uint16_t)symbol);
 	nav = b3_routes[symbol - 'A'];
 	now = nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL;
 	tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s %s\n",
@@ -645,6 +649,8 @@ static void b3_log_reject(const B3_CODE39_DECODER *decoder)
 		logged = decoder->reject_count;
 		g_barcode_rejects++;
 		b3_buzzer_beep(B3_BEEP_REJECT, B3_TIMER_RAWL);
+		run_log_event(0U, RUN_EV_BARCODE_REJECT,
+			      (uint16_t)decoder->last_reject);
 		tm_printf((UB *)"[B3] barcode scan rejected: %s (payload '%c', %d elements)\n",
 			  decoder->last_reject < 6U ?
 			  reasons[decoder->last_reject] : "?",

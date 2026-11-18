@@ -2,6 +2,7 @@
 /* The older tests below are for the close-together layout; the spread
  * layout is tested by switching VEHICLE_CONTROLLER.line_straddle on. */
 #define VC_LINE_STRADDLE 0
+#define RUN_LOG_ENABLE 0
 #include "../../app_program/vehicle_controller.c"
 #include <assert.h>
 #include <stdio.h>
@@ -773,6 +774,59 @@ int main(void)
         input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
     }
     puts("PASS layout auto-detect: line under both sensors -> close-together following");
+
+    /* Close layout junction: the GP28 tape alone, even off-centre (B3's
+     * balanced JUNCTION flag off) and after normal corrections. */
+    {
+        c = fresh(); command(&c, RCMD_START, 0u);
+        drive_centred(&c, 60u);           /* floor learned */
+        input.left = 1000u; input.centre = 600u;  /* off-centre */
+        input.line_flags = LINE_F_DETECTED;      /* no JUNCTION flag */
+        c.curve_steer = 450;                     /* recent correction */
+        step(&c, 20u, B3_NAV_LEFT);
+        assert(c.pending_navigation == B3_NAV_LEFT);
+        input.right = 1u;
+        for (UINT i = 0u; i < 14u && c.navigation == 0u; ++i) step(&c, 20u, 0u);
+        assert(c.navigation == B3_NAV_LEFT);
+        input.right = 0u;
+        /* A hard curve still blocks it (the line can pass under GP28). */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        drive_centred(&c, 60u);
+        step(&c, 20u, B3_NAV_LEFT);
+        input.left = 1000u; input.centre = 30u; input.line_flags = LINE_F_DETECTED;
+        input.right = 1u;
+        for (UINT i = 0u; i < 14u; ++i) step(&c, 20u, 0u);
+        assert(c.navigation == 0u && c.curve_steer >= VC_JUNCTION_MAX_CURVE_STEER);
+        input.right = 0u;
+    }
+    puts("PASS close-layout junction: GP28 tape counts off-centre and after corrections");
+
+    /* Spread layout junction: L + R >= 1400 for 10 mm; GP28 tape + one
+     * saturated sensor (side branch). */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 60u);
+        step(&c, 20u, B3_NAV_RIGHT);
+        input.left = 800u; input.centre = 700u; input.line_flags = LINE_F_DETECTED;
+        for (UINT i = 0u; i < 14u && c.navigation == 0u; ++i) step(&c, 20u, 0u);
+        assert(c.navigation == B3_NAV_RIGHT);
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        settle(&c, 60u);                 /* GP28 floor learned */
+        step(&c, 20u, B3_NAV_LEFT);
+        input.centre = 950u; input.line_flags = LINE_F_DETECTED; /* left branch */
+        input.right = 1u;
+        for (UINT i = 0u; i < 14u && c.navigation == 0u; ++i) step(&c, 20u, 0u);
+        assert(c.navigation == B3_NAV_LEFT);
+        input.right = 0u;
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS spread-layout junction: both sensors on the crossing, or a branch at GP28");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {
