@@ -5,6 +5,7 @@
 #define VC_JUNCTION_APPROACH_MM 0u /* older tests: turn at once */
 #define RUN_LOG_ENABLE 0
 #include "../../app_program/vehicle_controller.c"
+#include "../../app_program/vc_follow.c"
 #include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -137,6 +138,9 @@ INT tk_rcv_mbf(ID id, void *data, TMO timeout)
 }
 bool b3_barcode_active(void) { return false; }
 uint16_t b3_barcode_rejects(void) { return 0u; }
+void b3_line_raw(uint16_t *a, uint16_t *b) { if (a) *a = 300u; if (b) *b = 300u; }
+void imu_live_get(imu_live_t *p) { *p = (imu_live_t){0}; }
+void s5_mission_set_ramp(bool on) { (void)on; }
 static UINT junction_beeps;
 void b3_buzzer_request(B3_BEEP pattern)
 {

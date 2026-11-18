@@ -7,6 +7,7 @@ static T_SPLOCK mission_lock;
 #endif
 static bool enabled;
 static bool approach_slow;
+static bool on_ramp;
 static S5MissionState mission_state;
 static void lock(UINT *irq)
 {
@@ -62,7 +63,9 @@ void s5_mission_front(bool valid, float cm)
 {
     UINT irq;
     lock(&irq);
-    if (valid) approach_slow = cm > 0.0f && cm <= 30.0f;
+    /* Box mode: slow from 60 cm (then stop at 40, scan at 25). */
+    if (valid) approach_slow = cm > 0.0f &&
+        cm <= (ROBOT_BOX_BYPASS ? 60.0f : 30.0f);
     unlock(irq);
 }
 bool s5_mission_approach_slow(void)
@@ -71,4 +74,16 @@ bool s5_mission_approach_slow(void)
     bool slow;
     lock(&irq); slow = approach_slow; unlock(irq);
     return slow;
+}
+void s5_mission_set_ramp(bool ramp)
+{
+    UINT irq;
+    lock(&irq); on_ramp = ramp; unlock(irq);
+}
+bool s5_mission_ramp(void)
+{
+    UINT irq;
+    bool ramp;
+    lock(&irq); ramp = on_ramp; unlock(irq);
+    return ramp;
 }

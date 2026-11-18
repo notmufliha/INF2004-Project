@@ -5,6 +5,7 @@
 /** @file task_imu.c
  * @brief Buddy 4 task imu module.
  */
+#include "imu_live.h"
 #include "task_imu.h"
 #include "subsystem4.h"
 #include "s4_runtime.h"
@@ -148,6 +149,10 @@ task_imu_sampling_task (INT stacd, void * p_exinf)
 #else
             bool b_publish = hardware_read(now.lo, &data);
 #endif
+            if (b_publish)
+            {
+                imu_live_store(&data);   /* lift-stop check (VC) */
+            }
 #if S4_IMU_USE_MOCK
             /* Only mock frames need replacement of their synthetic time.
              * Real frames already carry the acceleration burst-end timestamp.

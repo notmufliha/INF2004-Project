@@ -46,6 +46,13 @@
  * the line and resume following. Can be overridden with -D for bench builds. */
 #ifndef ROBOT_ENABLE_BYPASS
 #define ROBOT_ENABLE_BYPASS 1
+/* 1: B5 runs the box bypass (subsystem5/s5_box.c): slow at 60 cm, stop at
+ * 40 cm (25 cm on a ramp), creep to 25 cm, scan, turn out / lateral leg /
+ * turn back / pass leg / 45 deg rejoin with a line-width check.
+ * 0: the previous reactive bypass (live_controller_mode). */
+#ifndef ROBOT_BOX_BYPASS
+#define ROBOT_BOX_BYPASS 1
+#endif
 #endif
 #ifndef ROBOT_BYPASS_CALIBRATED
 /* Calibration evidence flag only; enabling the requested autonomous profile

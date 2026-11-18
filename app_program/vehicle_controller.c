@@ -7,6 +7,7 @@
 #include "subsystem5/s5_mission.h"
 #include "run_log.h"
 #include "subsystem3/b3_buzzer.h"
+#include "subsystem4/imu_live.h"
 
 #if VC_STEERING_DIAGNOSTICS
 static void report_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
@@ -56,6 +57,11 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     c->rescan_phase = 0u;
     c->rescan_pending = false;
     c->approach_active = false;
+#if VC_FOLLOW_V4
+    c->v4_phase = 0u;
+    c->v4_motion_id = 0u;
+    c->bar_phase = 0u;
+#endif
     stop_motion(c);
     set_state(c, ROBOT_SAFE_STOP);
 }
@@ -740,12 +746,521 @@ static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     }
 }
 
+#if VC_FOLLOW_V4
+/* ---- Line following v4 (see VC_FOLLOW_V4 in vehicle_controller.h) ---- */
+enum { V4_FOLLOW = 0, V4_SEARCH, V4_CROSS, V4_BARCODE };
+enum { BAR_IDLE = 0, BAR_BRAKE, BAR_REVERSE, BAR_SETTLE, BAR_READ };
+
+static void v4_enter(VEHICLE_CONTROLLER *c, UB phase, uint32_t now_ms)
+{
+    c->v4_phase = phase;
+    c->v4_sub = 0u;
+    c->v4_phase_ms = now_ms;
+    c->v4_motion_id = 0u;
+}
+
+/* Result of the motion command v4 is waiting for: 1 done, 0 running,
+ * -1 failed or timed out (the motors are then stopped). */
+static INT v4_motion_done(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    motion_status_snapshot_t result;
+
+    if (c->v4_motion_id == 0u) return 1;
+    if (motion_get_result(c->v4_motion_id, &result) == E_OK) {
+        c->v4_motion_id = 0u;
+        return (result.status == MOTION_STATUS_COMPLETED) ? 1 : -1;
+    }
+    if (in->now_ms - c->v4_phase_ms > VC4_MOTION_TIMEOUT_MS) {
+        stop_motion(c);
+        c->v4_motion_id = 0u;
+        return -1;
+    }
+    return 0;
+}
+
+static bool v4_turn(VEHICLE_CONTROLLER *c, const VC_INPUT *in, INT deg,
+                    bool left)
+{
+    if (!in->motion.physically_stopped) {
+        stop_motion(c);
+        return false;
+    }
+    if (motion_turn_degrees(deg, vc4_mm_s_to_cps(VC4_TURN_MM_S),
+                            left ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT,
+                            &c->v4_motion_id) != E_OK) {
+        return false;
+    }
+    c->stopped = false;
+    c->drive_sent = false;
+    c->v4_phase_ms = in->now_ms;
+    return true;
+}
+
+static bool v4_move(VEHICLE_CONTROLLER *c, const VC_INPUT *in, float cm,
+                    INT mm_s, bool forward)
+{
+    if (!in->motion.physically_stopped) {
+        stop_motion(c);
+        return false;
+    }
+    if (motion_move_cm(cm, vc4_mm_s_to_cps(mm_s),
+                       forward ? MOTION_DIR_FORWARD : MOTION_DIR_REVERSE,
+                       &c->v4_motion_id) != E_OK) {
+        return false;
+    }
+    c->stopped = false;
+    c->drive_sent = false;
+    c->v4_phase_ms = in->now_ms;
+    return true;
+}
+
+/* End of the run (line not found, FINISH barcode): stopped, START again. */
+static void v4_end_run(VEHICLE_CONTROLLER *c, const char *why)
+{
+    stop_motion(c);
+    c->running = false;
+    c->paused = false;
+    c->pending_navigation = B3_NAV_NONE;
+    c->navigation = 0u;
+    set_state(c, ROBOT_IDLE);
+    tm_printf((UB *)"[VC4] run ended: %s\n", why);
+}
+
+static void v4_reset_follow(VEHICLE_CONTROLLER *c)
+{
+    vc4_reset(&c->trk);
+    c->drive_sent = false;
+    c->last_speed = c->last_steer = 0;
+}
+
+/* Line search: 60 toward the side the line was last seen, 120 back, 60
+ * again; then wait.  Found = either sensor on the tape. */
+static void v4_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    INT done;
+
+    set_state(c, ROBOT_LINE_RECOVERY);
+    if (vc4_black(in->centre, in->left)) {
+        stop_motion(c);
+        c->v4_motion_id = 0u;
+        tm_printf((UB *)"[VC4] line found again after %d ms of search\n",
+                  (INT)(in->now_ms - c->recovery_ms));
+        run_log_event(in->now_ms, RUN_EV_NAV_DONE, 0u);
+        c->trk.lost = false;
+        c->trk.white_ms = 0u;
+        v4_enter(c, V4_FOLLOW, in->now_ms);
+        c->drive_sent = false;
+        return;
+    }
+    if (in->now_ms - c->recovery_ms >= VC4_SEARCH_MS) {
+        v4_end_run(c, "line lost, not found within 5 s of search");
+        return;
+    }
+    done = v4_motion_done(c, in);
+    if (done == 0) return;
+    switch (c->v4_sub) {
+    case 0u:
+        if (v4_turn(c, in, VC4_SEARCH_SWEEP_DEG, c->v4_search_first > 0)) {
+            c->v4_sub = 1u;
+        }
+        break;
+    case 1u:
+        if (v4_turn(c, in, 2 * VC4_SEARCH_SWEEP_DEG, c->v4_search_first < 0)) {
+            c->v4_sub = 2u;
+        }
+        break;
+    case 2u:
+        if (v4_turn(c, in, VC4_SEARCH_SWEEP_DEG, c->v4_search_first > 0)) {
+            c->v4_sub = 3u;
+        }
+        break;
+    default:
+        stop_motion(c);   /* swept: wait for the line or the timeout */
+        break;
+    }
+}
+
+static void v4_start_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    /* + steering = line left: sweep left first. */
+    c->v4_search_first = c->trk.filt < 0 ? -1 : 1;
+    if (c->trk.filt == 0 && c->trk.last_side != 0) {
+        c->v4_search_first = c->trk.last_side;
+    }
+    c->recovery_ms = in->now_ms;
+    stop_motion(c);
+    run_log_event(in->now_ms, RUN_EV_LINE_LOST, 0u);
+    tm_printf((UB *)"[VC4] LINE LOST (both white 200 ms, 60 mm): searching %s first\n",
+              c->v4_search_first > 0 ? "left" : "right");
+    v4_enter(c, V4_SEARCH, in->now_ms);
+}
+
+/* Barcode turn at a cross-junction: stop, advance 60 mm, turn. */
+static void v4_cross(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    INT done;
+    UB nav = c->navigation;
+
+    set_state(c, ROBOT_NAV_COMMAND);
+    /* The step's clearance wait safe-stops after 3 s WITHOUT clearance,
+     * not 3 s after the junction. */
+    c->navigation_ms = in->now_ms;
+    done = v4_motion_done(c, in);
+    if (done < 0) {
+        tm_printf((UB *)"[VC4] junction move failed: stopped\n");
+        safe_stop(c);
+        v4_enter(c, V4_FOLLOW, in->now_ms);
+        return;
+    }
+    if (done == 0) return;
+    switch (c->v4_sub) {
+    case 0u:
+        if (nav == B3_NAV_STOP) {
+            stop_motion(c);
+            if (in->now_ms - c->v4_phase_ms < VC_NAV_STOP_MS) return;
+        }
+        if (v4_move(c, in, VC4_JCT_ADVANCE_CM, VC4_MOVE_MM_S, true)) {
+            c->v4_sub = 1u;
+        }
+        return;
+    case 1u: {
+        bool started = true;
+        if (nav == B3_NAV_FINISH) {
+            run_log_event(in->now_ms, RUN_EV_NAV_DONE, (uint16_t)nav);
+            v4_end_run(c, "FINISH barcode");
+            v4_enter(c, V4_FOLLOW, in->now_ms);
+            return;
+        }
+        if (nav == B3_NAV_LEFT) {
+            started = v4_turn(c, in, 90, true);
+        } else if (nav == B3_NAV_RIGHT) {
+            started = v4_turn(c, in, 90, false);
+        } else if (nav == B3_NAV_UTURN) {
+            started = v4_turn(c, in, 180, true);
+        } else if (nav == B3_NAV_SPIN) {
+            started = v4_turn(c, in, 360, false);
+        } else {
+            c->v4_sub = 2u;          /* STRAIGHT / STOP: nothing to turn */
+            return;
+        }
+        if (started) c->v4_sub = 2u;
+        return;
+    }
+    default:
+        run_log_event(in->now_ms, RUN_EV_NAV_DONE, (uint16_t)nav);
+        tm_printf((UB *)"[VC4] barcode action %d done at the junction\n",
+                  (INT)nav);
+        c->navigation = 0u;
+        v4_reset_follow(c);
+        v4_enter(c, V4_FOLLOW, in->now_ms);
+        return;
+    }
+}
+
+static void v4_bar_clear(VEHICLE_CONTROLLER *c)
+{
+    c->bar_phase = BAR_IDLE;
+    c->bar_clear_um = c->travel_um;
+    c->bar_clear_known = true;
+}
+
+/* Reverse c->bar_back_um, then read at the barcode speed. */
+static bool v4_barcode(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    INT done;
+
+    if (c->bar_phase == BAR_BRAKE) {
+        set_state(c, ROBOT_NAV_COMMAND);
+        stop_motion(c);
+        if (in->now_ms - c->bar_ms > VC_RESCAN_TIMEOUT_MS) {
+            v4_bar_clear(c);
+            return false;
+        }
+        if (!in->motion.physically_stopped) return true;
+        if (v4_move(c, in, (float)c->bar_back_um / 10000.0f,
+                    VC4_REVERSE_MM_S, false)) {
+            tm_printf((UB *)"[VC4] barcode: backing %d mm to read it at %d mm/s (try %d)\n",
+                      (INT)(c->bar_back_um / 1000u), (INT)VC4_BARCODE_MM_S,
+                      (INT)c->bar_tries + 1);
+            run_log_event(in->now_ms, RUN_EV_RESCAN,
+                          (uint16_t)(c->bar_back_um / 1000u));
+            c->bar_phase = BAR_REVERSE;
+        }
+        return true;
+    }
+    if (c->bar_phase == BAR_REVERSE) {
+        set_state(c, ROBOT_NAV_COMMAND);
+        done = v4_motion_done(c, in);
+        if (done == 0) return true;
+        c->bar_phase = BAR_SETTLE;
+        c->bar_ms = in->now_ms;
+        return true;
+    }
+    if (c->bar_phase == BAR_SETTLE) {
+        set_state(c, ROBOT_NAV_COMMAND);
+        stop_motion(c);
+        if (!in->motion.physically_stopped ||
+            in->now_ms - c->bar_ms < VC4_BAR_WAIT_MS) return true;
+        c->bar_phase = BAR_READ;
+        c->bar_mark_um = c->travel_um;
+        c->bar_ms = in->now_ms;
+        c->bar_rejects = in->barcode_rejects;
+        v4_reset_follow(c);
+        vc4_junction_reset(&c->trk);
+        return false;   /* following drives the read pass */
+    }
+    return false;
+}
+
+/* Read pass finished without a decode: retry from its start or give up. */
+static void v4_bar_pass_failed(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
+                               const char *why)
+{
+    uint32_t pass = c->travel_um - c->bar_mark_um;
+
+    tm_printf((UB *)"[VC4] barcode read pass failed (%s) after %d mm\n",
+              why, (INT)(pass / 1000u));
+    if (c->bar_tries < VC4_BAR_RETRIES) {
+        c->bar_tries++;
+        c->bar_back_um = pass + VC4_BAR_RETRY_EXTRA_UM;
+        if (c->bar_back_um > VC4_BAR_REWIND_MAX_UM) {
+            c->bar_back_um = VC4_BAR_REWIND_MAX_UM;
+        }
+        c->bar_phase = BAR_BRAKE;
+        c->bar_ms = in->now_ms;
+    } else {
+        tm_printf((UB *)"[VC4] barcode not read after %d tries: continuing\n",
+                  (INT)VC4_BAR_RETRIES + 1);
+        v4_bar_clear(c);
+    }
+}
+
+static void v4_track_strip(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    if (!c->strip_known) {
+        c->strip_known = true;
+        c->strip_level = in->right;
+    } else if (in->right != c->strip_level) {
+        c->strip_level = in->right;
+        if (!c->strip_active) {
+            c->strip_active = true;
+            c->strip_start_um = c->travel_um;
+            c->strip_edges = 0u;
+        }
+        if (c->strip_edges < 255u) c->strip_edges++;
+        c->strip_last_um = c->travel_um;
+    } else if (c->strip_active &&
+               c->travel_um - c->strip_last_um >= VC_STRIP_END_UM) {
+        c->strip_active = false;
+    }
+}
+
+static void v4_ramp(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    bool pitched = in->hump || in->pitch_deg >= VC4_RAMP_PITCH_DEG ||
+        in->pitch_deg <= -VC4_RAMP_PITCH_DEG;
+
+    if (pitched) {
+        if (!c->on_ramp) tm_printf((UB *)"[VC4] on a ramp: short obstacle stop\n");
+        c->on_ramp = true;
+        c->ramp_ms = in->now_ms;
+        c->ramp_um = c->travel_um;
+    } else if (c->on_ramp && in->now_ms - c->ramp_ms >= VC4_RAMP_HOLD_MS &&
+               c->travel_um - c->ramp_um >= VC4_RAMP_CLEAR_UM) {
+        c->on_ramp = false;
+    }
+    s5_mission_set_ramp(c->on_ramp);
+}
+
+/* True when the car has been picked up (lift-stop). */
+static bool v4_lifted(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
+{
+    if (in->raw26 >= VC4_LIFT_IR_RAW && in->raw27 >= VC4_LIFT_IR_RAW) {
+        if (c->lift_ir_ms == 0u) c->lift_ir_ms = in->now_ms | 1u;
+        if (in->now_ms - c->lift_ir_ms >= VC4_LIFT_IR_MS) return true;
+    } else {
+        c->lift_ir_ms = 0u;
+    }
+    return in->lifted_imu;
+}
+
+/* Follow / search / junction / barcode.  speed = dashboard cruise, cps. */
+static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
+                     INT speed)
+{
+    uint32_t dt = c->v4_time_valid ? in->now_ms - c->v4_last_ms : VC_PERIOD_MS;
+    UH nl = in->centre;   /* robot's left sensor  (GP27) */
+    UH nr = in->left;     /* robot's right sensor (GP26) */
+    int32_t steer, speed_cps, steering;
+    INT cruise_mm, base_mm;
+    motion_command_t command = {0};
+    vc4_jct_t jct = VC4_JCT_NONE;
+    bool inhibit;
+
+    VC_INPUT filtered = *in;
+
+    bar_filter(c, &filtered);   /* a line sensor over barcode bars */
+    in = &filtered;
+    nl = in->centre;
+    nr = in->left;
+    c->v4_last_ms = in->now_ms;
+    c->v4_time_valid = true;
+    (void)crossing_tape(c, in);           /* odometer */
+    v4_track_strip(c, in);
+    v4_ramp(c, in);
+    if (c->post_avoid_slow &&
+        (int32_t)(c->travel_um - c->post_avoid_um) >= 0) {
+        c->post_avoid_slow = false;
+        tm_printf((UB *)"[VC4] 150 mm after the bypass: cruise speed, junctions on\n");
+    }
+
+    /* A decoded barcode arms the next cross-junction (a newer one
+     * replaces it), whatever the car is doing. */
+    /* Decodes while stopping/reversing over a strip are partial or
+     * backwards reads: ignored (the slow pass reads it). */
+    if (c->bar_phase != BAR_IDLE && c->bar_phase != BAR_READ) nav = B3_NAV_NONE;
+    if (c->mode == MODE_AUTO && nav >= B3_NAV_LEFT && nav < B3_NAV_COUNT) {
+        c->pending_navigation = nav;
+        tm_printf((UB *)"[VC4] barcode action %d armed for the next cross-junction\n",
+                  (INT)nav);
+        if (c->bar_phase != BAR_IDLE) {
+            if (c->bar_phase != BAR_READ) stop_motion(c);
+            v4_bar_clear(c);
+            c->v4_motion_id = 0u;
+        }
+    }
+
+    if (c->v4_phase == V4_SEARCH) {
+        v4_search(c, in);
+        return;
+    }
+    if (c->v4_phase == V4_CROSS) {
+        v4_cross(c, in);
+        return;
+    }
+    if (c->bar_phase != BAR_IDLE && c->bar_phase != BAR_READ) {
+        if (v4_barcode(c, in)) return;
+    }
+
+    /* ---- FOLLOW ---- */
+    steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
+    if (!vc4_on_line(&c->trk)) {
+        if (c->bar_phase == BAR_READ) v4_bar_clear(c);
+        v4_start_search(c, in);
+        return;
+    }
+    if (c->bar_phase == BAR_READ) {
+        if (in->barcode_rejects != c->bar_rejects && !in->barcode_active) {
+            c->bar_rejects = in->barcode_rejects;
+            v4_bar_pass_failed(c, in, "rejected");
+            if (c->bar_phase == BAR_BRAKE) { stop_motion(c); return; }
+        } else if (c->travel_um - c->bar_mark_um >= VC4_BAR_READ_UM ||
+                   in->now_ms - c->bar_ms >= VC4_BAR_READ_MS) {
+            v4_bar_pass_failed(c, in, "no decode");
+            if (c->bar_phase == BAR_BRAKE) { stop_motion(c); return; }
+        }
+    }
+
+    inhibit = c->post_avoid_slow ||
+        (c->bar_phase != BAR_IDLE && c->bar_phase != BAR_READ);
+    if (!inhibit) {
+        jct = vc4_junction(&c->trk, nl, nr, c->travel_um);
+    } else {
+        vc4_junction_reset(&c->trk);
+    }
+    if (jct != VC4_JCT_NONE) {
+        run_log_event(in->now_ms, RUN_EV_JUNCTION,
+                      (uint16_t)c->pending_navigation);
+        tm_printf((UB *)"[VC4] junction class %d (1 cross, 2 left, 3 right), armed %d\n",
+                  (INT)jct, (INT)c->pending_navigation);
+    }
+    if (jct == VC4_JCT_CROSS && c->mode == MODE_AUTO &&
+        c->pending_navigation != B3_NAV_NONE) {
+        if (c->bar_phase == BAR_READ) v4_bar_clear(c);
+        c->navigation = c->pending_navigation;
+        c->pending_navigation = B3_NAV_NONE;
+        c->navigation_ms = in->now_ms;
+        c->navigation_id = 0u;
+        run_log_event(in->now_ms, RUN_EV_NAV_START, (uint16_t)c->navigation);
+        stop_motion(c);
+        v4_enter(c, V4_CROSS, in->now_ms);
+        set_state(c, ROBOT_NAV_COMMAND);
+        return;
+    }
+
+    /* Barcode start: bars under GP28 while following -> rewind and read
+     * slowly.  A crossing tape gives one black run (2 edges), not 3+. */
+    if (c->mode == MODE_AUTO && c->bar_phase == BAR_IDLE &&
+        c->strip_active && c->strip_edges >= VC4_BAR_STRIP_EDGES &&
+        c->trk.jct_state == 0u && !c->post_avoid_slow &&
+        (!c->bar_clear_known ||
+         ((int32_t)(c->strip_start_um - c->bar_clear_um) > 0 &&
+          c->travel_um - c->bar_clear_um >= VC4_BAR_REARM_UM))) {
+        c->bar_back_um = c->travel_um - c->strip_start_um +
+            VC4_BAR_LEAD_UM + VC4_BAR_BACK_EXTRA_UM;
+        if (c->bar_back_um <= VC4_BAR_REWIND_MAX_UM) {
+            c->bar_tries = 0u;
+            c->bar_phase = BAR_BRAKE;
+            c->bar_ms = in->now_ms;
+            stop_motion(c);
+            tm_printf((UB *)"[VC4] barcode start seen: stopping to read it slowly\n");
+            return;
+        }
+        v4_bar_clear(c);     /* too far past its start to rewind */
+    }
+
+    set_state(c, in->hump ? ROBOT_HUMP : ROBOT_LINE_FOLLOW);
+    if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
+
+    cruise_mm = (INT)((int32_t)speed * (int32_t)VC4_UM_PER_COUNT / 1000);
+    base_mm = cruise_mm;
+    if (c->post_avoid_slow || in->approach_slow || c->slow_mode) {
+        INT slow = cruise_mm * VC4_SLOW_MM_S / VC4_CRUISE_MM_S;
+        if (base_mm > slow) base_mm = slow;
+    }
+    if (c->bar_phase == BAR_READ) base_mm = VC4_BARCODE_MM_S;
+    vc4_wheels(steer, base_mm,
+               cruise_mm * VC4_SLOW_MM_S / VC4_CRUISE_MM_S,
+               &speed_cps, &steering);
+    command.type = MOTION_CMD_DRIVE;
+    command.direction = MOTION_DIR_FORWARD;
+    command.steering_permille = (INT)steering;
+    command.target_speed_cps = (INT)speed_cps;
+    /* Gentle start from standstill; slowing applies at once. */
+    {
+        INT previous = c->drive_sent ? c->last_speed : 0;
+        if (command.target_speed_cps > previous + VC_SPEED_RISE_PER_TICK) {
+            command.target_speed_cps = previous + VC_SPEED_RISE_PER_TICK;
+        }
+    }
+    if (command.target_speed_cps < 1) command.target_speed_cps = 1;
+    c->last_speed = command.target_speed_cps;
+    c->last_steer = command.steering_permille;
+    c->follow_steer = command.steering_permille;
+    c->curve_steer = (INT)(steer < 0 ? -steer : steer);
+    command.safety_generation = in->safety_generation;
+    if (motion_send_command(&command) == E_OK) {
+#if VC_STEERING_DIAGNOSTICS
+        report_steering(c, in, &command);
+#endif
+        c->stopped = false;
+        c->drive_sent = true;
+        c->last_drive_ms = in->now_ms;
+    } else if (!c->drive_sent || in->now_ms - c->last_drive_ms >= 60u) {
+        safe_stop(c);
+    }
+}
+#endif /* VC_FOLLOW_V4 */
+
 void vehicle_controller_init(VEHICLE_CONTROLLER *c)
 {
     *c = (VEHICLE_CONTROLLER){0};
     c->line_pos = B3_LINE_POS_CENTRE;
     c->mode = MODE_AUTO;
-    c->speed_percent = 20u;
+    c->speed_percent = VC_FOLLOW_V4 ? 29u : 20u; /* v4: 29 % = 120 mm/s */
+#if VC_FOLLOW_V4
+    vc4_reset(&c->trk);
+#endif
     c->line_straddle = VC_LINE_STRADDLE != 0;
     c->approach_um = VC_JUNCTION_APPROACH_MM * 1000u;
     tm_printf((UB *)"[VC] line sensors: %s layout (VC_LINE_STRADDLE)\n",
@@ -766,6 +1281,18 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
                 c->follow_steer = 0;
                 c->error_filter_valid = false;
                 c->slow_mode = false; /* a new run starts at normal speed */
+#if VC_FOLLOW_V4
+                vc4_reset(&c->trk);
+                c->v4_phase = V4_FOLLOW;
+                c->v4_sub = 0u;
+                c->v4_motion_id = 0u;
+                c->bar_phase = BAR_IDLE;
+                c->bar_clear_known = false;
+                c->post_avoid_slow = false;
+                c->navigation = 0u;
+                c->pending_navigation = B3_NAV_NONE;
+                c->lift_ir_ms = 0u;
+#endif
             }
             c->estop = false; /* Only an explicit START can release ESTOP. */
             c->running = true;
@@ -808,6 +1335,11 @@ void vehicle_controller_command(VEHICLE_CONTROLLER *c, const REMOTE_CMD *cmd)
         c->junction_clear_samples = 0u;
         c->junction_latched = false;
         c->rescan_phase = 0u;
+#if VC_FOLLOW_V4
+        c->v4_phase = 0u;
+        c->v4_motion_id = 0u;
+        c->bar_phase = 0u;
+#endif
         stop_motion(c);
         if (!c->estop) set_state(c, ROBOT_IDLE);
         break;
@@ -861,6 +1393,14 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         stop_motion(c);
         return;
     }
+#if VC_FOLLOW_V4
+    if (v4_lifted(c, in)) {
+        tm_printf((UB *)"[VC4] LIFTED (line sensors raw %d/%d, imu %d): stopped, START to run again\n",
+                  (INT)in->raw26, (INT)in->raw27, (INT)in->lifted_imu);
+        safe_stop(c);
+        return;
+    }
+#endif
     if (c->ack_grace_pending) {
         c->ack_grace_pending = false;
         c->tolerate_active = true;
@@ -941,9 +1481,17 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->rescan_phase = 0u;
         c->navigation = 0u;
         c->navigation_id = 0u;
+#if !VC_FOLLOW_V4
         c->pending_navigation = B3_NAV_NONE;
+#endif
         c->junction_latched = false;
         c->junction_enter_samples = c->junction_clear_samples = 0u;
+#if VC_FOLLOW_V4
+        /* v4: an armed barcode action survives the bypass. */
+        c->v4_motion_id = 0u;
+        c->v4_time_valid = false;
+        (void)crossing_tape(c, in);   /* odometer keeps counting */
+#endif
         return;
     }
     if (c->obstacle_handoff) {
@@ -964,6 +1512,15 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->straddle_outside = 0;
 #if VC_BEND_HOLD
         bend_reset(c);
+#endif
+#if VC_FOLLOW_V4
+        /* After the bypass: slow, no junctions for 150 mm. */
+        vc4_reset(&c->trk);
+        c->v4_phase = V4_FOLLOW;
+        c->v4_motion_id = 0u;
+        c->bar_phase = BAR_IDLE;
+        c->post_avoid_slow = true;
+        c->post_avoid_um = c->travel_um + VC4_POST_AVOID_UM;
 #endif
     }
     if (!in->clearance || (in->faults & FAULT_NO_ECHO)) {
@@ -994,6 +1551,10 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     (void)motion_speed_from_percent((INT)c->speed_percent, &speed);
     if (c->slow_mode) speed /= 2;
+#if VC_FOLLOW_V4
+    v4_drive(c, in, nav, speed);
+    return;
+#endif
     if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
     VC_INPUT filtered;
     if (c->line_straddle) {
@@ -1436,6 +1997,10 @@ static void controller_task(INT stacd, void *exinf)
     bool hazard = false;
     bool autostart_pending = ROBOT_AUTOSTART != 0;
     uint32_t last_boot_log_ms = 0u;
+#if VC_FOLLOW_V4
+    uint32_t lift_imu_since = 0u;
+    float rest_az = 0.0f;
+#endif
     (void)stacd;
     (void)exinf;
     vehicle_controller_init(&c);
@@ -1491,6 +2056,41 @@ static void controller_task(INT stacd, void *exinf)
             in.line_flags = (UB)line.line_flags;
             in.right = (UB)line.ir_right;
         }
+        {
+            uint16_t r26 = 0u, r27 = 0u;
+            b3_line_raw(&r26, &r27);
+            in.raw26 = r26;
+            in.raw27 = r27;
+        }
+#if VC_FOLLOW_V4
+        {
+            imu_live_t live;
+            imu_live_get(&live);
+            if (live.b_valid && now.lo - live.timestamp_ms <= 100u) {
+                float ax = live.accel_x, ay = live.accel_y, az = live.accel_z;
+                float a2 = ax * ax + ay * ay + az * az;
+                float g = 9.81f;
+                float lo = (g - VC4_LIFT_DG_MS2) * (g - VC4_LIFT_DG_MS2);
+                float hi = (g + VC4_LIFT_DG_MS2) * (g + VC4_LIFT_DG_MS2);
+                /* The tilt rule needs the IMU's z axis vertical: learn it
+                 * while standing (not running); off if z is not vertical. */
+                bool tilt_rule = rest_az > 7.0f || rest_az < -7.0f;
+                bool odd = (tilt_rule && az < VC4_LIFT_TILT_MS2 &&
+                            az > -VC4_LIFT_TILT_MS2) || a2 < lo || a2 > hi;
+                if (!c.running) rest_az = az;
+                in.pitch_deg = live.pitch_deg;
+                if (odd) {
+                    if (lift_imu_since == 0u) lift_imu_since = now.lo | 1u;
+                } else {
+                    lift_imu_since = 0u;
+                }
+                in.lifted_imu = lift_imu_since != 0u && !imu.b_hump_detected &&
+                    now.lo - lift_imu_since >= VC4_LIFT_IMU_MS;
+            } else {
+                lift_imu_since = 0u;
+            }
+        }
+#endif
         in.barcode_active = b3_barcode_active();
         in.barcode_rejects = (UH)b3_barcode_rejects();
         in.imu_valid = imu.b_valid && now.lo - imu.timestamp_ms <= VC_IMU_MAX_AGE_MS;

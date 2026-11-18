@@ -4,6 +4,7 @@
 #include "subsystem1/subsystem1.h"
 #include "subsystem2/motion_command.h"
 #include <stdbool.h>
+#include "vc_follow.h"
 
 /* Temporary steering diagnosis: set to 0 and rebuild to remove logging. */
 #ifndef VC_STEERING_DIAGNOSTICS
@@ -267,6 +268,62 @@
 #define VC_RESCAN_TIMEOUT_MS 8000u
 #define VC_RESCAN_FORGET_MS 10000u   /* then a new barcode gets new tries */
 
+
+/* ---- Line following v4 (vc_follow.c) -------------------------------------
+ * 1 (default): the v4 controller runs following, line search, junction
+ * turns and the barcode slow re-read; the older spread-layout code below
+ * is not used.  0: the previous controller.
+ *
+ * Following: smoothed steering (no deadband, no slew limiter), coast then
+ * a growing arc after the line leaves a sensor, curve slow-down to 50 %,
+ * inner wheel >= 1/3 of the base speed.  Lost = both sensors white for
+ * 200 ms AND 60 mm after the line went black under one of them (centred,
+ * both white is never lost).
+ * Line search: spin 60 deg toward the side the line was last seen, 120
+ * back, 60 again; found = either sensor on tape; 5 s -> the run stops.
+ * Junction: nL + nR >= 1400 for >= 10 mm, classified 30 mm later; both
+ * sensors saturated = cross-junction.  A barcode turn waits for a
+ * cross-junction, then: stop, forward 60 mm (wheels on the crossing),
+ * turn 90 / 180 (U-turn to the left), follow.
+ * Barcode: on the first bars (>= 3 GP28 edges) the car stops, reverses
+ * past the start of the strip and reads it at 60 mm/s; a failed pass is
+ * retried twice from its own start.
+ */
+#ifndef VC_FOLLOW_V4
+#define VC_FOLLOW_V4 1
+#endif
+#define VC4_SEARCH_SWEEP_DEG 60
+#define VC4_SEARCH_MS 5000u
+#define VC4_TURN_MM_S 150         /* spin turns (search, junction)       */
+#define VC4_MOVE_MM_S 150         /* straight moves (junction advance)   */
+#define VC4_REVERSE_MM_S 100
+#define VC4_JCT_ADVANCE_CM 6.0f   /* line sensors to axle                */
+#define VC4_MOTION_TIMEOUT_MS 10000u
+/* Barcode slow re-read. */
+#define VC4_BAR_STRIP_EDGES 3u    /* GP28 changes: bars, not a tape      */
+#define VC4_BAR_LEAD_UM 40000u    /* reverse this far before the 1st bar */
+#define VC4_BAR_BACK_EXTRA_UM 70000u
+#define VC4_BAR_RETRY_EXTRA_UM 10000u
+#define VC4_BAR_REWIND_MAX_UM 600000u
+#define VC4_BAR_WAIT_MS 600u      /* stand still: B3 ends a scan after 500 ms quiet */
+#define VC4_BAR_READ_UM 650000u   /* give up a pass after this travel    */
+#define VC4_BAR_READ_MS 15000u
+#define VC4_BAR_RETRIES 2u
+#define VC4_BAR_REARM_UM 60000u
+/* After an obstacle bypass: slow speed and no junctions for 150 mm. */
+#define VC4_POST_AVOID_UM 150000u
+/* Lift-stop: car picked up while running -> stop. */
+#define VC4_LIFT_IR_RAW 3500u     /* both line sensors (no floor below)  */
+#define VC4_LIFT_IR_MS 300u
+#define VC4_LIFT_TILT_MS2 4.9f    /* |az| below: tilted > 60 deg         */
+#define VC4_LIFT_DG_MS2 2.94f     /* ||a| - 1 g| above: lifted / dropped */
+#define VC4_LIFT_IMU_MS 60u
+/* Ramp: while the car is pitched (B4 hump) and 480 ms / 150 mm after,
+ * the obstacle stop uses the shorter ramp distance (B5). */
+#define VC4_RAMP_HOLD_MS 480u
+#define VC4_RAMP_CLEAR_UM 150000u
+#define VC4_RAMP_PITCH_DEG 2.0f
+
 typedef struct {
     uint32_t now_ms, safety_generation;
     bool clearance, line_valid, imu_valid, hump, hazard, motion_valid;
@@ -276,6 +333,9 @@ typedef struct {
     UH left, centre;
     UH barcode_rejects; /* B3 rejected-scan counter (only increases) */
     UB right; /* barcode sensor GP28 level (0/1), beside the line */
+    UH raw26, raw27; /* raw ADC of the line sensors (lift-stop) */
+    bool lifted_imu; /* B4 live sample says lifted/tilted (debounced) */
+    float pitch_deg; /* B4 live pitch */
     UB line_flags, faults;
     motion_status_snapshot_t motion;
 } VC_INPUT;
@@ -366,6 +426,22 @@ typedef struct {
     uint32_t jct_block_um; /* travel at the last unsteady moment */
     uint32_t jct_left_um, jct_right_um;
     UB navigation, pending_navigation;
+    /* Line following v4 (VC_FOLLOW_V4). */
+    vc4_track_t trk;
+    UB v4_phase;           /* V4_FOLLOW, V4_SEARCH, V4_CROSS, V4_BARCODE */
+    UB v4_sub;
+    uint32_t v4_last_ms, v4_phase_ms, v4_motion_id;
+    bool v4_time_valid;
+    INT v4_search_first;   /* +1 left / -1 right */
+    UB bar_phase, bar_tries;
+    uint32_t bar_mark_um, bar_back_um, bar_ms, bar_clear_um;
+    bool bar_clear_known;
+    UH bar_rejects;
+    bool post_avoid_slow;
+    uint32_t post_avoid_um;
+    uint32_t lift_ir_ms;
+    bool on_ramp;
+    uint32_t ramp_ms, ramp_um;
 } VEHICLE_CONTROLLER;
 
 void vehicle_controller_init(VEHICLE_CONTROLLER *controller);

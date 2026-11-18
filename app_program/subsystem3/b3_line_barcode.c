@@ -97,6 +97,7 @@ EXPORT ID mtx_b3_state;
 
 static void b3_gpio_irq_handler(UINT intno);
 static ER b3_read_adc(uint8_t channel, uint16_t *value);
+static volatile uint16_t g_raw_left, g_raw_centre;
 static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
 			      uint8_t flags);
 static void b3_set_barcode_state(uint8_t barcode, uint8_t nav);
@@ -362,6 +363,8 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 
 		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
 		run_log_raw(left, centre);
+		g_raw_left = left;
+		g_raw_centre = centre;
 		/* Learn each sensor's range; fixed endpoints until it is known. */
         b3_track_learn(&left_cal, left, B3_LINE_GP26_WHITE,
                        B3_LINE_GP26_BLACK);
@@ -670,6 +673,13 @@ static void b3_log_reject(const B3_CODE39_DECODER *decoder)
 EXPORT uint16_t b3_barcode_rejects(void)
 {
 	return g_barcode_rejects;
+}
+
+/* Latest raw ADC readings (lift-stop: no floor under the sensors). */
+EXPORT void b3_line_raw(uint16_t *gp26, uint16_t *gp27)
+{
+	if (gp26 != NULL) *gp26 = g_raw_left;
+	if (gp27 != NULL) *gp27 = g_raw_centre;
 }
 
 EXPORT bool b3_barcode_active(void)
