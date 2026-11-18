@@ -132,13 +132,20 @@
 #define VC_STRADDLE_RECOVER_START 200
 #define VC_STRADDLE_RECOVER_RAMP 40
 #define VC_STRADDLE_OUTSIDE_STEER B3_LINE_STEER_MAX
-#define VC_STRADDLE_OUTSIDE_MS 1500u
-/* Curve: the line leaves the SAME sensor again within VC_STRADDLE_CURVE_MS
- * of the last exit.  The car is in a bend, so no coasting: the arc toward
- * that side starts at VC_STRADDLE_CURVE_ARC at once and keeps the car
- * turning with the bend instead of drifting out between touches. */
+#define VC_STRADDLE_OUTSIDE_MS 1000u
+/* Bend: the line leaves the SAME sensor again within VC_STRADDLE_CURVE_MS
+ * of the last exit, or leaves a sensor it had stayed under for at least
+ * VC_STRADDLE_HELD_MS (the car could not turn as tight as the bend:
+ * 2026-11-18 log, left sensor black for 1 s at the hump).  No coasting:
+ * the turn toward that side starts at VC_STRADDLE_CURVE_ARC at once. */
 #define VC_STRADDLE_CURVE_MS 1000u
-#define VC_STRADDLE_CURVE_ARC 350
+#define VC_STRADDLE_HELD_MS 250u
+#define VC_STRADDLE_CURVE_ARC 600
+/* Spread layout: from this much steering the inner wheel may stop (pivot),
+ * as barcode-robust's lost-line turn did.  Without it the wheel-speed
+ * limits capped every turn at ~500-565 permille (radius ~11 cm), too wide
+ * for the hump bend. */
+#define VC_STRADDLE_PIVOT_STEER 700
 /* Neither sensor has touched the line for this long: assume it is really
  * lost (end of line, or off the course) and run the normal line search. */
 #define VC_STRADDLE_BLIND_MS 3000u
@@ -214,6 +221,7 @@ typedef struct {
     bool line_straddle;
     INT straddle_side;     /* -1/+1: only that sensor is on black, else 0 */
     INT straddle_touch;    /* -1/+1: the sensor that last touched alone */
+    uint32_t straddle_side_ms; /* when straddle_side last changed */
     bool straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
     INT straddle_outside;  /* -1/+1: line left past that sensor (maybe) */
     INT straddle_last_exit;  /* side of the previous exit */
