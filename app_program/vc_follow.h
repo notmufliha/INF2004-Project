@@ -39,6 +39,11 @@
 /* ---- junction classifier ---------------------------------------------- */
 #define VC4_JCT_MIN_UM      10000u /* tape at least this wide             */
 #define VC4_JCT_CONFIRM_UM  30000u /* travel past it before classifying   */
+/* Crossing tape (both sensors on tape): steer straight and ignore which
+ * sensor touched it first/last, until both are back on floor or this far
+ * past the tape.  Otherwise an unmarked cross reads as "line left on one
+ * side" and the car arcs off and searches. */
+#define VC4_CROSS_HOLD_UM   40000u
 
 /* ---- speeds (mm/s) and wheel split ------------------------------------ */
 #define VC4_CRUISE_MM_S     120
@@ -67,6 +72,8 @@ typedef struct {
     bool     was_white;
     int32_t  recover;
     uint32_t coast_ms;
+    bool     cross_hold;  /* passing a crossing tape                      */
+    uint32_t cross_um;    /* odometer when both sensors last saw tape     */
     /* loss */
     uint32_t white_ms;
     uint32_t white_start_um;

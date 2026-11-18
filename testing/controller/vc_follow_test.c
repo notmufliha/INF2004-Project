@@ -1,5 +1,6 @@
 /* Host tests for app_program/vc_follow.c (line following v4). */
 #include <stdio.h>
+#include <stdbool.h>
 #include "../../app_program/vc_follow.h"
 static int fails;
 #define CHECK(c,m) do{ if(!(c)){printf("FAIL: %s\n",m);fails++;} else printf("ok: %s\n",m);}while(0)
@@ -48,6 +49,22 @@ int main(void){
   vc4_reset(&t); um=0; got=0;
   for(int i=0;i<200;i++){ j=vc4_junction(&t,1000,200,um); if(j) got=j; um+=2400; }
   CHECK(got==VC4_JCT_NONE, "one sensor black (curve) not a junction");
+  /* unmarked cross met at an angle: left sensor hits the arm 6 mm first
+   * and leaves 6 mm later -> car must go straight, never lost */
+  { vc4_reset(&t); um=0; int32_t maxs=0; bool lostx=false;
+    for(int i=0;i<300;i++){ uint32_t pos=um/1000; uint32_t nl=100,nr=100;
+      if(pos>=100 && pos<124) nl=1000;
+      if(pos>=106 && pos<130) nr=1000;
+      s=vc4_steer(&t,nl,nr,20,um);
+      if(pos>=130 && (s>maxs||-s>maxs)) maxs=s<0?-s:s;
+      if(!vc4_on_line(&t)) lostx=true;
+      um+=2400; }
+    printf("   angled cross: max steer after tape %d\n",maxs);
+    CHECK(!lostx && maxs<100, "angled unmarked cross: straight on, not lost"); }
+  /* real exit still works after a crossing */
+  for(int i=0;i<10;i++){ s=vc4_steer(&t,900,50,20,um); um+=2400; }
+  { int lx=-1; for(int i=0;i<100;i++){ vc4_steer(&t,50,50,20,um); um+=2400; if(!vc4_on_line(&t)&&lx<0) lx=i; }
+    CHECK(lx>=9 && lx<=30, "after a cross, a real exit is still lost/searched"); }
   printf("cps(120)=%d cps(60)=%d\n", vc4_mm_s_to_cps(120), vc4_mm_s_to_cps(60));
   printf(fails? "FAILED %d\n":"ALL PASS\n",fails); return fails;
 }
