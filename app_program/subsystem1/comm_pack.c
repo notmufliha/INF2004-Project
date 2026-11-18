@@ -19,6 +19,8 @@
 #define BITS_IR        12U
 #define BITS_FLAG      1U
 #define BITS_3         3U
+#define BITS_BARCODE   5U  /* letter code 1..26 = A..Z (wire v2)   */
+#define BITS_NAV       4U  /* comm_nav_cmd_t (wire v2)             */
 #define BITS_PITCH     COMM_PITCH_BITS /* signed               */
 #define BITS_HUMP      7U
 #define BITS_DIST      9U
@@ -257,7 +259,7 @@ comm_pack_sign_extend (uint32_t raw, uint32_t nbits)
     return (value);
 }
 
-/** @brief Pack a telemetry frame (223 bits, 28 bytes); -1 = too small. */
+/** @brief Pack a telemetry frame (226 bits, 29 bytes); -1 = too small. */
 int32_t
 comm_pack_telemetry (uint8_t * p_out, uint32_t cap, uint16_t seq,
                      uint32_t time_ds, uint8_t faults,
@@ -281,8 +283,8 @@ comm_pack_telemetry (uint8_t * p_out, uint32_t cap, uint16_t seq,
     comm_pack_bits_put(&bits, p_telem->ir_centre, BITS_IR);
     comm_pack_bits_put(&bits, p_telem->ir_right, BITS_FLAG);
     comm_pack_bits_put(&bits, p_telem->line_flags, BITS_3);
-    comm_pack_bits_put(&bits, p_telem->barcode, BITS_3);
-    comm_pack_bits_put(&bits, p_telem->nav, BITS_3);
+    comm_pack_bits_put(&bits, p_telem->barcode, BITS_BARCODE);
+    comm_pack_bits_put(&bits, p_telem->nav, BITS_NAV);
 
     comm_pack_bits_put(&bits, p_telem->motion, BITS_3); /* B4 */
     comm_pack_bits_put(&bits, p_telem->pitch_ddeg, BITS_PITCH);
@@ -298,7 +300,7 @@ comm_pack_telemetry (uint8_t * p_out, uint32_t cap, uint16_t seq,
     return (comm_pack_bits_bytes(&bits));
 }
 
-/** @brief Pack an event frame (5..9 bytes); -1 = buffer too small. */
+/** @brief Pack an event frame (6..9 bytes); -1 = buffer too small. */
 int32_t
 comm_pack_event (uint8_t * p_out, uint32_t cap, uint8_t seq,
                  const comm_pack_event_t * p_event)
@@ -314,8 +316,8 @@ comm_pack_event (uint8_t * p_out, uint32_t cap, uint8_t seq,
     switch (p_event->type)
     {
         case EVT_BARCODE:
-            comm_pack_bits_put(&bits, p_event->val_a, BITS_3); /* 1..5  */
-            comm_pack_bits_put(&bits, p_event->val_e, BITS_3); /* nav   */
+            comm_pack_bits_put(&bits, p_event->val_a, BITS_BARCODE); /* A..Z */
+            comm_pack_bits_put(&bits, p_event->val_e, BITS_NAV);     /* nav  */
         break;
 
         case EVT_HUMP:

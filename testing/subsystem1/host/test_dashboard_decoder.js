@@ -24,10 +24,12 @@ for (const line of fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/)) {
     raw = W.unpack(LAYOUT[kind](), bytes)[0];
   }
   const decoded = W.decode(kind, bytes);
-  if ((kind === "telemetry" && decoded.barcode === 5 &&
+  if ((kind === "telemetry" && decoded.barcode === 26 &&
        decoded.barcode_name !== "Z") ||
-      (kind === "event" && decoded.code === 5 &&
-       decoded.code_name !== "Z")) {
+      (kind === "event" && decoded.code === 26 &&
+       decoded.code_name !== "Z") ||
+      (kind === "event" && decoded.code === 9 &&
+       (decoded.code_name !== "I" || decoded.nav_name !== "FINISH"))) {
     failures++;
     console.log(`FAIL ${kind} Z barcode name`);
   }

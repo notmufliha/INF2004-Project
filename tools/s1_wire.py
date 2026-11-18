@@ -15,7 +15,7 @@ Used by tools/mqtt_monitor.py, tools/mqtt_send_cmd.py and the host tests
 in testing/subsystem1/host/.  Needs only the Python standard library.
 """
 
-WIRE_VERSION = 1
+WIRE_VERSION = 2  # v2: barcode letter 5 bits (A..Z), action 4 bits
 
 # --------------------------------------------------------------------------
 #  Names.  The Pico sends numbers only; the text lives here.
@@ -27,9 +27,10 @@ LINK_STATES = ["INITIALISING", "CONNECTING_WIFI", "CONNECTING_MQTT", "CONNECTED"
 # B4's imu_motion_state_t (subsystem4/imu_types.h)
 MOTION_STATES = ["STATIONARY", "ACCELERATING", "TURNING", "CLIMBING_HUMP",
                  "HUMP_PEAK", "DESCENDING_HUMP", "SUDDEN_IMPACT", "UNKNOWN"]
-NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN"]
+NAV = ["NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN",
+       "STOP", "SLOW", "NORMAL", "SPIN", "FINISH"]
 AVOID = ["NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"]
-BARCODES = ["-", "A", "B", "C", "D", "Z"]
+BARCODES = ["-"] + [chr(ord("A") + i) for i in range(26)]  # code 1..26
 EVENT_TYPES = ["barcode", "hump", "obstacle", "error"]
 MODES = ["AUTO", "LINE", "TEST"]
 
@@ -83,7 +84,7 @@ TELEMETRY = [
     ("spd_l", 14, True), ("spd_r", 14, True),          # counts/s (B2)
     ("enc_l", 24, True), ("enc_r", 24, True),          # counts, low 24 bits
     ("ir_l", 12, False), ("ir_c", 12, False), ("ir_r", 1, False),
-    ("line", 3, False), ("barcode", 3, False), ("nav", 3, False),
+    ("line", 3, False), ("barcode", 5, False), ("nav", 4, False),
     ("motion", 3, False), ("pitch_dd", 10, True),      # 0.1 deg (B4)
     ("hump_valid", 1, False), ("hump_last_mm", 7, False), ("hump_peak_mm", 7, False),
     ("obs_d_cm", 9, False), ("obs_w_cm", 7, False),    # B5
@@ -92,7 +93,7 @@ TELEMETRY = [
 EVENT_HEADER = [("ver", 3, False), ("type", 2, False), ("seq", 8, False),
                 ("t_ds", 20, False)]
 EVENT_BODY = {
-    0: [("code", 3, False), ("nav", 3, False)],
+    0: [("code", 5, False), ("nav", 4, False)],
     1: [("valid", 1, False), ("height_mm", 7, False), ("peak_mm", 7, False)],
     2: [("d_cm", 9, False), ("w_cm", 7, False), ("lc_cm", 9, False),
         ("rc_cm", 9, False), ("action", 3, False)],

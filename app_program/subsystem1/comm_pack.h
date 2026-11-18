@@ -10,8 +10,12 @@
  * change all of them together.
  *
  *     frame       bits  bytes   was (JSON / text)
- *     telemetry    223     28   250 typical, 374 worst case
- *     event      39-70    5-9   60-110
+ *     telemetry    226     29   250 typical, 374 worst case
+ *     event      42-70    6-9   60-110
+ *
+ * Version 2 (2026-11-16): barcode letter 5 bits (A..Z = 1..26) and
+ * barcode action 4 bits, in telemetry and the barcode event (was 3+3:
+ * A..D and Z only, four actions).
  *     status       179     23   ~190
  *     ack           24      3   ~60
  *     command       24      3   up to 64
@@ -24,15 +28,15 @@
 #include <stdbool.h>
 #include "comm.h"
 
-#define WIRE_VERSION      1U  /* 3 bits, first field of every frame */
+#define WIRE_VERSION      2U  /* 3 bits, first field of every frame */
 
 /* Frame sizes in bytes */
-#define WIRE_TELEM_LEN    28
+#define WIRE_TELEM_LEN    29
 #define WIRE_STATUS_LEN   23
 #define WIRE_ACK_LEN      3
 #define WIRE_CMD_LEN      3U
-#define WIRE_EVT_MAX_LEN  9   /* obstacle; barcode 5, hump 6, error 7 */
-#define WIRE_EVT_BAR_LEN  5
+#define WIRE_EVT_MAX_LEN  9   /* obstacle; barcode 6, hump 6, error 7 */
+#define WIRE_EVT_BAR_LEN  6
 #define WIRE_EVT_ERR_LEN  7
 
 /** @brief MSB-first bit writer over a byte array. */
@@ -59,7 +63,7 @@ typedef struct
  * never shared while being written.
  *
  *   type      val_a      val_b     val_c    val_d    val_e    flag
- *   BARCODE   1..5       -         -        -        NAV_CMD  -
+ *   BARCODE   1..26=A..Z -         -        -        NAV_CMD  -
  *   HUMP      height mm  peak mm   -        -        -        valid
  *   OBSTACLE  dist cm    width cm  left cm  right cm action   -
  *   ERROR     err code   detail    -        -        -        -
@@ -84,8 +88,8 @@ typedef struct
     UINT val_b   : 9;
     UINT val_c   : 9;
     UINT val_d   : 9;
-    UINT val_e   : 3;
-    UINT spare   : 2;
+    UINT val_e   : 4;  /* NAV_CMD (4 bits) or avoid action (3) */
+    UINT spare   : 1;
 } comm_pack_event_t;
 
 /** @brief Heartbeat (status frame) contents. */

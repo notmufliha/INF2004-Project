@@ -19,7 +19,7 @@ checks the first two agree bit for bit.
 
 | Topic | Direction | QoS | Retained | Rate | Frame |
 |---|---|---|---|---|---|
-| `<prefix>/telemetry` | car → laptop | 0 | no | every 500 ms (change with `TELEM`) | 28 B |
+| `<prefix>/telemetry` | car → laptop | 0 | no | every 500 ms (change with `TELEM`) | 29 B |
 | `<prefix>/event` | car → laptop | 1 | no | when it happens | 5–9 B |
 | `<prefix>/status` | car → laptop | 0 (heartbeat), 1 (online/offline) | online/offline: **yes** | every 5 s | 23 B / 1 B |
 | `<prefix>/cmd` | laptop → car | 1 | no | on demand | 3 B |
@@ -28,9 +28,9 @@ checks the first two agree bit for bit.
 **QoS:** telemetry is superseded twice a second, so QoS 0; events and acks
 happen once and must not be lost, so QoS 1.
 
-**Online/offline:** on connecting, the car publishes the 1-byte frame `0x30`
-(version 1, online) retained on `<prefix>/status`, and registers the Last
-Will `0x20` (version 1, offline), which the broker publishes ~15 s after the
+**Online/offline:** on connecting, the car publishes the 1-byte frame `0x50`
+(version 2, online) retained on `<prefix>/status`, and registers the Last
+Will `0x40` (version 2, offline), which the broker publishes ~15 s after the
 car vanishes. These are the first byte of the heartbeat frame, so the
 decoder tells them apart by length.
 
@@ -41,7 +41,11 @@ bits to a whole byte. Every frame starts with a 3-bit wire **version = 1**.
 `s` = signed (two's complement). Values outside a field's range are
 **saturated** by the Pico, never wrapped, except the encoder totals.
 
-### Telemetry — 223 bits → 28 bytes (was 290 B typical, 374 B worst as JSON)
+**Wire version 2 (2026-11-16):** barcode letter widened to 5 bits (A–Z) and
+its action to 4 bits; every frame starts with version 2, so a version-1
+decoder rejects them instead of misreading.
+
+### Telemetry — 226 bits → 29 bytes (was 290 B typical, 374 B worst as JSON)
 
 | # | Field | Bits | Range / unit | Source |
 |---|---|---|---|---|
@@ -55,8 +59,8 @@ bits to a whole byte. Every frame starts with a 3-bit wire **version = 1**.
 | 10–11 | IR left, centre | 12 each | raw ADC 0–4095 | B3 |
 | 12 | IR right | 1 | digital 0/1 | B3 |
 | 13 | line flags | 3 | bit0 detected, bit1 lost, bit2 junction | B3 |
-| 14 | last barcode | 3 | 0 none, 1–4 = A–D, 5 = Z | B3 |
-| 15 | last nav | 3 | 0–4: NONE LEFT RIGHT STRAIGHT UTURN | B3 |
+| 14 | last barcode | 5 | 0 none, 1–26 = A–Z | B3 |
+| 15 | last nav | 4 | 0–9: NONE LEFT RIGHT STRAIGHT UTURN STOP SLOW NORMAL SPIN FINISH | B3 |
 | 16 | motion state | 3 | B4's `imu_motion_state_t` 0–7 | B4 |
 | 17 | pitch | 10 s | ±511 = ±51.1° (0.1° steps) | B4 |
 | 18 | hump valid | 1 | 0 = heights not measured yet | B4 |
@@ -91,7 +95,7 @@ Header: ver 3 · **type 2** (0 barcode, 1 hump, 2 obstacle, 3 error) · seq 8 ·
 
 | Type | Body | Total |
 |---|---|---|
-| barcode | code 3 (1–4 = A–D, 5 = Z) · nav 3 | 39 bits → 5 B |
+| barcode | code 5 (1–26 = A–Z) · nav 4 | 42 bits → 6 B |
 | hump | valid 1 · height 7 (mm) · peak 7 (mm) | 48 bits → 6 B |
 | obstacle | distance 9 · width 7 · left 9 · right 9 (cm, all-ones = invalid) · action 3 (NONE STOP CONTINUE LEFT RIGHT REVERSE) | 70 bits → 9 B |
 | error | code 8 · detail 8 | 49 bits → 7 B |

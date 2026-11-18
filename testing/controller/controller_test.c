@@ -69,7 +69,7 @@ ER motion_move_cm(float cm, INT speed, motion_direction_t dir, uint32_t *id)
 }
 ER motion_turn_degrees(INT angle, INT speed, motion_turn_direction_t dir, uint32_t *id)
 {
-    assert((angle == 90 || angle == 180) && speed > 0);
+    assert((angle == 90 || angle == 180 || angle == 360) && speed > 0);
     sent.type = MOTION_CMD_TURN;
     sent.target_angle_deg = angle;
     sent.turn_direction = dir;
@@ -80,6 +80,23 @@ ER motion_get_result(uint32_t id, motion_status_snapshot_t *snapshot)
     assert(id == 42u);
     if (!result_ready) return E_OBJ;
     *snapshot = result; return E_OK;
+}
+/* B2's fault acknowledgement, as in motion_command.c. */
+static uint32_t acked_fault_id;
+static bool acked_fault_valid;
+void motion_acknowledge_fault(void)
+{
+    if (input.motion.status == MOTION_STATUS_FAULT ||
+        input.motion.status == MOTION_STATUS_TIMEOUT) {
+        acked_fault_id = input.motion.command_id;
+        acked_fault_valid = true;
+    }
+}
+bool motion_fault_active(const motion_status_snapshot_t *s)
+{
+    return (s->status == MOTION_STATUS_FAULT ||
+            s->status == MOTION_STATUS_TIMEOUT) &&
+        !(acked_fault_valid && acked_fault_id == s->command_id);
 }
 ER motion_get_status(motion_status_snapshot_t *snapshot)
 {
@@ -144,6 +161,7 @@ static VEHICLE_CONTROLLER fresh(void)
 {
     VEHICLE_CONTROLLER c;
     send_error = E_OK; result_ready = false; drives = stops = 0u;
+    acked_fault_valid = false;
     input = (VC_INPUT){0};
     input.now_ms = 100u; input.clearance = input.line_valid = input.imu_valid = true;
     input.motion_valid = true;
@@ -182,12 +200,31 @@ static bool wheel_ok(INT wheel)
     /* Never in the stall zone: stopped, or at least the sustainable minimum. */
     return wheel == 0 || wheel >= VC_MIN_WHEEL_CPS - 1;
 }
+/* Drive centred over floor long enough for the barcode sensor's floor
+ * level to be learned (both line sensors black: B3's JUNCTION flag is on
+ * the whole time, as on the real car). */
+static void drive_centred(VEHICLE_CONTROLLER *c, UINT ticks)
+{
+    input.left = input.centre = 900u;
+    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
+    input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+    for (UINT i = 0u; i < ticks; ++i) step(c, 20u, 0u);
+}
+/* Barcode sensor black for `mm` of travel at 1000 counts/s (84 mm/s). */
+static void gp28_black_mm(VEHICLE_CONTROLLER *c, UINT mm)
+{
+    UINT ticks = (mm * 1000u + 1679u) / 1680u; /* 1.68 mm per 20 ms tick */
+    input.right = 1u;
+    for (UINT i = 0u; i < ticks; ++i) step(c, 20u, 0u);
+    input.right = 0u;
+}
+/* A real crossing: floor learned, then 18 mm of crossing tape. */
 static void confirm_junction(VEHICLE_CONTROLLER *c)
 {
-    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
-    step(c, 20u, 0u);
-    step(c, 20u, 0u);
-    step(c, 20u, 0u);
+    drive_centred(c, 60u);
+    input.right = 1u;
+    for (UINT i = 0u; i < 14u && !c->junction_latched; ++i) step(c, 20u, 0u);
+    assert(c->junction_latched);
 }
 
 /* One unfiltered steering sample: the mapping, without the low-pass. */
@@ -458,21 +495,32 @@ int main(void)
     assert(!B3_LINE_IS_JUNCTION(1000u, B3_LINE_JUNCTION_MIN - 1u));
     assert(!B3_LINE_IS_JUNCTION(1000u, 820u)); /* unbalanced */
 
+    /* Centred on the 18 mm line, both line sensors are black and B3's
+     * JUNCTION flag is on all the time: that alone is NOT a junction (a
+     * barcode's turn used to run at once, right after the read). */
     c = fresh(); command(&c, RCMD_START, 0u);
-    input.left = 900u; input.centre = 900u;
-    input.line_flags = LINE_F_DETECTED | LINE_F_JUNCTION;
-    step(&c, 20u, 0u);
-    assert(!c.junction_latched && sent.steering_permille == 0 &&
-        sent.target_speed_cps < 1000);
-    step(&c, 20u, 0u);
-    step(&c, 20u, 0u);
-    assert(c.junction_latched && sent.steering_permille == 0);
-    input.line_flags = LINE_F_DETECTED;
-    step(&c, 20u, 0u);
-    step(&c, 20u, 0u);
-    assert(c.junction_latched);
-    step(&c, 20u, 0u);
+    step(&c, 20u, B3_NAV_RIGHT);
+    assert(c.pending_navigation == B3_NAV_RIGHT);
+    drive_centred(&c, 150u); /* 3 s, 250 mm */
+    assert(!c.junction_latched && c.navigation == 0u &&
+        c.pending_navigation == B3_NAV_RIGHT && c.state == ROBOT_LINE_FOLLOW);
+    /* Barcode bars under the barcode sensor (wide bar 9 mm) are not the
+     * crossing either. */
+    for (UINT bar = 0u; bar < 5u; ++bar) {
+        gp28_black_mm(&c, 9u);
+        drive_centred(&c, 3u);
+    }
+    assert(!c.junction_latched && c.navigation == 0u);
+    /* The crossing tape (18 mm) is: the queued turn runs there. */
+    input.right = 1u;
+    for (UINT i = 0u; i < 14u && c.navigation == 0u; ++i) step(&c, 20u, 0u);
+    assert(c.junction_latched && c.navigation == B3_NAV_RIGHT &&
+        c.state == ROBOT_NAV_COMMAND);
+    /* Unknown floor level (not yet learned): never a junction. */
+    c = fresh(); command(&c, RCMD_START, 0u);
+    input.right = 1u; drive_centred(&c, 30u);
     assert(!c.junction_latched);
+    puts("PASS junction needs the crossing tape under the barcode sensor, not just a centred line");
 
     for (UINT failure = 0u; failure < 6u; ++failure) {
         c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
@@ -521,6 +569,126 @@ int main(void)
     c = fresh(); command(&c, RCMD_START, 0u);
     input.now_ms = UINT32_MAX - 10u; step(&c, 0u, 0u); step(&c, 20u, 0u);
     assert(drives == 2u);
+
+    /* Barcode actions beyond the four turns. */
+    {
+        INT normal_speed;
+        /* SLOW / NORMAL act at once, without a crossing. */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        input.left = input.centre = 700u; input.line_flags = LINE_F_DETECTED;
+        settle(&c, 60u);
+        normal_speed = sent.target_speed_cps;
+        assert(normal_speed == 1000);
+        step(&c, 20u, B3_NAV_SLOW);
+        assert(c.slow_mode && c.pending_navigation == B3_NAV_NONE);
+        settle(&c, 5u);
+        assert(sent.target_speed_cps == normal_speed / 2);
+        step(&c, 20u, B3_NAV_NORMAL);
+        settle(&c, 60u);
+        assert(!c.slow_mode && sent.target_speed_cps == normal_speed);
+        step(&c, 20u, B3_NAV_SLOW);
+        command(&c, RCMD_STOP, 0u); command(&c, RCMD_START, 0u);
+        assert(!c.slow_mode); /* a new run starts at normal speed */
+
+        /* STOP: stand 3 s at the crossing, then cross it straight. */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_STOP);
+        confirm_junction(&c);
+        assert(c.navigation == B3_NAV_STOP && c.state == ROBOT_NAV_COMMAND);
+        settle(&c, VC_NAV_STOP_MS / 20u - 2u);
+        assert(c.navigation == B3_NAV_STOP && c.navigation_id == 0u &&
+            c.running);
+        settle(&c, 3u);
+        assert(c.navigation == B3_NAV_STRAIGHT && c.navigation_id == 42u);
+
+        /* SPIN: one 360-degree turn at the crossing, then follow again. */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_SPIN);
+        confirm_junction(&c);
+        step(&c, 20u, 0u);
+        assert(sent.type == MOTION_CMD_TURN && sent.target_angle_deg == 360 &&
+            c.navigation_id == 42u);
+        result = (motion_status_snapshot_t){0};
+        result.status = MOTION_STATUS_COMPLETED;
+        result.physically_stopped = true; result_ready = true;
+        step(&c, 20u, 0u); step(&c, 20u, 0u);
+        assert(c.running && c.navigation == 0u && c.state == ROBOT_LINE_FOLLOW);
+        result_ready = false;
+
+        /* FINISH: stop at the crossing and end the run (START restarts). */
+        c = fresh(); command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_FINISH);
+        confirm_junction(&c);
+        step(&c, 20u, 0u);
+        assert(!c.running && c.state == ROBOT_IDLE && c.stopped);
+        UINT before_finish = drives;
+        settle(&c, 20u);
+        assert(drives == before_finish);
+        command(&c, RCMD_START, 0u); step(&c, 20u, 0u);
+        assert(c.running && drives == before_finish + 1u);
+
+        /* LINE_ONLY mode ignores every barcode action. */
+        c = fresh(); command(&c, RCMD_MODE, MODE_LINE_ONLY);
+        command(&c, RCMD_START, 0u);
+        step(&c, 20u, B3_NAV_SLOW); step(&c, 20u, B3_NAV_FINISH);
+        assert(!c.slow_mode && c.pending_navigation == B3_NAV_NONE);
+    }
+    puts("PASS barcode actions: SLOW/NORMAL now, STOP 3 s, SPIN 360, FINISH ends the run");
+
+    /* Motor stall: stop, wait, retry (twice); then stay stopped until
+     * START, which restarts even though B2 still publishes the stalled
+     * command's FAULT status (that used to need a reflash). */
+    {
+        UINT before;
+        c = fresh(); command(&c, RCMD_START, 0u); settle(&c, 5u);
+        input.motion.status = MOTION_STATUS_FAULT;
+        input.motion.fault = MOTION_FAULT_STALL;
+        for (UINT attempt = 1u; attempt <= VC_STALL_AUTO_RETRIES; ++attempt) {
+            input.motion.command_id = 6u + attempt;
+            input.faults = FAULT_MOTOR_STALL;
+            before = drives;
+            step(&c, 20u, 0u);
+            assert(c.running && c.stall_retries == attempt && drives == before);
+            input.faults = 0u; /* cleared by the retry */
+            settle(&c, VC_STALL_RETRY_MS / 20u - 1u);
+            assert(c.running && drives == before); /* waiting */
+            settle(&c, 2u);
+            assert(c.running && drives > before && /* driving again */
+                c.state == ROBOT_LINE_FOLLOW);
+        }
+        input.motion.command_id = 9u;
+        input.faults = FAULT_MOTOR_STALL;
+        step(&c, 20u, 0u);
+        assert(!c.running && c.state == ROBOT_SAFE_STOP); /* retries used up */
+        input.faults = 0u;
+        settle(&c, 10u);
+        assert(!c.running);
+        /* START: B2 still says FAULT for command 9, and B5 still reports a
+         * mission FAULT for a moment while it re-arms. */
+        input.obstacle_fault = true;
+        command(&c, RCMD_START, 0u);
+        before = drives;
+        step(&c, 20u, 0u); step(&c, 20u, 0u);
+        assert(c.running && drives == before); /* waiting for B5 */
+        input.obstacle_fault = false;
+        step(&c, 20u, 0u);
+        assert(c.running && drives == before + 1u &&
+            c.state == ROBOT_LINE_FOLLOW);
+        /* A NEW fault after the restart still stops (retry budget reset). */
+        input.motion.command_id = 10u;
+        input.motion.fault = MOTION_FAULT_ENCODER;
+        step(&c, 20u, 0u);
+        assert(!c.running && c.state == ROBOT_SAFE_STOP);
+        /* B5 still faulted after the grace period: safe stop as before. */
+        input.motion.status = MOTION_STATUS_COMPLETED;
+        input.motion.fault = MOTION_FAULT_NONE;
+        input.obstacle_fault = true;
+        command(&c, RCMD_START, 0u);
+        settle(&c, VC_FAULT_ACK_GRACE_MS / 20u + 1u);
+        assert(!c.running && c.state == ROBOT_SAFE_STOP);
+        input.obstacle_fault = false;
+    }
+    puts("PASS motor stall: 2 automatic retries, then START restarts without reflashing");
 
     /* Avoidance owns motor commands until the line/heading handoff. */
     c = fresh(); command(&c, RCMD_START, 0u); step(&c, 20u, 0u);

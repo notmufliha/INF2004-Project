@@ -50,6 +50,32 @@
  * (if at least MIN_STEER) for this long before driving straight. */
 #define VC_CURVE_REACQUIRE_MS 500u
 #define VC_CURVE_REACQUIRE_MIN_STEER 200
+/* Junction = a crossing tape (18 mm wide, perpendicular to the line).
+ * Both line sensors sit on the 18 mm line whenever the car is centred, so
+ * B3's JUNCTION flag alone is set all the time and a barcode's turn ran at
+ * once.  The barcode sensor (GP28) beside the line reads floor except over
+ * barcode bars (<= ~9 mm) and a crossing tape (18 mm): a junction is GP28
+ * black for at least VC_JUNCTION_MIN_UM of travel with both line sensors
+ * black and the car not in a hard curve. */
+#define VC_JUNCTION_MIN_UM 13000u
+/* GP28 level held for this much travel is the floor (learned at run time:
+ * the sensor's polarity is not fixed by the code). */
+#define VC_FLOOR_LEARN_UM 80000u
+/* Wheel travel per encoder count: pi * 65 mm / ~2420 counts. */
+#define VC_UM_PER_COUNT 84u
+#define VC_JUNCTION_MAX_CURVE_STEER 300
+/* Motor stall: up to this many automatic retries (stop, wait
+ * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
+ * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
+#define VC_STALL_AUTO_RETRIES 2u
+#define VC_STALL_RETRY_MS 1000u
+#define VC_STALL_RETRY_RESET_MS 10000u
+/* After START or a stall retry, B5 needs a few of its own ticks to re-arm
+ * from the acknowledged fault; its mission FAULT is tolerated (motors
+ * stopped) for this long instead of safe-stopping again. */
+#define VC_FAULT_ACK_GRACE_MS 600u
+/* STOP barcode: time standing at the crossing before going straight on. */
+#define VC_NAV_STOP_MS 3000u
 
 typedef struct {
     uint32_t now_ms, safety_generation;
@@ -58,6 +84,7 @@ typedef struct {
     bool obstacle_active, obstacle_fault;
     bool approach_slow;
     UH left, centre;
+    UB right; /* barcode sensor GP28 level (0/1), beside the line */
     UB line_flags, faults;
     motion_status_snapshot_t motion;
 } VC_INPUT;
@@ -85,6 +112,15 @@ typedef struct {
 #endif
     UINT junction_enter_samples, junction_clear_samples;
     bool junction_latched;
+    /* Crossing detection from the barcode sensor (see VC_JUNCTION_MIN_UM). */
+    UB gp28_level, floor_level;
+    bool floor_known, travel_time_valid;
+    uint32_t gp28_run_um, travel_last_ms;
+    /* Fault acknowledgement and stall retries. */
+    bool ack_grace_pending, hold_active, tolerate_active;
+    uint32_t hold_until_ms, tolerate_until_ms, last_stall_ms;
+    UINT stall_retries;
+    bool slow_mode; /* SLOW barcode: half following speed until NORMAL */
     UB navigation, pending_navigation;
 } VEHICLE_CONTROLLER;
 
