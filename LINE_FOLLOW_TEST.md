@@ -33,8 +33,10 @@ off-centre car failed it), and only a hard curve (`curve_steer` >= 600, was
 the junction tape at all (branch on the other side), the log shows no
 `GP28_RUN` of ~18 mm there: then we need a different signal.
 
-Spread layout (`VC_LINE_STRADDLE 1`): junction = left + right >= 1400 for
-10 mm, or a GP28 tape with one sensor fully black (side branch).
+Spread layout (`VC_LINE_STRADDLE 1`): junction = both line sensors touched
+black within the last 25 mm of travel (not necessarily at the same moment),
+or the GP28 tape with either sensor black in that window (side branch).
+Three short high beeps = junction detected (`[VC] junction` in the log).
 
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.

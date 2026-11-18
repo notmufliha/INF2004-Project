@@ -30,6 +30,11 @@ static const B3_TONE b3_read_tones[] = {
 static const B3_TONE b3_reject_tones[] = {
 	{B3_BUZZER_LOW_HZ, 80U}, {0U, 80U}, {B3_BUZZER_LOW_HZ, 80U}
 };
+static const B3_TONE b3_junction_tones[] = {
+	{B3_BUZZER_HIGH_HZ, 50U}, {0U, 50U}, {B3_BUZZER_HIGH_HZ, 50U},
+	{0U, 50U}, {B3_BUZZER_HIGH_HZ, 50U}
+};
+static volatile uint8_t g_request; /* B3_BEEP + 1, 0 = none */
 
 static const B3_TONE *g_tones;
 static uint8_t g_tone_count;
@@ -73,17 +78,31 @@ void b3_buzzer_beep(B3_BEEP pattern, uint32_t now_us)
 	if (pattern == B3_BEEP_READ) {
 		g_tones = b3_read_tones;
 		g_tone_count = (uint8_t)(sizeof(b3_read_tones) / sizeof(b3_read_tones[0]));
-	} else {
+	} else if (pattern == B3_BEEP_REJECT) {
 		g_tones = b3_reject_tones;
 		g_tone_count = (uint8_t)(sizeof(b3_reject_tones) / sizeof(b3_reject_tones[0]));
+	} else {
+		g_tones = b3_junction_tones;
+		g_tone_count = (uint8_t)(sizeof(b3_junction_tones) / sizeof(b3_junction_tones[0]));
 	}
 	g_tone_index = 0U;
 	g_tone_start_us = now_us;
 	b3_buzzer_tone(g_tones[0].hz);
 }
 
+void b3_buzzer_request(B3_BEEP pattern)
+{
+	g_request = (uint8_t)((uint8_t)pattern + 1U);
+}
+
 void b3_buzzer_poll(uint32_t now_us)
 {
+	if (g_request != 0U) {
+		uint8_t request = g_request;
+
+		g_request = 0U;
+		b3_buzzer_beep((B3_BEEP)(request - 1U), now_us);
+	}
 	if (!g_ready || g_tone_count == 0U) return;
 	if (now_us - g_tone_start_us <
 	    (uint32_t)g_tones[g_tone_index].duration_ms * 1000U) {
@@ -108,5 +127,6 @@ void b3_buzzer_beep(B3_BEEP pattern, uint32_t now_us)
 	(void)now_us;
 }
 void b3_buzzer_poll(uint32_t now_us) { (void)now_us; }
+void b3_buzzer_request(B3_BEEP pattern) { (void)pattern; }
 
 #endif
