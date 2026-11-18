@@ -85,6 +85,15 @@
  * from the acknowledged fault; its mission FAULT is tolerated (motors
  * stopped) for this long instead of safe-stopping again. */
 #define VC_FAULT_ACK_GRACE_MS 600u
+/* Barcode turn at a junction: the sensors find the junction ahead of the
+ * wheels.  Turning there swung the sensors into the floor beside the new
+ * line, so the car first keeps following the line for this distance (its
+ * wheels then stand on the junction) and only then turns.  MEASURE: the
+ * distance from the line sensors to the wheel axle, minus ~10 mm (the
+ * junction is confirmed a little after the sensors reach the tape). */
+#ifndef VC_JUNCTION_APPROACH_MM
+#define VC_JUNCTION_APPROACH_MM 50u
+#endif
 /* STOP barcode: time standing at the crossing before going straight on. */
 #define VC_NAV_STOP_MS 3000u
 /* Line-sensor layout.
@@ -121,6 +130,12 @@
 #define VC_STRADDLE_RECOVER_RAMP 40
 #define VC_STRADDLE_OUTSIDE_STEER B3_LINE_STEER_MAX
 #define VC_STRADDLE_OUTSIDE_MS 1500u
+/* Curve: the line leaves the SAME sensor again within VC_STRADDLE_CURVE_MS
+ * of the last exit.  The car is in a bend, so no coasting: the arc toward
+ * that side starts at VC_STRADDLE_CURVE_ARC at once and keeps the car
+ * turning with the bend instead of drifting out between touches. */
+#define VC_STRADDLE_CURVE_MS 1000u
+#define VC_STRADDLE_CURVE_ARC 350
 /* Neither sensor has touched the line for this long: assume it is really
  * lost (end of line, or off the course) and run the normal line search. */
 #define VC_STRADDLE_BLIND_MS 3000u
@@ -188,7 +203,11 @@ typedef struct {
     bool straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
     INT straddle_outside;  /* -1/+1: line left past that sensor (maybe) */
     INT straddle_last_exit;  /* side of the previous exit */
-    uint32_t straddle_coast_ms;
+    uint32_t straddle_coast_ms, straddle_exit_ms;
+    INT straddle_arc_start;
+    /* Junction approach before a barcode turn. */
+    bool approach_active;
+    uint32_t approach_um, approach_start_um;
     bool straddle_lost;    /* lost until a sensor sees black again */
     bool straddle_both;    /* both sensors on black since straddle_both_um */
     uint32_t straddle_both_um;

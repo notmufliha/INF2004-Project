@@ -36,7 +36,13 @@ the junction tape at all (branch on the other side), the log shows no
 Spread layout (`VC_LINE_STRADDLE 1`): junction = both line sensors touched
 black within the last 25 mm of travel (not necessarily at the same moment),
 or the GP28 tape with either sensor black in that window (side branch).
-Three short high beeps = junction detected (`[VC] junction` in the log).
+`[VC] junction` in the log when detected. Buzzer is OFF by default
+(`B3_BUZZER_ENABLE` in b3_buzzer.h). After a junction with a barcode turn
+pending, the car keeps following for `VC_JUNCTION_APPROACH_MM` (50 mm;
+MEASURE: line sensors to wheel axle, minus ~10 mm) so it turns with its
+wheels on the junction instead of into the floor beside the new line.
+Bends: the line leaving the same sensor again within 1 s turns back toward
+it at once (arc from 350), no coasting.
 
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.

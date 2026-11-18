@@ -2,6 +2,7 @@
 /* The older tests below are for the close-together layout; the spread
  * layout is tested by switching VEHICLE_CONTROLLER.line_straddle on. */
 #define VC_LINE_STRADDLE 0
+#define VC_JUNCTION_APPROACH_MM 0u /* older tests: turn at once */
 #define RUN_LOG_ENABLE 0
 #include "../../app_program/vehicle_controller.c"
 #include <assert.h>
@@ -884,6 +885,46 @@ int main(void)
         input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
     }
     puts("PASS spread-layout junction: both sides touched within 25 mm, beeps");
+
+    /* Barcode turn: keep following past the junction until the wheels are
+     * on it (approach distance), only then stop and turn. */
+    {
+        c = fresh(); c.line_straddle = true;
+        c.approach_um = 50000u;
+        command(&c, RCMD_START, 0u);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 1000;
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 20u);
+        step(&c, 20u, B3_NAV_LEFT);
+        input.left = input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
+        for (UINT i = 0u; i < 6u && !c.approach_active; ++i) step(&c, 20u, 0u);
+        assert(c.approach_active && c.navigation == 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        UINT before = drives;
+        settle(&c, 20u);                       /* 34 mm: still following */
+        assert(c.navigation == 0u && drives > before &&
+            c.state == ROBOT_LINE_FOLLOW);
+        settle(&c, 12u);                       /* past 50 mm: turn */
+        assert(c.navigation == B3_NAV_LEFT && !c.approach_active);
+        input.motion.left_speed_cps = input.motion.right_speed_cps = 0;
+    }
+    puts("PASS barcode turn waits until the wheels reach the junction");
+
+    /* Bend: the line leaves the same sensor again within a second, so the
+     * car turns back toward it at once (no coasting). */
+    {
+        c = fresh(); c.line_straddle = true;
+        command(&c, RCMD_START, 0u);
+        input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
+        settle(&c, 10u);
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED; settle(&c, 5u);
+        input.centre = 0u; input.line_flags = LINE_F_LOST; settle(&c, 10u);
+        input.centre = 1000u; input.line_flags = LINE_F_DETECTED; settle(&c, 5u);
+        input.centre = 0u; input.line_flags = LINE_F_LOST; step(&c, 20u, 0u);
+        settle(&c, 3u);
+        assert(c.straddle_coast_ms == 0u && c.follow_steer < -200);
+    }
+    puts("PASS bend: repeated exit on the same side keeps turning, no coast");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {
