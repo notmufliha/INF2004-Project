@@ -12,6 +12,8 @@ void vc4_reset(vc4_track_t *t)
     t->was_white = true;
     t->recover = VC4_RECOVER_START;
     t->coast_ms = 0u;
+    t->cross_hold = false;
+    t->cross_um = 0u;
     t->white_ms = 0u;
     t->white_start_um = 0u;
     t->lost = false;
@@ -61,6 +63,30 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
 
     if (steps == 0u) steps = 1u;
     if (steps > 10u) steps = 10u;   /* a stall in the loop: do not jump */
+
+    /* Crossing tape: forget the side the first sensor touched it on and
+     * drive straight across; the line carries on between the sensors. */
+    if (nl + nr >= VC4_JCT_SUM_MIN) {
+        t->cross_hold = true;
+        t->cross_um = travel_um;
+        t->exit_side = 0;
+        t->recover = VC4_RECOVER_START;
+        t->coast_ms = 0u;
+    }
+    if (t->cross_hold) {
+        if (white || travel_um - t->cross_um >= VC4_CROSS_HOLD_UM) {
+            t->cross_hold = false;
+            t->exit_side = 0;
+            t->was_white = white;
+        }
+        if (t->cross_hold || white) {
+            t->white_ms = 0u;
+            for (uint32_t i = 0u; i < steps; ++i) {
+                t->filt += (0 - t->filt) / VC4_FILT_DIV;
+            }
+            return t->filt;
+        }
+    }
 
     if (white) {
         t->was_white = true;
