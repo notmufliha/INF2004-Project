@@ -48,20 +48,15 @@ Offset after a bend: an exit counts as "line may be outside" from 450
 for 0.4 s the car drifts gently toward the side that last touched the line
 (seek, up to 450 permille). Junction evidence is ignored while reversing
 for a barcode re-read and cleared afterwards.
-Tight bends (2026-11-18 hump): steering while following was capped at
-~500-565 permille by the wheel-speed limits (turn radius ~11 cm). In a real
-bend (line left a sensor, or held under one sensor >= 250 ms) steering from
-700 now lets the inner wheel stop (pivot), as barcode-robust's lost-line
-turn did, and such an exit turns back at once (600, no coast). If the turn
-toward the exit side finds nothing in 1 s, the search starts the OTHER way.
-Hardware: GP26 (right) reads tape at raw ~290-400 vs floor ~200-258; GP27
-(left) reads ~1000-3000. Check GP26's height/angle against GP27's.
-False junction near the barcode (2026-11-18): after the re-read reverse the
-car was crooked and drove across the line, left then right sensor within
-25 mm, which the spread rule took for a junction tape. A junction candidate
-now counts only after 8 cm of steady following (no reverse, barcode turn,
-line search or restart since). While crossing barcode bars steering is held
-within +-400 and never pivots, so the first pass reads more often.
+
+2026-11-18 rework: line following is back to commit 3ada3f5 (the version
+that followed best). Commits 3e849eb/78c697d made the car zig-zag full
+left/full right on straights (run log: every 300-450 ms touch counted as a
+"bend" and pivoted). Kept from them: a junction counts only after 8 cm of
+steady following (no fake junction after the barcode re-read reverse), and
+steering is held within +-400 while crossing barcode bars. For the double
+turn (hump) only: the inner wheel may stop (pivot) when one sensor has held
+the line for >= 700 ms and steering is >= 700.
 
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.

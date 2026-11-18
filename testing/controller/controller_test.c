@@ -741,8 +741,7 @@ int main(void)
         assert(c.state == ROBOT_LINE_FOLLOW &&
             c.follow_steer == -VC_STRADDLE_OUTSIDE_STEER);
         settle(&c, VC_STRADDLE_OUTSIDE_MS / 20u - 34u);
-        /* Turning left found nothing: search the other way first. */
-        assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille > 0);
+        assert(c.state == ROBOT_LINE_RECOVERY && sent.steering_permille < 0);
         settle(&c, 5u);
         assert(c.state == ROBOT_LINE_RECOVERY); /* stays lost */
         input.centre = 300u; input.line_flags = LINE_F_DETECTED; /* graze */
@@ -932,26 +931,30 @@ int main(void)
     }
     puts("PASS bend: repeated exit on the same side keeps turning, no coast");
 
-    /* 2026-11-18 hump: the line stayed under the left sensor for 1 s (the
-     * car could not turn as tight), then left it.  Turn left hard at once,
-     * inner wheel allowed to stop. */
+    /* Pivot only for a line held >= 700 ms under one sensor (the hump),
+     * never for normal 300-450 ms touches (3e849eb's 250 ms rule pivoted
+     * on every touch: full-left/full-right zig-zag, 2026-11-18 run log). */
     {
         c = fresh(); c.line_straddle = true;
         command(&c, RCMD_START, 0u);
         input.left = input.centre = 0u; input.line_flags = LINE_F_LOST;
         settle(&c, 10u);
+        input.left = 1000u; input.line_flags = LINE_F_DETECTED;
+        bool pivoted = false;
+        for (UINT i = 0u; i < 22u; ++i) {             /* 440 ms touch */
+            step(&c, 20u, 0u);
+            if (right_wheel() == 0) pivoted = true;
+        }
+        assert(!pivoted);
+        input.left = 0u; input.line_flags = LINE_F_LOST; settle(&c, 20u);
         input.centre = 1000u; input.line_flags = LINE_F_DETECTED;
-        settle(&c, 5u);                           /* a touch: no pivot */
+        settle(&c, 30u);                              /* 600 ms: no pivot */
         assert(left_wheel() > 0);
-        settle(&c, 45u);                          /* 1 s under the sensor */
-        assert(c.follow_steer <= -B3_LINE_STEER_MAX + 20 && left_wheel() == 0);
+        settle(&c, 20u);                              /* 1 s: hump, pivot */
+        assert(left_wheel() == 0 && right_wheel() > 0);
         input.centre = 0u; input.line_flags = LINE_F_LOST;
-        settle(&c, 4u);
-        assert(c.straddle_coast_ms == 0u &&
-            c.follow_steer <= -VC_STRADDLE_PIVOT_STEER);
-        assert(left_wheel() == 0 && right_wheel() > 0); /* pivot left */
     }
-    puts("PASS hump bend: held line then exit -> hard pivot toward it");
+    puts("PASS pivot only when a sensor holds the line >= 700 ms (hump), not per touch");
 
     /* Rejected barcode: stop, reverse past the strip start, drive again. */
     {
