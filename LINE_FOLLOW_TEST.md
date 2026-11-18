@@ -48,6 +48,14 @@ Offset after a bend: an exit counts as "line may be outside" from 450
 for 0.4 s the car drifts gently toward the side that last touched the line
 (seek, up to 450 permille). Junction evidence is ignored while reversing
 for a barcode re-read and cleared afterwards.
+Tight bends (2026-11-18 hump): steering while following was capped at
+~500-565 permille by the wheel-speed limits (turn radius ~11 cm). In a real
+bend (line left a sensor, or held under one sensor >= 250 ms) steering from
+700 now lets the inner wheel stop (pivot), as barcode-robust's lost-line
+turn did, and such an exit turns back at once (600, no coast). If the turn
+toward the exit side finds nothing in 1 s, the search starts the OTHER way.
+Hardware: GP26 (right) reads tape at raw ~290-400 vs floor ~200-258; GP27
+(left) reads ~1000-3000. Check GP26's height/angle against GP27's.
 
 Firmware: `line_barcode_spread.uf2`. Based on `line-follow-smooth` with
 `barcode-robust` merged in.

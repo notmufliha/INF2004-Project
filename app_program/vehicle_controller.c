@@ -146,7 +146,10 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         c->straddle_lost = false;
         if (left_on != right_on) {
             INT side = left_on ? -1 : 1;
-            if (side != c->straddle_side) c->straddle_deep = false;
+            if (side != c->straddle_side) {
+                c->straddle_deep = false;
+                c->straddle_side_ms = in->now_ms;
+            }
             c->straddle_touch = side;
             c->straddle_side = side;
             if ((left_on ? left : right) >= VC_STRADDLE_DEEP) {
@@ -181,8 +184,9 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
              c->straddle_last_exit != c->straddle_side) ?
             VC_STRADDLE_FLIP_COAST_MS : VC_STRADDLE_COAST_MS;
         c->straddle_arc_start = VC_STRADDLE_RECOVER_START;
-        if (c->straddle_last_exit == c->straddle_side &&
-            in->now_ms - c->straddle_exit_ms < VC_STRADDLE_CURVE_MS) {
+        if ((c->straddle_last_exit == c->straddle_side &&
+             in->now_ms - c->straddle_exit_ms < VC_STRADDLE_CURVE_MS) ||
+            in->now_ms - c->straddle_side_ms >= VC_STRADDLE_HELD_MS) {
             c->straddle_coast_ms = 0u;            /* in a bend */
             c->straddle_arc_start = VC_STRADDLE_CURVE_ARC;
         }
@@ -197,7 +201,9 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         if (in->now_ms - c->straddle_outside_ms < VC_STRADDLE_OUTSIDE_MS) {
             return true;
         }
-        c->last_line_search_direction = c->straddle_outside;
+        /* The arc toward the exit side found nothing: the line is more
+         * likely the other way (the car over-turned), so search there. */
+        c->last_line_search_direction = -c->straddle_outside;
         c->straddle_outside = 0;
         c->straddle_lost = true;
         return false;
@@ -317,10 +323,11 @@ static void apply_wheel_minimum(motion_command_t *command, bool allow_pivot)
             outer = (int64_t)VC_MIN_WHEEL_CPS * VC_FOLLOW_MIN_OUTER_RATIO;
         }
         inner = VC_MIN_WHEEL_CPS;
-    } else if (inner >= (int64_t)VC_MIN_WHEEL_CPS * 500) {
-        inner = VC_MIN_WHEEL_CPS;      /* raise to the sustainable minimum */
     } else {
-        inner = 0;                     /* pivot around the inner wheel */
+        /* Hard turn where pivoting is allowed: an inner wheel below its
+         * sustainable minimum stops, the car pivots around it.  (Raising
+         * it to the minimum instead capped the turn at ~570 permille.) */
+        inner = 0;
     }
     if (outer <= inner) {
         /* Both wheels would sit at the minimum and the turn would be lost
@@ -1013,7 +1020,17 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         }
     }
     if (in->hump) command.target_speed_cps /= 2;
-    apply_wheel_minimum(&command, false);
+    {
+        INT steer_mag = command.steering_permille < 0 ?
+            -command.steering_permille : command.steering_permille;
+        /* Pivot only in a real bend: the line left a sensor, or has been
+         * under one sensor for VC_STRADDLE_HELD_MS (not every touch). */
+        bool bend = c->straddle_outside != 0 ||
+            (c->straddle_side != 0 &&
+             in->now_ms - c->straddle_side_ms >= VC_STRADDLE_HELD_MS);
+        apply_wheel_minimum(&command, c->line_straddle && bend &&
+                            steer_mag >= VC_STRADDLE_PIVOT_STEER);
+    }
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {
 #if VC_STEERING_DIAGNOSTICS
