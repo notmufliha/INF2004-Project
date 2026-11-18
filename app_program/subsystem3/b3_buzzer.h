@@ -14,7 +14,7 @@
 
 /* Set to 0 to build without the buzzer (pin left untouched). */
 #ifndef B3_BUZZER_ENABLE
-#define B3_BUZZER_ENABLE (1)
+#define B3_BUZZER_ENABLE (0) /* off: too much noise on the course */
 #endif
 #define B3_BUZZER_PIN (22U)
 

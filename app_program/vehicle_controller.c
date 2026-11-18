@@ -55,6 +55,7 @@ static void safe_stop(VEHICLE_CONTROLLER *c)
     c->junction_latched = false;
     c->rescan_phase = 0u;
     c->rescan_pending = false;
+    c->approach_active = false;
     stop_motion(c);
     set_state(c, ROBOT_SAFE_STOP);
 }
@@ -178,7 +179,14 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             (c->straddle_last_exit != 0 &&
              c->straddle_last_exit != c->straddle_side) ?
             VC_STRADDLE_FLIP_COAST_MS : VC_STRADDLE_COAST_MS;
+        c->straddle_arc_start = VC_STRADDLE_RECOVER_START;
+        if (c->straddle_last_exit == c->straddle_side &&
+            in->now_ms - c->straddle_exit_ms < VC_STRADDLE_CURVE_MS) {
+            c->straddle_coast_ms = 0u;            /* in a bend */
+            c->straddle_arc_start = VC_STRADDLE_CURVE_ARC;
+        }
         c->straddle_last_exit = c->straddle_side;
+        c->straddle_exit_ms = in->now_ms;
     }
     c->straddle_side = 0;
     c->straddle_deep = false;
@@ -436,6 +444,7 @@ void vehicle_controller_init(VEHICLE_CONTROLLER *c)
     c->mode = MODE_AUTO;
     c->speed_percent = 20u;
     c->line_straddle = VC_LINE_STRADDLE != 0;
+    c->approach_um = VC_JUNCTION_APPROACH_MM * 1000u;
     tm_printf((UB *)"[VC] line sensors: %s layout (VC_LINE_STRADDLE)\n",
               c->line_straddle ? "SPREAD (line between them)" :
               "TOGETHER (both on the line)");
@@ -741,7 +750,20 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     }
     if (c->rescan_phase != 0u && barcode_rescan(c, in, speed)) return;
     if (c->mode == MODE_AUTO && c->navigation == 0u &&
-        c->pending_navigation != B3_NAV_NONE && c->junction_latched) {
+        c->pending_navigation != B3_NAV_NONE && c->junction_latched &&
+        !c->approach_active) {
+        /* Keep following until the wheels are on the junction. */
+        c->approach_active = true;
+        c->approach_start_um = c->travel_um;
+    }
+    if (c->approach_active && (c->pending_navigation == B3_NAV_NONE ||
+                               c->navigation != 0u ||
+                               c->mode != MODE_AUTO)) {
+        c->approach_active = false;
+    }
+    if (c->approach_active &&
+        c->travel_um - c->approach_start_um >= c->approach_um) {
+        c->approach_active = false;
         c->navigation = c->pending_navigation;
         c->pending_navigation = B3_NAV_NONE;
         c->navigation_ms = in->now_ms;
@@ -885,7 +907,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         INT arc = 0;
 
         if (elapsed >= c->straddle_coast_ms) {
-            arc = VC_STRADDLE_RECOVER_START + VC_STRADDLE_RECOVER_RAMP *
+            arc = c->straddle_arc_start + VC_STRADDLE_RECOVER_RAMP *
                 (INT)((elapsed - c->straddle_coast_ms) / VC_PERIOD_MS);
             if (arc > VC_STRADDLE_OUTSIDE_STEER) arc = VC_STRADDLE_OUTSIDE_STEER;
         }
