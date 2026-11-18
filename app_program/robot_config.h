@@ -80,11 +80,7 @@
 #define ROBOT_BYPASS_CENTERED_TEST_BOX ROBOT_BYPASS_EXACT_SEQUENCE
 #endif
 #define ROBOT_BYPASS_RECOVERY_TURN_DEG ROBOT_BYPASS_TURN_DEG
-#if ROBOT_OBSTACLE_TEST
-#define ROBOT_BYPASS_TURN_DEG 45
-#else
-#define ROBOT_BYPASS_TURN_DEG 45
-#endif
+#define ROBOT_BYPASS_TURN_DEG 40
 /* Bypass offset uses encoder distance: obstacle edge + chassis + margin. */
 /* Straight forward DRIVE trim: positive counters left drift by requesting
  * slightly more left-wheel travel and less right-wheel travel. Adjust from
@@ -115,9 +111,9 @@
 #define ROBOT_BYPASS_LINE_MAX_AGE_MS 100u
 #define ROBOT_BYPASS_LINE_CONFIRM 3u
 /* After restoring forward heading, observe the line then scan headings
- * +/-15, +/-30, +/-45 degrees if the sensors rotated off the tape. */
+ * +/-13, +/-26, +/-39 degrees if the sensors rotated off the tape. */
 #define ROBOT_BYPASS_ALIGN_OBSERVE_MS 300u
-#define ROBOT_BYPASS_ALIGN_STEP_DEG 15
+#define ROBOT_BYPASS_ALIGN_STEP_DEG 13
 #define ROBOT_BYPASS_ALIGN_SWEEPS 6u
 /* At 30 degrees, the configured 10 x 8 cm half-chassis sweeps forward
  * to 10*cos(30)+8*sin(30) = 12.66 cm. Retain 0.44 cm margin for the

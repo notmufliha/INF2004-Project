@@ -523,6 +523,33 @@ static void test_loaded_forward_start(void)
     }
 }
 
+static void test_loaded_move_restart(void)
+{
+    pid_state_t state = setup();
+    motion_command_t move = command(MOTION_CMD_MOVE);
+    move.target_speed_cps = 540;
+    move.target_distance_counts = 8500;
+    send(move);
+    tick(&state, 0, 0);
+    for (INT i = 0; i < 150; ++i) tick(&state, 6, 6);
+
+    /* Simulate both wheels sticking during the bypass diagonal. */
+    for (INT i = 0; i < 45 && (pwm_left < 30 || pwm_right < 30); ++i) {
+        tick(&state, 0, 0);
+        CHECK(state.status == MOTION_STATUS_RUNNING);
+    }
+    CHECK(pwm_left >= 30 && pwm_right >= 30);
+    CHECK(pwm_left <= PID_MAX_PWM && pwm_right <= PID_MAX_PWM);
+    tick(&state, 2, 2);
+    CHECK(state.left_progress_ms == state.now_ms);
+    CHECK(state.right_progress_ms == state.now_ms);
+
+    /* If the wheels stop again and remain blocked, the stall still latches. */
+    for (INT i = 0; i < PID_STALL_MS / PID_PERIOD_MS; ++i) tick(&state, 0, 0);
+    CHECK(state.status == MOTION_STATUS_FAULT && state.fault == MOTION_FAULT_STALL);
+    CHECK(pwm_left == 0 && pwm_right == 0);
+}
+
 static void test_controlled_forward_speed(void)
 {
     pid_state_t state = setup();
@@ -628,6 +655,7 @@ int main(void)
     test_results_and_stale(); test_feedback_and_time();
     test_timeouts_and_standstill(); test_stop_and_steering();
     test_feedforward_and_kick(); test_loaded_turn_finish(); test_move_pwm_slew(); test_five_second_move(); test_controlled_forward_speed(); test_loaded_forward_start();
+    test_loaded_move_restart();
     test_physical_api_and_history();
     test_encoder_diagnostic_fault();
     {

@@ -27,7 +27,7 @@ int main(void)
             in.motion_terminal = false;
             if (a.type == S5_ACT_TURN || a.type == S5_ACT_MOVE) {
                 if (a.type == S5_ACT_TURN)
-                    assert(a.turn_deg == (side == S5_SIDE_LEFT ? 45 : -45));
+                    assert(a.turn_deg == (side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG));
                 if (a.type == S5_ACT_MOVE)
                     assert(m.reactive_entry_heading_deg + m.reactive_heading_deg == 0);
                 assert(s5_maneuver_submitted(&m, 500u + i));
@@ -103,7 +103,7 @@ int main(void)
         assert(m.reactive_entry_heading_deg + m.reactive_heading_deg == 0);
     }
     /* Latest capture continued to 23.32 cm and hit the IMU impact stop.
-     * Interrupt the diagonal at 30 cm and undo the initial 45-degree turn. */
+     * Interrupt the diagonal at 30 cm and undo the initial outward turn. */
     S5Maneuver m = {0}; S5ManeuverInput in = {0};
     m.reactive_required_cm = 40.0f; m.side = S5_SIDE_LEFT; m.state = S5_MAN_OFFSET; m.pending_id = 77u;
     in.line_valid = in.front_valid = true; in.front_cm = 31.38f;
@@ -112,7 +112,7 @@ int main(void)
     assert(s5_maneuver_step(&m, &in).type == S5_ACT_STOP && m.reactive);
     in.stopped = true;
     S5Action opposite = s5_maneuver_step(&m, &in);
-    assert(opposite.type == S5_ACT_TURN && opposite.turn_deg == 45);
+    assert(opposite.type == S5_ACT_TURN && opposite.turn_deg == ROBOT_BYPASS_TURN_DEG);
     m = (S5Maneuver){0}; in = (S5ManeuverInput){0};
     m.reactive = true; m.state = S5_MAN_REPLAN_CHECK; m.reactive_turns = 6u;
     in.line_valid = in.front_valid = in.stopped = true; in.front_cm = 18.0f;

@@ -14,11 +14,11 @@ int main(void)
         s5_maneuver_init(&m);
         assert(s5_maneuver_begin(&m, side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT,
                                  &p, ROBOT_BYPASS_MAX_DEPTH_CM, 0u));
-        assert(ROBOT_BYPASS_TURN_DEG == 45);
+        assert(ROBOT_BYPASS_TURN_DEG == 40);
         float swept = sqrtf(ROBOT_CHASSIS_HALF_LENGTH_CM * ROBOT_CHASSIS_HALF_LENGTH_CM +
                             ROBOT_CHASSIS_HALF_WIDTH_CM * ROBOT_CHASSIS_HALF_WIDTH_CM);
         assert(ROBOT_BYPASS_MIN_TURN_CM > swept + 0.4f);
-        assert(fabsf(m.offset_cm - 37.4157f) < 0.01f);
+        assert(fabsf(m.offset_cm - 40.3587f) < 0.01f);
         assert(fabsf(m.search_limit_cm - m.offset_cm) < 0.01f);
         assert(fabsf(m.pass_cm - 22.0f) < 0.01f);
         unsigned turns = 0u, moves = 0u;
@@ -67,7 +67,7 @@ int main(void)
     assert(s5_maneuver_step(&route, &completed).type == S5_ACT_NONE);
     completed.motion_terminal = false;
     S5Action remaining = s5_maneuver_step(&route, &completed);
-    assert(remaining.type == S5_ACT_TURN && remaining.turn_deg == 45);
+    assert(remaining.type == S5_ACT_TURN && remaining.turn_deg == ROBOT_BYPASS_TURN_DEG);
     S5Maneuver paused = {0}; S5ManeuverInput in = {0};
     paused.state = S5_MAN_OFFSET; paused.pending_id = 77u;
     paused.active_move_cm = 10.0f; paused.offset_cm = paused.pass_cm = 50.0f;
@@ -99,7 +99,7 @@ int main(void)
     assert(coast.offset_done_cm == 8.0f && coast.state == S5_MAN_FORWARD);
     in.motion_terminal = false;
     S5Action final_piece = s5_maneuver_step(&coast, &in);
-    assert(final_piece.type == S5_ACT_TURN && final_piece.turn_deg == 45);
+    assert(final_piece.type == S5_ACT_TURN && final_piece.turn_deg == ROBOT_BYPASS_TURN_DEG);
     /* Exact current capture: 27.09 cm used to hold STOP forever. */
     S5Maneuver captured = {0};
     captured.state = S5_MAN_OFFSET; captured.forward_paused = true;
@@ -143,8 +143,8 @@ int main(void)
         assert(ready.state == S5_MAN_FORWARD);
         assert(ready.offset_cm == 53.03f && ready.search_limit_cm == 53.03f);
         S5Action turn = s5_maneuver_step(&ready, &in);
-        assert(turn.type == S5_ACT_TURN && turn.turn_deg == (side == S5_SIDE_LEFT ? 45 : -45));
-        float middle_cm = (ready.reactive_required_cm - ready.offset_cm * cosf(45.0f * 0.01745329252f)) * ROBOT_BYPASS_MIDDLE_DISTANCE_SCALE;
+        assert(turn.type == S5_ACT_TURN && turn.turn_deg == (side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG));
+        float middle_cm = (ready.reactive_required_cm - ready.offset_cm * cosf(ROBOT_BYPASS_TURN_DEG * 0.01745329252f)) * ROBOT_BYPASS_MIDDLE_DISTANCE_SCALE;
         if (middle_cm < 5.0f) middle_cm = 5.0f;
         if (middle_cm > ROBOT_BYPASS_MIDDLE_MAX_CM) middle_cm = ROBOT_BYPASS_MIDDLE_MAX_CM;
         assert(fabsf(ready.pass_cm - middle_cm) < 0.01f);
@@ -173,7 +173,7 @@ int main(void)
         S5Action second_forward = s5_maneuver_step(&handoff, &result);
         assert(second_forward.type == S5_ACT_MOVE && fabsf(second_forward.distance_cm - 15.0f) < 0.01f);
         S5Action last_right = s5_maneuver_step(&middle, &result);
-        assert(last_right.type == S5_ACT_TURN && last_right.turn_deg == (side == S5_SIDE_LEFT ? 45 : -45));
+        assert(last_right.type == S5_ACT_TURN && last_right.turn_deg == (side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG));
         /* Current capture: 22 cm progress, then 18.69 cm front reading. */
         s5_maneuver_init(&ready);
         assert(s5_maneuver_begin(&ready, side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT,
@@ -186,8 +186,8 @@ int main(void)
         }
         assert(ready.state == S5_MAN_FORWARD && !ready.forward_paused);
         turn = s5_maneuver_step(&ready, &in);
-        assert(turn.type == S5_ACT_TURN && turn.turn_deg == (side == S5_SIDE_LEFT ? 45 : -45));
+        assert(turn.type == S5_ACT_TURN && turn.turn_deg == (side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG));
     }
-    puts("PASS left45/right45/right45/left45 and mirror: forward leg between every turn, zero final heading, interrupted move resumes");
+    puts("PASS left/right/right/left and mirror: forward leg between every turn, zero final heading, interrupted move resumes");
     return 0;
 }

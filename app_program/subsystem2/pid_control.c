@@ -571,15 +571,16 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
     if (state->command.type == MOTION_CMD_MOVE ||
         (state->command.type == MOTION_CMD_DRIVE && state->command.direction == MOTION_DIR_FORWARD)) {
-        /* Absolute breakaway floor, ramped only while the encoder is still.
-         * Adding 12 points to the small forward base could not start a load.
-         * Reach 26% after 300 ms, before the unchanged 500 ms stall guard. */
+        /* Ramp breakaway torque when a commanded wheel stops making progress.
+         * Bounded moves can reach the controller ceiling before the stall
+         * deadline. Continuous forward drive retains its 26% breakaway cap. */
+        float breakaway_cap = state->command.type == MOTION_CMD_MOVE ? PID_MAX_PWM : 26.0f;
         float left_start = (state->now_ms - state->left_progress_ms - PID_KICK_AFTER_MS) * 0.13f;
         float right_start = (state->now_ms - state->right_progress_ms - PID_KICK_AFTER_MS) * 0.13f;
         if (left_start < 0.0f) left_start = 0.0f;
         if (right_start < 0.0f) right_start = 0.0f;
-        if (left_start > 26.0f) left_start = 26.0f;
-        if (right_start > 26.0f) right_start = 26.0f;
+        if (left_start > breakaway_cap) left_start = breakaway_cap;
+        if (right_start > breakaway_cap) right_start = breakaway_cap;
         if (profile.left_speed > 0.0f && left_pwm < (INT)left_start) left_pwm = (INT)left_start;
         if (profile.right_speed > 0.0f && right_pwm < (INT)right_start) right_pwm = (INT)right_start;
     }
