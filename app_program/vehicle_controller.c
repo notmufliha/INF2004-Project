@@ -206,6 +206,16 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             c->straddle_coast_ms = 0u;            /* in a bend */
             c->straddle_arc_start = VC_STRADDLE_CURVE_ARC;
         }
+        {
+            INT toward = c->follow_steer * c->straddle_side;
+            if (toward >= VC_STRADDLE_BEND_STEER) {
+                /* Already turning hard that way and the line still left:
+                 * a curve tighter than the turn.  Keep turning. */
+                c->straddle_coast_ms = 0u;
+                c->straddle_arc_start = toward > VC_STRADDLE_CURVE_ARC ?
+                    toward : VC_STRADDLE_CURVE_ARC;
+            }
+        }
         c->straddle_last_exit = c->straddle_side;
         c->straddle_exit_ms = in->now_ms;
     }
@@ -345,11 +355,24 @@ static void straddle_spin_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             return;                      /* step still turning */
         }
     }
+    if (c->spin_done) {
+        stop_motion(c);                  /* searched +-60: wait, armed */
+        return;
+    }
     if (c->spin_steps >= c->spin_target) {
-        c->spin_dir = -c->spin_dir;      /* sweep back, further */
+        /* 60 one way, 120 back (60 the other side), 60 back to the start
+         * heading, then stop: never turn the car round. */
+        c->spin_dir = -c->spin_dir;
         c->spin_steps = 0u;
         c->spin_sweep++;
-        c->spin_target = VC_SPIN_FIRST_STEPS * (c->spin_sweep + 1u);
+        if (c->spin_sweep >= 3u) {
+            c->spin_done = true;
+            stop_motion(c);
+            tm_printf((UB *)"[VC] line not found within +-60 deg: stopped (put the car on the line)\n");
+            return;
+        }
+        c->spin_target = c->spin_sweep == 1u ? 2u * VC_SPIN_FIRST_STEPS :
+            VC_SPIN_FIRST_STEPS;
     }
     if (!in->motion.physically_stopped) {
         stop_motion(c);
@@ -428,6 +451,47 @@ static void apply_wheel_minimum(motion_command_t *command, bool allow_pivot)
         /* Both wheels would sit at the minimum and the turn would be lost
          * (or the inner wheel left in the stall zone): pivot instead. */
         inner = 0;
+    }
+    command->target_speed_cps = (INT)((outer + inner) / 2);
+    magnitude = (INT)((outer - inner) * 1000 / (outer + inner));
+    command->steering_permille = steering < 0 ? -magnitude : magnitude;
+}
+
+/* Spread layout following: wheel speeds with the inner wheel down to
+ * VC_STRADDLE_MIN_INNER_CPS and an outer:inner ratio up to
+ * VC_STRADDLE_MAX_RATIO (see there); pivot (inner 0) only if allowed. */
+static void straddle_wheels(motion_command_t *command, bool allow_pivot)
+{
+    INT steering = command->steering_permille;
+    INT magnitude = steering < 0 ? -steering : steering;
+    int64_t base = command->target_speed_cps;
+    int64_t outer = base * (1000 + magnitude) / 1000;
+    int64_t inner = base * (1000 - magnitude) / 1000;
+
+    if (magnitude == 0) {
+        if (command->target_speed_cps < VC_MIN_WHEEL_CPS) {
+            command->target_speed_cps = VC_MIN_WHEEL_CPS;
+        }
+        return;
+    }
+    if (allow_pivot) {
+        inner = 0;
+        if (outer < VC_MIN_WHEEL_CPS) outer = VC_MIN_WHEEL_CPS;
+    } else {
+        if (inner * VC_STRADDLE_MAX_RATIO < outer) {
+            inner = outer / VC_STRADDLE_MAX_RATIO;     /* ratio cap */
+        }
+        if (inner < VC_STRADDLE_MIN_INNER_CPS) {
+            /* Keep the requested ratio (capped) at the wheel minimum. */
+            int64_t num = 1000 + magnitude;
+            int64_t den = 1000 - magnitude;
+            if (num > den * VC_STRADDLE_MAX_RATIO) {
+                num = VC_STRADDLE_MAX_RATIO;
+                den = 1;
+            }
+            inner = VC_STRADDLE_MIN_INNER_CPS;
+            outer = inner * num / den;
+        }
     }
     command->target_speed_cps = (INT)((outer + inner) / 2);
     magnitude = (INT)((outer - inner) * 1000 / (outer + inner));
@@ -942,6 +1006,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
             c->spin_sweep = 0u;
             c->spin_target = VC_SPIN_FIRST_STEPS;
             c->spin_id = 0u;
+            c->spin_done = false;
         }
         recovery_elapsed = in->now_ms - c->recovery_ms;
         set_state(c, ROBOT_LINE_RECOVERY);
@@ -1195,8 +1260,13 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
          * the car clearly cannot turn as tight as the bend. */
         bool held = c->line_straddle && c->straddle_side != 0 &&
             in->now_ms - c->straddle_side_ms >= VC_STRADDLE_HELD_PIVOT_MS;
-        apply_wheel_minimum(&command, held && !in->barcode_active &&
-                            steer_mag >= VC_STRADDLE_PIVOT_STEER);
+        bool pivot = held && !in->barcode_active &&
+            steer_mag >= VC_STRADDLE_PIVOT_STEER;
+        if (c->line_straddle) {
+            straddle_wheels(&command, pivot);
+        } else {
+            apply_wheel_minimum(&command, pivot);
+        }
     }
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {

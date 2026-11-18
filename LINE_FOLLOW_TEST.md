@@ -20,6 +20,17 @@ code; neither repo has a licence):
   car; ours uses `VC_JUNCTION_APPROACH_MM` 50 mm. Measure ours: if turns at
   junctions start too early, raise it.
 
+v3 curve fix (from BlackberryDealer's motion code, branch
+tribunal1-car-test): in curves their inner wheel slows to 1/3 of base,
+outer:inner up to 5:1, speed cut 50 % at full steer.  Ours kept the inner
+wheel >= 300 cps with outer <= 3x (~500-565 permille, radius ~13 cm), so
+the line outran the car in curves.  Now (spread layout): inner down to
+150 cps (B2's move_min_cps), ratio up to 5:1, curve speed down to 50 %.
+If the line leaves a sensor while the car was already steering >= 450
+toward it, the car keeps turning (no 120 ms straight coast).  The in-place
+search sweeps +-60 deg and returns to the start heading, then stops: it
+never turns the car round onto the track backwards.
+
 # Spread sensors + barcode re-read (branch `line-barcode-spread`)
 
 ## Run log (send us real data)
