@@ -31,7 +31,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Line input compilation failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Line input tests failed' }
 
 $v4Binary = Join-Path $env:TEMP 'inf2004-vc-follow-test.exe'
-& gcc -std=c11 -Wall -Wextra -Werror (Join-Path $PSScriptRoot 'vc_follow_test.c') (Join-Path $PSScriptRoot '..\..pp_programc_follow.c') -o $v4Binary
+& gcc -std=c11 -Wall -Wextra -Werror (Join-Path $PSScriptRoot 'vc_follow_test.c') (Join-Path $PSScriptRoot '..\..\app_program\vc_follow.c') -o $v4Binary
 if ($LASTEXITCODE -ne 0) { throw 'vc_follow compilation failed' }
 & $v4Binary
 if ($LASTEXITCODE -ne 0) { throw 'vc_follow tests failed' }

@@ -132,10 +132,10 @@ obstacle bypass, ramp handling and lift-stop. `VC_FOLLOW_V4 0` and
 | Behaviour | v4 |
 |---|---|
 | Speed | cruise 120 mm/s (dashboard 29 %), slow 100 mm/s near an obstacle and for 150 mm after a bypass; speed held constant while the barcode sensor crosses bars |
-| Steering (`vc_follow.c`) | error = left − right (normalised); target = e·\|e\|/1000; smoothed 1/4 per 10 ms; no deadband or slew limiter |
+| Steering (`vc_follow.c`) | error = left − right (normalised). Target = 60 % of the error (squared below 300) + damping on the error's change (600 %, input smoothed) + **curve memory**: a steady turn that grows toward the side the line keeps meeting (error/300 per 10 ms, max 800), fades 1/200 per 10 ms with both sensors on floor and fast when the line shows on the other side. On a constant curve the car holds one smooth turn instead of turn / straight / turn. Smoothed 1/4 per 10 ms. Tuned in a kinematic sim (sensor spacing 22–36 mm, curves r 100–300 mm, slow and fast wheels, sensor noise) |
 | Curves | base speed cut up to 50 % with \|steering\|; wheel split ±50 mm/s at full error; inner wheel ≥ 1/3 of base |
 | Line leaves a sensor | coast 120 ms (400 ms if it left on the other side last time), then an arc toward that side growing 20 ‰ per 10 ms |
-| Lost | both white ≥ 200 ms **and** ≥ 60 mm after the line went black under one sensor; centred (both white after only a grey graze) is never lost |
+| Lost | both white ≥ 200 ms **and** ≥ 60 mm after the line went out past one sensor (that sensor ≥ 850, at most 200 ms before both went white; an older or partial touch means the line faded back to the centre); centred is never lost |
 | Line search | spin 60° toward the side last seen, 120° back, 60° again; either sensor on tape = found; 5 s → run stops |
 | Junction | nL + nR ≥ 1400 for ≥ 10 mm, classified 30 mm later: both sensors ≥ 900 = cross-junction |
 | Barcode turn | decoded action waits for a cross-junction: stop, forward 60 mm, turn 90° (U-turn 180° left), follow |
