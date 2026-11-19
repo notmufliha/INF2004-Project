@@ -65,6 +65,15 @@ int main(void){
   for(int i=0;i<10;i++){ s=vc4_steer(&t,900,50,20,um); um+=2400; }
   { int lx=-1; for(int i=0;i<100;i++){ vc4_steer(&t,50,50,20,um); um+=2400; if(!vc4_on_line(&t)&&lx<0) lx=i; }
     CHECK(lx>=9 && lx<=30, "after a cross, a real exit is still lost/searched"); }
+  /* curve: line drifts onto the left sensor; steering must be strong
+   * while the sensor is still only part-way on the tape */
+  { vc4_reset(&t); um=0; int32_t s2=0;
+    for(int i=0;i<4;i++){ s2=vc4_steer(&t,600,100,20,um); um+=2400; }
+    printf("   half on tape for 80 ms: steer %d\n",s2);
+    CHECK(s2>350, "curve: part-way onto the sensor already steers hard");
+    for(int i=0;i<3;i++){ s2=vc4_steer(&t,100,100,20,um); um+=2400; }
+    printf("   60 ms after the line left the left sensor: steer %d\n",s2);
+    CHECK(s2>300, "curve exit: recovery arc starts at once, not after a coast"); }
   printf("cps(120)=%d cps(60)=%d\n", vc4_mm_s_to_cps(120), vc4_mm_s_to_cps(60));
   printf(fails? "FAILED %d\n":"ALL PASS\n",fails); return fails;
 }

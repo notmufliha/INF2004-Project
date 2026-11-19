@@ -30,8 +30,8 @@ bool vc4_black(uint32_t nl, uint32_t nr)
  * leave on that side. */
 static void track_exit(vc4_track_t *t, uint32_t nl, uint32_t nr)
 {
-    bool bl = nl >= VC4_BLACK;
-    bool br = nr >= VC4_BLACK;
+    bool bl = nl >= VC4_EXIT_MIN;
+    bool br = nr >= VC4_EXIT_MIN;
 
     if (t->was_white) {
         if (t->exit_side != 0) t->prev_exit = t->exit_side;
@@ -92,7 +92,10 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
         t->was_white = true;
         if (t->exit_side != 0) {
             if (t->coast_ms < coast_len(t)) {
+                /* Coast: keep the steering the car already had (a curve
+                 * stays a curve); do not let it relax toward straight. */
                 t->coast_ms += dt_ms;
+                target = t->filt;
             } else {
                 target = t->exit_side * t->recover;
                 t->recover += VC4_RECOVER_RAMP * (int32_t)steps;
@@ -107,7 +110,11 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
             t->lost = true;
         }
     } else {
-        target = raw * iabs32(raw) / 1000;   /* gentle near centre */
+        if (iabs32(raw) < VC4_SOFT_BAND) {
+            target = raw * iabs32(raw) / VC4_SOFT_BAND;  /* calm near centre */
+        } else {
+            target = raw;
+        }
         track_exit(t, nl, nr);
         if (raw >= VC4_SIDE_MIN) {
             t->last_side = 1;
@@ -130,6 +137,11 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
 bool vc4_on_line(const vc4_track_t *t)
 {
     return !t->lost;
+}
+
+uint32_t vc4_white_um(const vc4_track_t *t, uint32_t travel_um)
+{
+    return t->white_ms == 0u ? 0u : travel_um - t->white_start_um;
 }
 
 void vc4_junction_reset(vc4_track_t *t)

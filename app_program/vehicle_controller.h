@@ -292,8 +292,14 @@
 #ifndef VC_FOLLOW_V4
 #define VC_FOLLOW_V4 1
 #endif
-#define VC4_SEARCH_SWEEP_DEG 60
-#define VC4_SEARCH_MS 5000u
+/* Lost line: first back up over the stretch driven on white (the sensors
+ * sit only 6 cm ahead of the axle, so a spin from where the car stopped
+ * cannot reach a line it overshot), then sweep 90 to the side the line
+ * left on, 180 back, 90 to centre. */
+#define VC4_SEARCH_BACK_EXTRA_MM 20
+#define VC4_SEARCH_BACK_MAX_MM  150
+#define VC4_SEARCH_SWEEP_DEG 90
+#define VC4_SEARCH_MS 9000u
 #define VC4_TURN_MM_S 150         /* spin turns (search, junction)       */
 #define VC4_MOVE_MM_S 150         /* straight moves (junction advance)   */
 #define VC4_REVERSE_MM_S 100
@@ -433,6 +439,7 @@ typedef struct {
     uint32_t v4_last_ms, v4_phase_ms, v4_motion_id;
     bool v4_time_valid;
     INT v4_search_first;   /* +1 left / -1 right */
+    INT v4_search_back_mm; /* back-up before the sweep                */
     UB bar_phase, bar_tries;
     uint32_t bar_mark_um, bar_back_um, bar_ms, bar_clear_um;
     bool bar_clear_known;

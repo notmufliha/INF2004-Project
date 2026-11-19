@@ -853,25 +853,32 @@ static void v4_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         return;
     }
     if (in->now_ms - c->recovery_ms >= VC4_SEARCH_MS) {
-        v4_end_run(c, "line lost, not found within 5 s of search");
+        v4_end_run(c, "line lost, not found within 9 s of search");
         return;
     }
     done = v4_motion_done(c, in);
     if (done == 0) return;
     switch (c->v4_sub) {
     case 0u:
-        if (v4_turn(c, in, VC4_SEARCH_SWEEP_DEG, c->v4_search_first > 0)) {
+        if (c->v4_search_back_mm <= 0 ||
+            v4_move(c, in, (float)c->v4_search_back_mm / 10.0f,
+                    VC4_REVERSE_MM_S, false)) {
             c->v4_sub = 1u;
         }
         break;
     case 1u:
-        if (v4_turn(c, in, 2 * VC4_SEARCH_SWEEP_DEG, c->v4_search_first < 0)) {
+        if (v4_turn(c, in, VC4_SEARCH_SWEEP_DEG, c->v4_search_first > 0)) {
             c->v4_sub = 2u;
         }
         break;
     case 2u:
-        if (v4_turn(c, in, VC4_SEARCH_SWEEP_DEG, c->v4_search_first > 0)) {
+        if (v4_turn(c, in, 2 * VC4_SEARCH_SWEEP_DEG, c->v4_search_first < 0)) {
             c->v4_sub = 3u;
+        }
+        break;
+    case 3u:
+        if (v4_turn(c, in, VC4_SEARCH_SWEEP_DEG, c->v4_search_first > 0)) {
+            c->v4_sub = 4u;
         }
         break;
     default:
@@ -887,10 +894,17 @@ static void v4_start_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     if (c->trk.filt == 0 && c->trk.last_side != 0) {
         c->v4_search_first = c->trk.last_side;
     }
+    {
+        uint32_t back_mm = vc4_white_um(&c->trk, c->travel_um) / 1000u +
+            VC4_SEARCH_BACK_EXTRA_MM;
+        if (back_mm > VC4_SEARCH_BACK_MAX_MM) back_mm = VC4_SEARCH_BACK_MAX_MM;
+        c->v4_search_back_mm = (INT)back_mm;
+    }
     c->recovery_ms = in->now_ms;
     stop_motion(c);
     run_log_event(in->now_ms, RUN_EV_LINE_LOST, 0u);
-    tm_printf((UB *)"[VC4] LINE LOST (both white 200 ms, 60 mm): searching %s first\n",
+    tm_printf((UB *)"[VC4] LINE LOST: backing up %d mm, then searching %s first\n",
+              c->v4_search_back_mm,
               c->v4_search_first > 0 ? "left" : "right");
     v4_enter(c, V4_SEARCH, in->now_ms);
 }
