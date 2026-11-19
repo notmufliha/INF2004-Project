@@ -162,6 +162,45 @@ static void test_profiles(void)
     }
 }
 
+static void test_reverse_balance(void)
+{
+    pid_state_t state = setup();
+    state.command = command(MOTION_CMD_MOVE);
+    state.command.direction = MOTION_DIR_REVERSE;
+    state.left_sign = state.right_sign = -1;
+    float left_scale = 1.0f + ROBOT_REVERSE_TRIM_PERMILLE / 1000.0f;
+    float right_scale = 1.0f - ROBOT_REVERSE_TRIM_PERMILLE / 1000.0f;
+    motion_profile_t start = pid_profile(&state);
+    CHECK(fabsf(start.left_speed / left_scale -
+                start.right_speed / right_scale) < 0.01f);
+    /* Signed reverse encoder travel must correct the faster wheel rather
+     * than amplify its lead. Stay outside the final deceleration zone. */
+    state.left_mm = -5.0f * left_scale;
+    state.right_mm = -5.0f * right_scale;
+    motion_profile_t equal = pid_profile(&state);
+    CHECK(fabsf(equal.left_speed - start.left_speed) < 0.01f);
+    CHECK(fabsf(equal.right_speed - start.right_speed) < 0.01f);
+    state.left_mm -= 2.0f;
+    motion_profile_t left_ahead = pid_profile(&state);
+    CHECK(left_ahead.left_speed < equal.left_speed);
+    CHECK(left_ahead.right_speed > equal.right_speed);
+    state.left_mm = -5.0f * left_scale;
+    state.right_mm -= 2.0f;
+    motion_profile_t right_ahead = pid_profile(&state);
+    CHECK(right_ahead.left_speed > equal.left_speed);
+    CHECK(right_ahead.right_speed < equal.right_speed);
+    float target = state.command.target_distance_counts * pid_mm_per_count(true);
+    state.left_mm = -(target + 1.0f) * left_scale;
+    state.right_mm = -(target - 1.0f) * right_scale;
+    motion_profile_t finish = pid_profile(&state);
+    CHECK(finish.left_reached && finish.left_speed == 0.0f);
+    CHECK(!finish.right_reached && finish.right_speed > 0.0f);
+    state.right_mm = -(target + 1.0f) * right_scale;
+    finish = pid_profile(&state);
+    CHECK(finish.left_reached && finish.right_reached);
+    CHECK(finish.left_speed == 0.0f && finish.right_speed == 0.0f);
+}
+
 static void test_validation_and_queue(void)
 {
     pid_state_t state = setup();
@@ -191,13 +230,17 @@ static void test_move_and_settle(bool reverse)
     INT sign = reverse ? -1 : 1;
     uint32_t id;
     value.direction = reverse ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD;
+    float trim = reverse ? ROBOT_REVERSE_TRIM_PERMILLE / 1000.0f : 0.0f;
+    INT left_goal = (INT)ceilf(value.target_distance_counts * (1.0f + trim)) + 1;
+    INT right_goal = (INT)ceilf(value.target_distance_counts *
+        pid_mm_per_count(true) / pid_mm_per_count(false) * (1.0f - trim)) + 1;
     id = send(value); tick(&state, 0, 0);
     CHECK(pwm_left * sign > 0 && pwm_right * sign > 0);
     /* Right wheel at a realistic 10 counts per 10 ms tick (1000 cps). */
-    tick(&state, sign * 1001, sign * 10);
+    tick(&state, sign * left_goal, sign * 10);
     CHECK(state.status == MOTION_STATUS_RUNNING);
     CHECK(pwm_left == 0 && pwm_right * sign > 0);
-    tick(&state, 0, sign * 990);
+    tick(&state, 0, sign * (right_goal - 10));
     CHECK(state.settling && state.status == MOTION_STATUS_RUNNING);
     CHECK(pwm_left == 0 && pwm_right == 0);
     for (INT i = 0; i < 10; i++) tick(&state, 0, 0);
@@ -649,7 +692,7 @@ int main(void)
     test_result.physically_stopped = true;
     CHECK(motion_update_status(&test_result) == E_OK);
     CHECK(b2_test_wait_result(501u));
-    test_profiles(); test_validation_and_queue();
+    test_profiles(); test_reverse_balance(); test_validation_and_queue();
     test_move_and_settle(false); test_move_and_settle(true);
     test_turn(false); test_turn(true); test_guards();
     test_results_and_stale(); test_feedback_and_time();

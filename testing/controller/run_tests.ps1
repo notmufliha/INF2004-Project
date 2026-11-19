@@ -1,4 +1,12 @@
 $ErrorActionPreference = 'Stop'
+$barcodeBinary = Join-Path $env:TEMP 'inf2004-v4-barcode-test.exe'
+& gcc -std=c11 -mno-ms-bitfields -Wall -Wextra -Werror -Wno-cast-function-type -Wno-unused-function `
+    -DVC_FOLLOW_V4=1 -DROBOT_BOX_BYPASS=0 `
+    (Join-Path $PSScriptRoot 'v4_barcode_test.c') -o $barcodeBinary
+if ($LASTEXITCODE -ne 0) { throw 'V4 barcode compilation failed' }
+& $barcodeBinary
+if ($LASTEXITCODE -ne 0) { throw 'V4 barcode tests failed' }
+
 $binary = Join-Path $env:TEMP 'inf2004-controller-test.exe'
 # controller_test.c covers the previous controller: build it with v4 off.
 & gcc -std=c11 -mno-ms-bitfields -Wall -Wextra -Werror -Wno-cast-function-type -DVC_FOLLOW_V4=0 -DROBOT_BOX_BYPASS=0 (Join-Path $PSScriptRoot 'controller_test.c') -o $binary

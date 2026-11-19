@@ -100,6 +100,15 @@
 #error "Straight-drive trim must be between -150 and 150 permille."
 #endif
 #define ROBOT_BYPASS_REVERSE_CM 8.0f
+/* Reverse wheel balance starts from the forward calibration. Tune separately
+ * from measured reverse runs if gearbox/load asymmetry differs by direction.
+ * Positive requests more left-wheel travel; negative more right-wheel travel. */
+#ifndef ROBOT_REVERSE_TRIM_PERMILLE
+#define ROBOT_REVERSE_TRIM_PERMILLE ROBOT_STRAIGHT_TRIM_PERMILLE
+#endif
+#if ROBOT_REVERSE_TRIM_PERMILLE < -150 || ROBOT_REVERSE_TRIM_PERMILLE > 150
+#error "Reverse trim must be between -150 and 150 permille."
+#endif
 #define ROBOT_BYPASS_MIDDLE_DISTANCE_SCALE 1.0f
 #define ROBOT_BYPASS_MIDDLE_MAX_CM 22.0f
 #define ROBOT_BYPASS_DIAGONAL_DISTANCE_SCALE 0.80f

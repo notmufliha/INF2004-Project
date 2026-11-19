@@ -61,8 +61,12 @@ ER motion_send_command(const motion_command_t *command)
         INT right = command->target_speed_cps * (1000 - s) / 1000;
         /* Spread following may run the inner wheel down to B2's move
          * minimum (VC_STRADDLE_MIN_INNER_CPS); never in the stall zone. */
-        assert(left == 0 || left >= VC_STRADDLE_MIN_INNER_CPS - 1);
-        assert(right == 0 || right >= VC_STRADDLE_MIN_INNER_CPS - 1);
+        /* V4 deliberately starts below the steady wheel floor for its
+         * first acceleration step after a stopped barcode rewind. */
+        bool starting_v4 = VC_FOLLOW_V4 &&
+            command->target_speed_cps <= VC_SPEED_RISE_PER_TICK;
+        assert(left == 0 || left >= VC_STRADDLE_MIN_INNER_CPS - 1 || starting_v4);
+        assert(right == 0 || right >= VC_STRADDLE_MIN_INNER_CPS - 1 || starting_v4);
         assert(left <= 5000 && right <= 5000 && (left > 0 || right > 0));
         if (calibrated_startup && drives == 0u) first_calibrated_drive_tick = task_ticks;
         ++drives;
