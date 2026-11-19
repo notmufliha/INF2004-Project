@@ -19,6 +19,9 @@
 /* ---- thresholds on normalised readings (0..1000) ---------------------- */
 #define VC4_WHITE           300   /* below on both = both white            */
 #define VC4_BLACK           700   /* at/above = line under that sensor     */
+/* Line counts as having passed under a sensor (exit side) from here: a
+ * weak sensor may never reach VC4_BLACK on a curve. */
+#define VC4_EXIT_MIN        550
 #define VC4_SAT             900   /* sensor fully over tape (junction)     */
 #define VC4_JCT_SUM_MIN     1400  /* nL + nR on a crossing tape            */
 
@@ -26,10 +29,13 @@
 #define VC4_STEER_MAX       1000
 #define VC4_FILT_DIV        4     /* per 10 ms: filt += (target-filt)/4    */
 #define VC4_SIDE_MIN        150   /* |error| that records the line's side  */
-#define VC4_COAST_MS        120u  /* black exit: coast before the arc      */
-#define VC4_FLIP_COAST_MS   400u  /* exit on the other side from last one  */
-#define VC4_RECOVER_START   200   /* first recovery arc, permille          */
-#define VC4_RECOVER_RAMP    20    /* + per 10 ms                           */
+/* Below this |error| the response is squared (calm on the straight),
+ * above it linear, so a curve gets full steering before the line leaves. */
+#define VC4_SOFT_BAND       300
+#define VC4_COAST_MS        40u   /* black exit: coast before the arc      */
+#define VC4_FLIP_COAST_MS   200u  /* exit on the other side from last one  */
+#define VC4_RECOVER_START   500   /* first recovery arc, permille          */
+#define VC4_RECOVER_RAMP    40    /* + per 10 ms                           */
 #define VC4_RECOVER_MAX     1000
 
 /* ---- loss ------------------------------------------------------------- */
@@ -92,6 +98,8 @@ int32_t  vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
                    uint32_t travel_um);
 /* True while the line counts as found (after vc4_steer this tick). */
 bool     vc4_on_line(const vc4_track_t *t);
+/* Travel since both sensors went white (to back up before a search). */
+uint32_t vc4_white_um(const vc4_track_t *t, uint32_t travel_um);
 /* Either sensor on the tape. */
 bool     vc4_black(uint32_t nl, uint32_t nr);
 /* Junction classifier step; returns a class once per junction. */
