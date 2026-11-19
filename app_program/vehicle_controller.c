@@ -993,9 +993,8 @@ static bool v4_barcode(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         if (!in->motion.physically_stopped) return true;
         if (v4_move(c, in, (float)c->bar_back_um / 10000.0f,
                     VC4_REVERSE_MM_S, false)) {
-            tm_printf((UB *)"[VC4] barcode: backing %d mm to read it at %d mm/s (try %d)\n",
-                      (INT)(c->bar_back_um / 1000u), (INT)VC4_BARCODE_MM_S,
-                      (INT)c->bar_tries + 1);
+            tm_printf((UB *)"[VC4] barcode: backing %d mm to read it again (try %d)\n",
+                      (INT)(c->bar_back_um / 1000u), (INT)c->bar_tries + 1);
             run_log_event(in->now_ms, RUN_EV_RESCAN,
                           (uint16_t)(c->bar_back_um / 1000u));
             c->bar_phase = BAR_REVERSE;
@@ -1202,25 +1201,26 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
         return;
     }
 
-    /* Barcode start: bars under GP28 while following -> rewind and read
-     * slowly.  A crossing tape gives one black run (2 edges), not 3+. */
+    /* Barcode start: bars under GP28 while following.  Read it on this
+     * pass at the speed the car already has (held steady while the bars
+     * pass, below: the decoder times bar widths).  Only a rejected read
+     * backs up and reads again.  A crossing tape gives one black run
+     * (2 edges), not 3+. */
     if (c->mode == MODE_AUTO && c->bar_phase == BAR_IDLE &&
         c->strip_active && c->strip_edges >= VC4_BAR_STRIP_EDGES &&
         c->trk.jct_state == 0u && !c->post_avoid_slow &&
         (!c->bar_clear_known ||
          ((int32_t)(c->strip_start_um - c->bar_clear_um) > 0 &&
           c->travel_um - c->bar_clear_um >= VC4_BAR_REARM_UM))) {
-        c->bar_back_um = c->travel_um - c->strip_start_um +
-            VC4_BAR_LEAD_UM + VC4_BAR_BACK_EXTRA_UM;
-        if (c->bar_back_um <= VC4_BAR_REWIND_MAX_UM) {
-            c->bar_tries = 0u;
-            c->bar_phase = BAR_BRAKE;
-            c->bar_ms = in->now_ms;
-            stop_motion(c);
-            tm_printf((UB *)"[VC4] barcode start seen: stopping to read it slowly\n");
-            return;
-        }
-        v4_bar_clear(c);     /* too far past its start to rewind */
+        c->bar_tries = 0u;
+        c->bar_phase = BAR_READ;
+        c->bar_ms = in->now_ms;
+        c->bar_rejects = in->barcode_rejects;
+        /* A failed pass backs up (travel - mark) + RETRY_EXTRA: start the
+         * mark so that is the strip start + LEAD + BACK_EXTRA. */
+        c->bar_mark_um = c->strip_start_um - VC4_BAR_LEAD_UM -
+            VC4_BAR_BACK_EXTRA_UM + VC4_BAR_RETRY_EXTRA_UM;
+        tm_printf((UB *)"[VC4] barcode start seen: reading it at a steady speed\n");
     }
 
     set_state(c, in->hump ? ROBOT_HUMP : ROBOT_LINE_FOLLOW);
@@ -1232,7 +1232,6 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
         INT slow = cruise_mm * VC4_SLOW_MM_S / VC4_CRUISE_MM_S;
         if (base_mm > slow) base_mm = slow;
     }
-    if (c->bar_phase == BAR_READ) base_mm = VC4_BARCODE_MM_S;
     vc4_wheels(steer, base_mm,
                cruise_mm * VC4_SLOW_MM_S / VC4_CRUISE_MM_S,
                &speed_cps, &steering);
@@ -1246,6 +1245,13 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
         if (command.target_speed_cps > previous + VC_SPEED_RISE_PER_TICK) {
             command.target_speed_cps = previous + VC_SPEED_RISE_PER_TICK;
         }
+    }
+    /* Constant speed across a barcode (as on barcode-robust): bar widths
+     * are timed, so a curve slowdown part-way through the bars stretches
+     * the later ones and the read is rejected.  Keep the speed the car had
+     * at the first bar until the bars stop; steering still applies. */
+    if (in->barcode_active && c->drive_sent && c->last_speed > 0) {
+        command.target_speed_cps = c->last_speed;
     }
     if (command.target_speed_cps < 1) command.target_speed_cps = 1;
     c->last_speed = command.target_speed_cps;

@@ -54,7 +54,7 @@
 /* ---- speeds (mm/s) and wheel split ------------------------------------ */
 #define VC4_CRUISE_MM_S     120
 #define VC4_SLOW_MM_S       100   /* obstacle ahead, after a bypass        */
-#define VC4_BARCODE_MM_S    60    /* barcode read pass                     */
+/* (VC4_BARCODE_MM_S removed: barcodes are read at the following speed.) */
 /* Full steering error moves each wheel by this much (mm/s x 10): 2/256 of
  * a count per 50 ms window at 324 um/count = 50.6 mm/s. */
 #define VC4_SPLIT_FULL_X10  506
