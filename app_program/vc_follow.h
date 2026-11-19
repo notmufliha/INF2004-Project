@@ -19,9 +19,18 @@
 /* ---- thresholds on normalised readings (0..1000) ---------------------- */
 #define VC4_WHITE           300   /* below on both = both white            */
 #define VC4_BLACK           700   /* at/above = line under that sensor     */
-/* Line counts as having passed under a sensor (exit side) from here: a
- * weak sensor may never reach VC4_BLACK on a curve. */
-#define VC4_EXIT_MIN        550
+/* Line counts as having gone out past a sensor (exit side) only if that
+ * sensor was fully on the tape.  A partial touch that fades means the
+ * line came back toward the centre: arcing toward it then made the car
+ * weave (simulated). */
+#ifndef VC4_EXIT_MIN
+#define VC4_EXIT_MIN        850
+#endif
+/* ...and only if it was that fully on the tape at most this long before
+ * both sensors saw floor (else the line faded back to the centre). */
+#ifndef VC4_EXIT_FRESH_MS
+#define VC4_EXIT_FRESH_MS   200u
+#endif
 #define VC4_SAT             900   /* sensor fully over tape (junction)     */
 #define VC4_JCT_SUM_MIN     1400  /* nL + nR on a crossing tape            */
 
@@ -32,11 +41,45 @@
 /* Below this |error| the response is squared (calm on the straight),
  * above it linear, so a curve gets full steering before the line leaves. */
 #define VC4_SOFT_BAND       300
+/* Proportional part, percent of the error (the curve memory adds to it). */
+/* Damping, percent of the error's change per 20 ms: steers against the
+ * line's movement so a correction stops before it overshoots. */
+#ifndef VC4_D_PCT
+#define VC4_D_PCT           600
+#endif
+#ifndef VC4_D_EXIT_PCT
+#define VC4_D_EXIT_PCT      50    /* share of it after a possible exit     */
+#endif
+#ifndef VC4_D_SMOOTH
+#define VC4_D_SMOOTH        3     /* damping input: move 1/n per tick      */
+#endif
+#ifndef VC4_P_PCT
+#define VC4_P_PCT           60
+#endif
 #define VC4_COAST_MS        40u   /* black exit: coast before the arc      */
 #define VC4_FLIP_COAST_MS   200u  /* exit on the other side from last one  */
 #define VC4_RECOVER_START   500   /* first recovery arc, permille          */
 #define VC4_RECOVER_RAMP    40    /* + per 10 ms                           */
 #define VC4_RECOVER_MAX     1000
+
+/* ---- curve memory ------------------------------------------------------
+ * A steady turn learned from which sensor keeps meeting the line.  On a
+ * constant curve it settles at the turn the curve needs, so the car arcs
+ * smoothly and the sensors only trim it (instead of turn / straight /
+ * turn).  It fades while both sensors see floor, quickly when the line
+ * shows up on the other side (S-bend), and is cleared at a crossing. */
+#ifndef VC4_BIAS_MAX
+#define VC4_BIAS_MAX        800
+#endif
+#ifndef VC4_BIAS_GAIN_DIV
+#define VC4_BIAS_GAIN_DIV   300   /* per 10 ms: bias += error / 300        */
+#endif
+#ifndef VC4_BIAS_DECAY_DIV
+#define VC4_BIAS_DECAY_DIV  200   /* per 10 ms on floor: bias -= bias/200  */
+#endif
+#ifndef VC4_BIAS_FLIP_DIV
+#define VC4_BIAS_FLIP_DIV   12    /* per 10 ms, line on the other side     */
+#endif
 
 /* ---- loss ------------------------------------------------------------- */
 #define VC4_LOST_MS         200u  /* both white this long after a black exit */
@@ -72,8 +115,11 @@ typedef enum {
 typedef struct {
     /* steering */
     int32_t  filt;
+    int32_t  bias;        /* curve memory, + = left                       */
+    int32_t  prev_raw;    /* last tick's error, for damping               */
     int8_t   last_side;   /* -1 right / +1 left: last side with an error  */
     int8_t   exit_side;   /* side the line went black under, 0 = between */
+    uint32_t exit_age_ms; /* since a sensor was last fully on the tape    */
     int8_t   prev_exit;
     bool     was_white;
     int32_t  recover;

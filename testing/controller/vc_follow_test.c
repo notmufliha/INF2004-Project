@@ -1,9 +1,54 @@
 /* Host tests for app_program/vc_follow.c (line following v4). */
 #include <stdio.h>
 #include <stdbool.h>
+#include <math.h>
 #include "../../app_program/vc_follow.h"
 static int fails;
 #define CHECK(c,m) do{ if(!(c)){printf("FAIL: %s\n",m);fails++;} else printf("ok: %s\n",m);}while(0)
+
+/* Normalised reading of a sensor d mm from the centre of an 18 mm tape
+ * (4 mm sensing spot). */
+static uint32_t tape_read(double d)
+{
+  double o = fmin(d + 2.0, 9.0) - fmax(d - 2.0, -9.0);
+  return o <= 0.0 ? 0u : (uint32_t)(o / 4.0 * 1000.0);
+}
+
+/* Model car (97 mm track, sensors 60 mm ahead of the axle, 15 mm either
+ * side) on a left circle of radius r mm, wheels lagging the command.
+ * Reports how often the steering changed side and how often it fell
+ * back to ~straight in the second half of the lap, and the worst offset. */
+static void circle_run(double r, int *side_changes, int *straight_ticks,
+                       double *max_off, bool *lost)
+{
+  vc4_track_t t; double x = 0, y = 0, h = 0, vl = 0, vr = 0;
+  uint32_t um = 0; int last = 0;
+  vc4_reset(&t);
+  *side_changes = 0; *straight_ticks = 0; *max_off = 0; *lost = false;
+  for (int k = 0; k < 1500; k++) {
+    double sx = x + 60 * cos(h), sy = y + 60 * sin(h);
+    /* + = left of the line; circle centre (0, r) */
+    double dl = r - hypot(sx - 15 * sin(h), sy + 15 * cos(h) - r);
+    double dr = r - hypot(sx + 15 * sin(h), sy - 15 * cos(h) - r);
+    double dc = r - hypot(sx, sy - r);
+    int32_t s = vc4_steer(&t, tape_read(dl), tape_read(dr), 20, um), sp, st;
+    vc4_wheels(s, 120, 100, &sp, &st);
+    if (!vc4_on_line(&t)) { *lost = true; return; }
+    double v = sp * 0.084;
+    vl += (v * (1 + st / 1000.0) - vl) * 0.15;
+    vr += (v * (1 - st / 1000.0) - vr) * 0.15;
+    x += (vl + vr) / 2 * cos(h) * 0.02; y += (vl + vr) / 2 * sin(h) * 0.02;
+    h += (vr - vl) / 97.0 * 0.02;
+    um += (uint32_t)((vl + vr) / 2 * 20);
+    if (k >= 750) {
+      int sg = s > 150 ? 1 : (s < -150 ? -1 : 0);
+      if (!sg) (*straight_ticks)++;
+      if (sg && last && sg != last) (*side_changes)++;
+      if (sg) last = sg;
+      if (fabs(dc) > *max_off) *max_off = fabs(dc);
+    }
+  }
+}
 int main(void){
   vc4_track_t t; uint32_t um=0; int32_t s; int32_t sp, st;
   /* centred straight: both white forever -> never lost, steer 0 */
@@ -71,9 +116,23 @@ int main(void){
     for(int i=0;i<4;i++){ s2=vc4_steer(&t,600,100,20,um); um+=2400; }
     printf("   half on tape for 80 ms: steer %d\n",s2);
     CHECK(s2>350, "curve: part-way onto the sensor already steers hard");
+    for(int i=0;i<2;i++){ s2=vc4_steer(&t,950,100,20,um); um+=2400; }
     for(int i=0;i<3;i++){ s2=vc4_steer(&t,100,100,20,um); um+=2400; }
     printf("   60 ms after the line left the left sensor: steer %d\n",s2);
     CHECK(s2>300, "curve exit: recovery arc starts at once, not after a coast"); }
+  /* Steady curve: hold one smooth turn (model video), not turn /
+   * straight / turn, and no weaving across the line. */
+  { int sc, stt; double mo; bool lo;
+    circle_run(200.0, &sc, &stt, &mo, &lo);
+    printf("   circle r=200: lost %d, side changes %d, straight ticks %d/750, max offset %.1f mm\n",
+           (int)lo, sc, stt, mo);
+    CHECK(!lo && sc == 0 && stt < 40 && mo < 9.0,
+          "steady curve: one smooth turn, never back to straight");
+    circle_run(150.0, &sc, &stt, &mo, &lo);
+    printf("   circle r=150: lost %d, side changes %d, straight ticks %d/750, max offset %.1f mm\n",
+           (int)lo, sc, stt, mo);
+    CHECK(!lo && sc == 0 && stt < 40 && mo < 9.0,
+          "tight curve: one smooth turn, never back to straight"); }
   printf("cps(120)=%d cps(60)=%d\n", vc4_mm_s_to_cps(120), vc4_mm_s_to_cps(60));
   printf(fails? "FAILED %d\n":"ALL PASS\n",fails); return fails;
 }
