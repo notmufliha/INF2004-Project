@@ -846,8 +846,7 @@ static void v4_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         tm_printf((UB *)"[VC4] line found again after %d ms of search\n",
                   (INT)(in->now_ms - c->recovery_ms));
         run_log_event(in->now_ms, RUN_EV_NAV_DONE, 0u);
-        c->trk.lost = false;
-        c->trk.white_ms = 0u;
+        v4_reset_follow(c); /* discard the arc that caused the search */
         v4_enter(c, V4_FOLLOW, in->now_ms);
         c->drive_sent = false;
         return;
@@ -988,11 +987,12 @@ static bool v4_barcode(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         stop_motion(c);
         if (in->now_ms - c->bar_ms > VC_RESCAN_TIMEOUT_MS) {
             v4_bar_clear(c);
-            return false;
+            v4_end_run(c, "barcode brake timeout");
+            return true;
         }
         if (!in->motion.physically_stopped) return true;
         if (v4_move(c, in, (float)c->bar_back_um / 10000.0f,
-                    VC4_REVERSE_MM_S, false)) {
+                    VC4_BAR_REVERSE_MM_S, false)) {
             tm_printf((UB *)"[VC4] barcode: backing %d mm to read it again (try %d)\n",
                       (INT)(c->bar_back_um / 1000u), (INT)c->bar_tries + 1);
             run_log_event(in->now_ms, RUN_EV_RESCAN,
@@ -1005,6 +1005,11 @@ static bool v4_barcode(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         set_state(c, ROBOT_NAV_COMMAND);
         done = v4_motion_done(c, in);
         if (done == 0) return true;
+        if (done < 0) {
+            v4_bar_clear(c);
+            v4_end_run(c, "barcode reverse failed");
+            return true;
+        }
         c->bar_phase = BAR_SETTLE;
         c->bar_ms = in->now_ms;
         return true;
@@ -1015,6 +1020,7 @@ static bool v4_barcode(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         if (!in->motion.physically_stopped ||
             in->now_ms - c->bar_ms < VC4_BAR_WAIT_MS) return true;
         c->bar_phase = BAR_READ;
+        c->bar_speed_cps = vc4_mm_s_to_cps(VC4_BAR_READ_MM_S);
         c->bar_mark_um = c->travel_um;
         c->bar_ms = in->now_ms;
         c->bar_rejects = in->barcode_rejects;
@@ -1042,9 +1048,10 @@ static void v4_bar_pass_failed(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
         c->bar_phase = BAR_BRAKE;
         c->bar_ms = in->now_ms;
     } else {
-        tm_printf((UB *)"[VC4] barcode not read after %d tries: continuing\n",
+        tm_printf((UB *)"[VC4] barcode not read after %d tries: stopping\n",
                   (INT)VC4_BAR_RETRIES + 1);
         v4_bar_clear(c);
+        v4_end_run(c, "barcode retry limit reached");
     }
 }
 
@@ -1108,7 +1115,7 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     INT cruise_mm, base_mm;
     motion_command_t command = {0};
     vc4_jct_t jct = VC4_JCT_NONE;
-    bool inhibit;
+    bool inhibit, barcode_straight;
 
     VC_INPUT filtered = *in;
 
@@ -1156,8 +1163,22 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     }
 
     /* ---- FOLLOW ---- */
+    /* Bars passing under GP28 now (B3 edge activity, or the strip seen
+     * in the last VC_STRIP_END_UM of travel, which covers wide gaps). */
+    barcode_straight = in->barcode_active ||
+        (c->strip_active && c->strip_edges >= VC4_BAR_STRIP_EDGES);
+    /* Keep following the line across a barcode.  Holding the steering at
+     * zero (and wiping the curve memory) for the whole read made the car
+     * drive straight off a curve that starts just after the bars, since a
+     * read lasts until a decode, up to VC4_BAR_READ_UM.  While bars pass,
+     * the steering is only limited (bar_filter already ignores a line
+     * sensor flickering on them) and a loss does not start a sweep. */
     steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
-    if (!vc4_on_line(&c->trk)) {
+    if (barcode_straight) {
+        if (steer > VC4_BAR_STEER_MAX) steer = VC4_BAR_STEER_MAX;
+        if (steer < -VC4_BAR_STEER_MAX) steer = -VC4_BAR_STEER_MAX;
+    }
+    if (!vc4_on_line(&c->trk) && !barcode_straight) {
         if (c->bar_phase == BAR_READ) v4_bar_clear(c);
         v4_start_search(c, in);
         return;
@@ -1166,16 +1187,18 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
         if (in->barcode_rejects != c->bar_rejects && !in->barcode_active) {
             c->bar_rejects = in->barcode_rejects;
             v4_bar_pass_failed(c, in, "rejected");
+            if (!c->running) return;
             if (c->bar_phase == BAR_BRAKE) { stop_motion(c); return; }
         } else if (c->travel_um - c->bar_mark_um >= VC4_BAR_READ_UM ||
                    in->now_ms - c->bar_ms >= VC4_BAR_READ_MS) {
             v4_bar_pass_failed(c, in, "no decode");
+            if (!c->running) return;
             if (c->bar_phase == BAR_BRAKE) { stop_motion(c); return; }
         }
     }
 
-    inhibit = c->post_avoid_slow ||
-        (c->bar_phase != BAR_IDLE && c->bar_phase != BAR_READ);
+    inhibit = c->post_avoid_slow || barcode_straight ||
+        c->bar_phase != BAR_IDLE;
     if (!inhibit) {
         jct = vc4_junction(&c->trk, nl, nr, c->travel_um);
     } else {
@@ -1214,6 +1237,8 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
           c->travel_um - c->bar_clear_um >= VC4_BAR_REARM_UM))) {
         c->bar_tries = 0u;
         c->bar_phase = BAR_READ;
+        c->bar_speed_cps = c->drive_sent && c->last_speed > 0 ?
+            c->last_speed : vc4_mm_s_to_cps(VC4_BAR_READ_MM_S);
         c->bar_ms = in->now_ms;
         c->bar_rejects = in->barcode_rejects;
         /* A failed pass backs up (travel - mark) + RETRY_EXTRA: start the
@@ -1239,6 +1264,12 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     command.direction = MOTION_DIR_FORWARD;
     command.steering_permille = (INT)steering;
     command.target_speed_cps = (INT)speed_cps;
+    /* Fixed read speed while bars pass, and on a retry from the rewind
+     * on; after the bars of a first pass the curve slow-down applies. */
+    if (c->bar_phase == BAR_READ && (barcode_straight || c->bar_tries > 0u)) {
+        command.target_speed_cps = c->bar_speed_cps > 0 ?
+            c->bar_speed_cps : vc4_mm_s_to_cps(VC4_BAR_READ_MM_S);
+    }
     /* Gentle start from standstill; slowing applies at once. */
     {
         INT previous = c->drive_sent ? c->last_speed : 0;
@@ -1249,8 +1280,9 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     /* Constant speed across a barcode (as on barcode-robust): bar widths
      * are timed, so a curve slowdown part-way through the bars stretches
      * the later ones and the read is rejected.  Keep the speed the car had
-     * at the first bar until the bars stop; steering still applies. */
-    if (in->barcode_active && c->drive_sent && c->last_speed > 0) {
+     * at the first bar for the complete pass, including quiet gaps. */
+    if (c->bar_phase != BAR_READ && (in->barcode_active || barcode_straight) &&
+        c->drive_sent && c->last_speed > 0) {
         command.target_speed_cps = c->last_speed;
     }
     if (command.target_speed_cps < 1) command.target_speed_cps = 1;

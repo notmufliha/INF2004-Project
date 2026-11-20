@@ -425,27 +425,30 @@ static motion_profile_t pid_profile(pid_state_t *state)
         target = PID_PI * pid_turn_track(&state->command) * 10.0f *
             state->command.target_angle_deg / 360.0f;
     }
-    if (state->command.type == MOTION_CMD_DRIVE &&
-        state->command.direction == MOTION_DIR_FORWARD &&
-        state->command.steering_permille == 0) {
-        float trim = ROBOT_STRAIGHT_TRIM_PERMILLE / 1000.0f;
+    motion_profile_t profile;
+    if (state->command.steering_permille == 0 &&
+        (state->command.type == MOTION_CMD_DRIVE ||
+         (state->command.type == MOTION_CMD_MOVE &&
+          state->command.direction == MOTION_DIR_REVERSE))) {
+        float trim = (state->command.direction == MOTION_DIR_REVERSE ?
+            ROBOT_REVERSE_TRIM_PERMILLE : ROBOT_STRAIGHT_TRIM_PERMILLE) / 1000.0f;
         float left_scale = 1.0f + trim;
         float right_scale = 1.0f - trim;
         /* Compare progress against the trimmed wheel ratio. Otherwise the
          * straight-line synchronizer would immediately undo the trim.
          * Feedback still corrects either wheel departing from that ratio. */
-        motion_profile_t profile = motion_profile_targets(speed, 0.0f,
+        profile = motion_profile_targets(speed, 0.0f,
             state->left_mm * state->left_sign / left_scale,
             state->right_mm * state->right_sign / right_scale,
             target, bounded, true);
         profile.left_speed *= left_scale;
         profile.right_speed *= right_scale;
-        return profile;
+    } else {
+        profile = motion_profile_targets(speed,
+            state->command.steering_permille / 1000.0f,
+            state->left_mm * state->left_sign,
+            state->right_mm * state->right_sign, target, bounded, true);
     }
-    motion_profile_t profile = motion_profile_targets(speed,
-        state->command.steering_permille / 1000.0f,
-        state->left_mm * state->left_sign,
-        state->right_mm * state->right_sign, target, bounded, true);
     if (bounded) {
         float minimum = (state->command.type == MOTION_CMD_MOVE ? PID_MOVE_MIN_CPS : PID_BOUNDED_MIN_CPS) * pid_mm_per_count(true);
         if (minimum > speed) minimum = speed;

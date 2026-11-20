@@ -303,6 +303,9 @@
 #define VC4_TURN_MM_S 150         /* spin turns (search, junction)       */
 #define VC4_MOVE_MM_S 150         /* straight moves (junction advance)   */
 #define VC4_REVERSE_MM_S 100
+#define VC4_BAR_REVERSE_MM_S 60   /* controlled barcode rewind           */
+#define VC4_BAR_READ_MM_S 60      /* retry target after settling         */
+#define VC4_BAR_STEER_MAX 400     /* steering limit while bars pass      */
 #define VC4_JCT_ADVANCE_CM 6.0f   /* line sensors to axle                */
 #define VC4_MOTION_TIMEOUT_MS 10000u
 /* Barcode slow re-read. */
@@ -441,6 +444,7 @@ typedef struct {
     INT v4_search_first;   /* +1 left / -1 right */
     INT v4_search_back_mm; /* back-up before the sweep                */
     UB bar_phase, bar_tries;
+    INT bar_speed_cps;     /* fixed target for this pass, across edge gaps */
     uint32_t bar_mark_um, bar_back_um, bar_ms, bar_clear_um;
     bool bar_clear_known;
     UH bar_rejects;
