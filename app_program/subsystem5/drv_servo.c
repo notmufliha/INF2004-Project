@@ -60,13 +60,13 @@ bool s5_servo_init(void)
 bool s5_servo_angle(uint16_t angle_deg)
 {
     uint16_t target = angle_deg;
-    if (target < S5_SAFE_MIN_DEG)
+    if (target < ROBOT_WIDTH_SWEEP_MIN_DEG)
     {
-        target = S5_SAFE_MIN_DEG;
+        target = ROBOT_WIDTH_SWEEP_MIN_DEG;
     }
-    if (target > S5_SAFE_MAX_DEG)
+    if (target > ROBOT_WIDTH_SWEEP_MAX_DEG)
     {
-        target = S5_SAFE_MAX_DEG;
+        target = ROBOT_WIDTH_SWEEP_MAX_DEG;
     }
     if (target != angle_deg)
         tm_printf((UB*)"[S5-SERVO] angle limited requested=%d safe=%d\n",

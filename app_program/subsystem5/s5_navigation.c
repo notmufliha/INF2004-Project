@@ -107,7 +107,7 @@ static bool request(S5Command command, const S5Profile *profile)
                             ROBOT_BYPASS_MAX_DEPTH_CM : ROBOT_COURSE_BOX_DEPTH_CM), now)) return false;
     if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE &&
         command != S5_CMD_REVERSE &&
-        !s5_maneuver_plan_equal_legs(&maneuver, profile->center_y_cm, false)) return false;
+        !s5_maneuver_plan_equal_legs(&maneuver, profile->center_y_cm)) return false;
     tm_printf((UB*)"[S5-ROUTE] side=%d offset_cm_x100=%d pass_cm_x100=%d search_limit_cm_x100=%d course_bounds=%d\n",
               (int)maneuver.side, (int)(maneuver.offset_cm * 100.0f),
               (int)(maneuver.pass_cm * 100.0f),
@@ -203,13 +203,14 @@ bool s5_navigation_probe_bypass(const S5Profile *profile)
     uint32_t now;
     if (!profile || !profile->valid || mode != NAV_STOP || !probe_complete ||
         !s5_navigation_stopped() || !now_ms(&now)) return false;
-    int expected = profile->bypass_side == S5_SIDE_LEFT ? -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG;
-    if (profile->bypass_side == S5_SIDE_NONE || probe_degrees != expected) return false;
+    int outward = profile->bypass_side == S5_SIDE_LEFT ? -probe_degrees : probe_degrees;
+    if (profile->bypass_side == S5_SIDE_NONE || outward != ROBOT_COURSE_BYPASS_TURN_DEG)
+        return false;
     s5_maneuver_init(&maneuver);
     if (!s5_maneuver_begin(&maneuver,
         profile->bypass_side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT,
         profile, ROBOT_COURSE_BOX_DEPTH_CM, now)) return false;
-    if (!s5_maneuver_plan_equal_legs(&maneuver, profile->center_y_cm, true)) return false;
+    if (!s5_maneuver_plan_probe_route(&maneuver, profile->center_y_cm)) return false;
     probe_complete = false;
     mode = NAV_AVOID;
     tm_printf((UB*)"[S5-LOOK-ADVANCE] side=%d offset_cm_x100=%d pass_cm_x100=%d\n",
@@ -329,6 +330,7 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
         if (motion_get_result(maneuver.pending_id, &result) == E_OK) {
             in.motion_terminal = true;
             in.motion_success = result.status == MOTION_STATUS_COMPLETED;
+            in.motion_cancelled = result.status == MOTION_STATUS_CANCELLED;
             if (!in.motion_success)
                 tm_printf((UB*)"[S5-MOTOR-RESULT] id=%d status=%d fault=%d result_stopped=%d live_stopped=%d\n",
                           (int)result.command_id, (int)result.status, (int)result.fault,

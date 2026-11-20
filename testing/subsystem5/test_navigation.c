@@ -179,9 +179,16 @@ int main(void)
     assert(drive_calls == 0u && !allowed); /* Wait on boot until a line is visible. */
     assert(!s5_navigation_has_line_reference());
     line_state.line_flags = B3_LINE_F_DETECTED;
+    S5Controller controller;
+    s5_controller_init(&controller);
+    /* Replay the clear-course front range from the COM6 startup log. */
+    const float startup_ranges[] = {34.67f, 35.51f, 35.94f};
     for (int i = 0; i < 3; ++i) {
         clock_ms += 65u;
-        s5_navigation_tick(true, ROBOT_RELEASE_CM, true);
+        S5Input input = {.front_valid = true, .front_cm = startup_ranges[i], .stopped = true};
+        assert(s5_controller_step(&controller, &input) == S5_CMD_NONE);
+        assert(controller.state == S5_FOLLOW);
+        s5_navigation_tick(true, input.front_cm, true);
     }
     assert(drive_calls == 0u);
     assert(s5_navigation_has_line_reference());
@@ -267,10 +274,10 @@ int main(void)
     assert(turn_calls == 1u); /* Wait explicitly for recovery ownership. */
     assert(s5_bridge_request(S5_CMD_FIND_LINE, &p));
     tick(120.0f);
-    assert(turn_calls == 2u && last_turn == MOTION_TURN_RIGHT && last_angle == 90);
+    assert(turn_calls == 2u && last_turn == MOTION_TURN_RIGHT && last_angle == ROBOT_COURSE_RETURN_TURN_DEG);
     finish_leg();
     tick(120.0f);
-    assert(move_calls == 2u && last_move == 20.0f);
+    assert(move_calls == 2u && last_move == maneuver.search_limit_cm);
     line_state.line_flags = B3_LINE_F_DETECTED;
     status.left_distance_mm = status.right_distance_mm = (last_move - 2.0f) * 10.0f;
     tick(120.0f);
@@ -292,8 +299,9 @@ int main(void)
     {
         S5Controller decision;
         S5Input observation = {0};
-        /* Mirrored scan pattern at the new approach distance, in pulse order. */
-        const float captured[] = {130.10f, 129.33f, 64.81f, 64.38f, 65.16f};
+        /* A close, wide obstacle with an opening at the lower servo pulses. */
+        const float captured[] = {130.10f, 129.33f, ROBOT_STOP_CM,
+                                  ROBOT_STOP_CM - 0.43f, ROBOT_STOP_CM + 0.35f};
         s5_controller_init(&decision);
         decision.state = S5_COARSE;
         for (int i = 0; i < 5; ++i) {
@@ -302,18 +310,19 @@ int main(void)
             observation.coarse.points[i] = (S5ScanPoint){bearing, captured[pulse_index], true};
         }
         observation.front_valid = observation.stopped = observation.coarse_ready = true;
-        observation.front_cm = 64.81f;
+        observation.front_cm = captured[2];
         S5Command chosen = s5_controller_step(&decision, &observation);
-        assert(chosen == S5_CMD_GO_LEFT);
-        assert(s5_bridge_request(chosen, &decision.profile));
+        assert(chosen == (ROBOT_SCAN_SERVO_REVERSED ? S5_CMD_GO_RIGHT : S5_CMD_GO_LEFT));
+        assert(!s5_bridge_request(chosen, &decision.profile)); /* Too little room for the route. */
     }
+    assert(s5_bridge_request(S5_CMD_GO_LEFT, &p));
     tick(25.0f);
     assert(turn_calls == 3u && last_turn == MOTION_TURN_LEFT);
     finish_course_turn();
     finish_offset();
     assert(s5_bridge_request(S5_CMD_FIND_LINE, &p));
     tick(120.0f);
-    assert(last_turn == MOTION_TURN_RIGHT && turn_calls == 4u && last_angle == 90);
+    assert(last_turn == MOTION_TURN_RIGHT && turn_calls == 4u && last_angle == ROBOT_COURSE_RETURN_TURN_DEG);
     finish_leg();
     {
         unsigned prior_moves = move_calls;

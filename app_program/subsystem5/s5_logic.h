@@ -46,6 +46,7 @@ typedef struct {
     bool stopped;
     bool coarse_ready;
     S5Scan coarse;
+    const S5ScanPoint *width_points; /* Optional S5_WIDTH_SCAN_COUNT-ray sweep. */
     bool fine_ready;
     S5Scan fine;
     bool motion_complete;
@@ -101,7 +102,7 @@ S5Profile s5_profile_from_scans(const S5Scan *coarse, const S5Scan *fine, S5Side
  * clear outer ray; executor rechecks the new heading before translation. */
 S5Profile s5_profile_from_course_bounds(const S5Scan *coarse, const S5Scan *fine);
 S5Profile s5_profile_from_probe(const S5Profile *profile, const S5Scan *coarse,
-                                const S5Scan *view, S5Side side, float front_cm);
+                                const S5Scan *view, S5Side side, unsigned turn_deg, float front_cm);
 /* Shared size-aware recommendation; does not authorise physical motion. */
 S5Side s5_plan_bypass(S5Profile *profile, const S5Scan *coarse);
 const char *s5_state_name(S5State s);

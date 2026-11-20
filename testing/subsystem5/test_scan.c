@@ -27,6 +27,7 @@ bool s5_measure_scan_cm(float *cm)
     *cm = distances[read_calls++];
     return read_calls != invalid_read;
 }
+bool s5_measure_probe_cm(float *cm) { return s5_measure_scan_cm(cm); }
 #include "../../app_program/subsystem5/obstacle_scan.c"
 static void reset(void)
 {
@@ -204,7 +205,7 @@ int main(void)
     {
         S5Controller controller;
         S5Input input = {0};
-        const float captured[] = {16.94f, 152.39f, 20.46f, 152.79f, 18.86f};
+        const float captured[] = {16.94f, 152.39f, ROBOT_STOP_CM, 152.79f, 18.86f};
         s5_controller_init(&controller);
         controller.state = S5_COARSE;
         input.coarse_ready = input.front_valid = input.stopped = true;
@@ -234,6 +235,68 @@ int main(void)
         }
         S5Command command = s5_controller_step(&controller, &input);
         assert(command != S5_CMD_GO_LEFT && command != S5_CMD_GO_RIGHT);
+    }
+    {
+        S5Input input = {.front_valid = true, .front_cm = 14.64f,
+                         .stopped = true, .coarse_ready = true};
+        const uint16_t bearings[] = {ROBOT_WIDTH_SCAN_MIN_DEG, 65u, 90u, 115u,
+                                     ROBOT_WIDTH_SWEEP_MAX_DEG};
+        const float distances[] = {95.0f, 14.04f, 14.64f, 15.07f, 55.0f};
+        for (int i = 0; i < S5_SCAN_COUNT; ++i)
+            input.coarse.points[i] = (S5ScanPoint){bearings[i], distances[i], true};
+        S5Controller controller;
+        s5_controller_init(&controller);
+        controller.state = S5_COARSE;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_GO_LEFT);
+        assert(controller.profile.valid && !controller.profile.uses_course_bounds);
+        assert(controller.profile.estimated_width_cm > 14.0f &&
+               controller.profile.estimated_width_cm < 16.0f);
+        input.coarse.points[4].distance_cm = 110.0f;
+        s5_controller_init(&controller);
+        controller.state = S5_COARSE;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_GO_RIGHT);
+        input.coarse.points[4].distance_cm = 14.56f;
+        s5_controller_init(&controller);
+        controller.state = S5_COARSE;
+        input.coarse.points[0].distance_cm = 17.13f;
+        input.coarse.points[4].distance_cm = 14.13f;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_GO_LEFT);
+        assert(!controller.profile.valid); /* Width unresolved, heading measured. */
+        s5_controller_init(&controller);
+        controller.state = S5_COARSE;
+        input.coarse.points[0].distance_cm = input.coarse.points[4].distance_cm = 5.0f;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_STOP);
+        assert(controller.error == S5_ERR_INSUFFICIENT_CLEARANCE);
+        for (unsigned tick = 0; tick <= S5_ROUTE_RESCAN_TICKS; ++tick)
+            assert(s5_controller_step(&controller, &input) == S5_CMD_NONE);
+
+        /* Measured edges remain usable with a missing inner ray. */
+        S5ScanPoint sweep[S5_WIDTH_SCAN_COUNT] = {
+            {30u, 100.0f, true}, {45u, 97.40f, true}, {60u, 98.94f, true},
+            {75u, 0.0f, false}, {90u, 13.21f, true}, {105u, 12.07f, true},
+            {120u, 55.0f, true}
+        };
+        input.width_points = sweep;
+        input.coarse.points[0] = sweep[1];
+        input.coarse.points[4] = sweep[6];
+        s5_controller_init(&controller);
+        controller.state = S5_COARSE;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_GO_LEFT);
+        assert(controller.profile.valid && !controller.profile.uses_course_bounds);
+        assert(controller.profile.left_boundary_deg == 75u);
+        assert(controller.profile.right_boundary_deg == 112u);
+        assert(controller.profile.estimated_width_cm > 7.9f &&
+               controller.profile.estimated_width_cm < 8.0f);
+
+        /* A live open-space echo must not discard the completed scan. */
+        sweep[6].distance_cm = 12.07f;
+        input.coarse.points[4] = sweep[6];
+        input.front_cm = 400.0f;
+        s5_controller_init(&controller);
+        controller.state = S5_COARSE;
+        controller.clear_route_hits = ROBOT_CLEAR_CONFIRM - 1u;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_GO_LEFT);
+        assert(!controller.profile.valid);
     }
     reset();
     fail_move = 2u;
@@ -267,6 +330,8 @@ int main(void)
         captured.points[0].distance_cm = captured.points[1].distance_cm = 60.0f;
         assert(s5_probe_side(&captured) == S5_SIDE_LEFT);
         captured.points[0].valid = false;
+        assert(s5_probe_side(&captured) == S5_SIDE_LEFT);
+        captured.points[3].distance_cm = captured.points[4].distance_cm = 65.0f;
         assert(s5_probe_side(&captured) == S5_SIDE_RIGHT);
     }
     {
@@ -281,7 +346,11 @@ int main(void)
         const float ambiguous[5] = {15.50f, 16.01f, 16.44f, 15.93f, 15.41f};
         for (int i = 0; i < 5; ++i)
             captured.points[i].distance_cm = ambiguous[i];
-        assert(s5_probe_side(&captured) == S5_SIDE_NONE);
+        assert(s5_probe_side(&captured) == S5_SIDE_LEFT);
+        const float com6_tie[5] = {17.30f, 16.96f, 17.39f, 17.39f, 17.73f};
+        for (int i = 0; i < 5; ++i)
+            captured.points[i].distance_cm = com6_tie[i];
+        assert(s5_probe_side(&captured) == S5_SIDE_LEFT);
         captured.points[3].distance_cm = 30.0f;
         assert(s5_probe_side(&captured) == S5_SIDE_RIGHT);
         captured.points[2].distance_cm = 100.0f;
@@ -289,7 +358,12 @@ int main(void)
         captured.points[1].distance_cm = 100.0f;
         assert(!s5_probe_corridor_blocked(&captured));
         captured.points[2].distance_cm = ROBOT_BYPASS_MOVE_RELEASE_CM;
-        assert(s5_probe_corridor_blocked(&captured)); /* Too short for a full leg. */
+        assert(s5_probe_corridor_blocked(&captured)); /* Too short to start a step. */
+        captured.points[2].distance_cm = 35.0f;
+        assert(!s5_probe_corridor_blocked(&captured)); /* Enough to start advancing. */
+        captured.points[1].valid = false;
+        assert(s5_probe_corridor_blocked(&captured)); /* An unknown flank blocks the route. */
+        captured.points[1].valid = true;
         captured.points[2].distance_cm = 100.0f;
         captured.points[2].valid = false;
         assert(s5_probe_corridor_blocked(&captured));
@@ -313,6 +387,8 @@ int main(void)
         assert(s5_probe_side(&scan) == S5_SIDE_RIGHT);
         scan.points[0].valid = false;
         assert(s5_choose_side(&scan) == S5_SIDE_RIGHT);
+        scan.points[3].distance_cm = 16.0f;
+        assert(s5_probe_side(&scan) == S5_SIDE_LEFT); /* Only the right sees the obstacle. */
     }
     {
         S5Scan coarse = {0}, view = {0};
@@ -321,14 +397,14 @@ int main(void)
             coarse.points[i] = (S5ScanPoint){bearing, i == 2 || i == 3 ? 16.0f : 100.0f, true};
             view.points[i] = (S5ScanPoint){bearing, 100.0f, true};
         }
-        S5Profile measured = s5_profile_from_probe(NULL, &coarse, &view, S5_SIDE_LEFT, 16.0f);
+        S5Profile measured = s5_profile_from_probe(NULL, &coarse, &view, S5_SIDE_LEFT, ROBOT_COURSE_BYPASS_TURN_DEG, 16.0f);
         assert(measured.valid && !measured.uses_course_bounds);
         assert(measured.estimated_width_cm > 0.0f && measured.estimated_width_cm < ROBOT_OBSTACLE_MAX_BYPASS_CM);
-        S5Profile preserved = s5_profile_from_probe(&measured, &coarse, &view, S5_SIDE_RIGHT, 17.0f);
+        S5Profile preserved = s5_profile_from_probe(&measured, &coarse, &view, S5_SIDE_RIGHT, ROBOT_COURSE_BYPASS_TURN_DEG, 17.0f);
         assert(preserved.bypass_side == S5_SIDE_RIGHT && preserved.center_y_cm == 17.0f);
         assert(preserved.estimated_width_cm == measured.estimated_width_cm);
         view.points[2].valid = false;
-        S5Profile bounded = s5_profile_from_probe(NULL, &coarse, &view, S5_SIDE_LEFT, 16.0f);
+        S5Profile bounded = s5_profile_from_probe(NULL, &coarse, &view, S5_SIDE_LEFT, ROBOT_COURSE_BYPASS_TURN_DEG, 16.0f);
         assert(bounded.valid && bounded.uses_course_bounds);
         assert(bounded.estimated_width_cm == ROBOT_OBSTACLE_MAX_BYPASS_CM);
     }
@@ -349,6 +425,16 @@ int main(void)
         decision.last_coarse = observed.coarse;
         assert(s5_controller_step(&decision, &observed) == S5_CMD_STOP);
         assert(decision.state == S5_WAIT_ROUTE && decision.error == S5_ERR_NO_CLEAR_ROUTE);
+        assert(s5_probe_side(&decision.last_coarse) == S5_SIDE_NONE);
+        /* COM6: two invalid left rays and only 16 cm on the right.
+         * Favor the left for the guarded in-place look. */
+        decision.last_coarse.points[0].valid = decision.last_coarse.points[1].valid = false;
+        decision.last_coarse.points[2].distance_cm = 16.87f;
+        decision.last_coarse.points[3].distance_cm = 16.87f;
+        decision.last_coarse.points[4] = (S5ScanPoint){110u, 15.93f, true};
+        assert(s5_probe_side(&decision.last_coarse) == S5_SIDE_LEFT);
+        decision.last_coarse.points[0] = (S5ScanPoint){70u, 35.67f, true};
+        decision.last_coarse.points[1] = (S5ScanPoint){80u, 35.75f, true};
         assert(s5_probe_side(&decision.last_coarse) == S5_SIDE_LEFT);
     }
     for (unsigned stage = 0u; stage < 2u; ++stage) {
