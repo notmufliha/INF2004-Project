@@ -55,6 +55,12 @@
 #ifndef S4_ROLL_HUMP_CURVE_RATIO
 #define S4_ROLL_HUMP_CURVE_RATIO 0.3f
 #endif
+/* Hump height peak: trimmed mean of this many unfiltered rolls (10 ms each),
+ * dropping jolts of up to a third of the window.  Lower it if narrow humps
+ * read low (the wheel must sit on top for about half the window). 1..9. */
+#ifndef S4_ROLL_HUMP_PEAK_SAMPLES
+#define S4_ROLL_HUMP_PEAK_SAMPLES 7U
+#endif
 
 /* Prioritize hump sampling; 0 restores full magnetic reads and their delays. */
 #ifndef S4_IMU_MAG_IDLE_ONLY

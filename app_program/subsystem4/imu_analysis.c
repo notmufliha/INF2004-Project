@@ -8,6 +8,9 @@
 
 #define IMU_GRAVITY_MS2 (9.81f)
 #define IMU_DEGREES_TO_RADIANS (0.01745329252f)
+#define IMU_RADIANS_TO_DEGREES (57.2957795131f)
+/* Level baseline follows 1/16 of each level sample's difference. */
+#define IMU_ROLL_BASELINE_FOLLOW (16.0f)
 
 static void reset_sequence (imu_analysis_t * p_analysis, uint32_t reason);
 static void reset_roll (imu_analysis_t * p_analysis);
@@ -15,6 +18,8 @@ static void expire_roll (imu_analysis_t * p_analysis, uint32_t now_ms);
 static void update_roll_motion (imu_analysis_t * p_analysis, float32_t roll);
 static void track_roll_height (imu_analysis_t * p_analysis,
                                const imu_data_t * p_data, bool b_level);
+static float32_t push_roll_window (imu_analysis_t * p_analysis,
+                                   float32_t excursion);
 static void complete_height (imu_analysis_t * p_analysis,
                              imu_event_t * p_event);
 static bool curving (const imu_analysis_t * p_analysis,
@@ -42,7 +47,7 @@ imu_analysis_default_config (imu_analysis_config_t * p_config)
         *p_config = (imu_analysis_config_t){8.0f, 1.0f, 15.0f, 6.0f,
                                             3U, 100U, 10000U,
                                             4.0f, 2.0f, 0.5f, 110.0f,
-                                            80U, 0.3f};
+                                            80U, 0.3f, 7U};
     }
 }
 
@@ -65,6 +70,8 @@ imu_analysis_init (imu_analysis_t *              p_analysis,
         (p_config->roll_curve_ratio < 0.0f) ||
         (p_config->roll_curve_ratio > 1.0f) ||
         (p_config->roll_enter_ms >= p_config->hump_timeout_ms) ||
+        (0U == p_config->roll_peak_samples) ||
+        (p_config->roll_peak_samples > IMU_ROLL_PEAK_MAX) ||
         (p_config->roll_trend_deg <= 0.0f) ||
         (p_config->roll_trend_deg > p_config->roll_enter_deg) ||
         (p_config->roll_level_deg < 0.0f) ||
@@ -297,6 +304,8 @@ reset_roll (imu_analysis_t * p_analysis)
     p_analysis->roll_stable_count = 0U;
     p_analysis->roll_baseline_deg = 0.0f;
     p_analysis->roll_peak_deg = 0.0f;
+    p_analysis->roll_window_count = 0U;
+    p_analysis->roll_window_next = 0U;
 }
 
 /** @brief Bound an active roll episode even while encoder progress pauses. */
@@ -367,35 +376,97 @@ static void
 track_roll_height (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                    bool b_level)
 {
+    /* Unfiltered roll: the angle smoothing spreads a jolt over the following
+     * samples, where the window below could no longer drop it. */
+    const float32_t raw_roll =
+        atan2f(p_data->accel_y, p_data->accel_z) * IMU_RADIANS_TO_DEGREES;
+
     if (IMU_ROLL_UNARMED == p_analysis->roll_state)
     {
         if (b_level)
         {
             p_analysis->roll_baseline_deg +=
-                (p_data->roll_deg - p_analysis->roll_baseline_deg) /
+                (raw_roll - p_analysis->roll_baseline_deg) /
                 (float32_t)(p_analysis->roll_count + 1U);
+            /* Level history, so a hump straight after arming still has
+             * enough samples around an edge jolt to drop it. */
+            (void)push_roll_window(
+                p_analysis, fabsf(raw_roll - p_analysis->roll_baseline_deg));
         }
         else
         {
             p_analysis->roll_baseline_deg = 0.0f;
+            p_analysis->roll_window_count = 0U;
+            p_analysis->roll_window_next = 0U;
         }
     }
     else
     {
-        const float32_t excursion = fabsf(p_data->roll_deg -
-                                          p_analysis->roll_baseline_deg);
+        const float32_t excursion =
+            fabsf(raw_roll - p_analysis->roll_baseline_deg);
+        const float32_t estimate = push_roll_window(p_analysis, excursion);
+
         if ((IMU_ROLL_READY == p_analysis->roll_state) &&
             ((0U == p_analysis->roll_count) ||
              ((p_data->roll_deg >= 0.0f) != p_analysis->b_roll_positive)))
         {
-            p_analysis->roll_peak_deg = excursion;
+            p_analysis->roll_peak_deg = estimate;
+            if ((b_level) && (0U == p_analysis->roll_count))
+            {
+                /* Level driving between humps: follow slow attitude drift
+                 * so the next height is measured from the current floor. */
+                p_analysis->roll_baseline_deg +=
+                    (raw_roll - p_analysis->roll_baseline_deg) /
+                    IMU_ROLL_BASELINE_FOLLOW;
+            }
         }
         else
         {
             p_analysis->roll_peak_deg =
-                fmaxf(p_analysis->roll_peak_deg, excursion);
+                fmaxf(p_analysis->roll_peak_deg, estimate);
         }
     }
+}
+
+/** @brief Add an excursion; return the trimmed mean of the recent window. */
+static float32_t
+push_roll_window (imu_analysis_t * p_analysis, float32_t excursion)
+{
+    const uint32_t size = p_analysis->config.roll_peak_samples;
+    float32_t      sorted[IMU_ROLL_PEAK_MAX];
+    float32_t      sum = 0.0f;
+    uint32_t       count;
+    uint32_t       drop;
+
+    p_analysis->roll_window[p_analysis->roll_window_next] = excursion;
+    p_analysis->roll_window_next = (p_analysis->roll_window_next + 1U) % size;
+    if (p_analysis->roll_window_count < size)
+    {
+        ++p_analysis->roll_window_count;
+    }
+    count = p_analysis->roll_window_count;
+
+    /* Insertion sort: at most IMU_ROLL_PEAK_MAX values. */
+    for (uint32_t index = 0U; index < count; ++index)
+    {
+        const float32_t value = p_analysis->roll_window[index];
+        uint32_t        slot = index;
+
+        while ((slot > 0U) && (sorted[slot - 1U] > value))
+        {
+            sorted[slot] = sorted[slot - 1U];
+            --slot;
+        }
+        sorted[slot] = value;
+    }
+
+    /* Drop a third from each end: 7 samples keep the middle 3. */
+    drop = count / 3U;
+    for (uint32_t index = drop; index < count - drop; ++index)
+    {
+        sum += sorted[index];
+    }
+    return sum / (float32_t)(count - (2U * drop));
 }
 
 /** @brief Estimate wheel height difference after a one-wheel crossing. */

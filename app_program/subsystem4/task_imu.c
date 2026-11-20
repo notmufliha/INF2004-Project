@@ -346,10 +346,13 @@ initialise_analysis (imu_analysis_t * p_analysis)
     config.roll_trend_deg = S4_ROLL_HUMP_TREND_DEG;
     config.roll_enter_ms = S4_ROLL_HUMP_ENTER_MS;
     config.roll_curve_ratio = S4_ROLL_HUMP_CURVE_RATIO;
+    config.roll_peak_samples = S4_ROLL_HUMP_PEAK_SAMPLES;
 #else
-    /* Scripted mock crossings use the original two-sample entry. */
+    /* Scripted mock crossings use the original two-sample entry and
+     * single-sample peak. */
     config.roll_enter_ms = 0U;
     config.roll_curve_ratio = 0.0f;
+    config.roll_peak_samples = 1U;
 #endif
     if (!imu_analysis_init(p_analysis, &config))
     {

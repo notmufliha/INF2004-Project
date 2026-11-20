@@ -31,6 +31,7 @@ static void test_roll_pitch_independence (void);
 static void test_roll_motion_trends (void);
 static void test_roll_height (void);
 static void test_flat_ground_rejection (void);
+static void test_height_jolt_rejection (void);
 
 /** @brief Run classification, timing, movement and roll regressions. */
 int
@@ -46,6 +47,7 @@ main (void)
     test_roll_motion_trends();
     test_roll_height();
     test_flat_ground_rejection();
+    test_height_jolt_rejection();
     puts("All roll-only IMU analysis tests passed.");
     return 0;
 }
@@ -112,6 +114,7 @@ short_reset (void)
      * guards are covered by test_flat_ground_rejection. */
     g_config.roll_enter_ms = 0U;
     g_config.roll_curve_ratio = 0.0f;
+    g_config.roll_peak_samples = 1U;
     assert(imu_analysis_init(&g_analysis, &g_config));
     g_analysis.b_require_motion = true;
     g_short_data = (imu_data_t){0};
@@ -527,6 +530,45 @@ test_flat_ground_rejection (void)
     assert(!imu_analysis_init(&g_analysis, &config));
     puts("PASS: flat-ground steering spikes and curves rejected; sustained "
          "straight excursion still detected");
+}
+
+/** @brief A 10 mm hump whose edge jolts the IMU to 12 degrees for two
+ *         samples still measures 10 mm; the single-sample peak did not. */
+static void
+test_height_jolt_rejection (void)
+{
+    imu_analysis_config_t config;
+    const float32_t       hump_deg = 5.2165f; /* asin(10 / 110) */
+    imu_event_t           event;
+
+    imu_analysis_default_config(&config);
+    for (uint32_t trial = 0U; trial < 2U; ++trial)
+    {
+        short_reset();
+        config.roll_peak_samples = (0U == trial) ? 7U : 1U;
+        assert(imu_analysis_init(&g_analysis, &config));
+        g_analysis.b_require_motion = true;
+        roll_feed(0.3f, 6U);                      /* slightly tilted floor */
+        roll_feed(0.3f + 12.0f, 2U);              /* edge jolt  */
+        roll_feed(0.3f + hump_deg, 12U);          /* on top     */
+        roll_feed(0.3f + 2.0f, 1U);               /* edge jolt down */
+        event = roll_feed(0.3f, TEST_SHORT_SETTLE);
+        assert((event.b_hump_completed) && (event.b_height_valid));
+        if (0U == trial)
+        {
+            assert(fabsf(event.hump_peak_cm - 1.0f) < 0.02f);
+        }
+        else
+        {
+            assert(event.hump_peak_cm > 2.0f);    /* the old 17 mm error */
+        }
+    }
+
+    config.roll_peak_samples = 0U;
+    assert(!imu_analysis_init(&g_analysis, &config));
+    config.roll_peak_samples = IMU_ROLL_PEAK_MAX + 1U;
+    assert(!imu_analysis_init(&g_analysis, &config));
+    puts("PASS: hump height ignores the edge jolt (10 mm hump reads 10 mm)");
 }
 
 /*** end of file ***/
