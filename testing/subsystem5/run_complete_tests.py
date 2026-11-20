@@ -67,11 +67,14 @@ with tempfile.TemporaryDirectory(prefix="b5_complete_") as folder:
     config = Path(folder) / "config.c"
     config.write_text('#include "app_program/robot_config.h"\n'
                       '#ifndef EXPECT_BYPASS\n#define EXPECT_BYPASS 1\n#endif\n'
+                      '#ifndef EXPECT_BOX_BYPASS\n#define EXPECT_BOX_BYPASS 0\n#endif\n'
                       '_Static_assert(ROBOT_ENABLE_BYPASS == EXPECT_BYPASS, "startup profile");\n'
+                      '_Static_assert(ROBOT_BOX_BYPASS == EXPECT_BOX_BYPASS, "bypass implementation");\n'
                       '_Static_assert(ROBOT_FORWARD_STOP_MODE == 0, "motor owner");\n'
                       '_Static_assert(ROBOT_OBSTACLE_TEST == 0, "line following boot");\n'
                       '_Static_assert(ROBOT_BYPASS_LINE_HANDOFF == 1, "black line handoff");\n')
     for flags, expected_ok in (([], True),
+                              (["-DROBOT_BOX_BYPASS=1", "-DEXPECT_BOX_BYPASS=1"], True),
                               (["-DROBOT_ENABLE_BYPASS=0", "-DEXPECT_BYPASS=0"], True),
                               (["-DROBOT_MOTION_TEST=1"], False)):
         args = [CC, "-std=c11", "-fsyntax-only", "-I", str(ROOT), *flags, str(config)]

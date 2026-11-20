@@ -564,7 +564,8 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     /* Loaded TURN/MOVE wheels can stop between kick pulses at the 15%
      * feed-forward base. Supply holding torque only while below target;
      * allow PI braking when faster than target and zero PWM when reached. */
-    if (state->command.type == MOTION_CMD_TURN) {
+    if (state->command.type == MOTION_CMD_TURN ||
+        state->command.type == MOTION_CMD_MOVE) {
         if (profile.left_speed > 0.0f &&
             left_cps * state->left_sign < profile.left_speed / pid_mm_per_count(true) &&
             left_pwm < PID_BOUNDED_MIN_PWM) left_pwm = PID_BOUNDED_MIN_PWM;

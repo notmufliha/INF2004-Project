@@ -114,6 +114,11 @@ int main(void)
     assert(!v4_lifted(&c, &input));
     input.now_ms += VC4_LIFT_IR_MS + 1;
     assert(v4_lifted(&c, &input));
+    assert(v4_lift_imu_delay(0.0f, 0.0f, 9.81f, true, true) == 0u);
+    assert(v4_lift_imu_delay(10.0f, 0.0f, 9.81f, true, true) == VC4_LIFT_IR_MS);
+    assert(v4_lift_imu_delay(10.0f, 0.0f, 9.81f, true, false) == VC4_LIFT_IMU_MS);
+    assert(v4_lift_imu_delay(0.0f, 0.0f, 0.0f, true, true) == VC4_LIFT_IMU_MS);
+    assert(v4_lift_imu_delay(9.81f, 0.0f, 0.0f, true, true) == VC4_LIFT_IMU_MS);
     c = reading();
     /* A stale right recovery and alternating bars must never start a
      * sweep, even during a quiet gap in GP28 edge activity. */

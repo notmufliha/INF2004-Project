@@ -1199,6 +1199,21 @@ static bool v4_lifted(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     return in->lifted_imu;
 }
 
+static uint32_t v4_lift_imu_delay(float ax, float ay, float az, bool tilt_rule,
+                                 bool obstacle_active)
+{
+    const float g = 9.81f;
+    const float lo = (g - VC4_LIFT_DG_MS2) * (g - VC4_LIFT_DG_MS2);
+    const float hi = (g + VC4_LIFT_DG_MS2) * (g + VC4_LIFT_DG_MS2);
+    float a2 = ax * ax + ay * ay + az * az;
+    if ((tilt_rule && az < VC4_LIFT_TILT_MS2 && az > -VC4_LIFT_TILT_MS2) || a2 < lo)
+        return VC4_LIFT_IMU_MS;
+    /* An acceleration spike alone can come from a bypass pivot or bump.
+     * Tilt, low-g, and independent IR/impact detection keep their guards. */
+    if (a2 > hi) return obstacle_active ? VC4_LIFT_IR_MS : VC4_LIFT_IMU_MS;
+    return 0u;
+}
+
 /* Follow / search / junction / barcode.  speed = dashboard cruise, cps. */
 static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
                      INT speed)
@@ -1725,7 +1740,8 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
     v4_drive(c, in, nav, speed);
     return;
 #endif
-    if (in->approach_slow && speed > ROBOT_BYPASS_SPEED_CPS) speed = ROBOT_BYPASS_SPEED_CPS;
+    if (in->approach_slow && speed > ROBOT_OBSTACLE_APPROACH_SPEED_CPS)
+        speed = ROBOT_OBSTACLE_APPROACH_SPEED_CPS;
     VC_INPUT filtered;
     if (c->line_straddle) {
         filtered = *in;
@@ -2241,30 +2257,30 @@ static void controller_task(INT stacd, void *exinf)
             in.raw26 = r26;
             in.raw27 = r27;
         }
+        {
+            S5MissionState obstacle = s5_mission_state();
+            in.obstacle_active = obstacle == S5_MISSION_BUSY;
+            in.obstacle_fault = obstacle == S5_MISSION_FAULT;
+        }
 #if VC_FOLLOW_V4
         {
             imu_live_t live;
             imu_live_get(&live);
             if (live.b_valid && now.lo - live.timestamp_ms <= 100u) {
                 float ax = live.accel_x, ay = live.accel_y, az = live.accel_z;
-                float a2 = ax * ax + ay * ay + az * az;
-                float g = 9.81f;
-                float lo = (g - VC4_LIFT_DG_MS2) * (g - VC4_LIFT_DG_MS2);
-                float hi = (g + VC4_LIFT_DG_MS2) * (g + VC4_LIFT_DG_MS2);
                 /* The tilt rule needs the IMU's z axis vertical: learn it
                  * while standing (not running); off if z is not vertical. */
                 bool tilt_rule = rest_az > 7.0f || rest_az < -7.0f;
-                bool odd = (tilt_rule && az < VC4_LIFT_TILT_MS2 &&
-                            az > -VC4_LIFT_TILT_MS2) || a2 < lo || a2 > hi;
+                uint32_t lift_delay = v4_lift_imu_delay(ax, ay, az, tilt_rule, in.obstacle_active);
                 if (!c.running) rest_az = az;
                 in.pitch_deg = live.pitch_deg;
-                if (odd) {
+                if (lift_delay != 0u) {
                     if (lift_imu_since == 0u) lift_imu_since = now.lo | 1u;
                 } else {
                     lift_imu_since = 0u;
                 }
                 in.lifted_imu = lift_imu_since != 0u && !imu.b_hump_detected &&
-                    now.lo - lift_imu_since >= VC4_LIFT_IMU_MS;
+                    (int32_t)(now.lo - lift_imu_since) >= (int32_t)lift_delay;
             } else {
                 lift_imu_since = 0u;
             }
@@ -2283,11 +2299,6 @@ static void controller_task(INT stacd, void *exinf)
         in.approach_slow = s5_mission_approach_slow();
         in.safety_generation = b2_safety_stop_generation();
         in.faults = fault_get();
-        {
-            S5MissionState obstacle = s5_mission_state();
-            in.obstacle_active = obstacle == S5_MISSION_BUSY;
-            in.obstacle_fault = obstacle == S5_MISSION_FAULT;
-        }
         /* Higher-priority VC can run before B2/B3 publish their first
          * sample. Arm boot motion only after producers are actually ready. */
         bool boot_sensors_ready = in.line_valid && in.imu_valid &&

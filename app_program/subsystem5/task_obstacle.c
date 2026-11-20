@@ -14,6 +14,7 @@
 #include "drv_servo.h"
 #include "obstacle_scan.h"
 #include "s5_navigation.h"
+#include "s5_maneuver.h"
 #include "s5_mission.h"
 #include "s5_startup.h"
 #include "s5_box.h"
@@ -380,14 +381,6 @@ static void stationary_profile_mode(void)
     }
 #endif
     tm_printf((UB*)"[S5] GPIO TRIG=16 ECHO=17 SERVO=12; confirm 3.3V-safe ECHO\n");
-#if S5_STARTUP_SERVO_TEST
-    tm_printf((UB*)"[S5-SERVO] SELF TEST 90 -> 80 -> 100 -> 90\n");
-    s5_servo_angle(90u); tk_dly_tsk(500);
-    s5_servo_angle(80u); tk_dly_tsk(650);
-    s5_servo_angle(100u); tk_dly_tsk(650);
-    s5_servo_angle(90u); tk_dly_tsk(650);
-    tm_printf((UB*)"[S5-SERVO] SELF TEST END\n");
-#endif
     /* On USB cold boots the servo and sensor may not yet be stable.
      * Keep both motors stopped while the supply settles, then throw
      * away a few first echoes. None of these readings authorizes drive. */
@@ -746,18 +739,18 @@ static void live_controller_mode(void)
     uint32_t last_startup_log_ms = 0u;
     S5Controller c;
     S5Scan coarse = {0}, fine = {0};
+    S5ScanPoint width_points[S5_WIDTH_SCAN_COUNT];
     bool coarse_ready = false, fine_ready = false;
     bool stop_requested = false;
     bool sensor_unavailable = false;
     unsigned front_failures = 0u;
     uint32_t previous_poll_ms = 0u;
     uint32_t last_log_ms = 0u;
-    unsigned look_stage = 0u;
+    bool look_pending = false;
     bool look_attempted = false;
     unsigned look_clear_hits = 0u;
     float look_obstacle_cm = 0.0f;
     S5Side look_first_side = S5_SIDE_LEFT;
-    S5Scan look_left = {0}, look_right = {0};
     if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
     s5_controller_init(&c);
     tm_printf((UB*)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
@@ -849,7 +842,7 @@ static void live_controller_mode(void)
             s5_navigation_pause();
             s5_controller_init(&c);
             coarse_ready = fine_ready = stop_requested = false;
-            look_stage = 0u;
+            look_pending = false;
             look_attempted = false;
             look_clear_hits = 0u;
             s5_mission_publish(s5_bridge_ready() ? S5_MISSION_FOLLOW : S5_MISSION_FAULT);
@@ -861,79 +854,50 @@ static void live_controller_mode(void)
             (void)comm_report_error(ERR_S5(s5_navigation_error()), 0u);
             emergency_halt(s5_error_name(s5_navigation_error()));
         }
-        /* All narrow rays can hit one obstacle. Change the chassis viewpoint
-         * while keeping the sensor servo inside its checked 70..110 limits.
-         * Each turn requires a real B2 completion before any stopped scan. */
-        if (look_stage != 0u) {
+        /* Use the encoder-confirmed 45-degree turn as the outward leg.
+         * Stay on that heading until live front readings clear forward travel. */
+        if (look_pending) {
             if (!s5_navigation_probe_complete() || !s5_navigation_stopped()) {
                 tk_dly_tsk(1);
                 continue;
             }
-            if ((look_stage == 1u || look_stage == 3u) && in.front_valid && cm >= ROBOT_RELEASE_CM) {
-                    if (++look_clear_hits < ROBOT_CLEAR_CONFIRM) {
-                        tk_dly_tsk(S5_ECHO_GAP_MS);
-                        continue;
-                    }
-                    c.profile = (S5Profile){0};
-                    c.profile.valid = c.profile.uses_course_bounds = true;
-                    c.profile.bypass_side = c.side = look_stage == 1u ? look_first_side :
-                        (look_first_side == S5_SIDE_LEFT ? S5_SIDE_RIGHT : S5_SIDE_LEFT);
-                    c.profile.estimated_width_cm = ROBOT_OBSTACLE_MAX_BYPASS_CM;
-                    c.profile.size = S5_SIZE_LARGE;
-                    c.profile.center_y_cm = c.profile.nearest_cm = look_obstacle_cm;
-                    if (!s5_navigation_probe_bypass(&c.profile)) emergency_halt("clear viewpoint handoff rejected");
-                    c.state = S5_AVOID;
-                    c.error = S5_ERR_NONE;
-                    c.ticks_in_state = 0u;
-                    look_stage = 0u;
-                    s5_mission_publish(S5_MISSION_BUSY);
-                    continue;
+            if (!in.front_valid ||
+                cm < ROBOT_COURSE_CLEAR_STEP_CM + ROBOT_BYPASS_MOVE_RELEASE_CM) {
+                look_clear_hits = 0u;
+                tk_dly_tsk(S5_ECHO_GAP_MS);
+                continue;
             }
-            look_clear_hits = 0u;
-            if (look_stage == 1u) {
-                s5_coarse_scan(look_first_side == S5_SIDE_LEFT ? &look_left : &look_right);
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG)) emergency_halt("center viewpoint rejected");
-                look_stage = 2u;
-            } else if (look_stage == 2u) {
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? ROBOT_BYPASS_TURN_DEG : -ROBOT_BYPASS_TURN_DEG)) emergency_halt("opposite viewpoint rejected");
-                look_stage = 3u;
-            } else if (look_stage == 3u) {
-                s5_coarse_scan(look_first_side == S5_SIDE_LEFT ? &look_right : &look_left);
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG)) emergency_halt("heading restore rejected");
-                look_stage = 4u;
-            } else {
-                /* Same sensor origin, original heading restored. Side ray
-                 * angles include the chassis look turns. */
-                coarse.points[0] = look_left.points[0];
-                coarse.points[1] = look_left.points[2];
-                coarse.points[2] = (S5ScanPoint){90u, cm, in.front_valid};
-                coarse.points[3] = look_right.points[2];
-                coarse.points[4] = look_right.points[4];
-                coarse.points[0].angle_deg -= ROBOT_BYPASS_TURN_DEG;
-                coarse.points[1].angle_deg -= ROBOT_BYPASS_TURN_DEG;
-                coarse.points[3].angle_deg += ROBOT_BYPASS_TURN_DEG;
-                coarse.points[4].angle_deg += ROBOT_BYPASS_TURN_DEG;
-                coarse.nearest_index = s5_find_nearest(coarse.points, S5_SCAN_COUNT);
-                print_scan("WIDE", &coarse);
-                c.state = S5_COARSE;
-                c.ticks_in_state = 0u;
-                coarse_ready = true;
-                look_stage = 0u;
+            if (look_clear_hits < ROBOT_CLEAR_CONFIRM) ++look_clear_hits;
+            if (look_clear_hits < ROBOT_CLEAR_CONFIRM) {
+                tk_dly_tsk(S5_ECHO_GAP_MS);
+                continue;
             }
-            if (look_stage != 0u) continue;
-        }
-        /* Establish the original line before starting an avoidance cycle.
-         * A robot placed off the line waits, even with an obstacle ahead. */
-        if (c.state == S5_FOLLOW && !s5_navigation_has_line_reference()) {
-            tk_dly_tsk(S5_ECHO_GAP_MS);
+            S5Profile candidate = s5_profile_from_probe(&c.profile, &c.last_coarse, NULL,
+                look_first_side, ROBOT_COURSE_BYPASS_TURN_DEG, look_obstacle_cm);
+            if (candidate.size == S5_SIZE_OVERSIZED || !s5_navigation_probe_bypass(&candidate))
+                emergency_halt("no bounded bypass route from confirmed heading");
+            c.profile = candidate;
+            c.side = look_first_side;
+            c.state = S5_AVOID;
+            c.error = S5_ERR_NONE;
+            c.ticks_in_state = 0u;
+            look_pending = false;
+            s5_report_profile(&c.profile, c.side);
+            s5_mission_publish(S5_MISSION_BUSY);
             continue;
         }
+        /* A close obstacle can stop the VC during line search or on a
+         * ramp. Process it even before the tape has been acquired.
+         * Navigation still checks fresh line data and bounds the rejoin. */
         in.stopped = s5_navigation_stopped();
         in.motion_complete = s5_bridge_motion_complete();
         in.line_found = s5_bridge_line_found();
         in.coarse_ready = coarse_ready;
         in.fine_ready = fine_ready;
-        if (coarse_ready) in.coarse = coarse;
+        if (coarse_ready) {
+            in.coarse = coarse;
+            if (!ROBOT_OBSTACLE_TEST) in.width_points = width_points;
+        }
         if (fine_ready) in.fine = fine;
         coarse_ready = fine_ready = false;
         if (c.state == S5_FINE && in.fine_ready)
@@ -963,13 +927,13 @@ static void live_controller_mode(void)
                 look_attempted = true;
                 look_clear_hits = 0u;
                 look_obstacle_cm = cm;
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG)) emergency_halt("first viewpoint rejected");
-                look_stage = 1u;
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG)) emergency_halt("first viewpoint rejected");
+                look_pending = true;
                 s5_mission_publish(S5_MISSION_BUSY);
                 continue;
             }
             if (c.ticks_in_state <= 1u)
-                tm_printf((UB*)"[S5-TURN-WAIT] side rays below turn clearance; stopped pending a clear route\n");
+                tm_printf((UB*)"[S5-TURN-WAIT] side rays blocked or too close to call; waiting for a fresh scan\n");
         }
         s5_mission_publish(c.state == S5_FOLLOW ? S5_MISSION_FOLLOW : S5_MISSION_BUSY);
         if (cmd != S5_CMD_NONE) {
@@ -981,8 +945,17 @@ static void live_controller_mode(void)
         case S5_CMD_NONE: break;
         case S5_CMD_SCAN_COARSE:
             if (!s5_navigation_stopped()) emergency_halt("scan requires encoder-confirmed STOP");
-            s5_coarse_scan(&coarse);
-            print_scan("COARSE", &coarse);
+            look_attempted = false;
+            if (ROBOT_OBSTACLE_TEST) {
+                s5_coarse_scan(&coarse);
+                print_scan("COARSE", &coarse);
+            } else {
+                s5_width_scan(&coarse, width_points);
+                for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i)
+                    tm_printf((UB*)"[S5-WIDTH] angle=%d valid=%d cm_x100=%d\n",
+                              (int)width_points[i].angle_deg, (int)width_points[i].valid,
+                              (int)(width_points[i].distance_cm * 100.0f));
+            }
             coarse_ready = true;
             break;
         case S5_CMD_SCAN_FINE:
@@ -1015,11 +988,38 @@ static void live_controller_mode(void)
             break;
         case S5_CMD_GO_LEFT:
         case S5_CMD_GO_RIGHT:
+            if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE &&
+                (!in.front_valid || cm <= ROBOT_BYPASS_FRONT_TURN_CM)) {
+                c.state = S5_WAIT_ROUTE;
+                c.error = S5_ERR_INSUFFICIENT_CLEARANCE;
+                c.ticks_in_state = 0u;
+                tm_printf((UB*)"[S5-TURN-WAIT] insufficient frontal clearance for the outward turn\n");
+                break;
+            }
             tm_printf((UB*)"[S5-CHOICE] %s left_cm_x100=%d right_cm_x100=%d\n",
                       cmd == S5_CMD_GO_LEFT ? "LEFT" : "RIGHT",
                       (int)(c.profile.left_clearance_cm * 100.0f),
                       (int)(c.profile.right_clearance_cm * 100.0f));
             print_profile(&c.profile);
+            if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE) {
+                /* Verify the ranked side head-on before committing to a drive.
+                 * The completed viewpoint turn doubles as the outward turn. */
+                look_attempted = true;
+                look_clear_hits = 0u;
+                look_obstacle_cm = cm;
+                look_first_side = c.profile.bypass_side;
+                if (c.last_coarse.points[0].angle_deg == ROBOT_WIDTH_SCAN_MIN_DEG &&
+                    c.encounter_front_cm > 0.0f && look_obstacle_cm > c.encounter_front_cm)
+                    look_obstacle_cm = c.encounter_front_cm;
+                if (c.last_coarse.points[0].angle_deg != ROBOT_WIDTH_SCAN_MIN_DEG &&
+                    s5_probe_side(&c.last_coarse) == S5_SIDE_LEFT)
+                    look_first_side = S5_SIDE_LEFT;
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ?
+                                    -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG))
+                    emergency_halt("preferred viewpoint rejected");
+                look_pending = true;
+                break;
+            }
             s5_report_profile(&c.profile,
                               cmd == S5_CMD_GO_LEFT ? S5_SIDE_LEFT :
                               S5_SIDE_RIGHT);
@@ -1064,15 +1064,19 @@ EXPORT void s5_task(INT stacd, void *exinf)
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] %s %s B5-BLUE-ROUTE: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
+    tm_printf((UB*)"[FW-ID] %s %s B5-BYPASS-SCAN-30-120-V6-LIFT: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
               __DATE__, __TIME__, (int)ROBOT_ENABLE_BYPASS,
-              (int)ROBOT_SCAN_SAFE_MIN_DEG, (int)ROBOT_SCAN_SAFE_MAX_DEG,
+              (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MIN_DEG : ROBOT_WIDTH_SWEEP_MIN_DEG),
+              (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MAX_DEG : ROBOT_WIDTH_SWEEP_MAX_DEG),
               (int)ROBOT_STOP_CM, (int)ROBOT_RELEASE_CM, (int)ROBOT_STRAIGHT_TRIM_PERMILLE);
     tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
     tm_printf((UB*)"[S5-TEST] obstacle_test=%d bounded_reverse=%d reverse_cm=8 rear_space=operator_checked startup_clear_cm=%d\n",
               (int)ROBOT_OBSTACLE_TEST, (int)ROBOT_TEST_BOUNDED_REVERSE, (int)ROBOT_STOP_CM);
     tm_printf((UB*)"[S5-FW] CLOSERETREAT-V47 encoder_distance=1 speed_cps=%d turn_deg=%d sensor_turn_guard_x100=%d opening_pivot_x100=%d\n",
-              (int)ROBOT_BYPASS_SPEED_CPS, (int)ROBOT_BYPASS_TURN_DEG, (int)(ROBOT_BYPASS_FRONT_TURN_CM * 100.0f),
+              (int)ROBOT_BYPASS_SPEED_CPS,
+              (int)(ROBOT_OBSTACLE_TEST || ROBOT_BYPASS_EXACT_SEQUENCE ?
+                    ROBOT_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG),
+              (int)(ROBOT_BYPASS_FRONT_TURN_CM * 100.0f),
               (int)(ROBOT_BYPASS_SIDE_CLEAR_CM * 100.0f));
     tm_printf((UB*)"[S5-GEOMETRY] sensor_offset_x100=%d uncertainty_x100=%d pivot_turn_guard_x100=%d\n",
               (int)(ROBOT_SENSOR_FORWARD_OFFSET_CM * 100.0f),
@@ -1094,17 +1098,32 @@ EXPORT void s5_task(INT stacd, void *exinf)
         for (;;) tk_dly_tsk(1000);
     }
     tm_printf((UB*)"[S5-BOOT] servo PWM initialized at 50Hz\n");
-    tk_dly_tsk(S5_SERVO_SETTLE_MS);
+    tk_dly_tsk(ROBOT_SENSOR_STARTUP_SETTLE_MS);
+#if S5_STARTUP_SERVO_TEST
+    /* Exercise both directions within the normal scan limits before ranging. */
+    const uint16_t startup_angles[] = {100u, 80u, 90u};
+    for (unsigned i = 0u; i < sizeof startup_angles / sizeof startup_angles[0]; ++i) {
+        if (!s5_servo_angle(startup_angles[i])) {
+            s5_mission_publish(S5_MISSION_FAULT);
+            b2_request_stop();
+            (void)comm_report_error(ERR_S5_FINE_SCAN, 0u);
+            tm_printf((UB*)"[S5-FAULT] startup servo sweep command failed; motors stopped\n");
+            for (;;) tk_dly_tsk(1000);
+        }
+        tk_dly_tsk(S5_SERVO_SETTLE_MS);
+    }
+#endif
+    tm_printf((UB*)"[S5-BOOT] straight-ahead servo command applied at %d us\n",
+              (int)s5_servo_pulse_us(90u));
 #if S5_MOTION_BRIDGE_ENABLED
     /* Warm-up never releases the initial B2 STOP latch. Startup echoes are
      * discarded; the controller then requires fresh clearance to drive. */
-    tk_dly_tsk(ROBOT_SENSOR_STARTUP_SETTLE_MS);
     for (unsigned i = 0u; i < ROBOT_SENSOR_WARMUP_PINGS; ++i) {
         (void)s5_ultrasonic_read_detailed();
         tk_dly_tsk(S5_ECHO_GAP_MS);
     }
 #if ROBOT_BOX_BYPASS
-    if (0) live_controller_mode();   /* kept for ROBOT_BOX_BYPASS 0 */
+    if (0) live_controller_mode();
     s5_box_mode();
 #else
     live_controller_mode();
