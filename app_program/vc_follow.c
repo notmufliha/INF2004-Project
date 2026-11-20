@@ -83,7 +83,9 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
 {
     int32_t raw = (int32_t)nl - (int32_t)nr;
     bool white = nl < VC4_WHITE && nr < VC4_WHITE;
-    bool both = nl + nr >= VC4_JCT_SUM_MIN;   /* both on tape */
+    /* Both on tape: each sensor sees it, not just a high sum. */
+    bool both = nl >= VC4_JCT_SENSOR_MIN && nr >= VC4_JCT_SENSOR_MIN &&
+        nl + nr >= VC4_JCT_SUM_MIN;
     int32_t target = 0;
     uint32_t steps = dt_ms / 10u;
 
@@ -192,6 +194,7 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
             int32_t d = (rs - t->prev_raw) * VC4_D_PCT / 100;
             if (white && t->exit_side != 0) d = d * VC4_D_EXIT_PCT / 100;
             if (dt_ms > 0u) d = d * 20 / (int32_t)dt_ms;
+            d = clamp_steer(d, VC4_D_MAX);
             target = clamp_steer(target + d, VC4_STEER_MAX);
         }
         t->prev_raw = rs;
@@ -221,17 +224,22 @@ void vc4_junction_reset(vc4_track_t *t)
     t->jct_state = 0u;
     t->sat_l = t->sat_r = false;
     t->jct_mark_um = 0u;
+    t->jct_width_um = 0u;
 }
 
 vc4_jct_t vc4_junction(vc4_track_t *t, uint32_t nl, uint32_t nr,
                        uint32_t travel_um)
 {
     uint32_t sum = nl + nr;
+    bool wide = nl >= VC4_JCT_SENSOR_MIN && nr >= VC4_JCT_SENSOR_MIN &&
+        sum >= VC4_JCT_SUM_MIN;
+    bool still_tape = nl >= VC4_JCT_KEEP_MIN && nr >= VC4_JCT_KEEP_MIN &&
+        sum >= VC4_JCT_KEEP_SUM;
     vc4_jct_t cls = VC4_JCT_NONE;
 
     switch (t->jct_state) {
     case 0u:
-        if (sum >= VC4_JCT_SUM_MIN) {
+        if (wide) {
             t->jct_mark_um = travel_um;
             t->sat_l = nl >= VC4_SAT;
             t->sat_r = nr >= VC4_SAT;
@@ -241,10 +249,11 @@ vc4_jct_t vc4_junction(vc4_track_t *t, uint32_t nl, uint32_t nr,
     case 1u:
         t->sat_l = t->sat_l || nl >= VC4_SAT;
         t->sat_r = t->sat_r || nr >= VC4_SAT;
-        if (sum < VC4_JCT_SUM_MIN) {
+        if (!still_tape) {
             uint32_t width = travel_um - t->jct_mark_um;
 
             if (width >= VC4_JCT_MIN_UM && width <= VC4_SLAB_UM) {
+                t->jct_width_um = width;
                 t->jct_mark_um = travel_um;
                 t->jct_state = 2u;
             } else {
@@ -253,6 +262,15 @@ vc4_jct_t vc4_junction(vc4_track_t *t, uint32_t nl, uint32_t nr,
         }
         break;
     default:
+        if (wide) {
+            /* More tape before the clear gap: do not classify bar stripes
+             * or sensor flicker as a completed junction. */
+            t->jct_state = 1u;
+            t->jct_mark_um = travel_um;
+            t->sat_l = nl >= VC4_SAT;
+            t->sat_r = nr >= VC4_SAT;
+            break;
+        }
         if (travel_um - t->jct_mark_um >= VC4_JCT_CONFIRM_UM) {
             if (t->sat_l && t->sat_r) {
                 cls = VC4_JCT_CROSS;
@@ -302,5 +320,13 @@ void vc4_wheels(int32_t s, int32_t base_mm_s, int32_t slow_mm_s,
     } else {
         *steering_permille = (left_x10 - right_x10) * 1000 /
             (left_x10 + right_x10);
+    }
+    /* Do not ask the inner wheel to crawl below its usable 150 cps floor
+     * on normal-speed curves. Preserve the radius by scaling both wheels,
+     * rather than straightening the requested steering split. */
+    if (base_mm_s >= 60 && *speed_cps > 0) {
+        int32_t inner_share = 1000 - iabs32(*steering_permille);
+        int32_t minimum_mean = (150000 + inner_share - 1) / inner_share;
+        if (*speed_cps < minimum_mean) *speed_cps = minimum_mean;
     }
 }

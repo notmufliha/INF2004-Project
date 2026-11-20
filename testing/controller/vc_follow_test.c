@@ -51,6 +51,19 @@ static void circle_run(double r, int *side_changes, int *straight_ticks,
 }
 int main(void){
   vc4_track_t t; uint32_t um=0; int32_t s; int32_t sp, st;
+  vc4_wheels(1000,60,100,&sp,&st);
+  CHECK(sp*(1000+(st<0?st:-st))/1000>=150,
+        "slow tight curve keeps inner wheel above 150 cps");
+  vc4_reset(&t);
+  vc4_junction(&t,700,700,0);
+  for(uint32_t pos=2000;pos<18000;pos+=2000)
+    vc4_junction(&t,550,600,pos);
+  vc4_junction(&t,100,100,18000);
+  CHECK(vc4_junction(&t,100,100,18000+VC4_JCT_CONFIRM_UM)==VC4_JCT_CROSS,
+        "junction survives fading sensor contrast across the tape");
+  vc4_reset(&t);
+  for(int i=0;i<10;i++) s=vc4_steer(&t,1000,350,20,(uint32_t)i*2400);
+  CHECK(!t.cross_hold && s>300, "curve plus grey floor cannot force crossing straight hold");
   /* centred straight: both white forever -> never lost, steer 0 */
   vc4_reset(&t);
   for(int i=0;i<500;i++){ s=vc4_steer(&t,100,100,20,um); um+=2400; }

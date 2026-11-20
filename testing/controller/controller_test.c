@@ -82,17 +82,20 @@ ER motion_move_cm(float cm, INT speed, motion_direction_t dir, uint32_t *id)
         reversed_cm = cm;
         *id = 42u; return E_OK;
     }
-    assert(cm == 10.0f && speed > 0 && dir == MOTION_DIR_FORWARD);
+    assert((cm == 10.0f || (VC_FOLLOW_V4 && cm > 0.0f && cm <= VC4_JCT_ADVANCE_CM)) &&
+           speed > 0 && dir == MOTION_DIR_FORWARD);
     *id = 42u; return E_OK;
 }
 ER motion_turn_degrees(INT angle, INT speed, motion_turn_direction_t dir, uint32_t *id)
 {
     assert((angle == 90 || angle == 180 || angle == 360 ||
+            (VC_FOLLOW_V4 && angle == VC4_JCT_LEFT_TURN_DEG) ||
             angle == 90 - VC_TURN_SHORT_DEG || angle == 180 - VC_TURN_SHORT_DEG ||
             angle == 360 - VC_TURN_SHORT_DEG || angle == VC_SPIN_STEP_DEG) &&
            speed > 0);
     sent.type = MOTION_CMD_TURN;
     sent.target_angle_deg = angle;
+    sent.target_speed_cps = speed;
     sent.turn_direction = dir;
     *id = 42u; return E_OK;
 }

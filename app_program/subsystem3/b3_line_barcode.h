@@ -14,19 +14,18 @@
 #define B3_LINE_UPDATE_MS (20U)
 /* ADC conversions averaged per line-sensor reading (noise). */
 #define B3_ADC_OVERSAMPLE (8U)
-/* Provisional measured endpoints, 2026-11-13; higher ADC means black.
- * White maximum / black minimum from stationary same-firmware captures.
- * GP26 is physically right, GP27 left. Recheck after mounting changes.
+/* Per-channel calibration from the 2026-11-20 course screenshots.
+ * Higher ADC means tape. GP26 is physically right, GP27 left.
+ * Centred on the spread-sensor line: GP26=195, GP27=142 (floor).
+ * Both on a junction: GP26=355, GP27=842 (tape).
+ * Small floor margins reject noise without reducing the tape endpoint.
+ * Dashboard values remain raw; control uses the independent 0..1000 scales.
  */
 #define B3_LINE_RAW_LOW_IS_BLACK (0U)
-/* 2026-11-18 spread-sensor run logs: GP26 floor 188-258, tape 290-400;
- * GP27 floor 120-217, tape 870-3000.  GP27's old black (777) was below
- * almost every tape reading, so it jumped from 0 to 1000 at the line edge
- * and the steering was on/off; these give graded edge readings. */
-#define B3_LINE_GP26_WHITE (260U)
-#define B3_LINE_GP26_BLACK (360U)
-#define B3_LINE_GP27_WHITE (220U)
-#define B3_LINE_GP27_BLACK (1400U)
+#define B3_LINE_GP26_WHITE (210U)
+#define B3_LINE_GP26_BLACK (355U)
+#define B3_LINE_GP27_WHITE (160U)
+#define B3_LINE_GP27_BLACK (842U)
 /* 1: once a sensor has seen both floor and tape (slide the car across the
  * line once after power-up), normalise with its own learned white/black
  * instead of the fixed endpoints above.  Needed whenever the sensors are
