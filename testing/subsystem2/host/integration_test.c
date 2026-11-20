@@ -70,15 +70,15 @@ int main(void)
     b2_integration_fault(MOTION_FAULT_TIMING);
     assert(flags == (FAULT_IMU | FAULT_NO_ECHO | FAULT_LINE_LOST));
     snapshot.left_speed_cps = 5000; snapshot.right_speed_cps = -1000;
-    snapshot.left_encoder_counts = 0x12345678;
-    snapshot.right_encoder_counts = -123456789;
+    snapshot.left_encoder_counts = 8388607;
+    snapshot.right_encoder_counts = -8388608;
     b2_integration_publish(&snapshot);
 #if B2_TEST_BINARY
     assert(sent_left == 5000 && sent_right == -1000);
 #else
     assert(sent_left == 408 && sent_right == -87);
 #endif
-    assert(sent_enc_left == 0x12345678 && sent_enc_right == -123456789);
+    assert(sent_enc_left == 8388607 && sent_enc_right == -8388608);
     snapshot.fault = MOTION_FAULT_ENCODER; snapshot.command_id = 42;
     b2_integration_publish(&snapshot);
     assert(sent_error == ERR_S2_ENCODER && reports == 1);

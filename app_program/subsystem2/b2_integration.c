@@ -101,7 +101,7 @@ static H b2_legacy_speed(INT cps, float counts_per_rev)
 static void b2_send_motion(const motion_status_snapshot_t *snapshot)
 {
 #ifdef COMM_SPEED_MAX
-    /* Keep full signed totals here; B1 packs the low 24 bits on the wire. */
+    /* B2 sign-extends its 24-bit totals; B1 packs the same 24 bits. */
     comm_set_motion(snapshot->left_speed_cps, snapshot->right_speed_cps,
         snapshot->left_encoder_counts, snapshot->right_encoder_counts);
 #else

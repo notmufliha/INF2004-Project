@@ -4,8 +4,6 @@
 #include "imu_motion.h"
 #include "../subsystem2/motion_command.h"
 
-#define MOTION_SPEED_LIMIT_CPS 100000
-
 /* Kernel speeds use the same signed width as the B4 acquisition payload. */
 typedef uint8_t
     imu_motion_abi_check_t[((sizeof(INT) == sizeof(int32_t)) &&
@@ -53,7 +51,8 @@ static bool
 snapshot_is_valid (const motion_status_snapshot_t * p_snapshot, uint32_t now_ms)
 {
     /* B2's two-bit command_type represents exactly the four command types.
-     * Other packed fields have spare encodings that still need validation.
+     * Signed 14-bit speeds also fit B2's published range by construction.
+     * Other packed state fields have spare encodings to validate.
      */
     if (((uint32_t)p_snapshot->status > (uint32_t)MOTION_STATUS_FAULT) ||
         ((uint32_t)p_snapshot->direction > (uint32_t)MOTION_DIR_REVERSE) ||
@@ -61,10 +60,6 @@ snapshot_is_valid (const motion_status_snapshot_t * p_snapshot, uint32_t now_ms)
         (0U == p_snapshot->control_interval_ms) ||
         (p_snapshot->control_interval_ms > IMU_MOTION_MAX_AGE_MS) ||
         ((now_ms - p_snapshot->sample_time_ms) > IMU_MOTION_MAX_AGE_MS) ||
-        (p_snapshot->left_speed_cps < -MOTION_SPEED_LIMIT_CPS) ||
-        (p_snapshot->left_speed_cps > MOTION_SPEED_LIMIT_CPS) ||
-        (p_snapshot->right_speed_cps < -MOTION_SPEED_LIMIT_CPS) ||
-        (p_snapshot->right_speed_cps > MOTION_SPEED_LIMIT_CPS) ||
         (!imu_numeric_is_finite(p_snapshot->left_distance_mm)) ||
         (!imu_numeric_is_finite(p_snapshot->right_distance_mm)) ||
         (!imu_numeric_is_finite(p_snapshot->total_distance_mm)) ||

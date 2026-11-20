@@ -113,12 +113,16 @@ test_invalid (void)
     g_snapshot.left_distance_mm = NAN;
     assert(!imu_motion_capture(&motion));
     fixture();
-    /* Inject an invalid enum deliberately; production must reject it. */
-    g_snapshot.command_type = (motion_cmd_type_t)99;
+    /* The packed status has spare encodings; command_type has none. */
+    g_snapshot.status = 7u;
     assert(!imu_motion_capture(&motion));
     fixture();
-    g_snapshot.right_speed_cps = INT32_MIN;
-    assert(!imu_motion_capture(&motion));
+    /* Every signed 14-bit speed is representable without truncation. */
+    g_snapshot.right_speed_cps = -8192;
+    g_snapshot.left_speed_cps = 8191;
+    assert(imu_motion_capture(&motion));
+    assert(motion.right_speed_cps == -8192);
+    assert(motion.left_speed_cps == 8191);
     fixture();
     g_now_ms                  = 5U;
     g_snapshot.sample_time_ms = UINT32_MAX - 4U;

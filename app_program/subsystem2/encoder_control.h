@@ -6,10 +6,14 @@
 #define ENCODER_CONTROL_H
 
 #include "../app.h"
+#include "encoder_numeric.h"
 
 ER encoder_init(void);
 
+/* Signed 24-bit net counts, returned sign-extended to the platform INT.
+ * Exhaustion saturates and latches a fault until encoder initialization. */
 void encoder_get_counts(INT *p_left, INT *p_right);
+bool encoder_range_fault(void);
 /* Cumulative impossible A/B transitions; read atomically as a pair. */
 void encoder_get_invalid_counts(UW *left, UW *right);
 /* Wheel geometry and encoder resolution. */

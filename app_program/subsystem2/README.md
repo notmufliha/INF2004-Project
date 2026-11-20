@@ -217,11 +217,28 @@ These checks establish software compatibility, not physical calibration.
 ## Change Requirement 1: minimum-bit representation (2026-11-20)
 
 The supplied Change Requirement 1 and CSC25 tribunal documents are the design
-references for this change. The tribunal's Buddy 2 decision explicitly retains
-32-bit cumulative encoder totals and measured counts/s until a narrower range
-is validated, and assigns two bits to each previous quadrature state. Motor
-ownership, the 10 ms control period, calibration and safety deadlines continue
-to use the existing contracts.
+references for this change. The tribunal initially retained 32-bit encoder
+counts and speeds as a precaution. The subsequent requested revision adopts
+signed 24-bit encoder totals and signed 14-bit published speeds. Two bits
+still represent each previous quadrature state. Motor ownership, calibration
+and the 10 ms control period retain their existing contracts.
+
+The count range is -8,388,608..8,388,607 net counts, approximately +/-686 m
+for the left wheel and +/-732 m for the right at the current calibration.
+Counts use explicit three-byte storage in the ISR and speed history. On an
+edge that would exceed this range, the counter saturates and latches a range
+fault until encoder initialization/restart. The control task checks this flag
+under the encoder lock and requests a safety STOP / MOTION_FAULT_ENCODER.
+It never interprets a wrapped count as reverse travel. Reinitializing counters
+while a motion or odometry consumer is running is unsupported.
+
+Published speeds use -8192..8191 counts/s, matching B1's signed 14-bit format.
+This is a new operational limit on instantaneous sampled speed, independent
+of the 5000 cps requested-speed limit. A sample outside this range, including
+non-finite feedback, requests the same encoder safety fault before applying
+PWM. Only publication is clamped; the original floating-point sample is used
+for fault detection. PI calculations retain float precision. Hardware must
+confirm the new speed threshold is appropriate for noise and overshoot.
 
 Accepted commands use `motion_stored_command_t` in `motion_storage.h` in both
 the pending slot and controller state. Public `motion_command_t` remains a wide
@@ -252,9 +269,9 @@ can leave padding):
 | Terminal fault cause | nine causes, 0..8 | 4 | Status/controller bit-field |
 | Shared motor-stall/encoder faults | false/true | 1 each | Existing shared fault mask |
 | Previous left/right quadrature state | 0..3 | 2 each | One uint8_t-based packed object |
-| Encoder totals/start/history values | signed 32-bit counts | 32 each | Retained INT counters |
+| Encoder totals/start/history values | -8388608..8388607 counts | 24 each | Explicit three-byte totals/history; signed state/snapshot bit-fields |
 | Invalid-transition totals | 0..4294967295 | 32 each | Retained UW counters |
-| Published measured wheel speed | signed 32-bit cps | 32 each | Retained INT values |
+| Published measured wheel speed | -8192..8191 cps | 14 each | Signed snapshot bit-fields; original sample checked before clamping |
 | Motor API duty input | clamped to -100..100 percent | 8 after clamp | Wide validation/calculation parameter; no retained duty message |
 | Controller applied PWM magnitude | 0..35 percent | 6 each | Unsigned controller bit-fields |
 | Controller wheel sign | -1, 0, +1 | 2 each | Signed controller bit-fields |
@@ -294,14 +311,17 @@ commit `e7fe907` (`CNF_SMP=0`, `APP_TEST=0`, `-O2`):
 |---|---:|---:|---:|
 | Wide command input | 40 | 40 | 0 |
 | Pending command slot | 40 | 24 | 16 |
-| Current status snapshot | 60 | 52 | 8 |
-| Eight retained results | 480 | 416 | 64 |
-| Controller state (stack object) | 424 | 392 | 32 |
+| Current status snapshot | 60 | 48 | 12 |
+| Eight retained results | 480 | 384 | 96 |
+| Controller state (stack object) | 424 | 368 | 56 |
 | Sample mailbox message, including T_MSG | 20 | 16 | 4 |
 | Four sample pool blocks | 80 | 64 | 16 |
+| ISR encoder totals, both wheels | 8 | 6 | 2 |
+| Encoder speed history, both wheels (part of controller state) | 88 | 66 | 22 |
 
-The pending slot, current snapshot, history and pool together save **104 bytes**
-of declared storage. The controller's local object saves another 32 bytes, but
+The pending slot, current snapshot, history, pool and ISR totals together save
+**142 bytes** of declared storage. The controller's local object saves another
+56 bytes (including its 22-byte history reduction), but
 its configured RTOS stack allocation is unchanged. These measurements include
 native structure padding. They are object-level RAM/message comparisons, not
 a claim that whole-firmware data+bss or stack reservations fell by that amount.
@@ -314,13 +334,23 @@ python testing/subsystem2/host/measure_sizes.py --before e7fe907
 powershell -ExecutionPolicy Bypass -File testing/subsystem2/host/run_tests.ps1
 ```
 
-Validation: 10,018 host assertions pass, including round trips through the
+Validation: 43,014 host assertions pass, including round trips through the
 real pending slot for every steering value -1000..1000, maximum speed, maximum
 MOVE distance, maximum durations, 360-degree right turns and STOP identity.
 Invalid values that would alias valid values after truncation are rejected.
-Both B1 legacy and binary integration variants pass. ARM syntax checks pass
+Signed 24-bit boundary/sign-extension tests, all 16,384 published speed values,
+high-origin encoder history and safety STOP on speed/range faults are covered.
+The simulator now divides large movement jumps across samples below 8191 cps
+instead of teleporting hundreds of counts in 10 ms. Both B1 legacy and binary
+integration variants pass. B4's real motion-reader and odometry-adapter host
+tests also pass. Its old impossible speed-range checks and out-of-range test
+fixtures were updated for the narrower snapshot contract. ARM syntax checks pass
 for all B2 C files, the sample consumer and Vehicle Controller with both
-`CNF_SMP=0` and `CNF_SMP=1`, including on-target test code (`APP_TEST=1`).
+`CNF_SMP=0` and `CNF_SMP=1`, including on-target test code (`APP_TEST=1`). B1 and B4 also pass their strict
+C99 conversion-warning checks with warnings treated as errors in both modes.
+The complete B4 startup matrix remains blocked by its existing ROBOT_MODE=0
+versus enabled B5-autonomous configuration; the motion and odometry tests were
+compiled and executed separately.
 
 The complete USB firmware build was attempted but the locally installed Pico
 SDK v1.5.1 does not satisfy the repository's SDK include layout (`pico.h` is
