@@ -1163,18 +1163,22 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     }
 
     /* ---- FOLLOW ---- */
-    barcode_straight = c->bar_phase == BAR_READ ||
+    /* Bars passing under GP28 now (B3 edge activity, or the strip seen
+     * in the last VC_STRIP_END_UM of travel, which covers wide gaps). */
+    barcode_straight = in->barcode_active ||
         (c->strip_active && c->strip_edges >= VC4_BAR_STRIP_EDGES);
+    /* Keep following the line across a barcode.  Holding the steering at
+     * zero (and wiping the curve memory) for the whole read made the car
+     * drive straight off a curve that starts just after the bars, since a
+     * read lasts until a decode, up to VC4_BAR_READ_UM.  While bars pass,
+     * the steering is only limited (bar_filter already ignores a line
+     * sensor flickering on them) and a loss does not start a sweep. */
+    steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
     if (barcode_straight) {
-        /* Barcode bars are not line-position evidence. Keep the complete
-         * pass (including retry lead-in and gaps) straight, and forget
-         * any old recovery arc before normal following resumes. */
-        vc4_reset(&c->trk);
-        steer = 0;
-    } else {
-        steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
+        if (steer > VC4_BAR_STEER_MAX) steer = VC4_BAR_STEER_MAX;
+        if (steer < -VC4_BAR_STEER_MAX) steer = -VC4_BAR_STEER_MAX;
     }
-    if (!vc4_on_line(&c->trk)) {
+    if (!vc4_on_line(&c->trk) && !barcode_straight) {
         if (c->bar_phase == BAR_READ) v4_bar_clear(c);
         v4_start_search(c, in);
         return;
@@ -1260,7 +1264,9 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     command.direction = MOTION_DIR_FORWARD;
     command.steering_permille = (INT)steering;
     command.target_speed_cps = (INT)speed_cps;
-    if (c->bar_phase == BAR_READ) {
+    /* Fixed read speed while bars pass, and on a retry from the rewind
+     * on; after the bars of a first pass the curve slow-down applies. */
+    if (c->bar_phase == BAR_READ && (barcode_straight || c->bar_tries > 0u)) {
         command.target_speed_cps = c->bar_speed_cps > 0 ?
             c->bar_speed_cps : vc4_mm_s_to_cps(VC4_BAR_READ_MM_S);
     }

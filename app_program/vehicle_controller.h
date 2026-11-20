@@ -305,6 +305,7 @@
 #define VC4_REVERSE_MM_S 100
 #define VC4_BAR_REVERSE_MM_S 60   /* controlled barcode rewind           */
 #define VC4_BAR_READ_MM_S 60      /* retry target after settling         */
+#define VC4_BAR_STEER_MAX 400     /* steering limit while bars pass      */
 #define VC4_JCT_ADVANCE_CM 6.0f   /* line sensors to axle                */
 #define VC4_MOTION_TIMEOUT_MS 10000u
 /* Barcode slow re-read. */

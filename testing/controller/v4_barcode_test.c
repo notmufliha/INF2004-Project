@@ -17,24 +17,41 @@ static VEHICLE_CONTROLLER reading(void)
     return c;
 }
 
+/* B2 steering for the barcode steering limit at the read speed. */
+static INT bar_steer_limit(void)
+{
+    int32_t cps, permille;
+    vc4_wheels(VC4_BAR_STEER_MAX, 60, VC4_SLOW_MM_S, &cps, &permille);
+    return (INT)(permille < 0 ? -permille : permille);
+}
+
+static INT iabs_i(INT v) { return v < 0 ? -v : v; }
+
 int main(void)
 {
     VEHICLE_CONTROLLER c = reading();
     /* A stale right recovery and alternating bars must never start a
-     * sweep, even during a quiet gap in GP28 edge activity. */
+     * sweep, even during a quiet gap in B3 edge activity (GP28 keeps
+     * changing, so the strip stays active), and steering stays limited. */
     c.trk.filt = -900;
     c.trk.exit_side = -1;
     c.trk.lost = true;
+    c.strip_known = c.strip_active = true;   /* a read starts on bars */
+    c.strip_level = input.right;
+    c.strip_edges = VC4_BAR_STRIP_EDGES;
+    c.strip_last_um = c.travel_um;
     for (int i = 0; i < 80; ++i) {
         input.now_ms += VC_PERIOD_MS;
         input.centre = i % 2 ? 950 : 50;
         input.left = i % 2 ? 50 : 950;
         input.barcode_active = i % 3 != 0;
+        input.right = i % 2 ? 900 : 100;
         c.travel_um += 1000;
         v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
         assert(c.running && c.bar_phase == BAR_READ);
         assert(c.v4_phase == V4_FOLLOW && !c.trk.lost);
-        assert(sent.type == MOTION_CMD_DRIVE && sent.steering_permille == 0);
+        assert(sent.type == MOTION_CMD_DRIVE);
+        assert(iabs_i(sent.steering_permille) <= bar_steer_limit());
         assert(sent.target_speed_cps == vc4_mm_s_to_cps(60));
         assert(c.trk.jct_state == 0);
     }
@@ -48,7 +65,25 @@ int main(void)
     c.trk.lost = true;
     v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
     assert(c.bar_phase == BAR_READ && c.v4_phase == V4_FOLLOW);
-    assert(sent.steering_permille == 0);
+    assert(iabs_i(sent.steering_permille) <= bar_steer_limit());
+
+    /* After the bars, still in the read (no decode yet): a curve that
+     * starts right after the barcode must be followed, not driven
+     * straight off (the line under the left sensor = turn left). */
+    c = reading();
+    c.strip_known = true;
+    c.strip_level = input.right;
+    input.barcode_active = false;
+    input.centre = 950;
+    input.left = 50;
+    for (int i = 0; i < 20; ++i) {
+        input.now_ms += VC_PERIOD_MS;
+        c.travel_um += 1000;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+    }
+    assert(c.bar_phase == BAR_READ && c.v4_phase == V4_FOLLOW);
+    assert(sent.steering_permille < -bar_steer_limit());
+    input.centre = input.left = 100;
 
     /* Reject -> bounded reverse, never a recovery TURN. */
     c = reading();
