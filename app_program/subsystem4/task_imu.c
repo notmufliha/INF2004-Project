@@ -344,6 +344,12 @@ initialise_analysis (imu_analysis_t * p_analysis)
     config.roll_enter_deg = S4_ROLL_HUMP_ENTER_DEG;
     config.roll_level_deg = S4_ROLL_HUMP_LEVEL_DEG;
     config.roll_trend_deg = S4_ROLL_HUMP_TREND_DEG;
+    config.roll_enter_ms = S4_ROLL_HUMP_ENTER_MS;
+    config.roll_curve_ratio = S4_ROLL_HUMP_CURVE_RATIO;
+#else
+    /* Scripted mock crossings use the original two-sample entry. */
+    config.roll_enter_ms = 0U;
+    config.roll_curve_ratio = 0.0f;
 #endif
     if (!imu_analysis_init(p_analysis, &config))
     {
@@ -836,7 +842,8 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
 
         /* Motion values are the shared 0..7 enum; the byte cast is exact. */
         comm_set_imu((UB)p_event->motion_state,
-                     telemetry_integer(p_event->pitch_deg * 10.0f));
+                     telemetry_integer(p_event->pitch_deg * 10.0f),
+                     telemetry_integer(p_event->roll_deg * 10.0f));
 #if APP_TEST
         /* Test observer can lag without blocking analysis. */
         ER error_code =

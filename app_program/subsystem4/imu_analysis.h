@@ -20,6 +20,13 @@ typedef struct
     float32_t roll_level_deg; /* Hysteresis for baseline and return to level. */
     float32_t roll_trend_deg; /* Meaningful absolute-roll change, degrees. */
     float32_t wheel_track_mm; /* Tyre centre spacing; one-wheel model. */
+    /* Flat-ground rejection.  Accelerometer roll also sees sideways
+     * acceleration: steering jerks give short spikes, curves a steady
+     * offset.  A hump must hold roll_enter_deg for roll_enter_ms (0 = the
+     * two-sample rule only), and cannot start while the wheel speeds differ
+     * by more than roll_curve_ratio of the faster wheel (0 = no check). */
+    uint32_t  roll_enter_ms;
+    float32_t roll_curve_ratio;
 } imu_analysis_config_t;
 
 typedef enum

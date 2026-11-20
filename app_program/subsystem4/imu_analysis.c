@@ -17,6 +17,8 @@ static void track_roll_height (imu_analysis_t * p_analysis,
                                const imu_data_t * p_data, bool b_level);
 static void complete_height (imu_analysis_t * p_analysis,
                              imu_event_t * p_event);
+static bool curving (const imu_analysis_t * p_analysis,
+                     const imu_data_t * p_data);
 static void update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                          imu_event_t * p_event);
 static void analyse_terrain (imu_analysis_t * p_analysis,
@@ -39,7 +41,8 @@ imu_analysis_default_config (imu_analysis_config_t * p_config)
     {
         *p_config = (imu_analysis_config_t){8.0f, 1.0f, 15.0f, 6.0f,
                                             3U, 100U, 10000U,
-                                            4.0f, 2.0f, 0.5f, 110.0f};
+                                            4.0f, 2.0f, 0.5f, 110.0f,
+                                            80U, 0.3f};
     }
 }
 
@@ -58,6 +61,10 @@ imu_analysis_init (imu_analysis_t *              p_analysis,
         (!isfinite(p_config->roll_trend_deg)) ||
         (!isfinite(p_config->wheel_track_mm)) ||
         (p_config->wheel_track_mm <= 0.0f) ||
+        (!isfinite(p_config->roll_curve_ratio)) ||
+        (p_config->roll_curve_ratio < 0.0f) ||
+        (p_config->roll_curve_ratio > 1.0f) ||
+        (p_config->roll_enter_ms >= p_config->hump_timeout_ms) ||
         (p_config->roll_trend_deg <= 0.0f) ||
         (p_config->roll_trend_deg > p_config->roll_enter_deg) ||
         (p_config->roll_level_deg < 0.0f) ||
@@ -407,6 +414,21 @@ complete_height (imu_analysis_t * p_analysis, imu_event_t * p_event)
     }
 }
 
+/** @brief True while the wheel speeds show a curve, whose sideways
+ *         acceleration reads as roll on the accelerometer. */
+static bool
+curving (const imu_analysis_t * p_analysis, const imu_data_t * p_data)
+{
+    const int32_t left = p_data->motion.left_speed_cps;
+    const int32_t right = p_data->motion.right_speed_cps;
+    const int32_t fast = left > right ? left : right;
+    const int32_t diff = left > right ? left - right : right - left;
+
+    return (p_analysis->config.roll_curve_ratio > 0.0f) && (fast > 0) &&
+           ((float32_t)diff >
+            p_analysis->config.roll_curve_ratio * (float32_t)fast);
+}
+
 /** @brief Confirm either-side roll excursions with a stable return to level. */
 static void
 update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
@@ -435,19 +457,29 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
             }
         break;
         case IMU_ROLL_READY:
-            if (roll >= p_analysis->config.roll_enter_deg)
+            if ((roll >= p_analysis->config.roll_enter_deg) &&
+                (!curving(p_analysis, p_data)))
             {
                 const bool b_positive = p_data->roll_deg >= 0.0f;
                 p_analysis->roll_count =
-                    b_positive == p_analysis->b_roll_positive
+                    ((0U != p_analysis->roll_count) &&
+                     (b_positive == p_analysis->b_roll_positive))
                         ? p_analysis->roll_count + 1U : 1U;
                 p_analysis->b_roll_positive = b_positive;
+                if (1U == p_analysis->roll_count)
+                {
+                    p_analysis->roll_start_ms = p_data->timestamp_ms;
+                }
             }
             else
             {
                 p_analysis->roll_count = 0U;
             }
-            if (p_analysis->roll_count >= IMU_ROLL_CONFIRM_SAMPLES)
+            /* Steering jerks tilt the accelerometer for a few samples; a
+             * wheel on a hump stays tilted while it climbs. */
+            if ((p_analysis->roll_count >= IMU_ROLL_CONFIRM_SAMPLES) &&
+                (p_data->timestamp_ms - p_analysis->roll_start_ms >=
+                 p_analysis->config.roll_enter_ms))
             {
                 p_analysis->roll_state = IMU_ROLL_ACTIVE;
                 p_analysis->roll_start_ms = p_data->timestamp_ms;

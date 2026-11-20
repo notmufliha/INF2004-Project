@@ -30,6 +30,7 @@ static void test_roll_guards (void);
 static void test_roll_pitch_independence (void);
 static void test_roll_motion_trends (void);
 static void test_roll_height (void);
+static void test_flat_ground_rejection (void);
 
 /** @brief Run classification, timing, movement and roll regressions. */
 int
@@ -44,6 +45,7 @@ main (void)
     test_roll_pitch_independence();
     test_roll_motion_trends();
     test_roll_height();
+    test_flat_ground_rejection();
     puts("All roll-only IMU analysis tests passed.");
     return 0;
 }
@@ -106,6 +108,10 @@ static void
 short_reset (void)
 {
     imu_analysis_default_config(&g_config);
+    /* These regressions describe the two-sample entry rule; the flat-ground
+     * guards are covered by test_flat_ground_rejection. */
+    g_config.roll_enter_ms = 0U;
+    g_config.roll_curve_ratio = 0.0f;
     assert(imu_analysis_init(&g_analysis, &g_config));
     g_analysis.b_require_motion = true;
     g_short_data = (imu_data_t){0};
@@ -473,6 +479,54 @@ test_roll_height (void)
     assert(fabsf(event.hump_peak_cm - 11.0f) < 0.001f);
     puts("PASS: roll height geometry, offset, first peak, maximum, fault "
          "and model bounds");
+}
+
+/** @brief Default config: steering spikes and curves on level ground are
+ *         not humps; a sustained straight-line excursion still is. */
+static void
+test_flat_ground_rejection (void)
+{
+    imu_analysis_config_t config;
+
+    short_reset();
+    imu_analysis_default_config(&config);
+    assert(imu_analysis_init(&g_analysis, &config));
+    g_analysis.b_require_motion = true;
+    roll_feed(0.0f, TEST_SHORT_BASELINE);
+
+    /* Spikes of 3 samples (60 ms) between level readings: no hump. */
+    for (uint32_t index = 0U; index < TEST_SHORT_NOISE; ++index)
+    {
+        assert(!roll_feed(((index & 1U) ? -6.0f : 6.0f), 3U).b_hump_detected);
+        assert(!roll_feed(0.0f, 1U).b_hump_detected);
+    }
+
+    /* A steady curve: the outer wheel 2x the inner, roll held 6 degrees. */
+    g_short_data.motion.left_speed_cps = 600;
+    g_short_data.motion.right_speed_cps = 300;
+    assert(!roll_feed(6.0f, 10U).b_hump_detected);
+    assert(!roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
+
+    /* Driving straight, the same 6 degrees held over 80 ms is a hump. */
+    g_short_data.motion.right_speed_cps = 600;
+    assert(!roll_feed(6.0f, 4U).b_hump_detected);   /* 0..60 ms */
+    assert(roll_feed(6.0f, 1U).b_hump_detected);    /* 80 ms    */
+    assert(roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
+
+    /* Once on the hump, steering does not cancel it. */
+    roll_feed(6.0f, 5U);
+    assert(IMU_ROLL_ACTIVE == g_analysis.roll_state);
+    g_short_data.motion.right_speed_cps = 200;
+    assert(roll_feed(7.0f, 2U).b_hump_detected);
+    assert(roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
+
+    config.roll_curve_ratio = 1.5f;
+    assert(!imu_analysis_init(&g_analysis, &config));
+    config.roll_curve_ratio = 0.3f;
+    config.roll_enter_ms = config.hump_timeout_ms;
+    assert(!imu_analysis_init(&g_analysis, &config));
+    puts("PASS: flat-ground steering spikes and curves rejected; sustained "
+         "straight excursion still detected");
 }
 
 /*** end of file ***/

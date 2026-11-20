@@ -44,6 +44,17 @@
 #ifndef S4_ROLL_HUMP_TREND_DEG
 #define S4_ROLL_HUMP_TREND_DEG 0.5f
 #endif
+/* Flat-ground false humps: roll must hold ENTER_DEG this long (steering
+ * jerks only last a few 10 ms samples).  Raise if level runs still report
+ * humps; lower if a real hump is missed (keep below the crossing time). */
+#ifndef S4_ROLL_HUMP_ENTER_MS
+#define S4_ROLL_HUMP_ENTER_MS 80U
+#endif
+/* No new hump while |left - right| wheel speed > this share of the faster
+ * wheel: the curve's sideways acceleration reads as roll.  0 disables. */
+#ifndef S4_ROLL_HUMP_CURVE_RATIO
+#define S4_ROLL_HUMP_CURVE_RATIO 0.3f
+#endif
 
 /* Prioritize hump sampling; 0 restores full magnetic reads and their delays. */
 #ifndef S4_IMU_MAG_IDLE_ONLY

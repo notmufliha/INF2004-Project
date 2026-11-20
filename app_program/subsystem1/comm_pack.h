@@ -31,7 +31,7 @@
 #define WIRE_VERSION      2U  /* 3 bits, first field of every frame */
 
 /* Frame sizes in bytes */
-#define WIRE_TELEM_LEN    29
+#define WIRE_TELEM_LEN    30
 #define WIRE_STATUS_LEN   23
 #define WIRE_ACK_LEN      3
 #define WIRE_CMD_LEN      3U
