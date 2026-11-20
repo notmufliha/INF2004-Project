@@ -299,7 +299,7 @@ static uint16_t b3_track_normalise(uint16_t raw, uint16_t white, uint16_t black)
 static void b3_track_learn(B3_LINE_CAL *cal, uint16_t raw, uint16_t white,
                            uint16_t black)
 {
-    /* Margin for moved sensors; GP26 accepts up to 548, GP27 up to 1907. */
+    /* Reject samples far beyond the calibrated tape range (e.g. lifted). */
     if (raw <= black + 2U * (black - white) + 100U) {
         (void)b3_line_cal_update(cal, raw);
     }
