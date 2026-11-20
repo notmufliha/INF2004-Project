@@ -116,6 +116,17 @@ static float nearest_side_ray(const S5Scan *scan, int first)
                   s5_turn_range_cm(scan->points[first + 1].distance_cm, scan->points[first + 1].angle_deg));
 }
 
+static float width_side_clearance(const S5ScanPoint *points, S5Side side, float clearance)
+{
+    for (int i = 0; points && i < S5_WIDTH_SCAN_COUNT; ++i) {
+        const S5ScanPoint *ray = &points[i];
+        bool on_side = side == S5_SIDE_LEFT ? ray->angle_deg < 90u : ray->angle_deg > 90u;
+        if (on_side && valid_range(ray))
+            clearance = s5_min(clearance, ray->distance_cm);
+    }
+    return clearance;
+}
+
 static S5Side compare_clearance(const S5Scan *scan, float left_near, float right_near,
                                 float left_far, float right_far)
 {
@@ -642,10 +653,16 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                     s5_turn_range_cm(right->distance_cm, right->angle_deg) > ROBOT_BYPASS_MIN_TURN_CM;
                 if (!left_turn && !right_turn)
                     return wait_for_route(c, S5_ERR_INSUFFICIENT_CLEARANCE);
-                c->profile.left_clearance_cm = left_turn ? left->distance_cm : 0.0f;
-                c->profile.right_clearance_cm = right_turn ? right->distance_cm : 0.0f;
+                /* Use the tighter reading across each flank when both
+                 * outward headings are candidates. */
+                float left_room = left_turn ?
+                    width_side_clearance(in->width_points, S5_SIDE_LEFT, left->distance_cm) : 0.0f;
+                float right_room = right_turn ?
+                    width_side_clearance(in->width_points, S5_SIDE_RIGHT, right->distance_cm) : 0.0f;
+                c->profile.left_clearance_cm = left_room;
+                c->profile.right_clearance_cm = right_room;
                 c->side = right_turn && (!left_turn ||
-                    right->distance_cm - left->distance_cm > ROBOT_BYPASS_SIDE_TIE_CM) ?
+                    right_room - left_room > ROBOT_BYPASS_SIDE_TIE_CM) ?
                     S5_SIDE_RIGHT : S5_SIDE_LEFT;
                 c->profile.bypass_side = c->side;
                 c->error = S5_ERR_NONE;

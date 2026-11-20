@@ -310,7 +310,7 @@ int main(void)
         s5_controller_init(&controller);
         controller.state = S5_COARSE;
         assert(s5_controller_step(&controller, &input) == S5_CMD_GO_LEFT);
-        assert(controller.profile.left_clearance_cm == 74.23f);
+        assert(controller.profile.left_clearance_cm == 13.73f);
     }
     reset();
     fail_move = 2u;
