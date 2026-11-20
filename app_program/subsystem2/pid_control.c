@@ -6,6 +6,7 @@
 #include "pid_control.h"
 #include "encoder_control.h"
 #include "motion_command.h"
+#include "motion_storage.h"
 #include "motion_profile.h"
 #include "b2_motor.h"
 #include "b2_integration.h"
@@ -51,9 +52,9 @@
 
 typedef struct
 {
-    motion_command_t command;
-    motion_status_t status;
-    motion_fault_t fault;
+    motion_stored_command_t command;
+    UINT status : 3;
+    UINT fault : 4;
     INT left_now;
     INT right_now;
     INT left_previous;
@@ -63,8 +64,8 @@ typedef struct
     INT left_history[PID_WINDOW_SIZE + 1];
     INT right_history[PID_WINDOW_SIZE + 1];
     int64_t time_history[PID_WINDOW_SIZE + 1];
-    UINT sample_count;
-    UINT history_index;
+    UINT sample_count : 4;
+    UINT history_index : 4;
     int64_t now_ms;
     int64_t previous_ms;
     int64_t started_ms;
@@ -73,7 +74,7 @@ typedef struct
     int64_t right_progress_ms;
     int64_t quiet_since_ms;
     int64_t settling_since_ms;
-    int64_t duration_ms;
+    UINT duration_ms : 16;
     float left_mm;
     float right_mm;
     float total_mm;
@@ -81,12 +82,13 @@ typedef struct
     float right_speed_cps;
     float left_integral;
     float right_integral;
-    INT left_sign;
-    INT right_sign;
-    INT left_applied_pwm, right_applied_pwm;
+    INT left_sign : 2;
+    INT right_sign : 2;
+    UINT left_applied_pwm : 6;
+    UINT right_applied_pwm : 6;
     float left_profile_speed, right_profile_speed;
-    bool settling;
-    bool stopped;
+    bool settling : 1;
+    bool stopped : 1;
     uint32_t generation;
     uint32_t control_interval_ms;
     uint32_t maximum_interval_ms;
@@ -217,9 +219,9 @@ static void pid_set_directions(pid_state_t *state)
     }
 }
 
-static float pid_turn_track(const motion_command_t *command)
+static float pid_turn_track(motion_turn_direction_t direction)
 {
-    float scale = command->turn_direction == MOTION_TURN_LEFT ?
+    float scale = direction == MOTION_TURN_LEFT ?
         ENC_TURN_LEFT_SCALE : ENC_TURN_RIGHT_SCALE;
     return ENC_WHEEL_TRACK_CM * scale;
 }
@@ -234,7 +236,7 @@ static int64_t pid_deadline(const motion_command_t *command)
     }
     if (command->type == MOTION_CMD_TURN)
     {
-        counts = pid_turn_track(command) * command->target_angle_deg *
+        counts = pid_turn_track(command->turn_direction) * command->target_angle_deg *
             ENC_LEFT_COUNTS_PER_REV / (360.0f * ENC_WHEEL_DIAMETER_CM);
     }
     if (command->target_speed_cps <= 0)
@@ -256,7 +258,7 @@ static void pid_begin(pid_state_t *state, const motion_command_t *command)
         pid_finish(state, MOTION_STATUS_CANCELLED, MOTION_FAULT_NONE);
     }
     b2_safety_force_stop();
-    state->command = *command;
+    state->command = motion_pack_command(command);
     state->generation = command->safety_generation;
     state->status = MOTION_STATUS_RUNNING;
     state->fault = MOTION_FAULT_NONE;
@@ -323,7 +325,7 @@ static void pid_accept(pid_state_t *state)
         state->left_mm = 0.0f;
         state->right_mm = 0.0f;
     }
-    state->command = command;
+    state->command = motion_pack_command(&command);
     state->status = MOTION_STATUS_RUNNING;
     state->refreshed_ms = state->now_ms;
 }
@@ -422,7 +424,7 @@ static motion_profile_t pid_profile(pid_state_t *state)
     }
     else if (state->command.type == MOTION_CMD_TURN)
     {
-        target = PID_PI * pid_turn_track(&state->command) * 10.0f *
+        target = PID_PI * pid_turn_track(state->command.turn_direction) * 10.0f *
             state->command.target_angle_deg / 360.0f;
     }
     motion_profile_t profile;

@@ -27,14 +27,19 @@
 static uint32_t g_stop_generation = 1u;
 static uint32_t g_acknowledged_generation = 0u;
 static uint32_t g_clear_heartbeat_ms = 0u;
-static bool gb_clear_valid = false;
-static bool gb_stopped = true;
+/* All runtime reads/writes hold g_safety_lock (or disable interrupts). */
+static struct
+{
+    bool clear_valid : 1;
+    bool stopped : 1;
+    bool stop_latched : 1;
+} g_safety = {false, true, true};
 /*
  * STOP remains latched until a fresh clear-path report
  * arrives after Buddy 2 acknowledges the STOP.
  */
 
-static bool gb_stop_latched = true;
+
 #if TK_SUPPORT_SMP
 
 static T_SPLOCK g_safety_lock = 0;
@@ -49,9 +54,9 @@ ER b2_safety_init(void)
     g_stop_generation = 1u;
     g_acknowledged_generation = 0u;
     g_clear_heartbeat_ms = 0u;
-    gb_clear_valid = false;
-    gb_stopped = true;
-    gb_stop_latched = true;
+    g_safety.clear_valid = false;
+    g_safety.stopped = true;
+    g_safety.stop_latched = true;
 #if TK_SUPPORT_SMP
     g_safety_lock = 0;
 #endif
@@ -73,12 +78,12 @@ void b2_request_stop(void)
      * Repeated STOP requests while already latched
      * do not increment the generation.
      */
-    if (!gb_stop_latched)
+    if (!g_safety.stop_latched)
     {
         g_stop_generation++;
     }
-    gb_clear_valid = false;
-    gb_stop_latched = true;
+    g_safety.clear_valid = false;
+    g_safety.stop_latched = true;
     /*
      * Disable motor PWM immediately while holding
      * the safety spinlock.
@@ -87,7 +92,7 @@ void b2_request_stop(void)
      * generation separately.
      */
     motor_stop();
-    gb_stopped = true;
+    g_safety.stopped = true;
 
     safety_lock_leave(interrupt_status);
 }
@@ -107,8 +112,8 @@ void b2_request_forward(void)
         (!ROBOT_MODE || !ROBOT_ENABLE_BYPASS || s5_mission_enabled()))
     {
         g_clear_heartbeat_ms = now;
-        gb_clear_valid = true;
-        gb_stop_latched = false;
+        g_safety.clear_valid = true;
+        g_safety.stop_latched = false;
     }
     safety_lock_leave(interrupt_status);
 }
@@ -150,8 +155,8 @@ bool b2_safety_motion_allowed(void)
     safety_lock_enter(&interrupt_status);
     b_allowed =
         (g_stop_generation == g_acknowledged_generation) &&
-        (!gb_stop_latched) &&
-        (gb_clear_valid);
+        (!g_safety.stop_latched) &&
+        (g_safety.clear_valid);
     if (ROBOT_MODE && ROBOT_ENABLE_BYPASS && !s5_mission_enabled()) b_allowed = false;
     last = g_clear_heartbeat_ms;
 
@@ -171,7 +176,7 @@ void b2_safety_force_stop(void)
 
     safety_lock_enter(&interrupt_status);
     motor_stop();
-    gb_stopped = true;
+    g_safety.stopped = true;
 
     safety_lock_leave(interrupt_status);
 }
@@ -185,7 +190,7 @@ void b2_safety_acknowledge_stop(void)
      */
     safety_lock_enter(&interrupt_status);
     motor_stop();
-    gb_stopped = true;
+    g_safety.stopped = true;
     g_acknowledged_generation = g_stop_generation;
 
     safety_lock_leave(interrupt_status);
@@ -205,8 +210,8 @@ void b2_safety_apply_pwm(
     b_allowed =
         (command_safety_generation == g_stop_generation) &&
         (g_stop_generation == g_acknowledged_generation) &&
-        (!gb_stop_latched) &&
-        (gb_clear_valid) &&
+        (!g_safety.stop_latched) &&
+        (g_safety.clear_valid) &&
         ((uint32_t)(now - g_clear_heartbeat_ms) <=
             B2_SAFETY_HEARTBEAT_MS);
 #if !ROBOT_ENABLE_DRIVE
@@ -217,12 +222,12 @@ void b2_safety_apply_pwm(
     if (!b_allowed)
     {
         motor_stop();
-        gb_stopped = true;
+        g_safety.stopped = true;
         g_acknowledged_generation = g_stop_generation;
     }
     else
     {
-        gb_stopped = false;
+        g_safety.stopped = false;
         motor_left_set(left_percent);
         motor_right_set(right_percent);
     }
@@ -236,7 +241,7 @@ bool b2_motor_is_stopped(void)
 
     safety_lock_enter(&interrupt_status);
     b_result =
-        (gb_stopped) &&
+        (g_safety.stopped) &&
         (g_stop_generation == g_acknowledged_generation);
 
     safety_lock_leave(interrupt_status);

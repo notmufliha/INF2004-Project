@@ -213,3 +213,124 @@ Validation: 1,266 B2 host assertions passed with the trial on and off; both B1
 integration variants passed. ARM syntax checks passed in both modes. The
 network robot build generated `mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.uf2`.
 These checks establish software compatibility, not physical calibration.
+
+## Change Requirement 1: minimum-bit representation (2026-11-20)
+
+The supplied Change Requirement 1 and CSC25 tribunal documents are the design
+references for this change. The tribunal's Buddy 2 decision explicitly retains
+32-bit cumulative encoder totals and measured counts/s until a narrower range
+is validated, and assigns two bits to each previous quadrature state. Motor
+ownership, the 10 ms control period, calibration and safety deadlines continue
+to use the existing contracts.
+
+Accepted commands use `motion_stored_command_t` in `motion_storage.h` in both
+the pending slot and controller state. Public `motion_command_t` remains a wide
+validation input: packing caller input first could turn an invalid speed of
+8193 into a valid-looking 1. Submission validates before packing. Irrelevant
+command fields are normalized to zero; STOP retains its ID and generation.
+These native C structures are never sent as raw MQTT bytes: bit-field order,
+padding and enum sizes depend on the compiler ABI. B1 owns binary serialization
+and the shared fault mask. B2 continues to raise `FAULT_MOTOR_STALL` and
+`FAULT_ENCODER` through the kernel event-flag service.
+
+Data representation table (widths describe logical fields; native alignment
+can leave padding):
+
+| Data field | Valid range | Bits | Implementation |
+|---|---|---:|---|
+| Command type | STOP/DRIVE/TURN/MOVE, 0..3 | 2 | Stored command/status bit-field |
+| Direction | stopped/forward/reverse, 0..2 | 2 | Stored command/status bit-field |
+| Turn direction | left/right, 0..1 | 1 | Stored command/status bit-field |
+| Requested speed | 1..5000 cps; 0 for STOP | 13 | Unsigned stored bit-field |
+| MOVE distance | 1..2147483647 counts; 0 otherwise | 31 | Unsigned stored bit-field |
+| TURN angle | 1..360 degrees; 0 otherwise | 9 | Unsigned stored bit-field |
+| DRIVE steering | -1000..1000 permille | 11 | Signed stored bit-field |
+| Explicit timeout/run duration | 0 or 100..60000 ms | 16 each | Stored command bit-fields |
+| Derived motion duration | 0..60000 ms | 16 | Controller bit-field |
+| Command ID and safety generation | 0..4294967295 | 32 each | Retained uint32_t |
+| Motion status | six states, 0..5 | 3 | Status/controller bit-field |
+| Terminal fault cause | nine causes, 0..8 | 4 | Status/controller bit-field |
+| Shared motor-stall/encoder faults | false/true | 1 each | Existing shared fault mask |
+| Previous left/right quadrature state | 0..3 | 2 each | One uint8_t-based packed object |
+| Encoder totals/start/history values | signed 32-bit counts | 32 each | Retained INT counters |
+| Invalid-transition totals | 0..4294967295 | 32 each | Retained UW counters |
+| Published measured wheel speed | signed 32-bit cps | 32 each | Retained INT values |
+| Motor API duty input | clamped to -100..100 percent | 8 after clamp | Wide validation/calculation parameter; no retained duty message |
+| Controller applied PWM magnitude | 0..35 percent | 6 each | Unsigned controller bit-fields |
+| Controller wheel sign | -1, 0, +1 | 2 each | Signed controller bit-fields |
+| Speed history count/index | 0..10 | 4 each | Controller bit-fields |
+| Diagnostic speed sample count | 0..10 before reset | 4 | Local uint8_t-based bit-field |
+| Motor ready | false/true | 1 | Motor-local bit-field |
+| Safety clearance/stopped/STOP latch | false/true | 1 each | Packed safety object |
+| Controller settling/stopped | false/true | 1 each | Controller-local bit-fields |
+| Snapshot standstill | false/true | 1 | Status bit-field |
+| Profile reached flags | false/true | 1 each | Task-local bit-fields |
+| Demo measurement | 0..100 | 7 | Mailbox message bit-field |
+| Demo processor ID | literal 1..2 | 2 | Mailbox message bit-field |
+| Sequence/time/interval/generation values | full existing 32-bit range | 32 each | Retained integer fields |
+| Absolute RTOS times and time history | existing 64-bit clock domain | 64 each | Retained int64_t |
+| PI intermediates, travel, profile speeds | existing floating-point domain | 32 each | Retained float; no new quantization contract |
+
+Queue occupancy/readiness/acknowledgement flags remain separate bool objects
+where their synchronization domains differ. Each carries one logical bit;
+packing them into a common storage unit would couple independent writers.
+RTOS IDs, lock words, mailbox linkage and peripheral registers retain platform
+representations. API arguments and arithmetic temporaries remain wide enough
+for validation and overflow-safe calculations.
+
+Synchronization: the existing command semaphore protects complete pending-slot
+copies. The interrupt/SMP status lock protects snapshots and all eight retained
+results. Every runtime update of the packed safety flags holds the existing
+safety lock. The encoder ISR updates both phase fields under the encoder lock;
+initialization completes before its interrupt sources are enabled. The PID
+state and profile belong to the control task. The sample producer transfers
+exclusive ownership of each filled block to the mailbox consumer. No packed
+object receives an unsynchronized read-modify-write from independent tasks.
+
+Measured with the installed Arm GNU compiler for Cortex-M0+ against baseline
+commit `e7fe907` (`CNF_SMP=0`, `APP_TEST=0`, `-O2`):
+
+| Object | Before (bytes) | After (bytes) | Saved |
+|---|---:|---:|---:|
+| Wide command input | 40 | 40 | 0 |
+| Pending command slot | 40 | 24 | 16 |
+| Current status snapshot | 60 | 52 | 8 |
+| Eight retained results | 480 | 416 | 64 |
+| Controller state (stack object) | 424 | 392 | 32 |
+| Sample mailbox message, including T_MSG | 20 | 16 | 4 |
+| Four sample pool blocks | 80 | 64 | 16 |
+
+The pending slot, current snapshot, history and pool together save **104 bytes**
+of declared storage. The controller's local object saves another 32 bytes, but
+its configured RTOS stack allocation is unchanged. These measurements include
+native structure padding. They are object-level RAM/message comparisons, not
+a claim that whole-firmware data+bss or stack reservations fell by that amount.
+The kernel's pool allocation alignment can affect actual heap consumption.
+
+Reproduce with the Arm compiler and nm on PATH:
+
+```text
+python testing/subsystem2/host/measure_sizes.py --before e7fe907
+powershell -ExecutionPolicy Bypass -File testing/subsystem2/host/run_tests.ps1
+```
+
+Validation: 10,018 host assertions pass, including round trips through the
+real pending slot for every steering value -1000..1000, maximum speed, maximum
+MOVE distance, maximum durations, 360-degree right turns and STOP identity.
+Invalid values that would alias valid values after truncation are rejected.
+Both B1 legacy and binary integration variants pass. ARM syntax checks pass
+for all B2 C files, the sample consumer and Vehicle Controller with both
+`CNF_SMP=0` and `CNF_SMP=1`, including on-target test code (`APP_TEST=1`).
+
+The complete USB firmware build was attempted but the locally installed Pico
+SDK v1.5.1 does not satisfy the repository's SDK include layout (`pico.h` is
+missing from the configured include paths). A new UF2 was not produced.
+The existing style checker also reports pre-existing branch violations;
+this change does not certify full BARR-C compliance.
+
+Hardware acceptance remains necessary: compare loop interval/jitter and
+execution time under Wi-Fi load, exercise simultaneous safety STOP and command
+submission on SMP, verify forward/reverse encoder totals and invalid-transition
+counts, and repeat DRIVE/MOVE/TURN/STOP/stall/watchdog tests. Attach the final
+ELF data+bss comparison and measured timing logs before claiming the Week 13
+whole-robot correctness/performance evidence is complete.

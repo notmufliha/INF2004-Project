@@ -10,8 +10,8 @@ typedef struct
 {
     float left_speed;
     float right_speed;
-    bool left_reached;
-    bool right_reached;
+    bool left_reached : 1;
+    bool right_reached : 1;
 } motion_profile_t;
 
 /* All distances are mm and speeds are mm/s. Progress is direction-normalized.

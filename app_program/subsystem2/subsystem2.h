@@ -25,8 +25,8 @@ typedef struct
     T_MSG hdr;        /* used by the kernel, do not touch */
     UW seq;        /* sample sequence number */
     UW time_ms;    /* system time when the sample was taken */
-    INT value;        /* the "measurement", 0..100 */
-    INT prc;        /* processor (core) that produced it: 1 or 2 */
+    UINT value : 7;        /* the "measurement", 0..100 */
+    UINT prc : 2;        /* processor (core) that produced it: 1 or 2 */
 } subsystem2_sample_msg_t;
 #define S2_POOL_COUNT    4    /* at most 4 samples in flight */
 /* IF-02: the receiver of a sample gives its memory block back to

@@ -52,11 +52,10 @@ imu_motion_capture (imu_motion_t * p_motion)
 static bool
 snapshot_is_valid (const motion_status_snapshot_t * p_snapshot, uint32_t now_ms)
 {
-    /* Unsigned conversion is defined modulo 2^32: negative enum values become
-     * large and are rejected. Valid enum values and their maxima fit exactly.
+    /* B2's two-bit command_type represents exactly the four command types.
+     * Other packed fields have spare encodings that still need validation.
      */
-    if (((uint32_t)p_snapshot->command_type > (uint32_t)MOTION_CMD_MOVE) ||
-        ((uint32_t)p_snapshot->status > (uint32_t)MOTION_STATUS_FAULT) ||
+    if (((uint32_t)p_snapshot->status > (uint32_t)MOTION_STATUS_FAULT) ||
         ((uint32_t)p_snapshot->direction > (uint32_t)MOTION_DIR_REVERSE) ||
         ((uint32_t)p_snapshot->fault > (uint32_t)MOTION_FAULT_ENCODER) ||
         (0U == p_snapshot->control_interval_ms) ||
