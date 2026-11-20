@@ -39,8 +39,12 @@ static volatile INT g_left_count = 0;
 static volatile INT g_right_count = 0;
 static volatile UW g_left_invalid;
 static volatile UW g_right_invalid;
-static UINT g_left_previous = 0;
-static UINT g_right_previous = 0;
+/* ISR owns both packed quadrature states after initialization. */
+static struct
+{
+    uint8_t left : 2;
+    uint8_t right : 2;
+} g_previous;
 #if TK_SUPPORT_SMP
 
 static T_SPLOCK g_encoder_lock;
@@ -88,9 +92,9 @@ ER encoder_init(void)
     g_right_count = 0;
     g_left_invalid = 0u;
     g_right_invalid = 0u;
-    g_left_previous =
+    g_previous.left =
         encoder_read_state(ENC_L_A, ENC_L_B);
-    g_right_previous =
+    g_previous.right =
         encoder_read_state(ENC_R_A, ENC_R_B);
     /* Disable our GPIO edge sources before registration. */
     ENC_PROC0_INTE0 &= ~ENC_ALL_EDGES;
@@ -222,7 +226,10 @@ void encoder_speed_task(INT stacd, void *p_exinf)
     INT right_previous_count;
     INT left_speed = 0;
     INT right_speed = 0;
-    INT sample_counter = 0;
+    struct
+    {
+        uint8_t count : 4;
+    } samples = {0};
     SYSTIM previous_time;
     SYSTIM current_time;
     int64_t elapsed_ms;
@@ -245,12 +252,12 @@ void encoder_speed_task(INT stacd, void *p_exinf)
     {
         /* Request a 10 ms sampling interval. */
         tk_dly_tsk(10);
-        sample_counter++;
+        samples.count++;
         /*
          * Calculate speed over approximately 100 ms
          * instead of using individual 10 ms samples.
          */
-        if (sample_counter >= 10)
+        if (samples.count >= 10)
         {
             encoder_get_counts(&left_now, &right_now);
             if (E_OK != tk_get_tim(&current_time))
@@ -277,7 +284,7 @@ void encoder_speed_task(INT stacd, void *p_exinf)
             left_previous_count = left_now;
             right_previous_count = right_now;
             previous_time = current_time;
-            sample_counter = 0;
+            samples.count = 0;
         }
         /* Print roughly every 500 ms. */
         static INT print_counter = 0;
@@ -370,12 +377,12 @@ static void encoder_gpio_isr(UINT intno)
             current =
                 (((gpio_snapshot >> ENC_L_A) & 1U) << 1) |
                 ((gpio_snapshot >> ENC_L_B) & 1U);
-            if ((g_left_previous ^ current) == 3u)
+            if ((g_previous.left ^ current) == 3u)
             {
                 g_left_invalid++;
             }
-            g_left_count += encoder_decode(g_left_previous, current);
-            g_left_previous = current;
+            g_left_count += encoder_decode(g_previous.left, current);
+            g_previous.left = current;
         }
         if (0U != (pending & (ENC_EDGE_MASK(ENC_R_A) |
             ENC_EDGE_MASK(ENC_R_B))))
@@ -383,12 +390,12 @@ static void encoder_gpio_isr(UINT intno)
             current =
                 (((gpio_snapshot >> ENC_R_A) & 1U) << 1) |
                 ((gpio_snapshot >> ENC_R_B) & 1U);
-            if ((g_right_previous ^ current) == 3u)
+            if ((g_previous.right ^ current) == 3u)
             {
                 g_right_invalid++;
             }
-            g_right_count += encoder_decode(g_right_previous, current);
-            g_right_previous = current;
+            g_right_count += encoder_decode(g_previous.right, current);
+            g_previous.right = current;
         }
     }
     encoder_lock_leave(interrupt_status);

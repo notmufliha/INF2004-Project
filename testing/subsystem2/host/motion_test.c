@@ -133,7 +133,8 @@ static void test_profiles(void)
     CHECK(p.left_speed < 20 && p.left_speed > 0);
     {
         pid_state_t state = setup();
-        state.command = command(MOTION_CMD_DRIVE);
+        motion_command_t drive = command(MOTION_CMD_DRIVE);
+        state.command = motion_pack_command(&drive);
         state.command.direction = MOTION_DIR_FORWARD;
         state.left_sign = state.right_sign = 1;
         motion_profile_t trimmed = pid_profile(&state);
@@ -165,7 +166,8 @@ static void test_profiles(void)
 static void test_reverse_balance(void)
 {
     pid_state_t state = setup();
-    state.command = command(MOTION_CMD_MOVE);
+    motion_command_t move = command(MOTION_CMD_MOVE);
+    state.command = motion_pack_command(&move);
     state.command.direction = MOTION_DIR_REVERSE;
     state.left_sign = state.right_sign = -1;
     float left_scale = 1.0f + ROBOT_REVERSE_TRIM_PERMILLE / 1000.0f;
@@ -258,9 +260,9 @@ static void test_turn(bool right)
     uint32_t id;
     motion_status_snapshot_t result;
     value.turn_direction = right ? MOTION_TURN_RIGHT : MOTION_TURN_LEFT;
-    INT left_target = (INT)(pid_turn_track(&value) *
+    INT left_target = (INT)(pid_turn_track(value.turn_direction) *
         ENC_LEFT_COUNTS_PER_REV / (4.0f * ENC_WHEEL_DIAMETER_CM)) + 2;
-    INT right_target = (INT)(pid_turn_track(&value) *
+    INT right_target = (INT)(pid_turn_track(value.turn_direction) *
         ENC_RIGHT_COUNTS_PER_REV / (4.0f * ENC_WHEEL_DIAMETER_CM)) + 2;
     if (right)
     {
@@ -653,6 +655,65 @@ static void test_feedforward_and_kick(void)
         state.fault == MOTION_FAULT_STALL);
 }
 
+static void representation_test(void)
+{
+    motion_command_t input = {0};
+    motion_command_t output = {0};
+    uint32_t id;
+    (void)setup();
+    input.type = MOTION_CMD_MOVE;
+    input.direction = MOTION_DIR_REVERSE;
+    input.target_speed_cps = 5000;
+    input.target_distance_counts = INT32_MAX;
+    input.timeout_ms = 60000u;
+    input.run_ms = 60000u;
+    input.safety_generation = safety_generation;
+    CHECK(motion_send_command_with_id(&input, &id) == E_OK);
+    CHECK(motion_receive_command(&output) == E_OK);
+    CHECK(output.target_speed_cps == 5000);
+    CHECK(output.target_distance_counts == INT32_MAX);
+    CHECK(output.timeout_ms == 60000u && output.run_ms == 60000u);
+    CHECK(output.direction == MOTION_DIR_REVERSE);
+    input.target_speed_cps = 8193; /* Would alias 1 if packed first. */
+    CHECK(motion_send_command_with_id(&input, &id) == E_PAR);
+    input.target_speed_cps = 5000;
+    input.timeout_ms = 65536u;
+    CHECK(motion_send_command_with_id(&input, &id) == E_PAR);
+    input = (motion_command_t){0};
+    input.type = MOTION_CMD_DRIVE;
+    input.direction = MOTION_DIR_FORWARD;
+    input.target_speed_cps = 2500;
+    input.safety_generation = safety_generation;
+    for (INT steer = -1000; steer <= 1000; steer++)
+    {
+        input.steering_permille = steer;
+        CHECK(motion_send_command_with_id(&input, &id) == E_OK);
+        CHECK(motion_receive_command(&output) == E_OK);
+        CHECK(output.steering_permille == steer);
+    }
+    input = (motion_command_t){0};
+    input.type = MOTION_CMD_STOP;
+    input.command_id = UINT32_MAX;
+    input.safety_generation = UINT32_MAX;
+    motion_stored_command_t stopped = motion_pack_command(&input);
+    CHECK(stopped.command_id == UINT32_MAX);
+    CHECK(stopped.safety_generation == UINT32_MAX);
+    input = (motion_command_t){0};
+    input.type = MOTION_CMD_TURN;
+    input.target_speed_cps = 5000;
+    input.target_angle_deg = 360;
+    input.turn_direction = MOTION_TURN_RIGHT;
+    input.safety_generation = safety_generation;
+    CHECK(motion_send_command_with_id(&input, &id) == E_OK);
+    CHECK(motion_receive_command(&output) == E_OK);
+    CHECK(output.target_angle_deg == 360);
+    CHECK(output.turn_direction == MOTION_TURN_RIGHT);
+    printf("SIZES: input=%zu pending=%zu snapshot=%zu history=%zu "
+           "pid=%zu\n", sizeof(motion_command_t), sizeof(g_pending_command),
+           sizeof(motion_status_snapshot_t), sizeof(g_results),
+           sizeof(pid_state_t));
+}
+
 int main(void)
 {
     INT mapped_speed;
@@ -703,7 +764,8 @@ int main(void)
     test_encoder_diagnostic_fault();
     {
         pid_state_t trial = setup();
-        trial.command = command(MOTION_CMD_DRIVE);
+        motion_command_t drive = command(MOTION_CMD_DRIVE);
+        trial.command = motion_pack_command(&drive);
         trial.command.direction = MOTION_DIR_FORWARD;
 #if B2_FORWARD_FEEDFORWARD_TRIAL
         CHECK(pid_base_pwm(&trial, true) == (float)B2_LEFT_BASE_PWM);
@@ -745,6 +807,7 @@ int main(void)
         CHECK(diagnostic.speed_log_ms == 0u);
     }
 #endif
+    representation_test();
     printf("PASS: %u subsystem 2 host assertions\n", checks);
     return 0;
 }

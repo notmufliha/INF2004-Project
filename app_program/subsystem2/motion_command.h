@@ -121,11 +121,12 @@ typedef enum
  */
 typedef struct
 {
-    motion_cmd_type_t command_type;
-    motion_status_t status;
-    motion_fault_t fault;
-    motion_direction_t direction;
-    motion_turn_direction_t turn_direction;
+    UINT command_type : 2;
+    UINT status : 3;
+    UINT fault : 4;
+    UINT direction : 2;
+    UINT turn_direction : 1;
+    bool physically_stopped : 1;
 
     /*
      * Identifies the command associated with this status.
@@ -142,7 +143,6 @@ typedef struct
     float left_distance_mm;
     float right_distance_mm;
     float total_distance_mm;
-    bool physically_stopped;
     uint32_t sample_time_ms;
     uint32_t control_interval_ms;
     uint32_t maximum_interval_ms;

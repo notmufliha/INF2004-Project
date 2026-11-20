@@ -19,7 +19,10 @@
 #define PWM_RESET_TIMEOUT 1000000U
 /* Indicates whether motor PWM initialisation succeeded. */
 
-static bool gb_motor_ready = false;
+static struct
+{
+    bool ready : 1;
+} g_motor;
 
 static ER motor_init_fail(ER error);
 
@@ -36,7 +39,7 @@ void motor_stop(void)
 ER motor_init(void)
 {
     UW timeout = PWM_RESET_TIMEOUT;
-    gb_motor_ready = false;
+    g_motor.ready = false;
     /* Release the PWM peripheral from reset. */
     RESETS_RESET_REG &= ~PWM_RESET_MASK;
 
@@ -49,7 +52,7 @@ ER motor_init(void)
              * PWM is not confirmed ready.
              * Do not access its registers during cleanup.
              */
-            gb_motor_ready = false;
+            g_motor.ready = false;
             return (E_TMOUT);
         }
         timeout--;
@@ -86,7 +89,7 @@ ER motor_init(void)
         tm_printf((UB *)"[B2] PWM enable failed\n");
         return (motor_init_fail(E_OBJ));
     }
-    gb_motor_ready = true;
+    g_motor.ready = true;
 
     tm_printf((UB *)"[B2] Both motor PWM channels initialized\n");
     return (E_OK);
@@ -97,7 +100,7 @@ void motor_left_set(int speed_percent)
 {
     UW duty;
 
-    if (!gb_motor_ready)
+    if (!g_motor.ready)
     {
         return;
     }
@@ -142,7 +145,7 @@ void motor_right_set(int speed_percent)
 {
     UW duty;
 
-    if (!gb_motor_ready)
+    if (!g_motor.ready)
     {
         return;
     }
@@ -184,7 +187,7 @@ void motor_right_set(int speed_percent)
 /** @brief Disable motor PWM after an initialization failure. */
 static ER motor_init_fail(ER error)
 {
-    gb_motor_ready = false;
+    g_motor.ready = false;
     /* Clear motor PWM compare values. */
     motor_stop();
     /* Disable both motor PWM slices. */

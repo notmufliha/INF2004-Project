@@ -2,13 +2,14 @@
  * @brief One pending command, immediate STOP, retained execution results.
  */
 #include "motion_command.h"
+#include "motion_storage.h"
 #include "b2_motor.h"
 #include "encoder_control.h"
 #if TK_SUPPORT_SMP
 #include <tk/smp.h>
 #endif
 
-static motion_command_t g_pending_command;
+static motion_stored_command_t g_pending_command;
 static bool gb_command_pending;
 static ID gh_command_sem;
 static uint32_t g_next_command_id = 1u;
@@ -164,6 +165,7 @@ static void motion_cancel_pending(void)
     motion_unlock(status);
 }
 
+
 ER motion_send_command_with_id(const motion_command_t *command,
     uint32_t *command_id)
 {
@@ -210,7 +212,7 @@ ER motion_send_command_with_id(const motion_command_t *command,
         {
             motion_cancel_pending();
         }
-        g_pending_command = *command;
+        g_pending_command = motion_pack_command(command);
         g_pending_command.command_id = g_next_command_id++;
         if (g_next_command_id == 0u)
         {
@@ -310,7 +312,17 @@ ER motion_receive_command(motion_command_t *command)
     else
     {
         /* Deliver stale commands too, so the controller reports their IDs. */
-        *command = g_pending_command;
+        command->type = g_pending_command.type;
+        command->direction = g_pending_command.direction;
+        command->turn_direction = g_pending_command.turn_direction;
+        command->target_speed_cps = g_pending_command.target_speed_cps;
+        command->target_angle_deg = g_pending_command.target_angle_deg;
+        command->steering_permille = g_pending_command.steering_permille;
+        command->timeout_ms = g_pending_command.timeout_ms;
+        command->run_ms = g_pending_command.run_ms;
+        command->target_distance_counts = g_pending_command.target_distance_counts;
+        command->command_id = g_pending_command.command_id;
+        command->safety_generation = g_pending_command.safety_generation;
         gb_command_pending = false;
     }
     (void)tk_sig_sem(gh_command_sem, 1);
