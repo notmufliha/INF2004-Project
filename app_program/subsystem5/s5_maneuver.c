@@ -94,17 +94,16 @@ bool s5_maneuver_plan_equal_legs(S5Maneuver *m, float obstacle_front_cm)
 {
     if (!course_has_room(m->lateral_cm, obstacle_front_cm)) return false;
     m->offset_cm = m->search_limit_cm = ROBOT_COURSE_BYPASS_LEG_CM;
-    m->pass_cm = 0.0f;
+    m->pass_cm = ROBOT_COURSE_PASS_CM;
     m->equal_leg_route = true;
     return true;
 }
 bool s5_maneuver_plan_probe_route(S5Maneuver *m, float obstacle_front_cm)
 {
     if (obstacle_front_cm <= ROBOT_BYPASS_FRONT_TURN_CM) return false;
-    /* The outward target is shared by all resumed moves. The return
-     * searches the same diagonal distance, with the front guard active. */
+    /* Use the same guarded distance targets as the course route. */
     m->offset_cm = m->search_limit_cm = ROBOT_COURSE_BYPASS_LEG_CM;
-    m->pass_cm = 0.0f;
+    m->pass_cm = ROBOT_COURSE_PASS_CM;
     m->equal_leg_route = true;
     m->guarded_probe_route = true;
     m->state = S5_MAN_OFFSET;
@@ -133,13 +132,8 @@ static void next_leg(S5Maneuver *m, S5ManeuverState state, uint32_t now)
     m->leg_ms = now;
     m->waiting_clear = false;
     m->clear_hits = 0u;
-    if (state == S5_MAN_TURN_IN && m->equal_leg_route) {
-        const float outward = ROBOT_COURSE_BYPASS_TURN_DEG * 0.01745329252f;
-        const float inward = (ROBOT_COURSE_RETURN_TURN_DEG - ROBOT_COURSE_BYPASS_TURN_DEG) *
-                             0.01745329252f;
-        m->search_limit_cm = fminf(ROBOT_BYPASS_MAX_LEG_CM,
-                                   m->offset_done_cm * sinf(outward) / sinf(inward));
-    }
+    if (state == S5_MAN_FORWARD && m->equal_leg_route)
+        m->search_limit_cm = m->offset_done_cm;
 }
 S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
 {
@@ -159,7 +153,7 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
         in->now_ms - in->line_sample_ms > ROBOT_BYPASS_LINE_MAX_AGE_MS)
         return stop(m, S5_ERR_LINE_TIMEOUT);
     if (!in->line_detected) m->left_original_line = true;
-    /* The equal-leg route acquires the line during its return drive. */
+    /* The equal-leg route finishes its measured return before handoff. */
     if (ROBOT_BYPASS_LINE_HANDOFF && m->outward_turn_complete &&
         !m->equal_leg_route &&
         m->left_original_line && in->line_sample_ms != m->last_line_ms) {
@@ -396,6 +390,7 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
             if (progress <= 0.0f)
                 progress = in->motion_success ? m->active_move_cm : 0.0f;
             if (m->state == S5_MAN_OFFSET) m->offset_done_cm += progress;
+            else if (m->state == S5_MAN_PASS) m->pass_done_cm += progress;
             else m->searched_cm += progress;
             m->pending_id = 0u;
             m->forward_paused = false;
@@ -418,10 +413,19 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
             return (S5Action){S5_ACT_STOP, 0.0f, 0};
         m->waiting_clear = false;
     }
-    if (m->guarded_probe_route && m->state == S5_MAN_OFFSET && !m->pending_id &&
-        m->offset_done_cm + 0.01f >= m->offset_cm) {
-        next_leg(m, S5_MAN_TURN_IN, in->now_ms);
-        return a;
+    if (m->equal_leg_route && !m->pending_id && in->stopped) {
+        if (m->state == S5_MAN_OFFSET && m->offset_done_cm + 0.01f >= m->offset_cm) {
+            next_leg(m, S5_MAN_FORWARD, in->now_ms);
+            return a;
+        }
+        if (m->state == S5_MAN_PASS && m->pass_done_cm + 0.01f >= m->pass_cm) {
+            next_leg(m, S5_MAN_TURN_IN, in->now_ms);
+            return a;
+        }
+        if (m->state == S5_MAN_SEARCH && m->searched_cm + 0.01f >= m->search_limit_cm) {
+            next_leg(m, S5_MAN_COMPLETE, in->now_ms);
+            return a;
+        }
     }
     /* Reversing increases front clearance; the turn envelope applies to turns.
      * Rear clearance is checked separately throughout the reverse leg. */
@@ -430,12 +434,7 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
         return stop(m, S5_ERR_INSUFFICIENT_CLEARANCE);
     if (m->state == S5_MAN_BACK && !in->rear_clear)
         return stop(m, S5_ERR_NO_CLEAR_ROUTE);
-    float search_progress_cm = m->searched_cm;
-    if (m->equal_leg_route && m->state == S5_MAN_SEARCH && m->pending_id &&
-        in->motion_progress_cm > 0.0f)
-        search_progress_cm += in->motion_progress_cm;
-    bool return_started = !m->equal_leg_route || m->pending_id || m->searched_cm > 0.0f;
-    if (((!ROBOT_OBSTACLE_TEST && m->state == S5_MAN_SEARCH && return_started) ||
+    if (((!ROBOT_OBSTACLE_TEST && m->state == S5_MAN_SEARCH && !m->equal_leg_route) ||
          (m->state == S5_MAN_ALIGN_CHECK && !m->pending_id && !m->issuing && in->stopped)) &&
         in->line_sample_ms != m->last_line_ms) {
         m->last_line_ms = in->line_sample_ms;
@@ -449,7 +448,6 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
                 next_leg(m, S5_MAN_COMPLETE, in->now_ms);
                 return a; /* Already physically stopped and facing forward. */
             }
-            if (m->equal_leg_route) m->searched_cm = search_progress_cm;
             next_leg(m, S5_MAN_LINE_STOP, in->now_ms);
             m->line_hits = 0u;
             return (S5Action){S5_ACT_STOP, 0.0f, 0};
@@ -480,7 +478,7 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
             }
             if (m->equal_leg_route) {
                 next_leg(m, m->offset_done_cm + 0.01f >= m->offset_cm ?
-                         S5_MAN_TURN_IN : S5_MAN_OFFSET, in->now_ms);
+                         S5_MAN_FORWARD : S5_MAN_OFFSET, in->now_ms);
             } else {
                 next_leg(m, ROBOT_BYPASS_EXACT_SEQUENCE || (ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_DISTANCE_MODE) || m->offset_done_cm + 0.01f >= m->offset_cm ? S5_MAN_FORWARD : S5_MAN_OFFSET, in->now_ms);
             }
@@ -499,6 +497,11 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
             break;
         case S5_MAN_SEARCH:
             if (ROBOT_OBSTACLE_TEST || m->equal_leg_route) m->searched_cm += completed;
+            if (m->equal_leg_route) {
+                next_leg(m, m->searched_cm + 0.01f >= m->search_limit_cm ?
+                         S5_MAN_COMPLETE : S5_MAN_SEARCH, in->now_ms);
+                break;
+            }
             if (ROBOT_BYPASS_EXACT_SEQUENCE) m->search_limit_cm = m->searched_cm;
             next_leg(m, ROBOT_BYPASS_EXACT_SEQUENCE || (ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_DISTANCE_MODE) ? S5_MAN_ALIGN : S5_MAN_SEARCH, in->now_ms); break;
         case S5_MAN_ALIGN:
