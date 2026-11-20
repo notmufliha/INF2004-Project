@@ -31,8 +31,11 @@
 #ifndef VC4_EXIT_FRESH_MS
 #define VC4_EXIT_FRESH_MS   200u
 #endif
-#define VC4_SAT             900   /* sensor fully over tape (junction)     */
-#define VC4_JCT_SUM_MIN     1400  /* nL + nR on a crossing tape            */
+#define VC4_SAT             600   /* both sensors need usable tape contrast */
+#define VC4_JCT_SUM_MIN     1300  /* nL + nR on a crossing tape            */
+#define VC4_JCT_SENSOR_MIN  600   /* each sensor must independently see tape */
+#define VC4_JCT_KEEP_MIN    450   /* hysteresis through a fading tape edge */
+#define VC4_JCT_KEEP_SUM    1100
 
 /* ---- steering ---------------------------------------------------------- */
 #define VC4_STEER_MAX       1000
@@ -47,6 +50,7 @@
 #ifndef VC4_D_PCT
 #define VC4_D_PCT           600
 #endif
+#define VC4_D_MAX           250   /* sensor edges must not reverse a curve */
 #ifndef VC4_D_EXIT_PCT
 #define VC4_D_EXIT_PCT      50    /* share of it after a possible exit     */
 #endif
@@ -54,7 +58,7 @@
 #define VC4_D_SMOOTH        3     /* damping input: move 1/n per tick      */
 #endif
 #ifndef VC4_P_PCT
-#define VC4_P_PCT           60
+#define VC4_P_PCT           80
 #endif
 #define VC4_COAST_MS        40u   /* black exit: coast before the arc      */
 #define VC4_FLIP_COAST_MS   200u  /* exit on the other side from last one  */
@@ -87,7 +91,7 @@
 
 /* ---- junction classifier ---------------------------------------------- */
 #define VC4_JCT_MIN_UM      10000u /* tape at least this wide             */
-#define VC4_JCT_CONFIRM_UM  30000u /* travel past it before classifying   */
+#define VC4_JCT_CONFIRM_UM  12000u /* clear travel after the crossbar     */
 /* Crossing tape (both sensors on tape): steer straight and ignore which
  * sensor touched it first/last, until both are back on floor or this far
  * past the tape.  Otherwise an unmarked cross reads as "line left on one
@@ -98,9 +102,9 @@
 #define VC4_CRUISE_MM_S     120
 #define VC4_SLOW_MM_S       100   /* obstacle ahead, after a bypass        */
 /* (VC4_BARCODE_MM_S removed: barcodes are read at the following speed.) */
-/* Full steering error moves each wheel by this much (mm/s x 10): 2/256 of
- * a count per 50 ms window at 324 um/count = 50.6 mm/s. */
-#define VC4_SPLIT_FULL_X10  506
+/* Full steering error changes each wheel by 65 mm/s before the inner-wheel
+ * limit. Stronger split lets the robot follow tighter curves at low speed. */
+#define VC4_SPLIT_FULL_X10  650
 #define VC4_CURVE_SLOW_PCT  50    /* base speed cut at full error          */
 /* Wheel travel per encoder count on this car (pi x 65 mm / ~2420). */
 #define VC4_UM_PER_COUNT    84u
@@ -134,6 +138,7 @@ typedef struct {
     uint8_t  jct_state;   /* 0 idle, 1 candidate, 2 confirm */
     bool     sat_l, sat_r;
     uint32_t jct_mark_um;
+    uint32_t jct_width_um;
 } vc4_track_t;
 
 void     vc4_reset(vc4_track_t *t);

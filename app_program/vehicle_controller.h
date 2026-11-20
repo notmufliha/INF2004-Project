@@ -299,6 +299,9 @@
 #define VC4_SEARCH_BACK_EXTRA_MM 20
 #define VC4_SEARCH_BACK_MAX_MM  150
 #define VC4_SEARCH_SWEEP_DEG 90
+#define VC4_SEARCH_CONFIRM_MS 60u /* sustained tape during the sweep     */
+#define VC4_SEARCH_ARC_MS 800u    /* gentle curve recovery before backup */
+#define VC4_SEARCH_ARC_MM_S 70
 #define VC4_SEARCH_MS 9000u
 #define VC4_TURN_MM_S 150         /* spin turns (search, junction)       */
 #define VC4_MOVE_MM_S 150         /* straight moves (junction advance)   */
@@ -306,6 +309,10 @@
 #define VC4_BAR_REVERSE_MM_S 60   /* controlled barcode rewind           */
 #define VC4_BAR_READ_MM_S 60      /* retry target after settling         */
 #define VC4_JCT_ADVANCE_CM 6.0f   /* line sensors to axle                */
+/* Floor trial: left junction turns overshoot at 90 degrees / 150 mm/s.
+ * Shorten only that command and approach its endpoint more slowly. */
+#define VC4_JCT_LEFT_TURN_DEG 80
+#define VC4_JCT_LEFT_TURN_MM_S 90
 #define VC4_MOTION_TIMEOUT_MS 10000u
 /* Barcode slow re-read. */
 #define VC4_BAR_STRIP_EDGES 3u    /* GP28 changes: bars, not a tape      */
@@ -334,6 +341,7 @@
 
 typedef struct {
     uint32_t now_ms, safety_generation;
+    uint32_t line_age_ms;
     bool clearance, line_valid, imu_valid, hump, hazard, motion_valid;
     bool barcode_active; /* B3 barcode sensor is crossing bars */
     bool obstacle_active, obstacle_fault;
@@ -442,10 +450,13 @@ typedef struct {
     bool v4_time_valid;
     INT v4_search_first;   /* +1 left / -1 right */
     INT v4_search_back_mm; /* back-up before the sweep                */
+    float v4_jct_advance_cm;
+    uint32_t v4_line_seen_ms;
     UB bar_phase, bar_tries;
     INT bar_speed_cps;     /* fixed target for this pass, across edge gaps */
     uint32_t bar_mark_um, bar_back_um, bar_ms, bar_clear_um;
     bool bar_clear_known;
+    bool bar_wait_clear;   /* decoded/skipped strip must fully leave GP28 */
     UH bar_rejects;
     bool post_avoid_slow;
     uint32_t post_avoid_um;
