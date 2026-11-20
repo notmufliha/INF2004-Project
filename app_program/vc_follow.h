@@ -93,6 +93,15 @@
  * past the tape.  Otherwise an unmarked cross reads as "line left on one
  * side" and the car arcs off and searches. */
 #define VC4_CROSS_HOLD_UM   40000u
+/* Both sensors black for longer than any tape (a crossing tape met at an
+ * angle reads ~25 mm): a black slab such as the hump, not a crossing.
+ * Leaving it, following resumes at once instead of holding straight for
+ * VC4_CROSS_HOLD_UM: a curve right after the hump was driven straight
+ * off, its exit never seen.  Also the widest tape the junction
+ * classifier accepts. */
+#ifndef VC4_SLAB_UM
+#define VC4_SLAB_UM         40000u
+#endif
 
 /* ---- speeds (mm/s) and wheel split ------------------------------------ */
 #define VC4_CRUISE_MM_S     120
@@ -126,6 +135,8 @@ typedef struct {
     uint32_t coast_ms;
     bool     cross_hold;  /* passing a crossing tape                      */
     uint32_t cross_um;    /* odometer when both sensors last saw tape     */
+    uint32_t cross_start_um; /* odometer when both first saw it          */
+    bool     slab;        /* both black longer than VC4_SLAB_UM           */
     /* loss */
     uint32_t white_ms;
     uint32_t white_start_um;

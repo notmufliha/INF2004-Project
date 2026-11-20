@@ -110,6 +110,25 @@ int main(void){
   for(int i=0;i<10;i++){ s=vc4_steer(&t,900,50,20,um); um+=2400; }
   { int lx=-1; for(int i=0;i<100;i++){ vc4_steer(&t,50,50,20,um); um+=2400; if(!vc4_on_line(&t)&&lx<0) lx=i; }
     CHECK(lx>=9 && lx<=30, "after a cross, a real exit is still lost/searched"); }
+  /* hump: a 120 mm black slab (both sensors black), the curve starts
+   * right after it.  The car must follow the curve at once, not hold
+   * straight 40 mm as after a crossing tape, and a real exit after it
+   * must still be seen (lost -> search), not driven straight forever. */
+  { vc4_reset(&t); um=0; int32_t s3=0; int lx=-1;
+    for(int i=0;i<20;i++){ vc4_steer(&t,100,100,20,um); um+=2400; }
+    for(int i=0;i<50;i++){ s3=vc4_steer(&t,1000,1000,20,um); um+=2400; }
+    CHECK(s3>-50 && s3<50, "on the hump: straight");
+    for(int i=0;i<10;i++){ s3=vc4_steer(&t,900,50,20,um); um+=2400; }
+    printf("   24 mm after the hump, line under left sensor: steer %d\n",s3);
+    CHECK(s3>300, "curve right after the hump: steers into it at once");
+    for(int i=0;i<100;i++){ vc4_steer(&t,50,50,20,um); um+=2400; if(!vc4_on_line(&t)&&lx<0) lx=i; }
+    CHECK(lx>=9 && lx<=30, "line leaving after the hump is lost/searched"); }
+  /* hump is not a junction */
+  vc4_reset(&t); um=0; got=0;
+  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=100,nr=100;
+    if(pos>=100 && pos<220){nl=1000;nr=1000;}
+    j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=2400; }
+  CHECK(got==VC4_JCT_NONE, "120 mm black slab (hump) not a junction");
   /* curve: line drifts onto the left sensor; steering must be strong
    * while the sensor is still only part-way on the tape */
   { vc4_reset(&t); um=0; int32_t s2=0;

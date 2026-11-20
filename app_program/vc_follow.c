@@ -17,6 +17,8 @@ void vc4_reset(vc4_track_t *t)
     t->coast_ms = 0u;
     t->cross_hold = false;
     t->cross_um = 0u;
+    t->cross_start_um = 0u;
+    t->slab = false;
     t->white_ms = 0u;
     t->white_start_um = 0u;
     t->lost = false;
@@ -81,6 +83,7 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
 {
     int32_t raw = (int32_t)nl - (int32_t)nr;
     bool white = nl < VC4_WHITE && nr < VC4_WHITE;
+    bool both = nl + nr >= VC4_JCT_SUM_MIN;   /* both on tape */
     int32_t target = 0;
     uint32_t steps = dt_ms / 10u;
 
@@ -89,7 +92,12 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
 
     /* Crossing tape: forget the side the first sensor touched it on and
      * drive straight across; the line carries on between the sensors. */
-    if (nl + nr >= VC4_JCT_SUM_MIN) {
+    if (both) {
+        if (!t->cross_hold) {
+            t->cross_start_um = travel_um;
+            t->slab = false;
+        }
+        if (travel_um - t->cross_start_um >= VC4_SLAB_UM) t->slab = true;
         t->cross_hold = true;
         t->cross_um = travel_um;
         t->bias = 0;          /* the arm, not a curve */
@@ -98,7 +106,10 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
         t->coast_ms = 0u;
     }
     if (t->cross_hold) {
-        if (white || travel_um - t->cross_um >= VC4_CROSS_HOLD_UM) {
+        bool off_slab = t->slab && !both;   /* came off the hump */
+
+        if (white || off_slab ||
+            travel_um - t->cross_um >= VC4_CROSS_HOLD_UM) {
             t->cross_hold = false;
             t->exit_side = 0;
             t->was_white = white;
@@ -231,11 +242,13 @@ vc4_jct_t vc4_junction(vc4_track_t *t, uint32_t nl, uint32_t nr,
         t->sat_l = t->sat_l || nl >= VC4_SAT;
         t->sat_r = t->sat_r || nr >= VC4_SAT;
         if (sum < VC4_JCT_SUM_MIN) {
-            if (travel_um - t->jct_mark_um >= VC4_JCT_MIN_UM) {
+            uint32_t width = travel_um - t->jct_mark_um;
+
+            if (width >= VC4_JCT_MIN_UM && width <= VC4_SLAB_UM) {
                 t->jct_mark_um = travel_um;
                 t->jct_state = 2u;
             } else {
-                vc4_junction_reset(t);       /* too narrow: not a tape */
+                vc4_junction_reset(t);  /* too narrow, or a slab (hump) */
             }
         }
         break;
