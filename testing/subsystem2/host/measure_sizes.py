@@ -14,8 +14,12 @@ root = pathlib.Path(__file__).resolve().parents[3]
 probe = r'''
 #include "app_program/subsystem2/motion_command.c"
 #include "app_program/subsystem2/pid_control.c"
+#include "app_program/subsystem2/encoder_control.c"
 #define MEASURE(name, object) UB measured_##name[sizeof(object)]
 MEASURE(input, motion_command_t);
+MEASURE(encoder_totals, UB[sizeof(g_left_count) + sizeof(g_right_count)]);
+MEASURE(encoder_history, UB[sizeof(((pid_state_t *)0)->left_history) +
+                            sizeof(((pid_state_t *)0)->right_history)]);
 MEASURE(pending, g_pending_command);
 MEASURE(snapshot, motion_status_snapshot_t);
 MEASURE(history, g_results);

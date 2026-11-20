@@ -55,14 +55,14 @@ typedef struct
     motion_stored_command_t command;
     UINT status : 3;
     UINT fault : 4;
-    INT left_now;
-    INT right_now;
-    INT left_previous;
-    INT right_previous;
-    INT left_start;
-    INT right_start;
-    INT left_history[PID_WINDOW_SIZE + 1];
-    INT right_history[PID_WINDOW_SIZE + 1];
+    INT left_now : 24;
+    INT right_now : 24;
+    INT left_previous : 24;
+    INT right_previous : 24;
+    INT left_start : 24;
+    INT right_start : 24;
+    encoder_count_t left_history[PID_WINDOW_SIZE + 1];
+    encoder_count_t right_history[PID_WINDOW_SIZE + 1];
     int64_t time_history[PID_WINDOW_SIZE + 1];
     UINT sample_count : 4;
     UINT history_index : 4;
@@ -102,6 +102,15 @@ typedef struct
 
 ID gh_pid_task = 0;
 
+static void pid_read_counts(pid_state_t *state)
+{
+    INT left;
+    INT right;
+    encoder_get_counts(&left, &right);
+    state->left_now = left;
+    state->right_now = right;
+}
+
 static float pid_mm_per_count(bool left)
 {
     return PID_PI * ENC_WHEEL_DIAMETER_CM * 10.0f /
@@ -130,8 +139,10 @@ static void pid_publish(const pid_state_t *state)
     snapshot.turn_direction = state->command.turn_direction;
     snapshot.left_encoder_counts = state->left_now;
     snapshot.right_encoder_counts = state->right_now;
-    snapshot.left_speed_cps = (INT)state->left_speed_cps;
-    snapshot.right_speed_cps = (INT)state->right_speed_cps;
+    snapshot.left_speed_cps =
+        encoder_speed_publish(state->left_speed_cps);
+    snapshot.right_speed_cps =
+        encoder_speed_publish(state->right_speed_cps);
     snapshot.left_distance_mm = state->left_mm;
     snapshot.right_distance_mm = state->right_mm;
     snapshot.total_distance_mm = state->total_mm;
@@ -185,7 +196,7 @@ static ER pid_sample(pid_state_t *state)
     {
         return E_SYS;
     }
-    encoder_get_counts(&state->left_now, &state->right_now);
+    pid_read_counts(state);
     left_delta = (int64_t)state->left_now - state->left_previous;
     right_delta = (int64_t)state->right_now - state->right_previous;
     state->total_mm += (pid_abs((float)left_delta *
@@ -542,9 +553,11 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
         UINT old = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
         float elapsed = (float)(state->now_ms - state->time_history[old]);
         left_cps = (float)((int64_t)state->left_now -
-            state->left_history[old]) * 1000.0f / elapsed;
+            encoder_count_read(&state->left_history[old])) *
+            1000.0f / elapsed;
         right_cps = (float)((int64_t)state->right_now -
-            state->right_history[old]) * 1000.0f / elapsed;
+            encoder_count_read(&state->right_history[old])) *
+            1000.0f / elapsed;
     }
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
         left_cps * state->left_sign, &state->left_integral, dt,
@@ -603,8 +616,8 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
     state->left_applied_pwm = left_pwm;
     state->right_applied_pwm = right_pwm;
-    state->left_history[slot] = state->left_now;
-    state->right_history[slot] = state->right_now;
+    encoder_count_write(&state->left_history[slot], state->left_now);
+    encoder_count_write(&state->right_history[slot], state->right_now);
     state->time_history[slot] = state->now_ms;
     state->history_index = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
     if (state->sample_count < PID_WINDOW_SIZE)
@@ -630,7 +643,12 @@ static bool pid_encoder_invalid(pid_state_t *state)
     UW right;
     bool invalid;
     encoder_get_invalid_counts(&left, &right);
-    invalid = (UW)(left - state->left_invalid_start) >=
+    invalid = encoder_range_fault() ||
+        !(state->left_speed_cps >= ENC_SPEED_MIN &&
+          state->left_speed_cps <= ENC_SPEED_MAX) ||
+        !(state->right_speed_cps >= ENC_SPEED_MIN &&
+          state->right_speed_cps <= ENC_SPEED_MAX) ||
+        (UW)(left - state->left_invalid_start) >=
         PID_ENCODER_INVALID_LIMIT ||
         (UW)(right - state->right_invalid_start) >=
         PID_ENCODER_INVALID_LIMIT;
@@ -646,6 +664,13 @@ static bool pid_encoder_invalid(pid_state_t *state)
 static void pid_execute(pid_state_t *state)
 {
     motion_profile_t profile;
+    if (pid_encoder_invalid(state))
+    {
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
+        pid_finish(state, MOTION_STATUS_FAULT, MOTION_FAULT_ENCODER);
+        return;
+    }
     if (state->settling)
     {
         b2_safety_force_stop();
@@ -662,13 +687,6 @@ static void pid_execute(pid_state_t *state)
     }
     if (!pid_movement(state))
     {
-        return;
-    }
-    if (pid_encoder_invalid(state))
-    {
-        b2_request_stop();
-        b2_safety_acknowledge_stop();
-        pid_finish(state, MOTION_STATUS_FAULT, MOTION_FAULT_ENCODER);
         return;
     }
     profile = pid_profile(state);
@@ -720,7 +738,7 @@ static ER pid_initialize_state(pid_state_t *state)
     }
     state->previous_ms = (int64_t)time.hi * INT64_C(4294967296) + time.lo;
     state->quiet_since_ms = state->previous_ms;
-    encoder_get_counts(&state->left_now, &state->right_now);
+    pid_read_counts(state);
     state->left_previous = state->left_now;
     state->right_previous = state->right_now;
     state->left_start = state->left_now;

@@ -133,11 +133,13 @@ typedef struct
      */
     uint32_t command_id;
 
-    INT left_encoder_counts;
-    INT right_encoder_counts;
+    /* Signed 24-bit net counts; driver faults on range exhaustion. */
+    INT left_encoder_counts : 24;
+    INT right_encoder_counts : 24;
 
-    INT left_speed_cps;
-    INT right_speed_cps;
+    /* Signed 14-bit cps; an out-of-range sample faults the controller. */
+    INT left_speed_cps : 14;
+    INT right_speed_cps : 14;
 
     /* Signed travel since command start; total is absolute wheel travel. */
     float left_distance_mm;
