@@ -65,8 +65,6 @@
 #define VC4_RECOVER_START   500   /* first recovery arc, permille          */
 #define VC4_RECOVER_RAMP    40    /* + per 10 ms                           */
 #define VC4_RECOVER_MAX     1000
-#define VC4_RETURN_MAX      450   /* fading contact returning to the gap */
-#define VC4_RETURN_MS       40u   /* confirm gradual return, not one spike */
 
 /* ---- curve memory ------------------------------------------------------
  * A steady turn learned from which sensor keeps meeting the line.  On a
@@ -81,7 +79,7 @@
 #define VC4_BIAS_GAIN_DIV   300   /* per 10 ms: bias += error / 300        */
 #endif
 #ifndef VC4_BIAS_DECAY_DIV
-#define VC4_BIAS_DECAY_DIV  80    /* release turn memory between curves   */
+#define VC4_BIAS_DECAY_DIV  200   /* per 10 ms on floor: bias -= bias/200  */
 #endif
 #ifndef VC4_BIAS_FLIP_DIV
 #define VC4_BIAS_FLIP_DIV   12    /* per 10 ms, line on the other side     */
@@ -126,7 +124,6 @@ typedef struct {
     int8_t   last_side;   /* -1 right / +1 left: last side with an error  */
     int8_t   exit_side;   /* side the line went black under, 0 = between */
     uint32_t exit_age_ms; /* since a sensor was last fully on the tape    */
-    uint32_t return_ms;   /* sustained weak contact after a dark touch   */
     int8_t   prev_exit;
     bool     was_white;
     int32_t  recover;

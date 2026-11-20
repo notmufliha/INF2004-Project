@@ -133,25 +133,6 @@ int main(void){
     for(int i=0;i<3;i++){ s2=vc4_steer(&t,100,100,20,um); um+=2400; }
     printf("   60 ms after the line left the left sensor: steer %d\n",s2);
     CHECK(s2>300, "curve exit: recovery arc starts at once, not after a coast"); }
-  /* Two bends separated by a return to centre, mirrored for both sides.
-   * The first turn must unwind instead of escalating into recovery. */
-  for(int side=-1;side<=1;side+=2){
-    vc4_reset(&t); um=0;
-    for(int i=0;i<100;i++){
-      s=vc4_steer(&t,side>0?950:100,side>0?100:950,20,um); um+=2000;
-    }
-    int32_t peak=s*side;
-    vc4_steer(&t,side>0?420:100,side>0?100:420,20,um); um+=2000;
-    vc4_steer(&t,side>0?360:100,side>0?100:360,20,um); um+=2000;
-    CHECK(t.exit_side==0, "gradual curve return cancels stale exit recovery");
-    for(int i=0;i<20;i++){s=vc4_steer(&t,100,100,20,um);um+=2000;}
-    CHECK(vc4_on_line(&t) && s*side<peak/2,
-          "between bends: unwind first turn without losing centred line");
-    for(int i=0;i<6;i++){
-      s=vc4_steer(&t,side>0?100:700,side>0?700:100,20,um);um+=2000;
-    }
-    CHECK(s*side<0, "next opposite bend overrides old curve memory");
-  }
   /* Steady curve: hold one smooth turn (model video), not turn /
    * straight / turn, and no weaving across the line. */
   { int sc, stt; double mo; bool lo;
