@@ -11,6 +11,7 @@ void vc4_reset(vc4_track_t *t)
     t->last_side = 0;
     t->exit_side = 0;
     t->exit_age_ms = 0u;
+    t->return_ms = 0u;
     t->prev_exit = 0;
     t->was_white = true;
     t->recover = VC4_RECOVER_START;
@@ -127,6 +128,7 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
     }
 
     if (white) {
+        t->return_ms = 0u;
         /* The sensor was fully on the tape too long ago: the line faded
          * back toward the centre, it did not go out past the sensor. */
         if (!t->was_white && t->exit_side != 0 &&
@@ -174,6 +176,21 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
                               (int32_t)steps, VC4_BIAS_MAX);
         target = clamp_steer(target + t->bias, VC4_STEER_MAX);
         track_exit(t, nl, nr, dt_ms);
+        /* Gradual fading through grey back to the gap means the turn has
+         * brought the line in again. Do not ramp a recovery arc in the
+         * old direction on the next both-white sample. An abrupt exit
+         * from dark tape still retains the existing recovery behaviour. */
+        if (nl < VC4_RETURN_MAX && nr < VC4_RETURN_MAX) {
+            if (t->return_ms < VC4_RETURN_MS) t->return_ms += dt_ms;
+            if (t->return_ms >= VC4_RETURN_MS) {
+                t->exit_side = 0;
+                t->recover = VC4_RECOVER_START;
+                t->coast_ms = 0u;
+                bias_fade(t, VC4_BIAS_FLIP_DIV, steps);
+            }
+        } else {
+            t->return_ms = 0u;
+        }
         if (raw >= VC4_SIDE_MIN) {
             t->last_side = 1;
         } else if (raw <= -VC4_SIDE_MIN) {
