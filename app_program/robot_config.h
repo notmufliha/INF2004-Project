@@ -46,13 +46,11 @@
  * the line and resume following. Can be overridden with -D for bench builds. */
 #ifndef ROBOT_ENABLE_BYPASS
 #define ROBOT_ENABLE_BYPASS 1
-/* 1: B5 runs the box bypass (subsystem5/s5_box.c): slow at 60 cm, stop at
- * 40 cm (25 cm on a ramp), creep to 25 cm, scan, turn out / lateral leg /
- * turn back / pass leg / 45 deg rejoin with a line-width check.
- * 0: the previous reactive bypass (live_controller_mode). */
-#ifndef ROBOT_BOX_BYPASS
-#define ROBOT_BOX_BYPASS 1
 #endif
+/* Default to the width sweep and guarded bypass. Set to 1 to use the
+ * box bypass with its ramp-aware approach and line-width check. */
+#ifndef ROBOT_BOX_BYPASS
+#define ROBOT_BOX_BYPASS 0
 #endif
 #ifndef ROBOT_BYPASS_CALIBRATED
 /* Calibration evidence flag only; enabling the requested autonomous profile
@@ -70,10 +68,19 @@
 #else
 #define ROBOT_BYPASS_MAX_DEPTH_CM 40.0f
 #endif
-#define ROBOT_BYPASS_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 540)
-#define ROBOT_BYPASS_TURN_SPEED_CPS 450
+#define ROBOT_OBSTACLE_APPROACH_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 540)
+#define ROBOT_OBSTACLE_APPROACH_CM (ROBOT_OBSTACLE_TEST ? 30.0f : 80.0f)
+#define ROBOT_BYPASS_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 680)
+#define ROBOT_BYPASS_TURN_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 450 : 560)
+#define ROBOT_COURSE_RETURN_SPEED_CPS 620
 #define ROBOT_BYPASS_FORWARD_MS 5000u
 #define ROBOT_BYPASS_EXTRA_DIAGONAL_CM 10.0f
+#define ROBOT_COURSE_BYPASS_TURN_DEG 45
+#define ROBOT_COURSE_RETURN_TURN_DEG 70
+#define ROBOT_COURSE_CLEAR_STEP_CM 5.0f
+#define ROBOT_COURSE_BYPASS_LEG_CM 30.0f
+#define ROBOT_COURSE_BOX_DEPTH_CM 20.0f
+#define ROBOT_BYPASS_SIDE_TIE_CM 0.5f
 /* Fixed test route: if the first diagonal is blocked after meaningful travel,
  * take the scheduled opposite turn once rotation clearance is confirmed. */
 #define ROBOT_BYPASS_BLOCKED_FIRST_MIN_CM 20.0f
@@ -160,18 +167,23 @@
 #else
 #define ROBOT_BYPASS_SIDE_CLEAR_CM 25.0f
 #endif
-/* Treat small side-range differences as noise and consistently prefer left. */
-/* Only near-equal readings may prefer left in the floor bypass test. */
-#define ROBOT_BYPASS_SIDE_TIE_CM (ROBOT_OBSTACLE_TEST ? 1.0f : 10.0f)
 
 /* Visible ultrasonic silhouette only; centimetres. Measure chassis before
  * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse. */
 #define ROBOT_SCAN_SAFE_MIN_DEG 70u
 #define ROBOT_SCAN_SAFE_MAX_DEG 110u
-/* Mounted scanner is mirrored: old 110-degree pulse looked physically left.
- * Planner bearings remain 70=left, 90=front, 110=right. */
+#define ROBOT_WIDTH_SCAN_MIN_DEG 45u
+#define ROBOT_WIDTH_SWEEP_MIN_DEG 30u
+#define ROBOT_WIDTH_SWEEP_MAX_DEG 120u
+#define ROBOT_SCAN_SERVO_SETTLE_MS 130u
+/* Current mount points right at the lower pulse. Planner bearings are
+ * 70=left, 90=front, 110=right. */
 #ifndef ROBOT_SCAN_SERVO_REVERSED
 #define ROBOT_SCAN_SERVO_REVERSED 1
+#endif
+/* Center pulse for the mounted sensor. */
+#ifndef ROBOT_SCAN_SERVO_CENTER_US
+#define ROBOT_SCAN_SERVO_CENTER_US 1450
 #endif
 #define ROBOT_OBSTACLE_SMALL_CM 10.0f
 #if ROBOT_OBSTACLE_TEST
@@ -269,9 +281,8 @@
 /* A short second attempt helps transient echoes, never turns a timeout
  * into a fabricated clear distance. */
 #define ROBOT_SCAN_RETRY_DELAY_MS 120u
-/* COM6 contact/stall happened while the sensor still read 35..48 cm.
- * Stop before that observed range, never wait for a 10 cm echo. */
 #if ROBOT_OBSTACLE_TEST
+/* Keep the earlier stop for the dedicated obstacle test profile. */
 #define ROBOT_STOP_CM 50.0f
 #define ROBOT_RELEASE_CM 55.0f
 #define ROBOT_SCAN_OBJECT_CM 60.0f
@@ -287,11 +298,14 @@
 #define ROBOT_BYPASS_MOVE_RELEASE_CM 35.0f
 #endif
 #else
-#define ROBOT_STOP_CM 16.0f
-#define ROBOT_RELEASE_CM 21.0f
+/* Close-range line-follow stop with 3 cm of restart hysteresis. */
+#define ROBOT_STOP_CM 15.0f
+#define ROBOT_RELEASE_CM 18.0f
 #define ROBOT_SCAN_OBJECT_CM 40.0f
+/* Use the same stop distance once the bypass is moving. Require another
+ * 5 cm to resume, plus one step of headroom when starting the outward leg. */
 #define ROBOT_BYPASS_MOVE_STOP_CM ROBOT_STOP_CM
-#define ROBOT_BYPASS_MOVE_RELEASE_CM ROBOT_RELEASE_CM
+#define ROBOT_BYPASS_MOVE_RELEASE_CM (ROBOT_BYPASS_MOVE_STOP_CM + 5.0f)
 #endif
 #define ROBOT_CLEAR_CONFIRM 3u
 /* While already following, tolerate isolated invalid echoes for at most

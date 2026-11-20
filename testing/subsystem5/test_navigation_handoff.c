@@ -1,7 +1,114 @@
-/* Exercise the real adapter through the early completion bridge events. */
+/* Exercise bypass and line recovery through the real navigation adapter. */
 #define main legacy_navigation_main
 #include "test_navigation.c"
 #undef main
+
+static void recover_line(S5Side side, bool tape_present)
+{
+    unsigned old_turns = turn_calls;
+    assert(!s5_bridge_line_found());
+    assert(!s5_bridge_request(S5_CMD_RESUME, NULL));
+    tick(120.0f);
+    assert(turn_calls == old_turns); /* Await recovery ownership, even on tape. */
+    assert(s5_bridge_request(S5_CMD_FIND_LINE, NULL));
+    tick(120.0f);
+    assert(maneuver.state == S5_MAN_TURN_IN && maneuver.pending_id);
+    assert(last_angle == ROBOT_COURSE_RETURN_TURN_DEG);
+    assert(last_turn == (side == S5_SIDE_LEFT ? MOTION_TURN_RIGHT : MOTION_TURN_LEFT));
+    tick(120.0f);
+    assert(maneuver.state == S5_MAN_TURN_IN && !s5_bridge_line_found());
+    finish_leg();
+    line_state.line_flags = 0u;
+    tick(120.0f);
+    assert(maneuver.state == S5_MAN_SEARCH && maneuver.pending_id);
+    assert(last_move == maneuver.search_limit_cm && last_direction == MOTION_DIR_FORWARD);
+    if (!tape_present) {
+        finish_leg();
+        tick(120.0f);
+        assert(!allowed && !s5_bridge_line_found());
+        assert(s5_navigation_error() == S5_ERR_LINE_TIMEOUT);
+        return;
+    }
+    status.left_distance_mm = status.right_distance_mm = 20.0f;
+    line_state.line_flags = B3_LINE_F_DETECTED;
+    tick(120.0f);
+    assert(!allowed && maneuver.state == S5_MAN_LINE_STOP);
+    for (unsigned n = 0; n <= ROBOT_BYPASS_LINE_CONFIRM; ++n) tick(120.0f);
+    assert(s5_bridge_line_found());
+    assert(s5_bridge_request(S5_CMD_RESUME, NULL));
+    assert(mode == NAV_FOLLOW && turn_calls == old_turns + 1u);
+}
+
+static void test_probe_route(S5Side side, bool tape_present)
+{
+    /* Replay the COM6 obstacle profile, an initial measured corridor,
+     * and a close echo during the continuous outward leg. */
+    S5Profile p = {.valid = true, .uses_course_bounds = true,
+                   .estimated_width_cm = ROBOT_OBSTACLE_MAX_BYPASS_CM,
+                   .center_y_cm = 29.18f, .bypass_side = side};
+    int outward = side == S5_SIDE_LEFT ? -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG;
+    unsigned moves = move_calls, turns = turn_calls;
+    assert(s5_bridge_request(S5_CMD_STOP, NULL));
+    assert(s5_navigation_probe_begin(outward));
+    finish_leg();
+    assert(s5_navigation_probe_bypass(&p));
+    assert(maneuver.offset_cm == 30.0f);
+    line_state.line_flags = 0u;
+    tick(35.77f);
+    assert(move_calls == moves + 1u && turn_calls == turns + 1u);
+    assert(last_direction == MOTION_DIR_FORWARD && last_move > 16.0f && last_move < 17.0f);
+    unsigned interrupted_id = status.command_id;
+    tick(15.13f);
+    assert(allowed && maneuver.pending_id == interrupted_id);
+    tick(15.0f);
+    assert(!allowed && maneuver.pending_id == interrupted_id && turn_calls == turns + 1u);
+    result = status;
+    result.left_distance_mm = result.right_distance_mm = 80.0f;
+    tick(400.0f);
+    assert(!allowed && maneuver.pending_id == 0u && maneuver.offset_done_cm == 8.0f);
+    for (unsigned n = 1u; n < ROBOT_CLEAR_CONFIRM; ++n) {
+        tick(400.0f);
+        assert(!allowed && move_calls == moves + 1u);
+    }
+    tick(400.0f);
+    assert(move_calls == moves + 2u && turn_calls == turns + 1u);
+    assert(last_move == 22.0f);
+    finish_leg();
+    moves = move_calls;
+    assert(s5_bridge_motion_complete());
+    assert(s5_bridge_request(S5_CMD_FIND_LINE, NULL));
+    tick(120.0f);
+    assert(turn_calls == turns + 2u);
+    assert(last_angle == 70);
+    assert(last_turn == (side == S5_SIDE_LEFT ? MOTION_TURN_RIGHT : MOTION_TURN_LEFT));
+    finish_leg();
+    tick(14.8f);
+    assert(!allowed && move_calls == moves);
+    for (unsigned n = 1u; n < ROBOT_CLEAR_CONFIRM; ++n) {
+        tick(120.0f);
+        assert(move_calls == moves);
+    }
+    tick(120.0f);
+    assert(maneuver.state == S5_MAN_SEARCH && move_calls == moves + 1u);
+    assert(last_direction == MOTION_DIR_FORWARD && last_move == maneuver.search_limit_cm);
+    assert(last_move > 50.0f && last_move < 51.0f);
+    if (!tape_present) {
+        for (unsigned step = 0; !s5_navigation_error(); ++step) {
+            assert(step < 30u && turn_calls == turns + 2u);
+            finish_leg();
+            tick(120.0f);
+        }
+        assert(s5_navigation_error() == S5_ERR_LINE_TIMEOUT && !allowed);
+        return;
+    }
+    line_state.line_flags = B3_LINE_F_DETECTED;
+    tick(120.0f);
+    assert(maneuver.state == S5_MAN_LINE_STOP);
+    for (unsigned n = 0; n <= ROBOT_BYPASS_LINE_CONFIRM; ++n) tick(120.0f);
+    assert(s5_bridge_line_found());
+    assert(s5_bridge_request(S5_CMD_RESUME, NULL));
+}
+
 int main(void)
 {
     assert(s5_navigation_init());
@@ -12,42 +119,64 @@ int main(void)
     }
     assert(allowed && !s5_navigation_has_line_reference());
     assert(drive_calls == 0u); /* VC can now search rather than deadlock. */
+    S5Controller obstacle;
+    s5_controller_init(&obstacle);
+    S5Input input = {.front_valid = true, .front_cm = 14.47f};
+    clock_ms += 65u;
+    s5_navigation_tick(input.front_valid, input.front_cm, true);
+    assert(!allowed && !s5_navigation_has_line_reference());
+    assert(s5_controller_step(&obstacle, &input) == S5_CMD_STOP);
+    assert(s5_bridge_request(S5_CMD_STOP, NULL));
+    input.stopped = s5_navigation_stopped();
+    assert(s5_controller_step(&obstacle, &input) == S5_CMD_SCAN_COARSE);
+    const S5ScanPoint width_points[S5_WIDTH_SCAN_COUNT] = {
+        {30u, 95.0f, true}, {45u, 95.0f, true}, {60u, 90.0f, true},
+        {75u, 14.47f, true}, {90u, 14.47f, true}, {105u, 14.9f, true},
+        {120u, 55.0f, true}
+    };
+    input.coarse_ready = true;
+    input.width_points = width_points;
+    input.coarse.points[0] = width_points[1];
+    input.coarse.points[4] = width_points[6];
+    assert(s5_controller_step(&obstacle, &input) == S5_CMD_GO_LEFT);
+    assert(obstacle.profile.valid && obstacle.profile.estimated_width_cm > 0.0f);
+    assert(s5_navigation_probe_begin(-ROBOT_COURSE_BYPASS_TURN_DEG));
+    assert(last_turn == MOTION_TURN_LEFT && !s5_navigation_has_line_reference());
+    s5_navigation_pause();
     for (int direction = 0; direction < 2; ++direction) {
         S5Profile p = {0};
         p.valid = true;
         p.estimated_width_cm = 10.0f;
-        p.center_y_cm = 25.0f;
+        p.center_y_cm = 55.0f;
         p.bypass_side = direction ? S5_SIDE_RIGHT : S5_SIDE_LEFT;
+        assert(!s5_maneuver_course_room(&p, p.bypass_side, 16.0f));
+        assert(s5_maneuver_course_room(&p, p.bypass_side, p.center_y_cm));
         assert(s5_bridge_request(S5_CMD_STOP, NULL));
+        S5Profile too_close = p;
+        too_close.center_y_cm = 16.0f;
+        unsigned turns_before = turn_calls;
+        assert(!s5_bridge_request(direction ? S5_CMD_GO_RIGHT : S5_CMD_GO_LEFT, &too_close));
+        assert(turn_calls == turns_before);
         assert(s5_bridge_request(direction ? S5_CMD_GO_RIGHT : S5_CMD_GO_LEFT, &p));
         line_state.line_flags = 0u;
         tick(120.0f); /* Submit outward turn. */
-        finish_leg();
+        assert(last_angle == ROBOT_COURSE_BYPASS_TURN_DEG);
+        assert(last_turn == (direction ? MOTION_TURN_RIGHT : MOTION_TURN_LEFT));
+        finish_course_turn();
         assert(maneuver.outward_turn_complete);
-        tick(120.0f); /* Submit offset move. */
-        if (direction) {
-            /* A black line must also preempt the paused return-turn gate. */
-            maneuver.state = S5_MAN_TURN_IN;
-            maneuver.pending_id = 0u;
-            status.physically_stopped = true;
-        }
-        unsigned old_turns = turn_calls;
-        line_state.line_flags = B3_LINE_F_DETECTED;
-        tick(120.0f);
-        assert(!allowed && maneuver.state == S5_MAN_HANDOFF_STOP);
-        for (unsigned n = 0; n < ROBOT_BYPASS_LINE_CONFIRM; ++n) tick(120.0f);
-        assert(maneuver.state == S5_MAN_COMPLETE);
-        assert(s5_bridge_motion_complete());
-        assert(s5_bridge_request(S5_CMD_FIND_LINE, NULL));
-        assert(s5_bridge_line_found());
-        assert(s5_bridge_request(S5_CMD_RESUME, NULL));
-        assert(mode == NAV_FOLLOW && turn_calls == old_turns);
+        finish_offset();
+        assert(last_move == ROBOT_COURSE_BYPASS_LEG_CM);
+        assert(maneuver.state == S5_MAN_TURN_IN && s5_bridge_motion_complete());
+        recover_line(p.bypass_side, true);
         for (unsigned n = 0; n < ROBOT_CLEAR_CONFIRM; ++n) {
             clock_ms += 65u;
             s5_navigation_tick(true, 120.0f, true);
         }
         assert(allowed && drive_calls == 0u); /* VC regains DRIVE ownership. */
     }
-    puts("PASS real navigation: left/right early line detection, STOP, bridge handoff and resume");
+    test_probe_route(S5_SIDE_LEFT, true);
+    test_probe_route(S5_SIDE_RIGHT, true);
+    test_probe_route(S5_SIDE_LEFT, false);
+    puts("PASS real navigation: mirrored turn, guarded drive, return turn, forward tape search, and bounded stop without tape");
     return 0;
 }
