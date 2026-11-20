@@ -56,6 +56,42 @@ int main(void)
         v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
     }
     assert(c.v4_phase == V4_CROSS && c.navigation == B3_NAV_LEFT);
+    /* B5 interruption retains the action, rejects its rejoin tape, and
+     * accepts a new crossing within the 150 mm slow-speed window. */
+    input.obstacle_active = true;
+    vehicle_controller_step(&c, &input, B3_NAV_NONE);
+    assert(c.pending_navigation == B3_NAV_LEFT && c.navigation == B3_NAV_NONE);
+    input.obstacle_active = false;
+    input.centre = input.left = 1000;
+    input.now_ms += VC_PERIOD_MS;
+    vehicle_controller_step(&c, &input, B3_NAV_NONE);
+    assert(c.post_avoid_slow && c.post_avoid_wait_clear);
+    for (int i = 0; i < 10; ++i) {
+        c.travel_um += 2000;
+        input.now_ms += VC_PERIOD_MS;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+    }
+    assert(c.v4_phase == V4_FOLLOW && c.pending_navigation == B3_NAV_LEFT);
+    input.centre = input.left = 0;
+    for (int i = 0; i < 8; ++i) {
+        c.travel_um += 2000;
+        input.now_ms += VC_PERIOD_MS;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+    }
+    assert(!c.post_avoid_wait_clear && c.post_avoid_slow);
+    input.centre = input.left = 1000;
+    for (int i = 0; i < 10; ++i) {
+        c.travel_um += 2000;
+        input.now_ms += VC_PERIOD_MS;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+    }
+    input.centre = input.left = 0;
+    for (int i = 0; i < 10 && c.v4_phase == V4_FOLLOW; ++i) {
+        c.travel_um += 2000;
+        input.now_ms += VC_PERIOD_MS;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+    }
+    assert(c.post_avoid_slow && c.v4_phase == V4_CROSS && c.navigation == B3_NAV_LEFT);
     c = reading();
     /* Decode delivery must survive a tick spent waiting for clearance. */
     input.clearance = false;

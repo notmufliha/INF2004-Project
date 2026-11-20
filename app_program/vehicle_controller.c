@@ -854,6 +854,7 @@ static void v4_new_run(VEHICLE_CONTROLLER *c)
     c->bar_speed_cps = 0;
     c->bar_clear_known = c->bar_wait_clear = false;
     c->post_avoid_slow = false;
+    c->post_avoid_wait_clear = false;
     c->navigation = 0u;
     c->navigation_id = 0u;
     c->pending_navigation = B3_NAV_NONE;
@@ -1245,7 +1246,7 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     if (c->post_avoid_slow &&
         (int32_t)(c->travel_um - c->post_avoid_um) >= 0) {
         c->post_avoid_slow = false;
-        tm_printf((UB *)"[VC4] 150 mm after the bypass: cruise speed, junctions on\n");
+        tm_printf((UB *)"[VC4] 150 mm after the bypass: cruise speed\n");
     }
 
     /* A decoded barcode arms the next cross-junction (a newer one
@@ -1312,7 +1313,16 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
         }
     }
 
-    inhibit = c->post_avoid_slow || barcode_straight ||
+    /* Reject the tape used to rejoin, then accept the next crossing even
+     * inside the slow-speed window. Require a continuous clear floor gap. */
+    if (c->post_avoid_wait_clear) {
+        if (nl >= VC4_WHITE || nr >= VC4_WHITE) {
+            c->post_avoid_clear_um = c->travel_um;
+        } else if (c->travel_um - c->post_avoid_clear_um >= VC4_JCT_CONFIRM_UM) {
+            c->post_avoid_wait_clear = false;
+        }
+    }
+    inhibit = c->post_avoid_wait_clear || barcode_straight ||
         c->bar_phase != BAR_IDLE;
     if (!inhibit) {
         uint32_t exit_um = c->trk.jct_mark_um;
@@ -1660,6 +1670,11 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->drive_sent = false;
         c->stopped = false;
         c->rescan_phase = 0u;
+#if VC_FOLLOW_V4
+        /* Retry an interrupted junction action at the next crossing. */
+        if (c->navigation != B3_NAV_NONE && c->pending_navigation == B3_NAV_NONE)
+            c->pending_navigation = c->navigation;
+#endif
         c->navigation = 0u;
         c->navigation_id = 0u;
 #if !VC_FOLLOW_V4
@@ -1695,12 +1710,14 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         bend_reset(c);
 #endif
 #if VC_FOLLOW_V4
-        /* After the bypass: slow, no junctions for 150 mm. */
+        /* Slow for 150 mm; rearm crossings after clearing the rejoin tape. */
         vc4_reset(&c->trk);
         c->v4_phase = V4_FOLLOW;
         c->v4_motion_id = 0u;
         c->bar_phase = BAR_IDLE;
         c->post_avoid_slow = true;
+        c->post_avoid_wait_clear = true;
+        c->post_avoid_clear_um = c->travel_um;
         c->post_avoid_um = c->travel_um + VC4_POST_AVOID_UM;
 #endif
     }
