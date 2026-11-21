@@ -296,6 +296,7 @@ comm_pack_telemetry (uint8_t * p_out, uint32_t cap, uint16_t seq,
     comm_pack_bits_put(&bits, p_telem->obs_width_cm, BITS_WIDTH);
     comm_pack_bits_put(&bits, p_telem->obs_left_cm, BITS_DIST);
     comm_pack_bits_put(&bits, p_telem->obs_right_cm, BITS_DIST);
+    comm_pack_bits_put(&bits, p_telem->roll_ddeg, COMM_ROLL_BITS); /* B4 extension */
 
     return (comm_pack_bits_bytes(&bits));
 }

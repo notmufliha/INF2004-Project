@@ -17,6 +17,18 @@ initialization/reboot. Existing centimetre event fields carry estimates; console
 and B1 paths convert them to millimetres. Public reading/event layouts stay the
 same. Diagnostics count accepted estimates.
 
+## Peak roll (edge jolt rejection)
+
+The peak is not the single highest sample. When a wheel hits the hump edge
+the chassis jolts; the IMU sits above the roll axis, so the jolt reads as
+several degrees of extra roll for a few samples (a 10 mm hump measured
+17 mm this way). The peak is now the trimmed mean of the last
+`S4_ROLL_HUMP_PEAK_SAMPLES` (7) unfiltered accelerometer rolls, dropping the
+top and bottom third, so jolts of up to 2 samples are ignored and the plateau
+on top of the hump is kept. The level baseline also follows slow drift while
+driving level between humps. If narrow humps now read low, lower the window
+(the wheel must stay on top for about half of it); 1 restores the old peak.
+
 ## Assumptions and validation
 
 One wheel must stay on level ground while the other crosses the hump, with both

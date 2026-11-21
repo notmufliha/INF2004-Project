@@ -185,7 +185,7 @@ demo_sensors (demo_state_t * p_demo)
                   (uint16_t)(2300U + (demo_rand() % 400U)), 0U,
                   LINE_F_DETECTED);
     comm_set_imu(p_demo->b_running ? 1U : 0U,
-                 (int16_t)((int32_t)(demo_rand() % 21U) - 10));
+                 (int16_t)((int32_t)(demo_rand() % 21U) - 10), 0);
     comm_set_obstacle_dist((uint16_t)(60U + (demo_rand() % 100U)));
 }
 

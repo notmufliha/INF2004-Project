@@ -9,7 +9,7 @@
  *    you like; subsystem 1 samples it every telemetry period):
  *        comm_set_motion(spd_l, spd_r, enc_l, enc_r);           B2
  *        comm_set_line(ir_l, ir_c, ir_r, LINE_F_DETECTED);       B3
- *        comm_set_imu(IMU_MOTION_CLIMBING_HUMP, pitch_ddeg);     B4
+ *        comm_set_imu(IMU_MOTION_CLIMBING_HUMP, pitch_ddeg, roll_ddeg);  B4
  *        comm_set_obstacle_dist(front_cm);                       B5
  *        comm_set_robot_state(ROBOT_LINE_FOLLOW);                VC
  *

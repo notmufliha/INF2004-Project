@@ -172,6 +172,9 @@ make_telemetry (const telem_case_t * p_case)
     telem.obs_width_cm = p_case->width & 0x7FU;
     telem.obs_left_cm  = p_case->left & 0x1FFU;
     telem.obs_right_cm = p_case->right & 0x1FFU;
+    telem.roll_ddeg     = comm_pack_twos(comm_pack_sat_s(p_case->pitch,
+                                                        COMM_ROLL_MAX),
+                                         COMM_ROLL_BITS) & 0xFFFU;
 
     return (telem);
 }
@@ -208,7 +211,7 @@ telemetry_vector (const telem_case_t * p_case)
            "enc_l=%d enc_r=%d ir_l=%u ir_c=%u ir_r=%u line=%u "
            "barcode=%u nav=%u motion=%u pitch_dd=%d hump_valid=%u "
            "hump_last_mm=%u hump_peak_mm=%u obs_d_cm=%u obs_w_cm=%u "
-           "obs_lc_cm=%u obs_rc_cm=%u\n",
+           "obs_lc_cm=%u obs_rc_cm=%u roll_dd=%d\n",
            (unsigned)p_case->seq, (unsigned)p_case->tds,
            (unsigned)p_case->state, (unsigned)p_case->faults, (int)spd_l,
            (int)spd_r,
@@ -223,7 +226,8 @@ telemetry_vector (const telem_case_t * p_case)
            (unsigned)p_case->hump_valid, (unsigned)p_case->hump_last,
            (unsigned)p_case->hump_peak, (unsigned)p_case->dist,
            (unsigned)p_case->width, (unsigned)p_case->left,
-           (unsigned)p_case->right);
+           (unsigned)p_case->right,
+           (int)comm_pack_sign_extend(telem.roll_ddeg, COMM_ROLL_BITS));
 }
 
 /** @brief Pack one event, check its length and print it. */
@@ -454,7 +458,9 @@ sizes (void)
            (int)sizeof(comm_remote_cmd_t));
     printf("%-28s %8d %8d\n", "COMM_STATS struct", 32,
            (int)sizeof(comm_stats_t));
-    check_eq("sizeof comm_telemetry_t", (int64_t)sizeof(comm_telemetry_t), 24);
+    /* 28: B4 roll_ddeg (12 bits) fits no spare gap and takes a 7th word;
+     * the wire frame itself only grew 29 -> 30 bytes (WIRE_TELEM_LEN). */
+    check_eq("sizeof comm_telemetry_t", (int64_t)sizeof(comm_telemetry_t), 28);
     check_eq("sizeof comm_pack_event_t", (int64_t)sizeof(comm_pack_event_t),
              8);
     check_eq("sizeof comm_remote_cmd_t", (int64_t)sizeof(comm_remote_cmd_t),

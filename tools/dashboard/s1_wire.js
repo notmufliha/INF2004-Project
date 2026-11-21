@@ -64,7 +64,7 @@
     ["ir_r", 1], ["line", 3], ["barcode", 5], ["nav", 4], ["motion", 3],
     ["pitch_dd", 10, true], ["hump_valid", 1], ["hump_last_mm", 7],
     ["hump_peak_mm", 7], ["obs_d_cm", 9], ["obs_w_cm", 7], ["obs_lc_cm", 9],
-    ["obs_rc_cm", 9]];
+    ["obs_rc_cm", 9], ["roll_dd", 12, true]];
   const EVENT_HEADER = [["ver", 3], ["type", 2], ["seq", 8], ["t_ds", 20]];
   const EVENT_BODY = [
     [["code", 5], ["nav", 4]],
@@ -129,7 +129,7 @@
   }
 
   function decodeTelemetry(bytes) {
-    const [d] = unpack(TELEMETRY, bytes);
+    const [d] = unpack(bytes.length === 29 ? TELEMETRY.slice(0, -1) : TELEMETRY, bytes);
     checkVersion(d);
     d.t_s = d.t_ds / 10;
     d.state_name = name(ROBOT_STATES, d.state);
@@ -140,6 +140,7 @@
     d.nav_name = name(NAV, d.nav);
     d.motion_name = name(MOTION_STATES, d.motion);
     d.pitch_deg = d.pitch_dd / 10;
+    d.roll_deg = d.roll_dd === undefined ? null : d.roll_dd / 10;
     d.obs_d_cm = cm(d.obs_d_cm, DIST_INVALID);
     d.obs_open_space = d.obs_d_cm === 510; // B5 assumed no target, not a range
     d.obs_w_cm = cm(d.obs_w_cm, WIDTH_INVALID);

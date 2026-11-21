@@ -39,6 +39,11 @@ function telemetry(distance, seq) {
 }
 telemetry(50, 1);
 assert.equal(element("o-d").textContent, "50 cm");
+const rollFrame = { ver: W.WIRE_VERSION, seq: 1, roll_dd: -123 };
+assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY.slice(0, -1), rollFrame)).roll_deg, null);
+context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, rollFrame));
+vm.runInContext("onTelemetry(frame)", context);
+assert.equal(element("roll").textContent, "-12.3°");
 assert.equal(element("o-echo").textContent, "Measured return");
 telemetry(510, 2);
 assert.equal(element("o-d").textContent, "No target (assumed open)");
@@ -55,6 +60,15 @@ assert(!element("dist-chart").innerHTML.includes("NaN"));
 context.event = { type: 3, seq: 1, type_name: "error", err: 161, detail: 3, err_text: "B5 no reliable ultrasonic echo" };
 vm.runInContext("onEvent(event)", context);
 assert(element("events").children[0].children[1].textContent.includes("no falling edge"));
+context.event = { type: 1, type_name: "hump", seq: 2, t_ds: 10, valid: 1, height_mm: 10, peak_mm: 10 };
+vm.runInContext("onEvent(event); onEvent(event)", context);
+assert.equal(element("hump-count").textContent, "1");
+context.event = { ...context.event, seq: 3, t_ds: 20, valid: 0 };
+vm.runInContext("onEvent(event)", context);
+assert.equal(element("hump-count").textContent, "1");
+context.event.valid = 1;
+vm.runInContext("onEvent(event)", context);
+assert.equal(element("hump-count").textContent, "2");
 assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY, { ver: W.WIRE_VERSION, obs_d_cm: 400 })).obs_open_space, false);
 
 // Every command button: publish one 3-byte frame on <prefix>/cmd, and the
