@@ -22,7 +22,8 @@
 /* Line counts as having gone out past a sensor (exit side) only if that
  * sensor was fully on the tape.  A partial touch that fades means the
  * line came back toward the centre: arcing toward it then made the car
- * weave (simulated). */
+ * weave (simulated). Two distinct partial touches on the same side within
+ * VC4_BEND_TOUCH_UM are treated as a bend instead. */
 #ifndef VC4_EXIT_MIN
 #define VC4_EXIT_MIN        850
 #endif
@@ -30,6 +31,12 @@
  * both sensors saw floor (else the line faded back to the centre). */
 #ifndef VC4_EXIT_FRESH_MS
 #define VC4_EXIT_FRESH_MS   200u
+#endif
+#ifndef VC4_BEND_TOUCH_MIN
+#define VC4_BEND_TOUCH_MIN  500   /* partial tape contact, below full exit */
+#endif
+#ifndef VC4_BEND_TOUCH_UM
+#define VC4_BEND_TOUCH_UM   80000u /* same-side contacts within 80 mm = bend */
 #endif
 #define VC4_SAT             600   /* both sensors need usable tape contrast */
 #define VC4_JCT_SUM_MIN     1300  /* nL + nR on a crossing tape            */
@@ -125,6 +132,9 @@ typedef struct {
     int8_t   exit_side;   /* side the line went black under, 0 = between */
     uint32_t exit_age_ms; /* since a sensor was last fully on the tape    */
     int8_t   prev_exit;
+    int8_t   partial_touch_side;
+    bool     partial_touching;
+    uint32_t partial_touch_um;
     bool     was_white;
     int32_t  recover;
     uint32_t coast_ms;
