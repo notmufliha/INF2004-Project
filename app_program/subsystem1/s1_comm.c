@@ -528,8 +528,8 @@ poll_encoders (uint32_t now_ms)
     if (b_have_prev && (delta_ms > 0U))
     {
         /* delta_ms is one telemetry period (<= 10 s): fits int32_t. */
-        speed_l = ((int32_t)(left - prev_l) * MS_PER_S) / (int32_t)delta_ms;
-        speed_r = ((int32_t)(right - prev_r) * MS_PER_S) / (int32_t)delta_ms;
+        speed_l = (encoder_count_delta(left, prev_l) * MS_PER_S) / (int32_t)delta_ms;
+        speed_r = (encoder_count_delta(right, prev_r) * MS_PER_S) / (int32_t)delta_ms;
     }
 
     prev_l      = left;

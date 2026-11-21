@@ -4,6 +4,7 @@
 #include "testanal_main.h"
 #include "imu_test_support.h"
 #include "imu_analysis.h"
+#include "../../../app_program/subsystem2/encoder_numeric.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -36,6 +37,16 @@ int
 main (void)
 {
     test_general_motion();
+    /* Positive wheel movement across the signed 24-bit boundary is not
+     * a reverse event and must preserve forward IMU analysis. */
+    short_reset();
+    g_short_data.encoder_left = ENC_COUNT_MAX - 15;
+    g_short_data.encoder_right = ENC_COUNT_MAX - 15;
+    short_feed(0.0f, 1U);
+    g_short_data.encoder_left = ENC_COUNT_MIN;
+    g_short_data.encoder_right = ENC_COUNT_MIN;
+    short_feed(0.0f, 1U);
+    assert((g_analysis.reset_reasons & IMU_ANALYSIS_RESET_REVERSE) == 0U);
     test_validation_and_timing();
     test_progress_pause();
     test_movement_reasons();

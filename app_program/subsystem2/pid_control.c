@@ -197,8 +197,8 @@ static ER pid_sample(pid_state_t *state)
         return E_SYS;
     }
     pid_read_counts(state);
-    left_delta = (int64_t)state->left_now - state->left_previous;
-    right_delta = (int64_t)state->right_now - state->right_previous;
+    left_delta = encoder_count_delta(state->left_now, state->left_previous);
+    right_delta = encoder_count_delta(state->right_now, state->right_previous);
     state->total_mm += (pid_abs((float)left_delta *
         pid_mm_per_count(true)) + pid_abs((float)right_delta *
         pid_mm_per_count(false))) * 0.5f;
@@ -210,10 +210,8 @@ static ER pid_sample(pid_state_t *state)
     }
     state->stopped = b2_motor_is_stopped() &&
         state->now_ms - state->quiet_since_ms >= PID_SETTLE_MS;
-    state->left_mm = (float)((int64_t)state->left_now -
-        state->left_start) * pid_mm_per_count(true);
-    state->right_mm = (float)((int64_t)state->right_now -
-        state->right_start) * pid_mm_per_count(false);
+    state->left_mm += (float)left_delta * pid_mm_per_count(true);
+    state->right_mm += (float)right_delta * pid_mm_per_count(false);
     return E_OK;
 }
 
@@ -479,12 +477,12 @@ static bool pid_stalled(pid_state_t *state, motion_profile_t profile)
         PID_STALL_MS : PID_SLOW_STALL_MS;
     int64_t right_limit = profile.right_speed >= 5.0f ?
         PID_STALL_MS : PID_SLOW_STALL_MS;
-    if (((int64_t)state->left_now - state->left_previous) *
+    if (encoder_count_delta(state->left_now, state->left_previous) *
         state->left_sign > 0 || profile.left_speed <= 0.0f)
     {
         state->left_progress_ms = state->now_ms;
     }
-    if (((int64_t)state->right_now - state->right_previous) *
+    if (encoder_count_delta(state->right_now, state->right_previous) *
         state->right_sign > 0 || profile.right_speed <= 0.0f)
     {
         state->right_progress_ms = state->now_ms;
@@ -552,10 +550,10 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     {
         UINT old = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
         float elapsed = (float)(state->now_ms - state->time_history[old]);
-        left_cps = (float)((int64_t)state->left_now -
+        left_cps = (float)encoder_count_delta(state->left_now,
             encoder_count_read(&state->left_history[old])) *
             1000.0f / elapsed;
-        right_cps = (float)((int64_t)state->right_now -
+        right_cps = (float)encoder_count_delta(state->right_now,
             encoder_count_read(&state->right_history[old])) *
             1000.0f / elapsed;
     }
@@ -643,8 +641,7 @@ static bool pid_encoder_invalid(pid_state_t *state)
     UW right;
     bool invalid;
     encoder_get_invalid_counts(&left, &right);
-    invalid = encoder_range_fault() ||
-        !(state->left_speed_cps >= ENC_SPEED_MIN &&
+    invalid = !(state->left_speed_cps >= ENC_SPEED_MIN &&
           state->left_speed_cps <= ENC_SPEED_MAX) ||
         !(state->right_speed_cps >= ENC_SPEED_MIN &&
           state->right_speed_cps <= ENC_SPEED_MAX) ||

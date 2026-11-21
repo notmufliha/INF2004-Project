@@ -2150,7 +2150,7 @@ static void report_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
     c->last_steering_log_ms = in->now_ms;
     tm_printf((UB *)"[VC-STEER] t=%u state=%d R26=%d L27=%d flags=%u "
                     "steer=%d base=%d measL=%d measR=%d age=%u line_age=%u "
-                    "phase=%d bar=%d pending=%d jct=%d\n",
+                    "phase=%d bar=%d pending=%d jct=%d loop_ms=%u\n",
               (UW)in->now_ms, (INT)c->state,
               (INT)in->left, (INT)in->centre,
               (UINT)in->line_flags, command->steering_permille,
@@ -2158,7 +2158,7 @@ static void report_steering(VEHICLE_CONTROLLER *c, const VC_INPUT *in,
               in->motion.right_speed_cps,
               (UW)(in->now_ms - in->motion.sample_time_ms), (UW)in->line_age_ms,
               (INT)c->v4_phase, (INT)c->bar_phase, (INT)c->pending_navigation,
-              (INT)c->trk.jct_state);
+              (INT)c->trk.jct_state, (UW)in->loop_ms);
 }
 #endif
 
@@ -2170,6 +2170,8 @@ static void controller_task(INT stacd, void *exinf)
     bool hazard = false;
     bool autostart_pending = ROBOT_AUTOSTART != 0;
     uint32_t last_boot_log_ms = 0u;
+    uint32_t previous_cycle_ms = 0u;
+    bool have_cycle_time = false;
 #if VC_FOLLOW_V4
     uint32_t lift_imu_since = 0u;
     float rest_az = 0.0f;
@@ -2191,6 +2193,10 @@ static void controller_task(INT stacd, void *exinf)
             continue;
         }
         in.now_ms = now.lo;
+        uint32_t cycle_started_ms = now.lo;
+        in.loop_ms = have_cycle_time ? now.lo - previous_cycle_ms : 0u;
+        previous_cycle_ms = now.lo;
+        have_cycle_time = true;
         /* Bounded drains keep network/sensor bursts below the DRIVE budget. */
         for (UINT i = 0u; i < IMU_VC_QUEUE_DEPTH; ++i) {
             if (imu_vc_receive(&notice, TMO_POL) != E_OK) break;
@@ -2346,7 +2352,15 @@ static void controller_task(INT stacd, void *exinf)
         /* Hazards stop this tick even when coalesced with recovery. A later
          * explicit START is required; no automatic mission restart. */
         hazard = false;
-        tk_dly_tsk(VC_PERIOD_MS);
+        {
+            SYSTIM finished;
+            uint32_t wait_ms = VC_PERIOD_MS;
+            if (tk_get_tim(&finished) == E_OK) {
+                uint32_t elapsed = finished.lo - cycle_started_ms;
+                wait_ms = elapsed < VC_PERIOD_MS ? VC_PERIOD_MS - elapsed : 1u;
+            }
+            tk_dly_tsk(wait_ms);
+        }
     }
 }
 

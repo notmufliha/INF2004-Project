@@ -2,6 +2,7 @@
  * @brief Buddy 4 imu analysis module.
  */
 #include "imu_analysis.h"
+#include "../subsystem2/encoder_numeric.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -199,8 +200,8 @@ forward_travel (imu_analysis_t * p_analysis, const imu_data_t * p_data)
     }
 
     const bool b_travel =
-        ((p_data->encoder_left > p_analysis->left_count) ||
-         (p_data->encoder_right > p_analysis->right_count));
+        ((encoder_count_delta(p_data->encoder_left, p_analysis->left_count) > 0) ||
+         (encoder_count_delta(p_data->encoder_right, p_analysis->right_count) > 0));
 
     p_analysis->left_count = p_data->encoder_left;
     p_analysis->right_count = p_data->encoder_right;
@@ -247,8 +248,8 @@ movement_reason (const imu_analysis_t * p_analysis,
     }
     if ((p_data->motion.b_reverse) ||
         ((p_analysis->b_have_counts) &&
-         ((p_data->encoder_left < p_analysis->left_count) ||
-          (p_data->encoder_right < p_analysis->right_count))))
+         ((encoder_count_delta(p_data->encoder_left, p_analysis->left_count) < 0) ||
+          (encoder_count_delta(p_data->encoder_right, p_analysis->right_count) < 0))))
     {
         return IMU_ANALYSIS_RESET_REVERSE;
     }

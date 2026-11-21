@@ -44,7 +44,6 @@ static volatile struct
 {
     uint8_t left : 2;
     uint8_t right : 2;
-    bool range_fault : 1;
 } g_previous;
 #if TK_SUPPORT_SMP
 
@@ -91,7 +90,6 @@ ER encoder_init(void)
     }
     encoder_count_write(&g_left_count, 0);
     encoder_count_write(&g_right_count, 0);
-    g_previous.range_fault = false;
     g_left_invalid = 0u;
     g_right_invalid = 0u;
     g_previous.left =
@@ -148,8 +146,8 @@ void encoder_get_distance_cm(
 
     encoder_get_counts(&left_now, &right_now);
 
-    left_delta = (int64_t)left_now - (int64_t)left_start;
-    right_delta = (int64_t)right_now - (int64_t)right_start;
+    left_delta = encoder_count_delta(left_now, left_start);
+    right_delta = encoder_count_delta(right_now, right_start);
 
     if (NULL != p_left_cm)
     {
@@ -275,9 +273,9 @@ void encoder_speed_task(INT stacd, void *p_exinf)
             if (elapsed_ms > 0)
             {
                 left_delta =
-                    (int64_t)left_now - left_previous_count;
+                    encoder_count_delta(left_now, left_previous_count);
                 right_delta =
-                    (int64_t)right_now - right_previous_count;
+                    encoder_count_delta(right_now, right_previous_count);
                 left_speed =
                     (INT)((left_delta * 1000) / elapsed_ms);
                 right_speed =
@@ -383,11 +381,8 @@ static void encoder_gpio_isr(UINT intno)
             {
                 g_left_invalid++;
             }
-            if (!encoder_count_step(&g_left_count,
-                encoder_decode(g_previous.left, current)))
-            {
-                g_previous.range_fault = true;
-            }
+            encoder_count_step(&g_left_count,
+                encoder_decode(g_previous.left, current));
             g_previous.left = current;
         }
         if (0U != (pending & (ENC_EDGE_MASK(ENC_R_A) |
@@ -400,25 +395,11 @@ static void encoder_gpio_isr(UINT intno)
             {
                 g_right_invalid++;
             }
-            if (!encoder_count_step(&g_right_count,
-                encoder_decode(g_previous.right, current)))
-            {
-                g_previous.range_fault = true;
-            }
+            encoder_count_step(&g_right_count,
+                encoder_decode(g_previous.right, current));
             g_previous.right = current;
         }
     }
     encoder_lock_leave(interrupt_status);
     (void)intno;
-}
-
-/* Read the sticky range fault under the same lock as the ISR counter pair. */
-bool encoder_range_fault(void)
-{
-    UINT status;
-    bool fault;
-    encoder_lock_enter(&status);
-    fault = g_previous.range_fault;
-    encoder_lock_leave(status);
-    return fault;
 }

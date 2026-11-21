@@ -31,7 +31,6 @@ static INT semaphore;
 static UINT checks;
 static UW invalid_left;
 static UW invalid_right;
-static bool range_fault;
 static motion_fault_t last_integration_fault;
 #define CHECK(expr) do { assert(expr); checks++; } while (0)
 
@@ -54,7 +53,6 @@ ER tk_dly_tsk(INT delay) { (void)delay; return E_OK; }
 INT tm_printf(UB *format, ...) { (void)format; return 0; }
 void encoder_get_counts(INT *left, INT *right)
 { *left = encoder_left; *right = encoder_right; }
-bool encoder_range_fault(void) { return range_fault; }
 void encoder_get_invalid_counts(UW *left, UW *right)
 { *left = invalid_left; *right = invalid_right; }
 void b2_integration_fault(motion_fault_t fault)
@@ -85,7 +83,7 @@ static pid_state_t setup(void)
 {
     pid_state_t state = {0};
     clock_ms = 0; encoder_left = 0; encoder_right = 0;
-    invalid_left = 0; invalid_right = 0; range_fault = false;
+    invalid_left = 0; invalid_right = 0;
     last_integration_fault = MOTION_FAULT_NONE;
     safety_generation = 1; acknowledged = 1;
     latched = false; clearance = true; pwm_left = 0; pwm_right = 0;
@@ -686,14 +684,16 @@ static void encoder_representation_test(void)
         CHECK(encoder_count_read(&value) == counts[i]);
     }
     encoder_count_write(&value, ENC_COUNT_MAX - 1);
-    CHECK(encoder_count_step(&value, 1));
+    encoder_count_step(&value, 1);
     CHECK(encoder_count_read(&value) == ENC_COUNT_MAX);
-    CHECK(!encoder_count_step(&value, 1));
-    CHECK(encoder_count_read(&value) == ENC_COUNT_MAX);
-    encoder_count_write(&value, ENC_COUNT_MIN + 1);
-    CHECK(encoder_count_step(&value, -1));
-    CHECK(!encoder_count_step(&value, -1));
+    encoder_count_step(&value, 1);
     CHECK(encoder_count_read(&value) == ENC_COUNT_MIN);
+    CHECK(encoder_count_delta(ENC_COUNT_MIN, ENC_COUNT_MAX) == 1);
+    encoder_count_write(&value, ENC_COUNT_MIN + 1);
+    encoder_count_step(&value, -1);
+    encoder_count_step(&value, -1);
+    CHECK(encoder_count_read(&value) == ENC_COUNT_MAX);
+    CHECK(encoder_count_delta(ENC_COUNT_MAX, ENC_COUNT_MIN) == -1);
     CHECK(encoder_speed_publish(9000.0f) == ENC_SPEED_MAX);
     CHECK(encoder_speed_publish(-9000.0f) == ENC_SPEED_MIN);
     CHECK(encoder_speed_publish(NAN) == 0);
@@ -733,14 +733,24 @@ static void encoder_representation_test(void)
     CHECK(large.left_encoder_counts == origin.left_now);
     CHECK(large.right_encoder_counts == origin.right_now);
     CHECK(large.left_speed_cps == 1000 && large.right_speed_cps == 1000);
-    pid_state_t state = setup();
-    send(command(MOTION_CMD_DRIVE));
-    tick(&state, 0, 0);
-    range_fault = true;
-    tick(&state, 0, 0);
-    CHECK(state.status == MOTION_STATUS_FAULT);
-    CHECK(state.fault == MOTION_FAULT_ENCODER);
-    CHECK(pwm_left == 0 && pwm_right == 0 && latched);
+    for (INT sign = -1; sign <= 1; sign += 2)
+    {
+        pid_state_t state = setup();
+        encoder_left = sign > 0 ? ENC_COUNT_MAX - 20 : ENC_COUNT_MIN + 20;
+        encoder_right = encoder_left;
+        CHECK(pid_initialize_state(&state) == E_OK);
+        motion_command_t move = command(MOTION_CMD_MOVE);
+        move.direction = sign > 0 ? MOTION_DIR_FORWARD : MOTION_DIR_REVERSE;
+        send(move);
+        tick_once(&state, 0, 0);
+        for (INT i = 0; i < 30; i++) tick_once(&state, sign * 10, sign * 10);
+        CHECK(state.status == MOTION_STATUS_RUNNING && !latched);
+        CHECK(fabsf(state.left_speed_cps - sign * 1000.0f) < 0.01f);
+        CHECK(fabsf(state.left_mm - sign * 300 * pid_mm_per_count(true)) < 0.01f);
+        CHECK(fabsf(state.right_mm - sign * 300 * pid_mm_per_count(false)) < 0.01f);
+        CHECK(state.total_mm > 0 && state.total_mm < 30);
+        CHECK(pwm_left * sign > 0 && pwm_right * sign > 0);
+    }
 }
 
 static void representation_test(void)

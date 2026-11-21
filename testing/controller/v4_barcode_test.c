@@ -370,6 +370,18 @@ int main(void)
     input.now_ms += VC_RESCAN_TIMEOUT_MS + 1;
     assert(v4_barcode(&c, &input));
     assert(!c.running && c.bar_phase == BAR_IDLE);
-    puts("PASS v4 barcode straight hold, bounded retry, skip unread strip and motion failure stops");
+    /* The actual task adapter must compensate 8 ms snapshot work rather
+     * than adding a fresh 20 ms sleep to every cycle. */
+    c = fresh();
+    (void)c;
+    clock_ms = 10000u;
+    task_ticks = remote_head = remote_count = 0u;
+    snapshot_delay = 8u;
+    boot_handshake = calibrated_startup = false;
+    stale_line = stale_imu = delayed_startup = force_no_line = false;
+    if (setjmp(task_done) == 0) controller_task(0, NULL);
+    assert(clock_ms == 10000u + 4u * VC_PERIOD_MS);
+    snapshot_delay = 0u;
+    puts("PASS v4 barcode, recovery and 20 ms task cadence with snapshot work");
     return 0;
 }
