@@ -106,6 +106,36 @@ int main(void){
   /* found again */
   s=vc4_steer(&t,800,100,20,um);
   CHECK(vc4_on_line(&t), "found again on black");
+  /* The left exit in the robot log faded through the sensor for about
+   * 250 ms before both sensors went white. Keep only left-side memory over
+   * that interval; leave the known-good right-side freshness unchanged. */
+  vc4_reset(&t); um=0;
+  vc4_steer(&t,884,100,20,um); um+=2400;
+  for(int i=0;i<12;i++){
+    vc4_steer(&t,500,100,20,um); um+=2400;
+  }
+  s=vc4_steer(&t,100,100,20,um);
+  CHECK(t.exit_side==1, "left exit survives a 240 ms partial fade");
+  for(int i=0;i<5;i++){
+    s=vc4_steer(&t,100,100,20,um); um+=2400;
+  }
+  CHECK(s>200, "left steering is retained after the logged fade");
+
+  vc4_reset(&t); um=0;
+  vc4_steer(&t,100,884,20,um); um+=2400;
+  for(int i=0;i<12;i++){
+    vc4_steer(&t,100,500,20,um); um+=2400;
+  }
+  vc4_steer(&t,100,100,20,um);
+  CHECK(t.exit_side==0, "right exit retains the original 200 ms freshness");
+
+  vc4_reset(&t); um=0;
+  vc4_steer(&t,884,100,20,um); um+=2400;
+  for(int i=0;i<25;i++){
+    vc4_steer(&t,500,100,20,um); um+=2400;
+  }
+  vc4_steer(&t,100,100,20,um);
+  CHECK(t.exit_side==0, "left exit memory still expires after a long fade");
   /* grey graze then white: not lost */
   vc4_reset(&t);
   for(int i=0;i<5;i++) vc4_steer(&t,500,100,20,um);

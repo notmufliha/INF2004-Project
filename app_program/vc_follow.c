@@ -117,9 +117,10 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
     if (white) {
         /* The sensor was fully on the tape too long ago: the line faded
          * back toward the centre, it did not go out past the sensor. */
-        if (!t->was_white && t->exit_side != 0 &&
-            t->exit_age_ms > VC4_EXIT_FRESH_MS) {
-            t->exit_side = 0;
+        if (!t->was_white && t->exit_side != 0) {
+            uint32_t fresh_ms = t->exit_side > 0 ?
+                VC4_LEFT_EXIT_FRESH_MS : VC4_EXIT_FRESH_MS;
+            if (t->exit_age_ms > fresh_ms) t->exit_side = 0;
         }
         t->was_white = true;
         if (t->exit_side != 0) {
