@@ -59,6 +59,7 @@ typedef enum { S5_SIZE_UNKNOWN, S5_SIZE_SMALL, S5_SIZE_LARGE,
 typedef struct {
     bool valid;
     bool uses_course_bounds; /* Width is a configured bound, not a measurement. */
+    bool frontal_sweep; /* The angular envelope is for clearance only. */
     S5ObstacleSize size;
     float nearest_cm;
     float nearest_lateral_cm; /* x: negative left, positive right */
@@ -91,6 +92,7 @@ typedef struct {
     uint8_t reverse_attempts;
     float encounter_front_cm;
     uint8_t route_waits, clear_route_hits;
+    bool unresolved_flank;
     S5Scan last_coarse;
     uint8_t invalid_front_count;
     uint16_t events;

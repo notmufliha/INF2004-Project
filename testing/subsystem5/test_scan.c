@@ -399,6 +399,47 @@ int main(void)
         width = s5_estimate_width_from_views(single_flank, NULL, NULL, 0);
         assert(width.valid && width.frontal_width_cm > 9.47f && width.frontal_width_cm < 9.50f);
 
+        const S5ScanPoint flat_returns[S5_WIDTH_SCAN_COUNT] = {
+            {30u, 400.0f, true}, {45u, 400.0f, true}, {60u, 14.0f, true},
+            {75u, 14.0f, true}, {90u, 14.0f, true}, {105u, 14.0f, true},
+            {120u, 400.0f, true}
+        };
+        width = s5_estimate_width_from_views(flat_returns, NULL, NULL, 0);
+        assert(width.valid && width.frontal_width_cm > 10.6f && width.frontal_width_cm < 10.7f);
+
+        const S5ScanPoint mixed_flanks[S5_WIDTH_SCAN_COUNT] = {
+            {30u, 400.0f, true}, {45u, 15.50f, true}, {60u, 15.44f, true},
+            {75u, 14.56f, true}, {90u, 14.98f, true}, {105u, 14.90f, true},
+            {120u, 31.26f, true}
+        };
+        width = s5_estimate_width_from_views(mixed_flanks, NULL, NULL, 0);
+        assert(width.valid && width.frontal_width_cm > 7.7f && width.frontal_width_cm < 7.8f);
+
+        /* Crash replay: 90 degrees reports open while the leftmost ray
+         * still sees the obstacle. Keep the motors stopped and rescan. */
+        S5ScanPoint crash[S5_WIDTH_SCAN_COUNT] = {
+            {30u, 13.89f, true}, {45u, 12.94f, true}, {60u, 12.94f, true},
+            {75u, 13.37f, true}, {90u, 400.0f, true}, {105u, 400.0f, true},
+            {120u, 354.28f, true}
+        };
+        input.width_points = crash;
+        input.coarse.points[0] = crash[1];
+        input.coarse.points[2] = crash[4];
+        input.coarse.points[4] = crash[6];
+        input.front_cm = 400.0f;
+        s5_controller_init(&controller);
+        controller.state = S5_COARSE;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_STOP);
+        assert(controller.unresolved_flank && controller.state == S5_WAIT_ROUTE);
+        for (unsigned i = 1u; i < S5_ROUTE_RESCAN_TICKS; ++i)
+            assert(s5_controller_step(&controller, &input) == S5_CMD_NONE);
+        assert(s5_controller_step(&controller, &input) == S5_CMD_SCAN_COARSE);
+        crash[0].distance_cm = 400.0f;
+        assert(s5_controller_step(&controller, &input) == S5_CMD_GO_RIGHT);
+        assert(!controller.unresolved_flank && controller.profile.valid &&
+               controller.profile.frontal_width_cm > 5.6f &&
+               controller.profile.frontal_width_cm < 5.8f);
+
         reset();
         s5_width_flank_scan(-45, wide);
         assert(read_calls == 3u && move_calls == 4u);

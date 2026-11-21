@@ -227,6 +227,16 @@ comm_reset_hump_peak (void)
     }
 }
 
+void
+comm_clear_obstacle_width (void)
+{
+    if (telem_lock())
+    {
+        g_s1_telem.obs_width_cm = WIDTH_INVALID;
+        telem_unlock();
+    }
+}
+
 /** @brief Report an obstacle and the avoidance decision, in cm (B5). */
 ER
 comm_report_obstacle (uint16_t dist_cm, uint16_t width_cm, uint16_t left_cm,

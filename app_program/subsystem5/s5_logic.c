@@ -364,8 +364,17 @@ static S5Profile estimate_width_sweep(const S5ScanPoint *points, int point_count
         if (points[i].angle_deg == 90u) center = count;
         measured[count++] = points[i];
     }
-    if (center < 0 || measured[center].distance_cm >= S5_CLEAR_CM)
-        return (S5Profile){0};
+    const bool head_on = center >= 0 && measured[center].distance_cm < S5_CLEAR_CM;
+    if (!head_on) {
+        center = -1;
+        for (int i = 0; i < count; ++i) {
+            if (s5_abs((float)measured[i].angle_deg - 90.0f) > 15.0f ||
+                measured[i].distance_cm >= ROBOT_RELEASE_CM) continue;
+            if (center >= 0) return (S5Profile){0}; /* Two separate near flanks. */
+            center = i;
+        }
+        if (center < 0) return (S5Profile){0};
+    }
 
     /* Start at the frontal hit and follow continuous surface returns
      * outward. Compare adjacent depths so a slanted face can stay in the
@@ -374,7 +383,8 @@ static S5Profile estimate_width_sweep(const S5ScanPoint *points, int point_count
     int edges[2];
     for (int side = 0; side < 2; ++side) {
         const int step = side == 0 ? -1 : 1;
-        float depth = measured[center].distance_cm;
+        float depth = measured[center].distance_cm *
+            s5_cos_deg((float)measured[center].angle_deg - 90.0f);
         int i = center + step;
         for (; i >= 0 && i < count; i += step) {
             float offset = (float)measured[i].angle_deg - 90.0f;
@@ -392,6 +402,7 @@ static S5Profile estimate_width_sweep(const S5ScanPoint *points, int point_count
     measured[edges[1]].distance_cm = S5_MAX_RANGE_CM;
     S5Profile profile = estimate_profile(&measured[edges[0]],
         edges[1] - edges[0] + 1, S5_SIDE_NONE, true);
+    profile.frontal_sweep = true;
     if (profile.valid) {
         /* With a roughly flat face at the centre-ray depth, the farther
          * edge echoes constrain lateral extent by range. The servo bearing
@@ -400,15 +411,30 @@ static S5Profile estimate_width_sweep(const S5ScanPoint *points, int point_count
         const float depth = measured[center].distance_cm;
         const float left = measured[edges[0] + 1].distance_cm;
         const float right = measured[edges[1] - 1].distance_cm;
-        if (left > depth && right > depth) {
-            float left_x = face_lateral_distance(left, depth);
-            float right_x = face_lateral_distance(right, depth);
-            /* Use the neighbouring inward hit on both flanks. When only
-             * one off-centre ray hits, the centre ray is its neighbour. */
-            left_x = (left_x + face_lateral_distance(measured[edges[0] + 2].distance_cm, depth)) * 0.5f;
-            right_x = (right_x + face_lateral_distance(measured[edges[1] - 2].distance_cm, depth)) * 0.5f;
-            profile.frontal_width_cm = s5_min(left_x + right_x, profile.estimated_width_cm);
+        const int lo = edges[0], hi = edges[1];
+        const float left_angle = (measured[lo].angle_deg + measured[lo + 1].angle_deg) * 0.5f +
+            ROBOT_SONAR_BEAM_HALF_ANGLE_DEG;
+        const float right_angle = (measured[hi].angle_deg + measured[hi - 1].angle_deg) * 0.5f -
+            ROBOT_SONAR_BEAM_HALF_ANGLE_DEG;
+        if (!head_on) {
+            float width = right * s5_sin_deg(right_angle - 90.0f) -
+                left * s5_sin_deg(left_angle - 90.0f);
+            if (right_angle > left_angle && width > 0.0f)
+                profile.frontal_width_cm = s5_min(width, profile.estimated_width_cm);
+            return profile;
         }
+        float left_x = left_angle < 90.0f ? left * s5_sin_deg(90.0f - left_angle) : 0.0f;
+        float right_x = right_angle > 90.0f ? right * s5_sin_deg(right_angle - 90.0f) : 0.0f;
+        /* Select the estimate independently for each bracketed edge. A
+         * nearly flat return on one flank must not discard range evidence
+         * on the other. Average a usable range with its inward neighbour. */
+        if (left > depth)
+            left_x = (face_lateral_distance(left, depth) +
+                face_lateral_distance(measured[lo + 2].distance_cm, depth)) * 0.5f;
+        if (right > depth)
+            right_x = (face_lateral_distance(right, depth) +
+                face_lateral_distance(measured[hi - 2].distance_cm, depth)) * 0.5f;
+        profile.frontal_width_cm = s5_min(left_x + right_x, profile.estimated_width_cm);
     }
     return profile;
 }
@@ -725,12 +751,25 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                              s5_estimate_profile(&in->coarse, S5_SIDE_NONE);
                 if (in->width_points) {
                     bool obstacle_seen = false;
+                    bool sweep_valid = true;
+                    bool frontal_hit = false;
                     for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i) {
                         const S5ScanPoint *ray = &in->width_points[i];
-                        if (valid_range(ray) && ray->distance_cm < S5_CLEAR_CM)
+                        if (!valid_range(ray)) sweep_valid = false;
+                        if (valid_range(ray) && ray->distance_cm < S5_CLEAR_CM) {
                             obstacle_seen = true;
+                            if (ray->angle_deg == 90u) frontal_hit = true;
+                        }
                     }
-                    if (!obstacle_seen)
+                    if (!obstacle_seen) {
+                        if (sweep_valid) c->unresolved_flank = false;
+                        return wait_for_route(c, S5_ERR_INSUFFICIENT_CLEARANCE);
+                    }
+                    /* A clear centre can miss an obstacle alongside the
+                     * chassis. Hold position until a full sweep resolves it. */
+                    c->unresolved_flank = !frontal_hit &&
+                        (!c->profile.valid || c->profile.frontal_width_cm <= 0.0f);
+                    if (c->unresolved_flank)
                         return wait_for_route(c, S5_ERR_INSUFFICIENT_CLEARANCE);
                 }
                 if (c->profile.valid && c->profile.size == S5_SIZE_OVERSIZED)
@@ -921,6 +960,11 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
             return S5_CMD_NONE;
         }
         c->invalid_front_count = 0u;
+        if (c->unresolved_flank) {
+            if (c->ticks_in_state >= S5_ROUTE_RESCAN_TICKS && in->stopped)
+                return change(c, S5_COARSE, S5_CMD_SCAN_COARSE);
+            return S5_CMD_NONE;
+        }
         /* A failed scan is not a permanent latch. Repositioning the robot or
          * obstacle by a meaningful amount starts a new scan pair. Never retry
          * repeatedly against the same blocked geometry or reuse stale sides. */

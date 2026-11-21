@@ -97,7 +97,7 @@ void s5_width_flank_scan(int heading, S5ScanPoint points[S5_WIDTH_SCAN_COUNT])
     static const uint16_t left[] = {45u, 60u, 70u};
     static const uint16_t right[] = {90u, 105u, 120u};
     for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i) points[i] = (S5ScanPoint){0};
-    /* With the chassis turned 45 degrees, these rays extend the original
+    /* With the chassis turned outward, these rays extend the original
      * view toward its missing edge without repeating the frontal sweep. */
     (void)scan_angles(points, heading < 0 ? left : right, 3, true);
 }
