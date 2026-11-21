@@ -403,12 +403,10 @@ static S5Profile estimate_width_sweep(const S5ScanPoint *points, int point_count
         if (left > depth && right > depth) {
             float left_x = face_lateral_distance(left, depth);
             float right_x = face_lateral_distance(right, depth);
-            /* Average the two outermost hits on each flank when available.
-             * A single grazing echo can otherwise dominate the estimate. */
-            if (edges[0] + 2 < center)
-                left_x = (left_x + face_lateral_distance(measured[edges[0] + 2].distance_cm, depth)) * 0.5f;
-            if (edges[1] - 2 > center)
-                right_x = (right_x + face_lateral_distance(measured[edges[1] - 2].distance_cm, depth)) * 0.5f;
+            /* Use the neighbouring inward hit on both flanks. When only
+             * one off-centre ray hits, the centre ray is its neighbour. */
+            left_x = (left_x + face_lateral_distance(measured[edges[0] + 2].distance_cm, depth)) * 0.5f;
+            right_x = (right_x + face_lateral_distance(measured[edges[1] - 2].distance_cm, depth)) * 0.5f;
             profile.frontal_width_cm = s5_min(left_x + right_x, profile.estimated_width_cm);
         }
     }

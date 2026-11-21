@@ -390,6 +390,15 @@ int main(void)
         assert(width.valid && width.estimated_width_cm > 23.3f && width.estimated_width_cm < 23.5f);
         assert(width.frontal_width_cm > 8.4f && width.frontal_width_cm < 8.5f);
 
+        /* This scan has only one hit to the right of the centre ray. */
+        const S5ScanPoint single_flank[S5_WIDTH_SCAN_COUNT] = {
+            {30u, 400.0f, true}, {45u, 16.64f, true}, {60u, 12.93f, true},
+            {75u, 13.27f, true}, {90u, 12.84f, true}, {105u, 14.56f, true},
+            {120u, 400.0f, true}
+        };
+        width = s5_estimate_width_from_views(single_flank, NULL, NULL, 0);
+        assert(width.valid && width.frontal_width_cm > 9.47f && width.frontal_width_cm < 9.50f);
+
         reset();
         s5_width_flank_scan(-45, wide);
         assert(read_calls == 3u && move_calls == 4u);
