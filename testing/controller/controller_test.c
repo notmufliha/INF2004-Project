@@ -1039,26 +1039,30 @@ int main(void)
     }
     puts("PASS barcode bars under a line sensor: ignored, no fake junction");
 
-    /* Quadratic steering (spread): a small error barely steers, a full one
-     * steers fully; no residue after the line is centred again. */
+    /* Linear spread steering gives a useful correction on a moderate
+     * left-sensor reading, reaches full steer, then settles to zero. */
     {
         VEHICLE_CONTROLLER p = {0};
         VC_INPUT v = {0};
         p.line_straddle = true;
-        v.left = 200u; v.centre = 0u;
-        INT small = 0;
-        for (UINT i = 0u; i < 10u; ++i) small = line_follow_steering(&p, &v);
-        assert(small > 0 && small <= 40);
-        v.left = 1000u;
-        INT big = 0;
-        for (UINT i = 0u; i < 12u; ++i) big = line_follow_steering(&p, &v);
-        assert(big == B3_LINE_STEER_MAX);
-        v.left = 0u;
+        v.centre = 350u;
+        INT moderate = 0;
+        for (UINT i = 0u; i < 10u; ++i) {
+            moderate = line_follow_steering(&p, &v);
+        }
+        assert(moderate < -B3_LINE_STEER_MAX / 3);
+        v.centre = 1000u;
+        INT full = 0;
+        for (UINT i = 0u; i < 12u; ++i) {
+            full = line_follow_steering(&p, &v);
+        }
+        assert(full == -B3_LINE_STEER_MAX);
+        v.centre = 0u;
         INT rest = 1;
         for (UINT i = 0u; i < 12u; ++i) rest = line_follow_steering(&p, &v);
         assert(rest == 0);
     }
-    puts("PASS spread steering: quadratic, smoothed, settles to exactly 0");
+    puts("PASS spread steering: strong left correction, full scale, settles to 0");
 
     /* Line search on the spot: 15 deg steps toward the last side, 90 deg,
      * then back the other way; the line found during a step stops it. */
