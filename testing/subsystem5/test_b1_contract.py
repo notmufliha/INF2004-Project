@@ -94,9 +94,9 @@ int main(void)
     assert(reported[0] == 30u && reported[1] == COMM_CM_INVALID);
     profile.uses_course_bounds = false;
     profile.estimated_width_cm = 23.39f;
-    profile.frontal_width_cm = 8.44f;
+    profile.frontal_width_cm = 9.486f;
     s5_report_profile(&profile, S5_SIDE_LEFT);
-    assert(report_count == 9u && reported[1] == 8u);
+    assert(report_count == 9u && reported[1] == 9u);
     puts("B5/B1 wire adapter: PASS (9 event cases + numeric boundaries)");
     return 0;
 }
