@@ -18,12 +18,12 @@
 #define IMU_NOTICE_UNAVAILABLE 0x0200U
 #define IMU_NOTICE_STATE 0x0400U
 #define IMU_NOTICE_LIFT 0x0800U /* Car picked up: stop the motors now. */
-#define IMU_NOTICE_OVERFLOW 0x80000000U
+#define IMU_NOTICE_OVERFLOW 0x1000U
+#define IMU_NOTICE_EVENT_MASK 0x1FFFU
 #define IMU_NOTICE_PERIOD_MS 1000U
 
 typedef struct
 {
-    uint32_t    events;
     uint32_t    first_sequence;
     uint32_t    last_sequence;
     uint32_t    failed_sends;
@@ -31,7 +31,8 @@ typedef struct
     uint32_t    last_timestamp_ms;
     uint32_t    completion_timestamp_ms;
     float32_t   completed_height_cm;
-    bool        b_completed_height_valid;
+    unsigned int events : 13;
+    bool        b_completed_height_valid : 1;
     imu_event_t snapshot;
 } imu_notice_t;
 
@@ -41,16 +42,16 @@ typedef struct
     imu_notice_t pending;
     uint32_t     sequence;
     uint32_t     emission_ms;
-    bool         b_seen;
-    bool         b_valid;
-    bool         b_hump_active;
-    bool         b_completed;
-    bool         b_tilt_known;
-    bool         b_tilt;
-    bool         b_impact;
-    bool         b_lifted;
-    bool         b_fault;
-    bool         b_recovered;
+    bool         b_seen : 1;
+    bool         b_valid : 1;
+    bool         b_hump_active : 1;
+    bool         b_completed : 1;
+    bool         b_tilt_known : 1;
+    bool         b_tilt : 1;
+    bool         b_impact : 1;
+    bool         b_lifted : 1;
+    bool         b_fault : 1;
+    bool         b_recovered : 1;
 } imu_notice_tracker_t;
 
 void imu_notice_init (imu_notice_tracker_t * p_tracker);

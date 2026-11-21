@@ -157,7 +157,7 @@ test_resets (void)
         feed(0.0f);
     }
     g_raw.roll_deg = 10.0f;
-    for (uint32_t index = 0U; index < 25U; ++index)
+    for (uint32_t index = 0U; index < 30U; ++index)
     {
         feed(0.0f);
     }
@@ -264,8 +264,9 @@ tm_printf (const UB * p_format, ...)
 static void
 test_roll_report (void)
 {
-    const float32_t profile[] = {0.0f, 0.0f, 0.0f, 0.0f, 8.0f,
-                                8.0f, 0.0f, 0.0f, 0.0f};
+    const float32_t profile[] = {0.0f, 0.0f, 0.0f, 0.0f,
+                                8.0f, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f,
+                                6.0f, 4.0f, 0.0f, 0.0f, 0.0f};
     const uint32_t samples = sizeof(profile) / sizeof(profile[0]);
     s4_diag_report_t report;
 

@@ -50,14 +50,10 @@ it does not assume ownership of a B2 fault or command a speed change/stop.
 
 ## Interface and memory
 
-B4's normalized context is 36 bytes in the checked native layout. The reading
-payload originally grew from 80 to 116 bytes with B2 context. Odometry diagnostic
-metadata and sensor-read timings add twelve bytes, making the current reading
-128 bytes; the event stays 52 bytes. Eight reading messages use 1,056 bytes of
-aligned kernel storage: 384 bytes more than the original 80-byte reading,
-excluding control blocks.
-Queues use sizeof with a 128-byte compile-time payload bound. This is not a
-measurement of whole-firmware RAM or maximum call-stack usage.
+B4's normalized motion context is 32 bytes on Cortex-M0+. The 112-byte
+reading holds the full B2 context and odometry diagnostics. Eight reading
+messages reserve 928 bytes of aligned kernel storage, excluding control
+blocks. See [data representation](DATA_REPRESENTATION.md) for the comparison.
 
 ## Testing and handoff
 

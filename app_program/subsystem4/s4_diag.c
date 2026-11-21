@@ -260,11 +260,7 @@ record_terrain (const imu_analysis_t * p_analysis, const imu_event_t * p_event)
 {
     g_report.roll_enter_deg = p_analysis->config.roll_enter_deg;
     g_report.roll_level_deg = p_analysis->config.roll_level_deg;
-    if ((uint32_t)p_analysis->roll_terrain <=
-        (uint32_t)IMU_TERRAIN_DESCENDING)
-    {
-        g_report.roll_stages |= 1U << (uint32_t)p_analysis->roll_terrain;
-    }
+    g_report.roll_stages |= 1U << (uint32_t)p_analysis->roll_terrain;
     const bool b_roll_active = IMU_ROLL_ACTIVE == p_analysis->roll_state;
     if ((b_roll_active) && (!gb_roll_active))
     {
