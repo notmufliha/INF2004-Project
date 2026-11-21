@@ -57,9 +57,6 @@
 #define VC4_D_PCT           600
 #endif
 #define VC4_D_MAX           250   /* sensor edges must not reverse a curve */
-#ifndef VC4_D_EXIT_PCT
-#define VC4_D_EXIT_PCT      50    /* share of it after a possible exit     */
-#endif
 #ifndef VC4_D_SMOOTH
 #define VC4_D_SMOOTH        3     /* damping input: move 1/n per tick      */
 #endif
@@ -170,6 +167,10 @@ void     vc4_junction_reset(vc4_track_t *t);
  * permille (+ = right wheel slower = turn right). */
 void     vc4_wheels(int32_t s, int32_t base_mm_s, int32_t slow_mm_s,
                     int32_t *speed_cps, int32_t *steering_permille);
+/* Apply the curve speed limit using the recent steering peak. Call once
+ * per drive update. Reset recent_steer when another mode takes control. */
+int32_t  vc4_curve_base(int32_t steer, int32_t cruise_mm_s,
+                        int32_t *recent_steer, bool exiting);
 int32_t  vc4_mm_s_to_cps(int32_t mm_s);
 
 #endif

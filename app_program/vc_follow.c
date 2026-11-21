@@ -176,12 +176,11 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
     {
         /* On a smoothed error (sensor noise must not make it twitch). */
         int32_t rs = t->prev_raw + (raw - t->prev_raw) / VC4_D_SMOOTH;
-        /* Weaker once the line may have gone out past a sensor: its
-         * reading falls then just as when the line comes back, so full
-         * damping would steer away from it. */
-        if (!t->lost) {
+        /* During a confirmed exit, both sensors see floor. A falling
+         * reading here cannot tell us that the robot has finished turning.
+         * Update the derivative history, but let coast/recovery steer. */
+        if (!t->lost && !(white && t->exit_side != 0)) {
             int32_t d = (rs - t->prev_raw) * VC4_D_PCT / 100;
-            if (white && t->exit_side != 0) d = d * VC4_D_EXIT_PCT / 100;
             if (dt_ms > 0u) d = d * 20 / (int32_t)dt_ms;
             d = clamp_steer(d, VC4_D_MAX);
             target = clamp_steer(target + d, VC4_STEER_MAX);
@@ -271,6 +270,22 @@ vc4_jct_t vc4_junction(vc4_track_t *t, uint32_t nl, uint32_t nr,
         break;
     }
     return cls;
+}
+
+int32_t vc4_curve_base(int32_t steer, int32_t cruise_mm_s,
+                       int32_t *recent_steer, bool exiting)
+{
+    /* Release the speed limit over successive drive commands. Short gaps
+     * in steering evidence are common with the spaced sensors. */
+    int32_t magnitude = iabs32(steer);
+    *recent_steer = exiting ? *recent_steer - 40 : 0;
+    if (*recent_steer < magnitude) *recent_steer = magnitude;
+
+    int32_t limit = VC4_CRUISE_MM_S;
+    if (*recent_steer > 300) {
+        limit -= (*recent_steer - 300) * 40 / 700;
+    }
+    return cruise_mm_s < limit ? cruise_mm_s : limit;
 }
 
 int32_t vc4_mm_s_to_cps(int32_t mm_s)

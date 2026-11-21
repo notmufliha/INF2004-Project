@@ -832,7 +832,7 @@ static void v4_reset_follow(VEHICLE_CONTROLLER *c)
 {
     vc4_reset(&c->trk);
     c->drive_sent = false;
-    c->last_speed = c->last_steer = 0;
+    c->last_speed = c->last_steer = c->curve_steer = 0;
 }
 
 static void v4_new_run(VEHICLE_CONTROLLER *c)
@@ -1362,16 +1362,15 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     if (c->drive_sent && in->now_ms - c->last_drive_ms < VC_PERIOD_MS) return;
 
     cruise_mm = (INT)((int32_t)speed * (int32_t)VC4_UM_PER_COUNT / 1000);
+    int32_t recent_steer = c->curve_steer;
     base_mm = cruise_mm;
-    /* Reduce approach speed progressively on a bend. Keeping the wheel
-     * split while lowering forward speed tightens the turning radius. */
-    {
-        INT mag = steer < 0 ? -steer : steer;
-        if (mag > 300 && !barcode_straight) {
-            INT curve_limit = VC4_CRUISE_MM_S - (mag - 300) * 40 / 700;
-            if (base_mm > curve_limit) base_mm = curve_limit;
-        }
+    if (barcode_straight || c->bar_phase == BAR_READ) {
+        recent_steer = 0;
+    } else {
+        base_mm = vc4_curve_base(steer, cruise_mm, &recent_steer,
+                                 c->trk.was_white && c->trk.exit_side != 0);
     }
+    c->curve_steer = (INT)recent_steer;
     if (c->post_avoid_slow || in->approach_slow || c->slow_mode) {
         INT slow = cruise_mm * VC4_SLOW_MM_S / VC4_CRUISE_MM_S;
         if (base_mm > slow) base_mm = slow;
@@ -1406,7 +1405,6 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     c->last_speed = command.target_speed_cps;
     c->last_steer = command.steering_permille;
     c->follow_steer = command.steering_permille;
-    c->curve_steer = (INT)(steer < 0 ? -steer : steer);
     command.safety_generation = in->safety_generation;
     if (motion_send_command(&command) == E_OK) {
 #if VC_STEERING_DIAGNOSTICS

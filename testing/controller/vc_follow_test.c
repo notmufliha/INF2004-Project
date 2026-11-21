@@ -24,6 +24,7 @@ static void circle_run(double r, int *side_changes, int *straight_ticks,
   vc4_track_t t; double x = 0, y = 0, h = 0, vl = 0, vr = 0;
   double radius=fabs(r), direction=r>0?1.0:-1.0;
   uint32_t um = 0; int last = 0;
+  int32_t recent_steer = 0;
   vc4_reset(&t);
   *side_changes = 0; *straight_ticks = 0; *max_off = 0; *lost = false;
   for (int k = 0; k < 1500; k++) {
@@ -33,7 +34,8 @@ static void circle_run(double r, int *side_changes, int *straight_ticks,
     double dr = direction*(radius - hypot(sx + 15 * sin(h), sy - 15 * cos(h) - r));
     double dc = direction*(radius - hypot(sx, sy - r));
     int32_t s = vc4_steer(&t, tape_read(dl), tape_read(dr), 20, um), sp, st;
-    vc4_wheels(s, 120, 100, &sp, &st);
+    vc4_wheels(s, vc4_curve_base(s, 120, &recent_steer,
+                                 t.was_white && t.exit_side != 0), 100, &sp, &st);
     if (!vc4_on_line(&t)) { *lost = true; return; }
     double v = sp * 0.084;
     vl += (v * (1 + st / 1000.0) - vl) * 0.15;
@@ -70,6 +72,27 @@ int main(void){
     for(int i=0;i<20;i++) ls=vc4_steer(&left,100,100,20,8000+(uint32_t)i*2000);
     CHECK(vc4_on_line(&left) && ls<200,
           "partial left correction still releases toward straight");
+  }
+  for (int side = -1; side <= 1; side += 2) {
+    vc4_reset(&t);
+    for (int i = 0; i < 8; i++) {
+      s = vc4_steer(&t, side > 0 ? 950 : 50, side > 0 ? 50 : 950,
+                    30, (uint32_t)i * 2400);
+    }
+    CHECK(vc4_steer(&t, 0, 0, 30, 19200) == s,
+          "confirmed curve exit holds steering through the first white sample");
+  }
+  {
+    int32_t recent_steer = 0;
+    CHECK(vc4_curve_base(1000, 120, &recent_steer, false) == 80,
+          "hard bend applies the existing speed limit");
+    CHECK(vc4_curve_base(0, 120, &recent_steer, true) < 90,
+          "short sensor gap keeps curve speed limited");
+    for (int i = 0; i < 25; i++) vc4_curve_base(0, 120, &recent_steer, true);
+    CHECK(vc4_curve_base(0, 120, &recent_steer, true) == 120,
+          "straight speed returns after the bend");
+    CHECK(vc4_curve_base(1000, 60, &recent_steer, false) == 60,
+          "curve limiter respects a lower selected speed");
   }
   vc4_wheels(1000,60,100,&sp,&st);
   CHECK(sp*(1000+(st<0?st:-st))/1000>=150,
