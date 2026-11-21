@@ -1,0 +1,696 @@
+
+
+microT-Kernel Version 3.00
+
+
+=== micro T-Kernel on Raspberry Pi Pico W (spec 0x6300, product 0x0003) ===
+single-core build
+[ROBOT] Guarded real-hardware mode; drive=1 bypass=1
+[B2] Both motor PWM channels initialized
+[B2] Encoder interrupts initialized
+[B2-TUNE] build=Nov 21 2026 16:21:13 forward_trial=1 baseL=6 baseR=12 inner_adjust=off
+[B2-FW] CLOSERETREAT-V47 move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway=35; stall guards active
+[B2] Motion subsystem initialized
+[ROBOT] Waiting for B4: keep the car level/still
+[B4] IMU starting: REAL GY-511, target period=10 ms
+[B4] Hump mode=ROLL; thresholds provisional; height uses tyre centre spacing and peak roll
+wifi: cyw43_utk_task starting (proc 1)
+wifi: cyw43_init() ...
+wifi: cyw43_init() returned, bringing interface up ...
+[B4] GY-511 connected on I2C0 (GP4/GP5)
+[B4] Calibration starting: keep level/still for 200 samples
+[B4] Invalid reading/timing: terrain sequence reset
+[B4-FAULT-DETAIL] raw_valid=0 sample_gap_ms=3355769976 failures=3
+[B4] Sensor fault/unavailable: readings suppressed
+wifi: joining "chizeukeikeu" ...
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: link status -> joined AP, no IP yet (2)
+[B4] Level calibration complete
+[B4] Magnetic calibration pending; turn rate unavailable
+[B4] Sensor recovered: readings valid
+[ROBOT] B1/B2/B3/B4/B5 + controller started; configured autostart waits for healthy sensors
+[VC-TUNE] build=Nov 21 2026 16:21:13 v4=1 filter=4 split=650 left_junction_deg=80
+[VC] line sensors: SPREAD (line between them) layout (VC_LINE_STRADDLE)
+[VC] state=1
+[VC-BOOT-WAIT] line=0 detected=0 imu=1 motion=0 hazard=1 obstacle_fault=0 clearance=0 faults=0
+[FW-ID] Nov 21 2026 14:16:59 B5-BLUE-ROUTE: autonomous=1 scan=70..110 stop_cm=16 release_cm=21 straight_trim=-20
+[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12
+[S5-TEST] obstacle_test=0 bounded_reverse=0 reverse_cm=8 rear_space=operator_checked startup_clear_cm=16
+[S5-FW] CLOSERETREAT-V47 encoder_distance=1 speed_cps=540 turn_deg=40 sensor_turn_guard_x100=1000 opening_pivot_x100=2500
+[S5-GEOMETRY] sensor_offset_x100=500 uncertainty_x100=100 pivot_turn_guard_x100=1400
+[S5-CLOCK] timer_tick_cycles=12 expected=12 (1 MHz)
+[S5-INIT] TRIG=GP16 ECHO=GP17 echo_level=0 PWM_CSR=17 DIV=2000 TOP=65535 (expected 17/2000/65535)
+[S5-BOOT] ultrasonic pins initialized
+[S5-SERVO] GP12 PWM slice=6 50Hz center=1500us init errors=0,0,0,0,0
+[S5-SCAN-MAP] reversed=1 logical70=LEFT logical110=RIGHT pulse_left=1611 pulse_right=1388
+[S5-BOOT] servo PWM initialized at 50Hz
+[B4 #206] Motion=unknown/quiet
+[B4 #206] B2 motion context=N/A
+[B4 #206] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #206] Accel X=-1 Y=-4 Z=1000 mg
+[B4 #206] Heading=N/A
+[B4 #206] TurnRate=N/A
+s1: WiFi & Telemetry task started
+s1: link INITIALISING -> CONNECTING_WIFI  faults=0x00
+s1: EVENT error 0x81 (S4 #1) detail 0
+wifi: link up, ip=10.161.248.143
+mqtt: connecting to 10.161.248.201:1883 as "inf2004-g25-car" ...
+s1: link CONNECTING_WIFI -> CONNECTING_MQTT  faults=0x00
+[VC-BOOT-WAIT] line=1 detected=1 imu=1 motion=1 hazard=0 obstacle_fault=0 clearance=0 faults=0
+[B4 #240] Motion=stationary
+[B4 #240] B2 speed L=0 R=0 counts/s
+[B4 #240] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #240] Accel X=-5 Y=-4 Z=1002 mg
+[B4 #240] Heading=N/A
+[B4 #240] TurnRate=N/A
+[S5-BOX] obstacle mode: slow 60 cm, stop 40 cm (ramp 25), scan at 25 cm, box bypass
+mqtt: connected to 10.161.248.201
+s1: link CONNECTING_MQTT -> CONNECTED  faults=0x00
+s1: heartbeat #1  link=CONNECTED  faults=0x00  tx=1 drop=0 rx=0 rej=0
+mqtt: subscribed to inf2004/g25/car/cmd
+[LINE-RAW] GP26=369 GP27=145 norm26=1000 norm27=0 low_is_black=0
+[B3-RANGE] GP26 white=210 black=355; GP27 white=160 black=842
+[VC-BOOT] sensors and front clearance ready; START
+[VC] state=2
+[VC-STEER] t=3355777426 state=2 R26=993 L27=0 flags=1 steer=321 base=100 measL=0 measR=0 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355777436 type=1 steer=321 targetL=132 targetR=63 measL=0 measR=0 pwmReqL=7 pwmReqR=13 dt=10
+[VC4] on a ramp: short obstacle stop
+[VC-STEER] t=3355777696 state=2 R26=1000 L27=0 flags=1 steer=665 base=524 measL=900 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=214,141
+[LINE] GP26=1000 GP27=0 flags=1 black_min=201
+[B4 #274] Motion=unknown/quiet
+[B4 #274] B2 speed L=1100 R=700 counts/s
+[B4 #274] Tilt Pitch=0 Roll=-1 deg Detected=no
+[B4 #274] Accel X=14 Y=-28 Z=1020 mg
+[B4 #274] Heading=N/A
+[B4 #274] TurnRate=N/A
+[B2-SPEED] t=3355777936 type=1 steer=666 targetL=833 targetR=156 measL=1060 measR=630 pwmReqL=8 pwmReqR=9 dt=10
+[VC-STEER] t=3355777966 state=2 R26=1000 L27=0 flags=1 steer=665 base=488 measL=1000 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355778236 state=2 R26=0 L27=0 flags=2 steer=666 base=595 measL=1300 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B3-CAL] observed GP26 min=196 max=367; GP27 min=136 max=204; tracking uses fixed thresholds
+[B2-SPEED] t=3355778436 type=1 steer=665 targetL=872 targetR=164 measL=930 measR=580 pwmReqL=9 pwmReqR=8 dt=10
+[VC-STEER] t=3355778506 state=2 R26=0 L27=234 flags=1 steer=665 base=524 measL=1000 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=198 GP27=318 norm26=0 norm27=231 low_is_black=0
+[B4 #311] Motion=unknown/quiet
+[B4 #311] B2 speed L=900 R=1000 counts/s
+[B4 #311] Tilt Pitch=0 Roll=1 deg Detected=no
+[B4 #311] Accel X=-15 Y=69 Z=1054 mg
+[B4 #311] Heading=N/A
+[B4 #311] TurnRate=N/A
+[VC-STEER] t=3355778776 state=2 R26=0 L27=192 flags=2 steer=67 base=1345 measL=1100 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355778936 type=1 steer=90 targetL=1439 targetR=1126 measL=1370 measR=1070 pwmReqL=12 pwmReqR=15 dt=10
+[VC-STEER] t=3355779046 state=2 R26=855 L27=0 flags=1 steer=666 base=702 measL=1400 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355779316 state=2 R26=1000 L27=0 flags=1 steer=665 base=524 measL=800 measR=500 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355779436 type=1 steer=666 targetL=872 targetR=163 measL=890 measR=440 pwmReqL=9 pwmReqR=8 dt=10
+[VC-STEER] t=3355779586 state=2 R26=1000 L27=0 flags=1 steer=665 base=500 measL=800 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=2309,1499
+[LINE] GP26=1000 GP27=0 flags=1 black_min=201
+[B4 #346] Motion=unknown/quiet
+[B4 #346] B2 speed L=800 R=500 counts/s
+[B4 #346] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #346] Accel X=32 Y=23 Z=1012 mg
+[B4 #346] Heading=N/A
+[B4 #346] TurnRate=N/A
+[VC-STEER] t=3355779856 state=2 R26=1000 L27=0 flags=1 steer=665 base=476 measL=900 measR=400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355779936 type=1 steer=665 targetL=792 targetR=149 measL=820 measR=410 pwmReqL=8 pwmReqR=8 dt=10
+[VC-STEER] t=3355780126 state=2 R26=993 L27=0 flags=1 steer=665 base=476 measL=800 measR=400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=309 GP27=129 norm26=682 norm27=0 low_is_black=0
+[VC-STEER] t=3355780396 state=2 R26=124 L27=2 flags=2 steer=128 base=1271 measL=1200 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355780436 type=1 steer=170 targetL=1448 targetR=962 measL=1230 measR=670 pwmReqL=13 pwmReqR=14 dt=10
+[VC-STEER] t=3355780666 state=2 R26=0 L27=0 flags=2 steer=665 base=488 measL=900 measR=400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #381] Motion=unknown/quiet
+[B4 #381] B2 speed L=900 R=400 counts/s
+[B4 #381] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #381] Accel X=2 Y=-8 Z=1010 mg
+[B4 #381] Heading=N/A
+[B4 #381] TurnRate=N/A
+[B2-SPEED] t=3355780936 type=1 steer=665 targetL=792 targetR=149 measL=850 measR=380 pwmReqL=8 pwmReqR=7 dt=10
+[VC-STEER] t=3355780936 state=2 R26=0 L27=0 flags=2 steer=665 base=476 measL=900 measR=500 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355781206 state=2 R26=0 L27=0 flags=2 steer=665 base=476 measL=900 measR=400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC4] LINE LOST: slow arc first, fallback backup 80 mm, search right
+[VC-CLEARANCE-WAIT] now_ms=-939185880 allowed=0 no_echo=0 generation=2
+[VC] state=5
+[VC] state=7
+[B2-SPEED] t=3355781456 type=1 steer=664 targetL=752 targetR=142 measL=0 measR=0 pwmReqL=14 pwmReqR=13 dt=10
+[LINE-RAW] GP26=201 GP27=145 norm26=0 norm27=0 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=4055,2387
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B4 #416] Motion=unknown/quiet
+[B4 #416] B2 speed L=1000 R=600 counts/s
+[B4 #416] Tilt Pitch=0 Roll=2 deg Detected=no
+[B4 #416] Accel X=-9 Y=59 Z=990 mg
+[B4 #416] Heading=N/A
+[B4 #416] TurnRate=N/A
+s1: heartbeat #2  link=CONNECTED  faults=0x00  tx=11 drop=0 rx=0 rej=0
+[B2-SPEED] t=3355781956 type=1 steer=664 targetL=752 targetR=142 measL=810 measR=560 pwmReqL=9 pwmReqR=9 dt=10
+[B2-SPEED] t=3355782456 type=3 steer=0 targetL=-78 targetR=-73 measL=-300 measR=0 pwmReqL=-8 pwmReqR=-8 dt=10
+[B4 #452] Motion=unknown/quiet
+[B4 #452] B2 speed L=-1100 R=-800 counts/s
+[B4 #452] Tilt Pitch=0 Roll=-2 deg Detected=no
+[B4 #452] Accel X=16 Y=-56 Z=1006 mg
+[B4 #452] Heading=N/A
+[B4 #452] TurnRate=N/A
+[B2-SPEED] t=3355782956 type=3 steer=0 targetL=-567 targetR=-531 measL=-1200 measR=-910 pwmReqL=-12 pwmReqR=-14 dt=10
+[LINE-RAW] GP26=194 GP27=142 norm26=0 norm27=0 low_is_black=0
+[B2-SPEED] t=3355783456 type=3 steer=0 targetL=0 targetR=-188 measL=-190 measR=-820 pwmReqL=0 pwmReqR=-10 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=2 fault=0 stopped=1 enc=3487,1710
+[LINE] GP26=1000 GP27=0 flags=1 black_min=201
+[B4 #487] Motion=unknown/quiet
+[B4 #487] B2 speed L=700 R=-500 counts/s
+[B4 #487] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #487] Accel X=-15 Y=-2 Z=1008 mg
+[B4 #487] Heading=N/A
+[B4 #487] TurnRate=N/A
+[B2-SPEED] t=3355783956 type=2 steer=0 targetL=1570 targetR=-1875 measL=1940 measR=-1220 pwmReqL=19 pwmReqR=-27 dt=10
+[B2-SPEED] t=3355784456 type=2 steer=0 targetL=300 targetR=-856 measL=1120 measR=-1170 pwmReqL=10 pwmReqR=-18 dt=10
+[LINE-RAW] GP26=188 GP27=145 norm26=0 norm27=0 low_is_black=0
+[B4 #522] Motion=unknown/quiet
+[B4 #522] B2 speed L=0 R=-400 counts/s
+[B4 #522] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #522] Accel X=2 Y=11 Z=1008 mg
+[B4 #522] Heading=N/A
+[B4 #522] TurnRate=N/A
+[B2-SPEED] t=3355784956 type=2 steer=0 targetL=-1778 targetR=1679 measL=-800 measR=600 pwmReqL=-28 pwmReqR=28 dt=10
+[VC4] LIFTED (line sensors raw 194/133, imu 1): stopped, START to run again
+[VC] state=8
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4475,771
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B4 #557] Motion=stationary
+[B4 #557] B2 speed L=0 R=0 counts/s
+[B4 #557] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #557] Accel X=4 Y=5 Z=998 mg
+[B4 #557] Heading=N/A
+[B4 #557] TurnRate=N/A
+[LINE-RAW] GP26=190 GP27=159 norm26=0 norm27=0 low_is_black=0
+[B4 #591] Motion=stationary
+[B4 #591] B2 speed L=0 R=0 counts/s
+[B4 #591] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #591] Accel X=20 Y=3 Z=998 mg
+[B4 #591] Heading=176 deg Calibrated=no
+[B4 #591] TurnRate=N/A
+s1: heartbeat #3  link=CONNECTED  faults=0x00  tx=21 drop=0 rx=0 rej=0
+[LINE-RAW] GP26=193 GP27=143 norm26=0 norm27=0 low_is_black=0
+s1: command STOP (arg 0, #97) -> controller
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4475,771
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B4 #625] Motion=stationary
+[B4 #625] B2 speed L=0 R=0 counts/s
+[B4 #625] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #625] Accel X=0 Y=13 Z=1008 mg
+[B4 #625] Heading=175 deg Calibrated=no
+[B4 #625] TurnRate=N/A
+[B4 #659] Motion=stationary
+[B4 #659] B2 speed L=0 R=0 counts/s
+[B4 #659] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #659] Accel X=16 Y=7 Z=992 mg
+[B4 #659] Heading=176 deg Calibrated=no
+[B4 #659] TurnRate=N/A
+[LINE-RAW] GP26=194 GP27=138 norm26=0 norm27=0 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4475,771
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B4 #693] Motion=stationary
+[B4 #693] B2 speed L=0 R=0 counts/s
+[B4 #693] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #693] Accel X=0 Y=11 Z=1012 mg
+[B4 #693] Heading=175 deg Calibrated=no
+[B4 #693] TurnRate=N/A
+[LINE-RAW] GP26=194 GP27=147 norm26=0 norm27=0 low_is_black=0
+[B4 #727] Motion=stationary
+[B4 #727] B2 speed L=0 R=0 counts/s
+[B4 #727] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #727] Accel X=0 Y=0 Z=996 mg
+[B4 #727] Heading=175 deg Calibrated=no
+[B4 #727] TurnRate=N/A
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4474,771
+[LINE] GP26=1000 GP27=1000 flags=5 black_min=201
+s1: heartbeat #4  link=CONNECTED  faults=0x00  tx=33 drop=0 rx=1 rej=0
+[B4 #761] Motion=accelerating
+[B4 #761] B2 speed L=0 R=0 counts/s
+[B4 #761] Tilt Pitch=2 Roll=2 deg Detected=no
+[B4 #761] Accel X=2 Y=-10 Z=858 mg
+[B4 #761] Heading=N/A
+[B4 #761] TurnRate=N/A
+[LINE-RAW] GP26=3776 GP27=3397 norm26=1000 norm27=1000 low_is_black=0
+[B4 #784] Motion=suspected-impact
+[B4 #795] Motion=accelerating
+[B4 #795] B2 speed L=0 R=0 counts/s
+[B4 #795] Tilt Pitch=-3 Roll=0 deg Detected=no
+[B4 #795] Accel X=74 Y=-42 Z=1228 mg
+[B4 #795] Heading=N/A
+[B4 #795] TurnRate=N/A
+[B4 #805] Motion=suspected-impact
+[B4 #807] Motion=suspected-impact
+[B4 #812] Motion=suspected-impact
+[LINE-RAW] GP26=187 GP27=136 norm26=0 norm27=0 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4487,771
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B4 #829] Motion=stationary
+[B4 #829] B2 speed L=0 R=0 counts/s
+[B4 #829] Tilt Pitch=-1 Roll=0 deg Detected=no
+[B4 #829] Accel X=14 Y=29 Z=992 mg
+[B4 #829] Heading=N/A
+[B4 #829] TurnRate=N/A
+[B4 #845] Motion=suspected-impact
+[B4 #847] Motion=suspected-impact
+[B4 #863] Motion=stationary
+[B4 #863] B2 speed L=0 R=0 counts/s
+[B4 #863] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #863] Accel X=0 Y=1 Z=1006 mg
+[B4 #863] Heading=N/A
+[B4 #863] TurnRate=N/A
+[LINE-RAW] GP26=185 GP27=179 norm26=0 norm27=27 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4493,850
+[LINE] GP26=0 GP27=67 flags=2 black_min=201
+[B4 #896] Motion=stationary
+[B4 #896] B2 speed L=0 R=0 counts/s
+[B4 #896] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #896] Accel X=2 Y=-4 Z=1004 mg
+[B4 #896] Heading=320 deg Calibrated=no
+[B4 #896] TurnRate=N/A
+[LINE-RAW] GP26=191 GP27=200 norm26=0 norm27=58 low_is_black=0
+s1: heartbeat #5  link=CONNECTED  faults=0x00  tx=43 drop=0 rx=1 rej=0
+[B4 #930] Motion=stationary
+[B4 #930] B2 speed L=0 R=0 counts/s
+[B4 #930] Tilt Pitch=2 Roll=1 deg Detected=no
+[B4 #930] Accel X=-87 Y=27 Z=1030 mg
+[B4 #930] Heading=328 deg Calibrated=no
+[B4 #930] TurnRate=N/A
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4493,850
+[LINE] GP26=0 GP27=77 flags=2 black_min=201
+[B4 #964] Motion=stationary
+[B4 #964] B2 speed L=0 R=0 counts/s
+[B4 #964] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #964] Accel X=2 Y=3 Z=1008 mg
+[B4 #964] Heading=321 deg Calibrated=no
+[B4 #964] TurnRate=N/A
+[LINE-RAW] GP26=198 GP27=225 norm26=0 norm27=95 low_is_black=0
+[B4 #999] Motion=unknown/quiet
+[B4 #999] B2 speed L=0 R=0 counts/s
+[B4 #999] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #999] Accel X=2 Y=-6 Z=986 mg
+[B4 #999] Heading=N/A
+[B4 #999] TurnRate=N/A
+[LINE-RAW] GP26=353 GP27=136 norm26=986 norm27=0 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=4238,831
+[LINE] GP26=979 GP27=0 flags=1 black_min=201
+[B4 #1034] Motion=stationary
+[B4 #1034] B2 speed L=0 R=0 counts/s
+[B4 #1034] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1034] Accel X=0 Y=1 Z=996 mg
+[B4 #1034] Heading=N/A
+[B4 #1034] TurnRate=N/A
+[B4 #1067] Motion=stationary
+[B4 #1067] B2 speed L=0 R=0 counts/s
+[B4 #1067] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1067] Accel X=2 Y=-2 Z=1008 mg
+[B4 #1067] Heading=338 deg Calibrated=no
+[B4 #1067] TurnRate=N/A
+s1: command START (arg 0, #98) -> controller
+[VC-CLEARANCE-WAIT] now_ms=-939166170 allowed=0 no_echo=0 generation=4
+[VC] state=5
+[LINE-RAW] GP26=357 GP27=142 norm26=1000 norm27=0 low_is_black=0
+[VC] state=2
+[VC-STEER] t=3355801366 state=2 R26=986 L27=0 flags=1 steer=321 base=100 measL=0 measR=0 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355801376 type=1 steer=321 targetL=132 targetR=63 measL=0 measR=0 pwmReqL=7 pwmReqR=13 dt=10
+[VC4] on a ramp: short obstacle stop
+[VC-STEER] t=3355801636 state=2 R26=0 L27=0 flags=2 steer=140 base=948 measL=1100 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=4686,1122
+[LINE] GP26=0 GP27=171 flags=2 black_min=201
+[B2-SPEED] t=3355801876 type=1 steer=666 targetL=912 targetR=171 measL=1170 measR=700 pwmReqL=8 pwmReqR=9 dt=10
+[VC-STEER] t=3355801906 state=2 R26=0 L27=143 flags=2 steer=665 base=512 measL=1000 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+s1: heartbeat #6  link=CONNECTED  faults=0x00  tx=54 drop=0 rx=2 rej=0
+[B4 #1101] Motion=unknown/quiet
+[B4 #1101] B2 speed L=900 R=600 counts/s
+[B4 #1101] Tilt Pitch=0 Roll=-1 deg Detected=no
+[B4 #1101] Accel X=-13 Y=-36 Z=1012 mg
+[B4 #1101] Heading=N/A
+[B4 #1101] TurnRate=N/A
+[VC-STEER] t=3355802176 state=2 R26=0 L27=482 flags=1 steer=-187 base=712 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355802376 type=1 steer=41 targetL=1365 targetR=1178 measL=1110 measR=930 pwmReqL=13 pwmReqR=17 dt=10
+[VC-STEER] t=3355802446 state=2 R26=0 L27=218 flags=1 steer=18 base=1405 measL=1500 measR=1200 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #1120] Motion=climbing
+[VC] state=4
+[B4 #1122] Motion=descending
+[VC] state=2
+[LINE-RAW] GP26=349 GP27=146 norm26=958 norm27=0 low_is_black=0
+[VC-STEER] t=3355802716 state=2 R26=958 L27=0 flags=1 steer=665 base=702 measL=1000 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355802876 type=1 steer=665 targetL=792 targetR=149 measL=1000 measR=600 pwmReqL=7 pwmReqR=8 dt=10
+[VC-STEER] t=3355802986 state=2 R26=1000 L27=0 flags=1 steer=666 base=524 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #1137] Motion=unknown/quiet
+[B4 #1137] B2 speed L=900 R=500 counts/s
+[B4 #1137] Tilt Pitch=-1 Roll=2 deg Detected=no
+[B4 #1137] Accel X=40 Y=71 Z=946 mg
+[B4 #1137] Heading=N/A
+[B4 #1137] TurnRate=N/A
+[VC-STEER] t=3355803256 state=2 R26=1000 L27=0 flags=1 steer=665 base=512 measL=800 measR=500 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355803376 type=1 steer=665 targetL=792 targetR=149 measL=900 measR=560 pwmReqL=8 pwmReqR=8 dt=10
+[VC-STEER] t=3355803526 state=2 R26=1000 L27=0 flags=1 steer=665 base=476 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355803796 state=2 R26=0 L27=0 flags=2 steer=381 base=988 measL=1100 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=6635,2521
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B2-SPEED] t=3355803876 type=1 steer=666 targetL=1091 targetR=204 measL=1200 measR=700 pwmReqL=9 pwmReqR=7 dt=10
+[B4 #1173] Motion=unknown/quiet
+[B4 #1173] B2 speed L=900 R=500 counts/s
+[B4 #1173] Tilt Pitch=0 Roll=-1 deg Detected=no
+[B4 #1173] Accel X=2 Y=-18 Z=988 mg
+[B4 #1173] Heading=N/A
+[B4 #1173] TurnRate=N/A
+[VC-STEER] t=3355804066 state=2 R26=0 L27=0 flags=2 steer=666 base=476 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=200 GP27=147 norm26=0 norm27=0 low_is_black=0
+[VC-STEER] t=3355804336 state=2 R26=0 L27=0 flags=2 steer=665 base=476 measL=800 measR=400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355804376 type=1 steer=665 targetL=792 targetR=149 measL=810 measR=460 pwmReqL=8 pwmReqR=7 dt=10
+[VC-STEER] t=3355804606 state=2 R26=0 L27=0 flags=2 steer=665 base=476 measL=800 measR=400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC4] LINE LOST: slow arc first, fallback backup 80 mm, search right
+[VC-CLEARANCE-WAIT] now_ms=-939162570 allowed=0 no_echo=0 generation=5
+[VC] state=5
+[VC] state=7
+[B2-SPEED] t=3355804876 type=1 steer=664 targetL=752 targetR=142 measL=640 measR=440 pwmReqL=10 pwmReqR=11 dt=10
+[B4 #1209] Motion=unknown/quiet
+[B4 #1209] B2 speed L=900 R=600 counts/s
+[B4 #1209] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1209] Accel X=30 Y=7 Z=1014 mg
+[B4 #1209] Heading=N/A
+[B4 #1209] TurnRate=N/A
+[B2-SPEED] t=3355805376 type=1 steer=664 targetL=752 targetR=142 measL=880 measR=610 pwmReqL=8 pwmReqR=8 dt=10
+[VC-CLEARANCE-WAIT] now_ms=-939161760 allowed=0 no_echo=0 generation=6
+[VC] state=5
+[VC] state=7
+[LINE-RAW] GP26=195 GP27=135 norm26=0 norm27=0 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=7908,3327
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B2-SPEED] t=3355805876 type=3 steer=0 targetL=-215 targetR=-201 measL=-770 measR=-560 pwmReqL=-12 pwmReqR=-13 dt=10
+[B4 #1244] Motion=unknown/quiet
+[B4 #1244] B2 speed L=-1100 R=-900 counts/s
+[B4 #1244] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1244] Accel X=8 Y=-30 Z=984 mg
+[B4 #1244] Heading=N/A
+[B4 #1244] TurnRate=N/A
+[B2-SPEED] t=3355806376 type=3 steer=0 targetL=-369 targetR=-660 measL=-1260 measR=-1070 pwmReqL=-9 pwmReqR=-14 dt=10
+[B2-SPEED] t=3355806876 type=3 steer=0 targetL=0 targetR=-140 measL=0 measR=-390 pwmReqL=0 pwmReqR=-12 dt=10
+s1: heartbeat #7  link=CONNECTED  faults=0x00  tx=65 drop=0 rx=2 rej=0
+[B4 #1279] Motion=accelerating
+[B4 #1279] B2 speed L=1400 R=-600 counts/s
+[B4 #1279] Tilt Pitch=0 Roll=-5 deg Detected=no
+[B4 #1279] Accel X=22 Y=-162 Z=1000 mg
+[B4 #1279] Heading=N/A
+[B4 #1279] TurnRate=N/A
+[LINE-RAW] GP26=201 GP27=207 norm26=0 norm27=68 low_is_black=0
+[B2-SPEED] t=3355807376 type=2 steer=0 targetL=1205 targetR=-2008 measL=1880 measR=-1400 pwmReqL=16 pwmReqR=-28 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=8202,1467
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B2-SPEED] t=3355807876 type=2 steer=0 targetL=0 targetR=-281 measL=170 measR=-670 pwmReqL=0 pwmReqR=-15 dt=10
+[B4 #1315] Motion=accelerating
+[B4 #1315] B2 speed L=0 R=0 counts/s
+[B4 #1315] Tilt Pitch=0 Roll=4 deg Detected=no
+[B4 #1315] Accel X=-13 Y=137 Z=1020 mg
+[B4 #1315] Heading=N/A
+[B4 #1315] TurnRate=N/A
+[VC4] LIFTED (line sensors raw 189/159, imu 1): stopped, START to run again
+[VC] state=8
+[LINE-RAW] GP26=200 GP27=144 norm26=0 norm27=0 low_is_black=0
+[B4 #1349] Motion=stationary
+[B4 #1349] B2 speed L=0 R=0 counts/s
+[B4 #1349] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1349] Accel X=4 Y=7 Z=1000 mg
+[B4 #1349] Heading=N/A
+[B4 #1349] TurnRate=N/A
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=7965,1556
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B4 #1383] Motion=stationary
+[B4 #1383] B2 speed L=0 R=0 counts/s
+[B4 #1383] Tilt Pitch=2 Roll=-2 deg Detected=no
+[B4 #1383] Accel X=-33 Y=-84 Z=1054 mg
+[B4 #1383] Heading=193 deg Calibrated=no
+[B4 #1383] TurnRate=N/A
+[LINE-RAW] GP26=216 GP27=155 norm26=41 norm27=0 low_is_black=0
+[B4 #1417] Motion=stationary
+[B4 #1417] B2 speed L=0 R=0 counts/s
+[B4 #1417] Tilt Pitch=-3 Roll=20 deg Detected=yes
+[B4 #1417] Accel X=6 Y=387 Z=1012 mg
+[B4 #1417] Heading=191 deg Calibrated=no
+[B4 #1417] TurnRate=N/A
+[LINE-RAW] GP26=3415 GP27=2464 norm26=1000 norm27=1000 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=7965,1556
+[LINE] GP26=1000 GP27=1000 flags=5 black_min=201
+s1: heartbeat #8  link=CONNECTED  faults=0x00  tx=75 drop=0 rx=2 rej=0
+[B4 #1451] Motion=accelerating
+[B4 #1451] B2 speed L=0 R=0 counts/s
+[B4 #1451] Tilt Pitch=6 Roll=-3 deg Detected=no
+[B4 #1451] Accel X=-201 Y=-230 Z=984 mg
+[B4 #1451] Heading=116 deg Calibrated=no
+[B4 #1451] TurnRate=N/A
+[B4 #1456] Motion=suspected-impact
+[B4 #1485] Motion=stationary
+[B4 #1485] B2 speed L=0 R=0 counts/s
+[B4 #1485] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1485] Accel X=12 Y=0 Z=1006 mg
+[B4 #1485] Heading=N/A
+[B4 #1485] TurnRate=N/A
+[LINE-RAW] GP26=381 GP27=148 norm26=1000 norm27=0 low_is_black=0
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=7921,1529
+[LINE] GP26=1000 GP27=0 flags=1 black_min=201
+[B4 #1519] Motion=stationary
+[B4 #1519] B2 speed L=0 R=0 counts/s
+[B4 #1519] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1519] Accel X=12 Y=0 Z=998 mg
+[B4 #1519] Heading=119 deg Calibrated=no
+[B4 #1519] TurnRate=N/A
+[LINE-RAW] GP26=380 GP27=145 norm26=1000 norm27=0 low_is_black=0
+s1: command START (arg 0, #99) -> controller
+[VC-CLEARANCE-WAIT] now_ms=-939152190 allowed=0 no_echo=0 generation=7
+[VC] state=5
+[B4 #1553] Motion=stationary
+[B4 #1553] B2 speed L=0 R=0 counts/s
+[B4 #1553] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1553] Accel X=6 Y=1 Z=998 mg
+[B4 #1553] Heading=119 deg Calibrated=no
+[B4 #1553] TurnRate=N/A
+[VC] state=2
+[VC-STEER] t=3355815346 state=2 R26=1000 L27=0 flags=1 steer=321 base=100 measL=0 measR=0 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355815356 type=1 steer=321 targetL=132 targetR=63 measL=0 measR=0 pwmReqL=7 pwmReqR=13 dt=10
+[VC-STEER] t=3355815616 state=2 R26=0 L27=0 flags=2 steer=660 base=712 measL=1100 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355815856 type=1 steer=-665 targetL=163 targetR=761 measL=380 measR=940 pwmReqL=5 pwmReqR=14 dt=10
+[VC-STEER] t=3355815886 state=2 R26=0 L27=1000 flags=1 steer=-666 base=488 measL=700 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=8350,1893
+[LINE] GP26=0 GP27=892 flags=1 black_min=201
+[VC4] on a ramp: short obstacle stop
+[VC-STEER] t=3355816156 state=2 R26=0 L27=910 flags=1 steer=-613 base=810 measL=1200 measR=1100 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=191 GP27=981 norm26=0 norm27=1000 low_is_black=0
+[B4 #1589] Motion=unknown/quiet
+[B4 #1589] B2 speed L=400 R=1100 counts/s
+[B4 #1589] Tilt Pitch=1 Roll=0 deg Detected=no
+[B4 #1589] Accel X=-59 Y=39 Z=1042 mg
+[B4 #1589] Heading=N/A
+[B4 #1589] TurnRate=N/A
+[B2-SPEED] t=3355816356 type=1 steer=-665 targetL=159 targetR=742 measL=510 measR=840 pwmReqL=4 pwmReqR=14 dt=10
+[VC-STEER] t=3355816426 state=2 R26=0 L27=850 flags=1 steer=-665 base=702 measL=500 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355816696 state=2 R26=0 L27=1000 flags=1 steer=-666 base=488 measL=300 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355816856 type=1 steer=-665 targetL=163 targetR=761 measL=410 measR=840 pwmReqL=4 pwmReqR=14 dt=10
+[VC-STEER] t=3355816966 state=2 R26=0 L27=772 flags=1 steer=-666 base=671 measL=400 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+s1: heartbeat #9  link=CONNECTED  faults=0x00  tx=86 drop=0 rx=3 rej=0
+[B4 #1626] Motion=unknown/quiet
+[B4 #1626] B2 speed L=400 R=1000 counts/s
+[B4 #1626] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1626] Accel X=-5 Y=-18 Z=1030 mg
+[B4 #1626] Heading=N/A
+[B4 #1626] TurnRate=N/A
+[VC-STEER] t=3355817236 state=2 R26=0 L27=807 flags=1 steer=-665 base=488 measL=300 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355817356 type=1 steer=-319 targetL=536 targetR=973 measL=390 measR=940 pwmReqL=7 pwmReqR=16 dt=10
+[VC-STEER] t=3355817506 state=2 R26=0 L27=782 flags=1 steer=-665 base=512 measL=400 measR=1100 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=194 GP27=569 norm26=0 norm27=599 low_is_black=0
+[VC-STEER] t=3355817776 state=2 R26=0 L27=661 flags=1 steer=-666 base=643 measL=500 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355817856 type=1 steer=-665 targetL=243 targetR=1132 measL=470 measR=1020 pwmReqL=3 pwmReqR=17 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=9428,3770
+[LINE] GP26=0 GP27=703 flags=1 black_min=201
+[VC-STEER] t=3355818046 state=2 R26=0 L27=187 flags=2 steer=-192 base=688 measL=500 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #1663] Motion=accelerating
+[B4 #1663] B2 speed L=200 R=800 counts/s
+[B4 #1663] Tilt Pitch=0 Roll=3 deg Detected=no
+[B4 #1663] Accel X=-23 Y=131 Z=986 mg
+[B4 #1663] Heading=N/A
+[B4 #1663] TurnRate=N/A
+[VC-STEER] t=3355818316 state=2 R26=0 L27=1000 flags=1 steer=-665 base=476 measL=300 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355818356 type=1 steer=-665 targetL=159 targetR=742 measL=290 measR=820 pwmReqL=3 pwmReqR=14 dt=10
+[VC-STEER] t=3355818586 state=2 R26=20 L27=118 flags=2 steer=-292 base=976 measL=600 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355818856 type=1 steer=-665 targetL=192 targetR=898 measL=290 measR=860 pwmReqL=3 pwmReqR=15 dt=10
+[VC-STEER] t=3355818856 state=2 R26=241 L27=146 flags=1 steer=-666 base=676 measL=300 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355819126 state=2 R26=0 L27=1000 flags=1 steer=-666 base=476 measL=0 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=206 GP27=1724 norm26=0 norm27=1000 low_is_black=0
+[B4 #1699] Motion=unknown/quiet
+[B4 #1699] B2 speed L=300 R=800 counts/s
+[B4 #1699] Tilt Pitch=0 Roll=1 deg Detected=no
+[B4 #1699] Accel X=28 Y=61 Z=1024 mg
+[B4 #1699] Heading=N/A
+[B4 #1699] TurnRate=N/A
+[B2-SPEED] t=3355819356 type=1 steer=-666 targetL=167 targetR=780 measL=240 measR=780 pwmReqL=3 pwmReqR=15 dt=10
+[VC-STEER] t=3355819396 state=2 R26=62 L27=1000 flags=1 steer=-666 base=500 measL=300 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355819666 state=2 R26=34 L27=1000 flags=1 steer=-665 base=476 measL=400 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355819856 type=1 steer=-223 targetL=758 targetR=1118 measL=490 measR=850 pwmReqL=7 pwmReqR=18 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=10170,5521
+[LINE] GP26=0 GP27=354 flags=1 black_min=201
+[VC-STEER] t=3355819936 state=2 R26=0 L27=354 flags=1 steer=-666 base=679 measL=700 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355820206 state=2 R26=0 L27=1000 flags=1 steer=-665 base=476 measL=200 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #1736] Motion=unknown/quiet
+[B4 #1736] B2 speed L=200 R=700 counts/s
+[B4 #1736] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1736] Accel X=-19 Y=23 Z=998 mg
+[B4 #1736] Heading=N/A
+[B4 #1736] TurnRate=N/A
+[B2-SPEED] t=3355820356 type=1 steer=-665 targetL=159 targetR=742 measL=220 measR=740 pwmReqL=3 pwmReqR=15 dt=10
+[VC-STEER] t=3355820476 state=2 R26=0 L27=1000 flags=1 steer=-665 base=476 measL=200 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=200 GP27=1004 norm26=0 norm27=1000 low_is_black=0
+[VC-STEER] t=3355820746 state=2 R26=0 L27=1000 flags=1 steer=-665 base=476 measL=400 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355820856 type=1 steer=-666 targetL=194 targetR=909 measL=280 measR=760 pwmReqL=2 pwmReqR=16 dt=10
+[VC-STEER] t=3355821016 state=2 R26=0 L27=4 flags=2 steer=-502 base=881 measL=700 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #1773] Motion=unknown/quiet
+[B4 #1773] B2 speed L=200 R=700 counts/s
+[B4 #1773] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1773] Accel X=22 Y=29 Z=1018 mg
+[B4 #1773] Heading=N/A
+[B4 #1773] TurnRate=N/A
+[VC-STEER] t=3355821286 state=2 R26=0 L27=0 flags=2 steer=-666 base=476 measL=300 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355821356 type=1 steer=-665 targetL=159 targetR=742 measL=190 measR=740 pwmReqL=2 pwmReqR=15 dt=10
+[VC-STEER] t=3355821556 state=2 R26=0 L27=0 flags=2 steer=-665 base=476 measL=300 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355821826 state=2 R26=0 L27=0 flags=2 steer=-665 base=476 measL=100 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355821856 type=1 steer=-665 targetL=159 targetR=742 measL=140 measR=760 pwmReqL=3 pwmReqR=15 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=10685,7135
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+s1: heartbeat #10  link=CONNECTED  faults=0x00  tx=97 drop=0 rx=3 rej=0
+[VC-STEER] t=3355822096 state=2 R26=0 L27=0 flags=2 steer=-665 base=476 measL=100 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=187 GP27=154 norm26=0 norm27=0 low_is_black=0
+[B4 #1809] Motion=accelerating
+[B4 #1809] B2 speed L=300 R=700 counts/s
+[B4 #1809] Tilt Pitch=0 Roll=-2 deg Detected=no
+[B4 #1809] Accel X=8 Y=-102 Z=980 mg
+[B4 #1809] Heading=N/A
+[B4 #1809] TurnRate=N/A
+[VC4] LINE LOST: slow arc first, fallback backup 80 mm, search left
+[VC-CLEARANCE-WAIT] now_ms=-939144960 allowed=0 no_echo=0 generation=8
+[VC] state=5
+[VC] state=7
+[B2-SPEED] t=3355822376 type=1 steer=-664 targetL=151 targetR=704 measL=0 measR=0 pwmReqL=8 pwmReqR=19 dt=10
+[B2-SPEED] t=3355822876 type=1 steer=-664 targetL=151 targetR=704 measL=490 measR=810 pwmReqL=4 pwmReqR=14 dt=10
+[B4 #1845] Motion=unknown/quiet
+[B4 #1845] B2 speed L=0 R=0 counts/s
+[B4 #1845] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1845] Accel X=0 Y=13 Z=1000 mg
+[B4 #1845] Heading=N/A
+[B4 #1845] TurnRate=N/A
+[B2-SPEED] t=3355823376 type=3 steer=0 targetL=-107 targetR=-100 measL=-380 measR=-260 pwmReqL=-11 pwmReqR=-11 dt=10
+[LINE-RAW] GP26=190 GP27=1011 norm26=0 norm27=1000 low_is_black=0
+[B2-SPEED] t=3355823876 type=3 steer=0 targetL=-597 targetR=-559 measL=-1240 measR=-1000 pwmReqL=-12 pwmReqR=-13 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=10451,7492
+[LINE] GP26=1000 GP27=0 flags=1 black_min=201
+[B4 #1882] Motion=unknown/quiet
+[B4 #1882] B2 speed L=0 R=-800 counts/s
+[B4 #1882] Tilt Pitch=0 Roll=1 deg Detected=no
+[B4 #1882] Accel X=2 Y=25 Z=996 mg
+[B4 #1882] Heading=N/A
+[B4 #1882] TurnRate=N/A
+[B2-SPEED] t=3355824376 type=3 steer=0 targetL=0 targetR=-140 measL=-30 measR=-710 pwmReqL=0 pwmReqR=-10 dt=10
+[B2-SPEED] t=3355824876 type=2 steer=0 targetL=-1871 targetR=1563 measL=-1460 measR=1610 pwmReqL=-26 pwmReqR=22 dt=10
+[LINE-RAW] GP26=191 GP27=146 norm26=0 norm27=0 low_is_black=0
+[B4 #1917] Motion=unknown/quiet
+[B4 #1917] B2 speed L=-600 R=700 counts/s
+[B4 #1917] Tilt Pitch=0 Roll=-1 deg Detected=no
+[B4 #1917] Accel X=26 Y=-62 Z=982 mg
+[B4 #1917] Heading=N/A
+[B4 #1917] TurnRate=N/A
+[B2-SPEED] t=3355825376 type=2 steer=0 targetL=0 targetR=281 measL=-550 measR=560 pwmReqL=0 pwmReqR=14 dt=10
+[B2-SPEED] t=3355825876 type=2 steer=0 targetL=1622 targetR=-1826 measL=1490 measR=-1480 pwmReqL=22 pwmReqR=-25 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=9710,7535
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B4 #1953] Motion=unknown/quiet
+[B4 #1953] B2 speed L=1600 R=-1100 counts/s
+[B4 #1953] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #1953] Accel X=6 Y=5 Z=1006 mg
+[B4 #1953] Heading=N/A
+[B4 #1953] TurnRate=N/A
+[B2-SPEED] t=3355826376 type=2 steer=0 targetL=1339 targetR=-2091 measL=1630 measR=-1110 pwmReqL=18 pwmReqR=-32 dt=10
+[LINE-RAW] GP26=200 GP27=154 norm26=0 norm27=0 low_is_black=0
+[B2-SPEED] t=3355826876 type=2 steer=0 targetL=300 targetR=-876 measL=1130 measR=-1550 pwmReqL=9 pwmReqR=-18 dt=10
+s1: heartbeat #11  link=CONNECTED  faults=0x00  tx=107 drop=0 rx=3 rej=0
+[B4 #1988] Motion=accelerating
+[B4 #1988] B2 speed L=-1800 R=1300 counts/s
+[B4 #1988] Tilt Pitch=-3 Roll=0 deg Detected=no
+[B4 #1988] Accel X=110 Y=19 Z=1020 mg
+[B4 #1988] Heading=N/A
+[B4 #1988] TurnRate=N/A
+[B2-SPEED] t=3355827376 type=2 steer=0 targetL=-1750 targetR=1706 measL=-1000 measR=900 pwmReqL=-27 pwmReqR=27 dt=10
+[B2-SPEED] t=3355827876 type=2 steer=0 targetL=-382 targetR=839 measL=-1110 measR=500 pwmReqL=-11 pwmReqR=22 dt=10
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=10405,6670
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[LINE-RAW] GP26=200 GP27=292 norm26=0 norm27=193 low_is_black=0
+[B4 #2024] Motion=unknown/quiet
+[B4 #2024] B2 speed L=0 R=100 counts/s
+[B4 #2024] Tilt Pitch=-1 Roll=0 deg Detected=no
+[B4 #2024] Accel X=30 Y=1 Z=962 mg
+[B4 #2024] Heading=N/A
+[B4 #2024] TurnRate=N/A
+[VC-CLEARANCE-WAIT] now_ms=-939138810 allowed=0 no_echo=0 generation=10
+[VC] state=5
+[VC] state=7
+[VC4] line found again after 6210 ms of search
+[VC] state=2
+[VC-STEER] t=3355828546 state=2 R26=0 L27=1000 flags=1 steer=-666 base=100 measL=0 measR=0 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355828556 type=1 steer=-666 targetL=33 targetR=156 measL=0 measR=0 pwmReqL=6 pwmReqR=14 dt=10
+[VC-STEER] t=3355828816 state=2 R26=0 L27=1000 flags=1 steer=-666 base=536 measL=500 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355829056 type=1 steer=-665 targetL=171 targetR=798 measL=450 measR=910 pwmReqL=4 pwmReqR=14 dt=10
+[VC-STEER] t=3355829086 state=2 R26=0 L27=1000 flags=1 steer=-665 base=500 measL=400 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355829356 state=2 R26=0 L27=1000 flags=1 steer=-665 base=476 measL=400 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #2060] Motion=unknown/quiet
+[B4 #2060] B2 speed L=400 R=900 counts/s
+[B4 #2060] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #2060] Accel X=0 Y=-44 Z=1010 mg
+[B4 #2060] Heading=N/A
+[B4 #2060] TurnRate=N/A
+[B2-SPEED] t=3355829556 type=1 steer=-665 targetL=159 targetR=742 measL=440 measR=870 pwmReqL=4 pwmReqR=14 dt=10
+[VC-STEER] t=3355829626 state=2 R26=0 L27=1000 flags=1 steer=-665 base=476 measL=500 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=192 GP27=991 norm26=0 norm27=1000 low_is_black=0
+[VC-STEER] t=3355829896 state=2 R26=0 L27=79 flags=2 steer=-256 base=876 measL=500 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=10956,8163
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[B2-SPEED] t=3355830056 type=1 steer=-665 targetL=191 targetR=890 measL=670 measR=1100 pwmReqL=2 pwmReqR=14 dt=10
+[VC-STEER] t=3355830166 state=2 R26=1000 L27=0 flags=1 steer=649 base=786 measL=700 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #2097] Motion=unknown/quiet
+[B4 #2097] B2 speed L=1100 R=700 counts/s
+[B4 #2097] Tilt Pitch=1 Roll=0 deg Detected=no
+[B4 #2097] Accel X=-27 Y=-22 Z=1008 mg
+[B4 #2097] Heading=N/A
+[B4 #2097] TurnRate=N/A
+[VC-STEER] t=3355830436 state=2 R26=0 L27=1000 flags=1 steer=-666 base=667 measL=900 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355830556 type=1 steer=-666 targetL=162 targetR=761 measL=240 measR=1010 pwmReqL=4 pwmReqR=12 dt=10
+[VC-STEER] t=3355830706 state=2 R26=0 L27=8 flags=2 steer=-317 base=876 measL=500 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355830976 state=2 R26=213 L27=0 flags=1 steer=-665 base=583 measL=200 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355831056 type=1 steer=629 targetL=1275 targetR=272 measL=400 measR=930 pwmReqL=14 pwmReqR=8 dt=10
+[LINE-RAW] GP26=332 GP27=135 norm26=841 norm27=0 low_is_black=0
+[VC-STEER] t=3355831246 state=2 R26=193 L27=0 flags=2 steer=498 base=724 measL=900 measR=500 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #2133] Motion=unknown/quiet
+[B4 #2133] B2 speed L=1100 R=800 counts/s
+[B4 #2133] Tilt Pitch=0 Roll=-3 deg Detected=no
+[B4 #2133] Accel X=16 Y=-40 Z=946 mg
+[B4 #2133] Heading=N/A
+[B4 #2133] TurnRate=N/A
+[VC-STEER] t=3355831516 state=2 R26=0 L27=756 flags=1 steer=-666 base=607 measL=100 measR=1100 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355831556 type=1 steer=-133 targetL=612 targetR=750 measL=230 measR=960 pwmReqL=9 pwmReqR=12 dt=10
+[VC-STEER] t=3355831786 state=2 R26=0 L27=4 flags=2 steer=28 base=1393 measL=1300 measR=1200 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 21 2026 16:13:52 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=12536,9965
+[LINE] GP26=0 GP27=240 flags=1 black_min=201
+[B2-SPEED] t=3355832056 type=1 steer=-61 targetL=1274 targetR=1348 measL=1200 measR=1220 pwmReqL=10 pwmReqR=17 dt=10
+[VC-STEER] t=3355832056 state=2 R26=0 L27=338 flags=1 steer=-173 base=1238 measL=1300 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+s1: heartbeat #12  link=CONNECTED  faults=0x00  tx=117 drop=0 rx=3 rej=0
+[VC-STEER] t=3355832326 state=2 R26=0 L27=244 flags=1 steer=-25 base=1405 measL=1400 measR=1300 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #2169] Motion=unknown/quiet
+[B4 #2169] B2 speed L=1200 R=800 counts/s
+[B4 #2169] Tilt Pitch=2 Roll=0 deg Detected=no
+[B4 #2169] Accel X=-27 Y=-28 Z=972 mg
+[B4 #2169] Heading=N/A
+[B4 #2169] TurnRate=N/A
+[B4 #2171] Motion=climbing
+[VC] state=4
+[B2-SPEED] t=3355832556 type=1 steer=-520 targetL=373 targetR=1109 measL=550 measR=1200 pwmReqL=5 pwmReqR=15 dt=10
+[VC-STEER] t=3355832596 state=4 R26=0 L27=32 flags=2 steer=-48 base=979 measL=700 measR=1100 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC] state=2
+[LINE-RAW] GP26=232 GP27=137 norm26=151 norm27=0 low_is_black=0
+[VC-STEER] t=3355832866 state=2 R26=0 L27=0 flags=2 steer=-14 base=1417 measL=1300 measR=1400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #2191] Motion=climbing

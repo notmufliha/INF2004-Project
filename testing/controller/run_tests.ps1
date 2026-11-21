@@ -1,4 +1,10 @@
 $ErrorActionPreference = 'Stop'
+$recorderBinary = Join-Path $env:TEMP 'inf2004-run-log-test.exe'
+& gcc -std=c11 -Wall -Wextra -Werror -Wno-cast-function-type `
+    (Join-Path $PSScriptRoot 'run_log_test.c') -o $recorderBinary
+if ($LASTEXITCODE -ne 0) { throw 'Run recorder compilation failed' }
+& $recorderBinary
+if ($LASTEXITCODE -ne 0) { throw 'Run recorder tests failed' }
 $barcodeBinary = Join-Path $env:TEMP 'inf2004-v4-barcode-test.exe'
 & gcc -std=c11 -mno-ms-bitfields -Wall -Wextra -Werror -Wno-cast-function-type -Wno-unused-function `
     -DVC_FOLLOW_V4=1 -DROBOT_BOX_BYPASS=0 `

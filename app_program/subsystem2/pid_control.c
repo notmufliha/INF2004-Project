@@ -377,7 +377,8 @@ static void pid_guard(pid_state_t *state)
 }
 
 static INT pid_wheel_pwm(float target_cps, float measured_cps,
-    float *integral, float dt, bool stuck, float base_pwm)
+    float *integral, float dt, bool stuck, float base_pwm,
+    bool curve_feedback)
 {
     float error;
     float output;
@@ -394,7 +395,19 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
         base += PID_KICK_PWM;
     }
     error = target_cps - measured_cps;
-    candidate = *integral + PID_KI * error * dt;
+    float gain = PID_KI;
+    /* Recorded curves show inner wheels at 380-630 cps against 150-165
+     * cps targets. Correct sustained overspeed sooner. Also unwind stale
+     * braking when the next bend asks that wheel to accelerate. Keep a
+     * 100 cps deadband against quantized encoder noise; normal PI, output
+     * limits and anti-windup remain in charge near the target. */
+    if (curve_feedback && !stuck &&
+        ((error < -100.0f && measured_cps > target_cps * 1.25f) ||
+         (error > 100.0f && *integral < 0.0f)))
+    {
+        gain *= 4.0f;
+    }
+    candidate = *integral + gain * error * dt;
     if (candidate > PID_I_LIMIT)
     {
         candidate = PID_I_LIMIT;
@@ -546,6 +559,10 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     float dt = (float)(state->now_ms - state->previous_ms) / 1000.0f;
     INT left_pwm;
     INT right_pwm;
+    bool curve_feedback = state->command.type == MOTION_CMD_DRIVE &&
+        state->command.direction == MOTION_DIR_FORWARD &&
+        (state->command.steering_permille >= 300 ||
+         state->command.steering_permille <= -300);
     if (state->sample_count >= PID_WINDOW_SIZE)
     {
         UINT old = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
@@ -560,11 +577,11 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
         left_cps * state->left_sign, &state->left_integral, dt,
         state->command.type != MOTION_CMD_MOVE && state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
-        pid_base_pwm(state, true));
+        pid_base_pwm(state, true), curve_feedback);
     right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
         right_cps * state->right_sign, &state->right_integral, dt,
         state->command.type != MOTION_CMD_MOVE && state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
-        pid_base_pwm(state, false));
+        pid_base_pwm(state, false), curve_feedback);
     /* Captured left-turn failure: the unfinished left wheel stayed still
      * at 30% while the right wheel had finished. Use the existing 35%
      * ceiling for breakaway only; stall/deadline guards remain unchanged. */
@@ -714,6 +731,11 @@ static void pid_execute(pid_state_t *state)
 void pid_init(void)
 {
     b2_safety_force_stop();
+    tm_printf((UB *)"[B2-TUNE] build=" __DATE__ " " __TIME__
+              " forward_trial=%d baseL=%d baseR=%d inner_adjust=off"
+              " curve_feedback=adaptive\n",
+              (INT)B2_FORWARD_FEEDFORWARD_TRIAL,
+              (INT)B2_LEFT_BASE_PWM, (INT)B2_RIGHT_BASE_PWM);
     tm_printf((UB *)"[B2-FW] CLOSERETREAT-V47 move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway=35; stall guards active\n");
 }
 

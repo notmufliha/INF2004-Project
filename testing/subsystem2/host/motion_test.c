@@ -812,6 +812,42 @@ static void representation_test(void)
            sizeof(pid_state_t));
 }
 
+static void test_curve_speed_feedback(void)
+{
+    const float bases[] = {B2_LEFT_BASE_PWM, B2_RIGHT_BASE_PWM};
+    for (UINT wheel = 0; wheel < 2; ++wheel)
+    {
+        float old_i = 0.0f, curve_i = 0.0f;
+        INT old_pwm = 0, curve_pwm = 0;
+        for (UINT sample = 0; sample < 50; ++sample)
+        {
+            old_pwm = pid_wheel_pwm(158, 410, &old_i, .01f, false,
+                bases[wheel], false);
+            curve_pwm = pid_wheel_pwm(158, 410, &curve_i, .01f, false,
+                bases[wheel], true);
+        }
+        CHECK(curve_pwm < old_pwm && curve_i < old_i);
+        CHECK(curve_pwm >= 0 && curve_pwm <= PID_MAX_PWM);
+        old_i = curve_i = -6.0f;
+        for (UINT sample = 0; sample < 20; ++sample)
+        {
+            old_pwm = pid_wheel_pwm(1000, 300, &old_i, .01f, false,
+                bases[wheel], false);
+            curve_pwm = pid_wheel_pwm(1000, 300, &curve_i, .01f, false,
+                bases[wheel], true);
+        }
+        CHECK(curve_i > old_i && curve_pwm > old_pwm);
+        old_i = curve_i = 0.0f;
+        old_pwm = pid_wheel_pwm(160, 250, &old_i, .01f, false,
+            bases[wheel], false);
+        curve_pwm = pid_wheel_pwm(160, 250, &curve_i, .01f, false,
+            bases[wheel], true);
+        CHECK(old_i == curve_i && old_pwm == curve_pwm);
+        CHECK(pid_wheel_pwm(0, 410, &curve_i, .01f, false,
+            bases[wheel], true) == 0 && curve_i == 0.0f);
+    }
+}
+
 int main(void)
 {
     INT mapped_speed;
@@ -868,6 +904,22 @@ int main(void)
 #if B2_FORWARD_FEEDFORWARD_TRIAL
         CHECK(pid_base_pwm(&trial, true) == (float)B2_LEFT_BASE_PWM);
         CHECK(pid_base_pwm(&trial, false) == (float)B2_RIGHT_BASE_PWM);
+        trial.command.steering_permille = -666;
+        CHECK(pid_base_pwm(&trial, true) == (float)B2_LEFT_BASE_PWM);
+        CHECK(pid_base_pwm(&trial, false) == (float)B2_RIGHT_BASE_PWM);
+        trial.command.steering_permille = -100;
+        CHECK(pid_base_pwm(&trial, true) == (float)B2_LEFT_BASE_PWM);
+        trial.command.steering_permille = -666;
+        float inner_integral = 0.0f, previous_integral = 0.0f;
+        INT inner_pwm = pid_wheel_pwm(158.0f, 390.0f, &inner_integral,
+            0.01f, false, pid_base_pwm(&trial, true), false);
+        INT previous_pwm = pid_wheel_pwm(158.0f, 390.0f, &previous_integral,
+            0.01f, false, (float)B2_LEFT_BASE_PWM, false);
+        CHECK(inner_pwm == previous_pwm);
+        trial.command.steering_permille = 666;
+        CHECK(pid_base_pwm(&trial, true) == (float)B2_LEFT_BASE_PWM);
+        CHECK(pid_base_pwm(&trial, false) == (float)B2_RIGHT_BASE_PWM);
+        trial.command.steering_permille = 0;
 #else
         CHECK(pid_base_pwm(&trial, true) == PID_MIN_MOVE_PWM);
         CHECK(pid_base_pwm(&trial, false) == PID_MIN_MOVE_PWM);
@@ -881,7 +933,7 @@ int main(void)
         CHECK(pid_base_pwm(&trial, false) == PID_MIN_MOVE_PWM);
         float integral = 1.0f;
         CHECK(pid_wheel_pwm(0.0f, 0.0f, &integral, 0.01f, true,
-                            (float)B2_LEFT_BASE_PWM) == 0);
+                            (float)B2_LEFT_BASE_PWM, false) == 0);
         CHECK(integral == 0.0f);
     }
 #if B2_SPEED_DIAGNOSTICS
@@ -905,6 +957,7 @@ int main(void)
         CHECK(diagnostic.speed_log_ms == 0u);
     }
 #endif
+    test_curve_speed_feedback();
     encoder_representation_test();
     representation_test();
     printf("PASS: %u subsystem 2 host assertions\n", checks);

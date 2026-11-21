@@ -14,10 +14,14 @@
         git commit -m "Run log: <what you tested>"
         git push
 
-  Opening the port makes the car print its last ~24 s of driving as CSV
+  Opening the port makes the car print its recent ~16-24 s of driving as CSV
   (one row per 20 ms plus events: BARCODE_READ, JUNCTION, NAV_START, ...).
   Writes logs\run-<time>.csv (the recording) and logs\run-<time>.txt
   (everything the car printed, including the [B3]/[VC] messages).
+  Diagnostic event rows LINE_AGE, LOOP_TIME and MOTION_AGE use milliseconds;
+  MEAS_LEFT / MEAS_RIGHT use signed counts/s. Match their t_ms to the nearby
+  sensor/steering rows. Ages or loop intervals above 40 ms indicate a timing
+  delay to investigate, not proof of a sensor failure.
 #>
 param(
     [string]$Port = "",
@@ -63,11 +67,18 @@ try {
     while (-not $done -and (Get-Date) -lt $deadline) {
         try { $line = $sp.ReadLine().TrimEnd("`r") } catch [System.TimeoutException] { continue }
         $all.Add($line)
-        if ($line.StartsWith('#RUNLOG')) {
+        # Subsystem output may precede the marker on the same serial line.
+        $markerIndex = $line.IndexOf('#RUNLOG')
+        if ($markerIndex -ge 0) {
+            $started = $true
+            $marker = $line.Substring($markerIndex)
+            $csv.Add($marker)
+            Write-Host $marker
+        } elseif ($line.StartsWith('t_ms,travel_mm,')) {
+            # Recover even when the start marker itself was lost.
             $started = $true
             $csv.Add($line)
-            Write-Host $line
-        } elseif ($line.StartsWith('#END')) {
+        } elseif ($started -and $line.StartsWith('#END')) {
             $csv.Add($line)
             Write-Host $line
             $done = $true

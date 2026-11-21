@@ -15,22 +15,23 @@ static uint32_t tape_read(double d)
 }
 
 /* Model car (97 mm track, sensors 60 mm ahead of the axle, 15 mm either
- * side) on a left circle of radius r mm, wheels lagging the command.
+ * side) on a circle (positive r left, negative r right), with wheel lag.
  * Reports how often the steering changed side and how often it fell
  * back to ~straight in the second half of the lap, and the worst offset. */
 static void circle_run(double r, int *side_changes, int *straight_ticks,
                        double *max_off, bool *lost)
 {
   vc4_track_t t; double x = 0, y = 0, h = 0, vl = 0, vr = 0;
+  double radius=fabs(r), direction=r>0?1.0:-1.0;
   uint32_t um = 0; int last = 0;
   vc4_reset(&t);
   *side_changes = 0; *straight_ticks = 0; *max_off = 0; *lost = false;
   for (int k = 0; k < 1500; k++) {
     double sx = x + 60 * cos(h), sy = y + 60 * sin(h);
     /* + = left of the line; circle centre (0, r) */
-    double dl = r - hypot(sx - 15 * sin(h), sy + 15 * cos(h) - r);
-    double dr = r - hypot(sx + 15 * sin(h), sy - 15 * cos(h) - r);
-    double dc = r - hypot(sx, sy - r);
+    double dl = direction*(radius - hypot(sx - 15 * sin(h), sy + 15 * cos(h) - r));
+    double dr = direction*(radius - hypot(sx + 15 * sin(h), sy - 15 * cos(h) - r));
+    double dc = direction*(radius - hypot(sx, sy - r));
     int32_t s = vc4_steer(&t, tape_read(dl), tape_read(dr), 20, um), sp, st;
     vc4_wheels(s, 120, 100, &sp, &st);
     if (!vc4_on_line(&t)) { *lost = true; return; }
@@ -51,6 +52,25 @@ static void circle_run(double r, int *side_changes, int *straight_ticks,
 }
 int main(void){
   vc4_track_t t; uint32_t um=0; int32_t s; int32_t sp, st;
+  {
+    vc4_track_t left, right;
+    int32_t ls=0, rs=0, lsp, lst, rsp, rst;
+    vc4_reset(&left); vc4_reset(&right);
+    for(int i=0;i<4;i++){
+      ls=vc4_steer(&left,600,100,20,(uint32_t)i*2000);
+      rs=vc4_steer(&right,100,600,20,(uint32_t)i*2000);
+    }
+    CHECK(rs==-589, "right curve entry retains previous steering response");
+    CHECK(ls==-rs && ls<=VC4_STEER_MAX,
+          "left and right curve entry retain the same filter response");
+    vc4_wheels(500,120,100,&lsp,&lst);
+    vc4_wheels(-500,120,100,&rsp,&rst);
+    CHECK(lsp==rsp && lst==-rst,
+          "left adjustment leaves wheel split and speed mapping unchanged");
+    for(int i=0;i<20;i++) ls=vc4_steer(&left,100,100,20,8000+(uint32_t)i*2000);
+    CHECK(vc4_on_line(&left) && ls<200,
+          "partial left correction still releases toward straight");
+  }
   vc4_wheels(1000,60,100,&sp,&st);
   CHECK(sp*(1000+(st<0?st:-st))/1000>=150,
         "slow tight curve keeps inner wheel above 150 cps");
@@ -145,7 +165,10 @@ int main(void){
     printf("   circle r=150: lost %d, side changes %d, straight ticks %d/750, max offset %.1f mm\n",
            (int)lo, sc, stt, mo);
     CHECK(!lo && sc == 0 && stt < 40 && mo < 9.0,
-          "tight curve: one smooth turn, never back to straight"); }
+          "tight curve: one smooth turn, never back to straight");
+    circle_run(-150.0, &sc, &stt, &mo, &lo);
+    CHECK(!lo && sc == 0 && stt < 40 && mo < 9.0,
+          "right curve remains smooth with baseline filter"); }
   printf("cps(120)=%d cps(60)=%d\n", vc4_mm_s_to_cps(120), vc4_mm_s_to_cps(60));
   printf(fails? "FAILED %d\n":"ALL PASS\n",fails); return fails;
 }
