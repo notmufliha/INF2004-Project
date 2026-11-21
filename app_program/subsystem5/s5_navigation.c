@@ -280,6 +280,9 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
                 return;
             }
             if (!in.stopped) return;
+            tm_printf((UB*)"[S5-TURN-RESULT] id=%d turn_deg=%d left_mm_x100=%d right_mm_x100=%d\n",
+                (int)probe_id, probe_degrees, (int)(terminal.left_distance_mm * 100.0f),
+                (int)(terminal.right_distance_mm * 100.0f));
             probe_complete = true;
             mode = NAV_STOP;
             (void)stop_motor();
@@ -357,6 +360,12 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
                 (result.physically_stopped ||
                  (maneuver.state == S5_MAN_LINE_STOP && in.motion_cancelled));
             in.motion_progress_cm = (result.left_distance_mm + result.right_distance_mm) / 20.0f;
+            if (in.motion_success && in.stopped &&
+                (maneuver.state == S5_MAN_TURN_OUT || maneuver.state == S5_MAN_FORWARD ||
+                 maneuver.state == S5_MAN_TURN_IN))
+                tm_printf((UB*)"[S5-TURN-RESULT] id=%d state=%d left_mm_x100=%d right_mm_x100=%d\n",
+                    (int)result.command_id, (int)maneuver.state,
+                    (int)(result.left_distance_mm * 100.0f), (int)(result.right_distance_mm * 100.0f));
             if (in.motion_progress_cm > 0.0f &&
                 (maneuver.state == S5_MAN_OFFSET ||
                  maneuver.state == S5_MAN_PASS ||

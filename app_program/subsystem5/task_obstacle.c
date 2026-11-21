@@ -56,7 +56,7 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
     {
         distance_cm = s5_wire_cm(profile->nearest_cm,
                                  S5_WIRE_DISTANCE_MAX_CM);
-        width_cm = s5_wire_cm(profile->frontal_width_cm > 0.0f ?
+        width_cm = s5_wire_cm(profile->frontal_sweep && profile->frontal_width_cm > 0.0f ?
                               profile->frontal_width_cm : profile->estimated_width_cm,
                               S5_WIRE_WIDTH_MAX_CM);
         left_cm = s5_wire_cm(profile->left_clearance_cm,
@@ -88,7 +88,9 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
             action = AVOID_STOP;
         }
         /* A configured course-width bound is not a measured silhouette. */
-        if (profile->uses_course_bounds) width_cm = COMM_CM_INVALID;
+        if (profile->uses_course_bounds ||
+            (profile->frontal_sweep && profile->frontal_width_cm <= 0.0f))
+            width_cm = COMM_CM_INVALID;
     }
 
     (void)comm_report_obstacle(distance_cm, width_cm, left_cm, right_cm,
@@ -115,8 +117,9 @@ static void print_scan(const char *label, const S5Scan *s)
 #endif
 static void print_profile(const S5Profile *p)
 {
-    tm_printf((UB*)"[S5-PROFILE] valid=%d width_cm_x100=%d nearest_cm_x100=%d bearing_deg=%d center_x_cm_x100=%d center_y_cm_x100=%d left_cm_x100=%d right_cm_x100=%d required_cm_x100=%d side=%d\n",
+    tm_printf((UB*)"[S5-PROFILE] valid=%d width_cm_x100=%d face_cm_x100=%d nearest_cm_x100=%d bearing_deg=%d center_x_cm_x100=%d center_y_cm_x100=%d left_cm_x100=%d right_cm_x100=%d required_cm_x100=%d side=%d\n",
               (int)p->valid, (int)(p->estimated_width_cm * 100.0f),
+              (int)(p->frontal_width_cm * 100.0f),
               (int)(p->nearest_cm * 100.0f), (int)p->nearest_angle_deg,
               (int)(p->center_x_cm * 100.0f), (int)(p->center_y_cm * 100.0f),
               (int)(p->left_clearance_cm * 100.0f),
@@ -862,7 +865,7 @@ static void live_controller_mode(void)
             (void)comm_report_error(ERR_S5(s5_navigation_error()), 0u);
             emergency_halt(s5_error_name(s5_navigation_error()));
         }
-        /* Use the encoder-confirmed 45-degree turn as the outward leg.
+        /* Use the encoder-confirmed viewpoint turn as the outward turn.
          * Stay on that heading until live front readings clear forward travel. */
         if (look_pending) {
             if (!s5_navigation_probe_complete() || !s5_navigation_stopped()) {
@@ -979,7 +982,9 @@ static void live_controller_mode(void)
                 look_attempted = true;
                 look_clear_hits = 0u;
                 look_obstacle_cm = cm;
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ? -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG)) emergency_halt("first viewpoint rejected");
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ?
+                    -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG))
+                    emergency_halt("first viewpoint rejected");
                 look_pending = true;
                 s5_mission_publish(S5_MISSION_BUSY);
                 continue;
@@ -1034,6 +1039,7 @@ static void live_controller_mode(void)
             break;
         case S5_CMD_STOP:
             if (!stop_requested) {
+                comm_clear_obstacle_width();
                 if (!s5_bridge_request(cmd, &c.profile)) {
                     (void)comm_report_error(ERR_S5_STOP_ACK, 0u);
                     emergency_halt("stop request rejected");

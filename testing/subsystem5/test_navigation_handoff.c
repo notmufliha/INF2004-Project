@@ -2,6 +2,7 @@
 #define main legacy_navigation_main
 #include "test_navigation.c"
 #undef main
+#include <math.h>
 
 static void recover_line(S5Side side, bool tape_present)
 {
@@ -29,7 +30,15 @@ static void recover_line(S5Side side, bool tape_present)
     }
     tick(120.0f);
     assert(maneuver.state == S5_MAN_SEARCH && maneuver.pending_id);
-    assert(last_move == maneuver.search_limit_cm && last_move > maneuver.offset_done_cm);
+    assert(last_move == maneuver.search_limit_cm);
+    const float radians = 0.01745329252f;
+    const int pass_heading = ROBOT_COURSE_BYPASS_TURN_DEG - ROBOT_COURSE_PASS_TURN_DEG;
+    const float lateral_return = last_move *
+        sinf((ROBOT_COURSE_RETURN_TURN_DEG - pass_heading) * radians);
+    const float lateral_offset = maneuver.offset_done_cm *
+        sinf(ROBOT_COURSE_BYPASS_TURN_DEG * radians) + maneuver.pass_done_cm *
+        sinf(pass_heading * radians);
+    assert(fabsf(lateral_return - lateral_offset) < 0.01f);
     assert(last_direction == MOTION_DIR_FORWARD);
     line_state.line_flags = tape_present ? B3_LINE_F_DETECTED : 0u;
     tick(120.0f);
@@ -60,13 +69,15 @@ static void test_probe_route(S5Side side, bool tape_present)
     unsigned moves = move_calls, turns = turn_calls;
     assert(s5_bridge_request(S5_CMD_STOP, NULL));
     assert(s5_navigation_probe_begin(outward));
+    assert(last_angle == ROBOT_COURSE_BYPASS_TURN_DEG);
+    assert(last_turn == (side == S5_SIDE_LEFT ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT));
     finish_leg();
     assert(s5_navigation_probe_bypass(&p));
-    assert(maneuver.offset_cm == 25.0f);
+    assert(maneuver.offset_cm == ROBOT_COURSE_BYPASS_LEG_CM);
     line_state.line_flags = 0u;
-    tick(35.77f);
+    tick(ROBOT_BYPASS_MOVE_RELEASE_CM + ROBOT_COURSE_BYPASS_LEG_CM + 5.0f);
     assert(move_calls == moves + 1u && turn_calls == turns + 1u);
-    assert(last_direction == MOTION_DIR_FORWARD && last_move > 16.0f && last_move < 17.0f);
+    assert(last_direction == MOTION_DIR_FORWARD && last_move == ROBOT_COURSE_BYPASS_LEG_CM);
     unsigned interrupted_id = status.command_id;
     tick(15.13f);
     assert(allowed && maneuver.pending_id == interrupted_id);
@@ -82,10 +93,10 @@ static void test_probe_route(S5Side side, bool tape_present)
     }
     tick(400.0f);
     assert(move_calls == moves + 2u && turn_calls == turns + 1u);
-    assert(last_move == 17.0f);
-    status.left_distance_mm = status.right_distance_mm = 175.0f;
+    assert(last_move == ROBOT_COURSE_BYPASS_LEG_CM - 8.0f);
+    status.left_distance_mm = status.right_distance_mm = last_move * 10.0f + 5.0f;
     finish_leg();
-    assert(maneuver.offset_done_cm == 25.5f);
+    assert(maneuver.offset_done_cm == ROBOT_COURSE_BYPASS_LEG_CM + 0.5f);
     finish_middle(side);
     assert(turn_calls == turns + 2u && move_calls == moves + 3u);
     recover_line(side, tape_present);

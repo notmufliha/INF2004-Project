@@ -237,6 +237,7 @@ void comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
                     uint8_t flags);
 void comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg);
 void comm_set_obstacle_dist (uint16_t dist_cm);
+void comm_clear_obstacle_width (void);
 void comm_get_telemetry (comm_telemetry_t * p_out);
 
 /* I1.2 events: E_OK, E_PAR (bad argument) or E_TMOUT (queue full: the
