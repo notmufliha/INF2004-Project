@@ -29,12 +29,21 @@ static void recover_line(S5Side side, bool tape_present)
     }
     tick(120.0f);
     assert(maneuver.state == S5_MAN_SEARCH && maneuver.pending_id);
-    assert(last_move == maneuver.offset_done_cm && last_direction == MOTION_DIR_FORWARD);
+    assert(last_move == maneuver.search_limit_cm && last_move > maneuver.offset_done_cm);
+    assert(last_direction == MOTION_DIR_FORWARD);
     line_state.line_flags = tape_present ? B3_LINE_F_DETECTED : 0u;
     tick(120.0f);
-    assert(maneuver.state == S5_MAN_SEARCH && maneuver.pending_id);
     assert(!s5_bridge_line_found());
-    finish_leg();
+    if (!tape_present) {
+        finish_leg();
+        assert(maneuver.state == S5_MAN_FAILED && maneuver.error == S5_ERR_LINE_TIMEOUT);
+        assert(!s5_bridge_request(S5_CMD_RESUME, NULL));
+        return;
+    }
+    assert(maneuver.state == S5_MAN_LINE_STOP && maneuver.pending_id && !allowed);
+    result = status;
+    result.physically_stopped = false; /* The cancelled result predates live STOP. */
+    for (unsigned n = 0u; n < ROBOT_BYPASS_LINE_CONFIRM; ++n) tick(120.0f);
     assert(s5_bridge_line_found());
     assert(s5_bridge_request(S5_CMD_RESUME, NULL));
     assert(mode == NAV_FOLLOW && turn_calls == old_turns + 1u);
@@ -166,6 +175,6 @@ int main(void)
     test_probe_route(S5_SIDE_LEFT, true);
     test_probe_route(S5_SIDE_RIGHT, true);
     test_probe_route(S5_SIDE_LEFT, false);
-    puts("PASS real navigation: mirrored 45-degree turns, guarded drive, 15 cm pass, and equal-distance return");
+    puts("PASS real navigation: mirrored bypasses, guarded drive, and tape-confirmed return");
     return 0;
 }

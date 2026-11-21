@@ -347,12 +347,15 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
             in.motion_terminal = true;
             in.motion_success = result.status == MOTION_STATUS_COMPLETED;
             in.motion_cancelled = result.status == MOTION_STATUS_CANCELLED;
-            if (!in.motion_success)
+            if (!in.motion_success &&
+                !(maneuver.state == S5_MAN_LINE_STOP && in.motion_cancelled))
                 tm_printf((UB*)"[S5-MOTOR-RESULT] id=%d status=%d fault=%d result_stopped=%d live_stopped=%d\n",
                           (int)result.command_id, (int)result.status, (int)result.fault,
                           (int)result.physically_stopped, (int)status.physically_stopped);
             in.result_id = result.command_id;
-            in.stopped = result.physically_stopped && status.physically_stopped;
+            in.stopped = status.physically_stopped &&
+                (result.physically_stopped ||
+                 (maneuver.state == S5_MAN_LINE_STOP && in.motion_cancelled));
             in.motion_progress_cm = (result.left_distance_mm + result.right_distance_mm) / 20.0f;
             if (in.motion_progress_cm > 0.0f &&
                 (maneuver.state == S5_MAN_OFFSET ||

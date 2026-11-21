@@ -121,7 +121,8 @@ static float width_side_clearance(const S5ScanPoint *points, S5Side side, float 
     for (int i = 0; points && i < S5_WIDTH_SCAN_COUNT; ++i) {
         const S5ScanPoint *ray = &points[i];
         bool on_side = side == S5_SIDE_LEFT ? ray->angle_deg < 90u : ray->angle_deg > 90u;
-        if (on_side && valid_range(ray))
+        if (on_side && ray->angle_deg >= ROBOT_WIDTH_ROUTE_LEFT_FALLBACK_DEG &&
+            ray->angle_deg <= ROBOT_WIDTH_ROUTE_RIGHT_DEG && valid_range(ray))
             clearance = s5_min(clearance, ray->distance_cm);
     }
     return clearance;
@@ -347,14 +348,111 @@ S5Profile s5_estimate_profile(const S5Scan *fine, S5Side side)
                             fine->points[0].angle_deg == ROBOT_WIDTH_SCAN_MIN_DEG);
 }
 
-static S5Profile estimate_width_sweep(const S5ScanPoint *points)
+#define S5_WIDTH_VIEW_RAYS (3 * S5_WIDTH_SCAN_COUNT)
+
+static float face_lateral_distance(float range, float depth)
 {
-    S5ScanPoint measured[S5_WIDTH_SCAN_COUNT];
+    return range > depth ? sqrtf((range - depth) * (range + depth)) : 0.0f;
+}
+
+static S5Profile estimate_width_sweep(const S5ScanPoint *points, int point_count)
+{
+    S5ScanPoint measured[S5_WIDTH_VIEW_RAYS];
+    int count = 0, center = -1;
+    for (int i = 0; i < point_count; ++i) {
+        if (!valid_range(&points[i])) continue;
+        if (points[i].angle_deg == 90u) center = count;
+        measured[count++] = points[i];
+    }
+    if (center < 0 || measured[center].distance_cm >= S5_CLEAR_CM)
+        return (S5Profile){0};
+
+    /* Start at the frontal hit and follow continuous surface returns
+     * outward. Compare adjacent depths so a slanted face can stay in the
+     * cluster even when its edge is closer than the centre. */
+    const float tolerance = ROBOT_ECHO_AGREEMENT_MIN_CM;
+    int edges[2];
+    for (int side = 0; side < 2; ++side) {
+        const int step = side == 0 ? -1 : 1;
+        float depth = measured[center].distance_cm;
+        int i = center + step;
+        for (; i >= 0 && i < count; i += step) {
+            float offset = (float)measured[i].angle_deg - 90.0f;
+            float ray_depth = measured[i].distance_cm * s5_cos_deg(offset);
+            float delta = ray_depth - depth;
+            if (delta > tolerance) break;
+            if (delta < -tolerance || measured[i].distance_cm >= S5_CLEAR_CM)
+                return (S5Profile){0};
+            depth = ray_depth;
+        }
+        if (i < 0 || i >= count) return (S5Profile){0};
+        edges[side] = i;
+    }
+    measured[edges[0]].distance_cm = S5_MAX_RANGE_CM;
+    measured[edges[1]].distance_cm = S5_MAX_RANGE_CM;
+    S5Profile profile = estimate_profile(&measured[edges[0]],
+        edges[1] - edges[0] + 1, S5_SIDE_NONE, true);
+    if (profile.valid) {
+        /* With a roughly flat face at the centre-ray depth, the farther
+         * edge echoes constrain lateral extent by range. The servo bearing
+         * marks the centre of the sonar beam, not the point that reflected
+         * the pulse. Keep the angular envelope for bypass clearance. */
+        const float depth = measured[center].distance_cm;
+        const float left = measured[edges[0] + 1].distance_cm;
+        const float right = measured[edges[1] - 1].distance_cm;
+        if (left > depth && right > depth) {
+            float left_x = face_lateral_distance(left, depth);
+            float right_x = face_lateral_distance(right, depth);
+            /* Average the two outermost hits on each flank when available.
+             * A single grazing echo can otherwise dominate the estimate. */
+            if (edges[0] + 2 < center)
+                left_x = (left_x + face_lateral_distance(measured[edges[0] + 2].distance_cm, depth)) * 0.5f;
+            if (edges[1] - 2 > center)
+                right_x = (right_x + face_lateral_distance(measured[edges[1] - 2].distance_cm, depth)) * 0.5f;
+            profile.frontal_width_cm = s5_min(left_x + right_x, profile.estimated_width_cm);
+        }
+    }
+    return profile;
+}
+
+S5Profile s5_estimate_width_from_views(const S5ScanPoint *front,
+                                      const S5ScanPoint *opposite,
+                                      const S5ScanPoint *turned, int heading)
+{
+    S5ScanPoint combined[S5_WIDTH_VIEW_RAYS];
     int count = 0;
-    for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i)
-        if (valid_range(&points[i])) measured[count++] = points[i];
-    /* Missing echoes are skipped, never used as clear-edge evidence. */
-    return estimate_profile(measured, count, S5_SIDE_NONE, true);
+    for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i) combined[count++] = front[i];
+    for (int view = 0; view < 2; ++view) {
+        const S5ScanPoint *points = view == 0 ? opposite : turned;
+        const int yaw = view == 0 ? -heading : heading;
+        if (points == NULL) continue;
+        for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i) {
+            if (!valid_range(&points[i])) continue;
+            int bearing = (int)points[i].angle_deg + yaw;
+            if (bearing <= 0 || bearing >= 180) continue;
+            float distance = points[i].distance_cm;
+            /* Bring actual echoes into the original sensor frame. The
+             * front-mounted sensor moves around the axle during a pivot. */
+            if (distance < S5_CLEAR_CM) {
+                float x = distance * s5_sin_deg((float)bearing - 90.0f) +
+                    ROBOT_SENSOR_FORWARD_OFFSET_CM * s5_sin_deg((float)yaw);
+                float y = distance * s5_cos_deg((float)bearing - 90.0f) +
+                    ROBOT_SENSOR_FORWARD_OFFSET_CM * (s5_cos_deg((float)yaw) - 1.0f);
+                if (y <= 0.0f) continue;
+                bearing = 90 + (int)(atan2f(x, y) * 57.2957795f);
+                distance = sqrtf(x * x + y * y);
+            }
+            if (bearing >= (int)ROBOT_WIDTH_SWEEP_MIN_DEG &&
+                bearing <= (int)ROBOT_WIDTH_SWEEP_MAX_DEG) continue;
+            int pos = 0;
+            while (pos < count && combined[pos].angle_deg < bearing) ++pos;
+            if (pos < count && combined[pos].angle_deg == bearing) continue;
+            for (int j = count; j > pos; --j) combined[j] = combined[j - 1];
+            combined[pos] = (S5ScanPoint){(uint16_t)bearing, distance, true};
+            ++count;
+        }
+    }
+    return estimate_width_sweep(combined, count);
 }
 
 S5Profile s5_profile_from_scans(const S5Scan *coarse, const S5Scan *fine, S5Side side)
@@ -625,6 +723,8 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
             c->last_coarse = in->coarse;
             if (!ROBOT_OBSTACLE_TEST &&
                 in->coarse.points[0].angle_deg == ROBOT_WIDTH_SCAN_MIN_DEG) {
+                c->profile = in->width_points ? estimate_width_sweep(in->width_points, S5_WIDTH_SCAN_COUNT) :
+                             s5_estimate_profile(&in->coarse, S5_SIDE_NONE);
                 if (in->width_points) {
                     bool obstacle_seen = false;
                     for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i) {
@@ -635,8 +735,6 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                     if (!obstacle_seen)
                         return wait_for_route(c, S5_ERR_INSUFFICIENT_CLEARANCE);
                 }
-                c->profile = in->width_points ? estimate_width_sweep(in->width_points) :
-                             s5_estimate_profile(&in->coarse, S5_SIDE_NONE);
                 if (c->profile.valid && c->profile.size == S5_SIZE_OVERSIZED)
                     return wait_for_route(c, S5_ERR_INSUFFICIENT_CLEARANCE);
                 const S5ScanPoint *left = &in->coarse.points[0];
@@ -644,9 +742,13 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                 /* If the 45-degree ray is missing, a measured opening at
                  * 30 degrees can nominate a left look. Forward travel
                  * still requires clearance after the chassis turns. */
-                if (!valid_range(left) && in->width_points &&
-                    safe_point(&in->width_points[0]))
-                    left = &in->width_points[0];
+                if (!valid_range(left) && in->width_points) {
+                    for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i) {
+                        const S5ScanPoint *ray = &in->width_points[i];
+                        if (ray->angle_deg == ROBOT_WIDTH_ROUTE_LEFT_FALLBACK_DEG && safe_point(ray))
+                            left = ray;
+                    }
+                }
                 bool left_turn = valid_range(left) &&
                     s5_turn_range_cm(left->distance_cm, left->angle_deg) > ROBOT_BYPASS_MIN_TURN_CM;
                 bool right_turn = valid_range(right) &&

@@ -86,11 +86,20 @@ void s5_width_scan(S5Scan *scan, S5ScanPoint points[S5_WIDTH_SCAN_COUNT])
     };
     static const int route_rays[S5_SCAN_COUNT] = {1, 2, 4, 5, 6};
     (void)scan_angles(points, angles, S5_WIDTH_SCAN_COUNT, true);
-    /* Use the left turn bearing and the rightmost available ray. The
-     * live sensor checks the actual right turn heading before driving. */
+    /* The outer measurement rays locate the obstacle edges. Route planning
+     * retains its original bearings and checks the turned heading live. */
     for (int i = 0; i < S5_SCAN_COUNT; ++i)
         scan->points[i] = points[route_rays[i]];
     scan->nearest_index = s5_find_nearest(scan->points, S5_SCAN_COUNT);
+}
+void s5_width_flank_scan(int heading, S5ScanPoint points[S5_WIDTH_SCAN_COUNT])
+{
+    static const uint16_t left[] = {45u, 60u, 70u};
+    static const uint16_t right[] = {90u, 105u, 120u};
+    for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i) points[i] = (S5ScanPoint){0};
+    /* With the chassis turned 45 degrees, these rays extend the original
+     * view toward its missing edge without repeating the frontal sweep. */
+    (void)scan_angles(points, heading < 0 ? left : right, 3, true);
 }
 void s5_probe_scan(S5Scan *scan) { scan_five(scan, coarse_angles, true); }
 void s5_fine_scan(S5Scan *scan, uint16_t center_deg)

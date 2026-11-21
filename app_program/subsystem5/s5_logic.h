@@ -67,6 +67,7 @@ typedef struct {
     uint16_t left_boundary_deg;
     uint16_t right_boundary_deg;
     float estimated_width_cm;
+    float frontal_width_cm; /* Range-based face estimate for reporting. */
     float center_x_cm; /* left/right offset from forward axis; right positive */
     float center_y_cm; /* distance forward from sensor */
     float required_lateral_clearance_cm;
@@ -75,6 +76,10 @@ typedef struct {
     /* Recommendation; execution also needs live sensing and course bounds. */
     S5Side bypass_side;
 } S5Profile;
+
+S5Profile s5_estimate_width_from_views(const S5ScanPoint *front,
+                                      const S5ScanPoint *opposite,
+                                      const S5ScanPoint *turned, int heading);
 
 typedef struct {
     S5State state;

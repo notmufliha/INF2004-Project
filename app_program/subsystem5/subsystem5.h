@@ -24,8 +24,8 @@
  */
 #define S5_SAFE_MIN_DEG ROBOT_SCAN_SAFE_MIN_DEG
 #define S5_SAFE_MAX_DEG ROBOT_SCAN_SAFE_MAX_DEG
-#define S5_SERVO_STEP_DEG 2u
-#define S5_SERVO_STEP_DELAY_MS 25u
+#define S5_SERVO_STEP_DEG 5u
+#define S5_SERVO_STEP_DELAY_MS 20u
 
 /* Autonomous B2/B3 adapter follows the robot configuration. With bypass
  * disabled, retain the existing guarded forward/STOP demonstration. */
