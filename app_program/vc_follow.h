@@ -31,6 +31,12 @@
 #ifndef VC4_EXIT_FRESH_MS
 #define VC4_EXIT_FRESH_MS   200u
 #endif
+/* The left bend in the latest run faded from full tape to white over more
+ * than 200 ms. Keep its exit direction briefly longer; right exits retain
+ * the existing straight-graze behavior. */
+#ifndef VC4_LEFT_EXIT_FRESH_MS
+#define VC4_LEFT_EXIT_FRESH_MS 400u
+#endif
 #define VC4_SAT             600   /* both sensors need usable tape contrast */
 #define VC4_JCT_SUM_MIN     1300  /* nL + nR on a crossing tape            */
 #define VC4_JCT_SENSOR_MIN  600   /* each sensor must independently see tape */
