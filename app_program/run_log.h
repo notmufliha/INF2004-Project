@@ -1,6 +1,6 @@
 /**
  * @file run_log.h
- * @brief Run recorder: the last ~25 s of driving, dumped over USB as CSV.
+ * @brief Run recorder: recent driving history, dumped over USB as CSV.
  *
  * While the car runs, the controller stores one record per 20 ms tick
  * (sensors, flags, state, steering, speed, junction and barcode state),
@@ -19,7 +19,7 @@
 #ifndef RUN_LOG_ENABLE
 #define RUN_LOG_ENABLE 1
 #endif
-#define RUN_LOG_RECORDS 1200u /* 24 s of ticks, 33.6 KB of RAM */
+#define RUN_LOG_RECORDS 1200u /* ~16-24 s depending on diagnostic/event rate */
 
 typedef enum {
     RUN_EV_NONE = 0,
@@ -35,6 +35,11 @@ typedef enum {
                             * pending did not count as a junction     */
     RUN_EV_LINE_LOST,      /* line search started                      */
     RUN_EV_RESCAN,         /* arg = mm reversed for a barcode re-read  */
+    RUN_EV_LINE_AGE,       /* arg = age of the sensor pair in ms       */
+    RUN_EV_LOOP_TIME,      /* arg = controller start-to-start ms       */
+    RUN_EV_MEAS_LEFT,      /* arg = signed measured left counts/s     */
+    RUN_EV_MEAS_RIGHT,     /* arg = signed measured right counts/s    */
+    RUN_EV_MOTION_AGE,     /* arg = age of the wheel-speed snapshot ms */
     RUN_EV_COUNT
 } RUN_EVENT;
 
@@ -65,12 +70,17 @@ typedef struct {
 void run_log_raw(uint16_t raw26, uint16_t raw27);
 void run_log_tick(RUN_TICK *tick);  /* fills raw26/raw27 itself */
 void run_log_event(uint32_t now_ms, uint8_t event, uint16_t arg);
+void run_log_control(uint32_t now_ms, uint32_t line_age, uint32_t loop_ms,
+                     int16_t left_cps, int16_t right_cps, uint32_t motion_age);
 int  run_log_start(void);           /* starts the dump task       */
 #else
 static inline void run_log_raw(uint16_t a, uint16_t b) { (void)a; (void)b; }
 static inline void run_log_tick(RUN_TICK *t) { (void)t; }
 static inline void run_log_event(uint32_t n, uint8_t e, uint16_t a)
 { (void)n; (void)e; (void)a; }
+static inline void run_log_control(uint32_t n, uint32_t l, uint32_t t,
+                                  int16_t a, int16_t b, uint32_t m)
+{ (void)n; (void)l; (void)t; (void)a; (void)b; (void)m; }
 static inline int run_log_start(void) { return 0; }
 #endif
 

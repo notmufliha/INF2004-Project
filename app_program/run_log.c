@@ -69,8 +69,25 @@ void run_log_event(uint32_t now_ms, uint8_t event, uint16_t arg)
 static const char *const g_event_names[RUN_EV_COUNT] = {
     "", "START", "STOP", "BARCODE_READ", "BARCODE_REJECT", "GP28_RUN",
     "JUNCTION", "NAV_START", "NAV_DONE", "NAV_WAITING", "LINE_LOST",
-    "RESCAN"
+    "RESCAN", "LINE_AGE", "LOOP_TIME", "MEAS_LEFT", "MEAS_RIGHT", "MOTION_AGE"
 };
+
+static uint16_t diagnostic_ms(uint32_t value)
+{
+    return value > UINT16_MAX ? UINT16_MAX : (uint16_t)value;
+}
+
+/* Reuse event records to keep the RAM allocation and CSV columns stable.
+ * Wheel measurements describe feedback preceding this tick's command. */
+void run_log_control(uint32_t now_ms, uint32_t line_age, uint32_t loop_ms,
+                     int16_t left_cps, int16_t right_cps, uint32_t motion_age)
+{
+    run_log_event(now_ms, RUN_EV_LINE_AGE, diagnostic_ms(line_age));
+    run_log_event(now_ms, RUN_EV_LOOP_TIME, diagnostic_ms(loop_ms));
+    run_log_event(now_ms, RUN_EV_MEAS_LEFT, (uint16_t)left_cps);
+    run_log_event(now_ms, RUN_EV_MEAS_RIGHT, (uint16_t)right_cps);
+    run_log_event(now_ms, RUN_EV_MOTION_AGE, diagnostic_ms(motion_age));
+}
 
 static void dump(void)
 {
@@ -89,10 +106,13 @@ static void dump(void)
 
         if (r->event != RUN_EV_NONE) {
             /* Event: time, raw sensors, name, argument. */
+            INT argument = (INT)r->arg;
+            if ((r->event == RUN_EV_MEAS_LEFT || r->event == RUN_EV_MEAS_RIGHT) &&
+                r->arg > INT16_MAX) argument -= 65536;
             tm_printf((UB *)"%u,,,%d,%d,,,,,,,,,,,,,,,,,%s,%d\n",
                       (UW)r->t_ms, (INT)r->raw26, (INT)r->raw27,
                       r->event < RUN_EV_COUNT ? g_event_names[r->event] : "?",
-                      (INT)r->arg);
+                      argument);
         } else {
             tm_printf((UB *)"%u,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,,\n",
                       (UW)r->t_ms, (UW)r->travel_mm, (INT)r->state,

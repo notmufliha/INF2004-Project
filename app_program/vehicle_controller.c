@@ -1424,6 +1424,10 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
 void vehicle_controller_init(VEHICLE_CONTROLLER *c)
 {
     *c = (VEHICLE_CONTROLLER){0};
+    tm_printf((UB *)"[VC-TUNE] build=" __DATE__ " " __TIME__
+              " v4=%d filter=%d split=%d left_junction_deg=%d\n",
+              (INT)VC_FOLLOW_V4, (INT)VC4_FILT_DIV,
+              (INT)VC4_SPLIT_FULL_X10, (INT)VC4_JCT_LEFT_TURN_DEG);
     c->line_pos = B3_LINE_POS_CENTRE;
     c->mode = MODE_AUTO;
     c->speed_percent = VC_FOLLOW_V4 ? 29u : 20u; /* v4: 29 % = 120 mm/s */
@@ -2172,6 +2176,8 @@ static void controller_task(INT stacd, void *exinf)
     uint32_t last_boot_log_ms = 0u;
     uint32_t previous_cycle_ms = 0u;
     bool have_cycle_time = false;
+    uint32_t last_control_log_ms = 0u;
+    bool timing_was_slow = false;
 #if VC_FOLLOW_V4
     uint32_t lift_imu_since = 0u;
     float rest_az = 0.0f;
@@ -2322,6 +2328,19 @@ static void controller_task(INT stacd, void *exinf)
         if (c.running != was_running) {
             run_log_event(in.now_ms, c.running ? RUN_EV_START : RUN_EV_STOP,
                           (uint16_t)c.state);
+        }
+        if (c.running || was_running) {
+            bool timing_is_slow = in.line_age_ms > 40u || in.loop_ms > 40u ||
+                in.now_ms - in.motion.sample_time_ms > 40u;
+            if (in.now_ms - last_control_log_ms >= 200u ||
+                (timing_is_slow && !timing_was_slow)) {
+                run_log_control(in.now_ms, in.line_age_ms, in.loop_ms,
+                                (int16_t)in.motion.left_speed_cps,
+                                (int16_t)in.motion.right_speed_cps,
+                                in.now_ms - in.motion.sample_time_ms);
+                last_control_log_ms = in.now_ms;
+            }
+            timing_was_slow = timing_is_slow;
         }
         if (c.running) {
             RUN_TICK tick = {0};
