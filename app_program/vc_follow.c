@@ -12,6 +12,9 @@ void vc4_reset(vc4_track_t *t)
     t->exit_side = 0;
     t->exit_age_ms = 0u;
     t->prev_exit = 0;
+    t->partial_touch_side = 0;
+    t->partial_touching = false;
+    t->partial_touch_um = 0u;
     t->was_white = true;
     t->recover = VC4_RECOVER_START;
     t->coast_ms = 0u;
@@ -55,6 +58,38 @@ static void track_exit(vc4_track_t *t, uint32_t nl, uint32_t nr,
     }
 }
 
+static void track_partial_bend(vc4_track_t *t, uint32_t nl, uint32_t nr,
+                               uint32_t travel_um)
+{
+    bool white = nl < VC4_WHITE && nr < VC4_WHITE;
+    bool left = nl >= VC4_BEND_TOUCH_MIN && nr < VC4_WHITE;
+    bool right = nr >= VC4_BEND_TOUCH_MIN && nl < VC4_WHITE;
+    int8_t side = left != right ? (left ? 1 : -1) : 0;
+
+    if (white) {
+        t->partial_touching = false;
+        if (t->partial_touch_side != 0 &&
+            travel_um - t->partial_touch_um > VC4_BEND_TOUCH_UM) {
+            t->partial_touch_side = 0;
+        }
+        return;
+    }
+    if (side == 0) return;
+    if (t->partial_touching && side == t->partial_touch_side) return;
+
+    if (t->partial_touch_side == side &&
+        travel_um - t->partial_touch_um <= VC4_BEND_TOUCH_UM) {
+        t->exit_side = side;
+        t->exit_age_ms = 0u;
+        t->prev_exit = side;
+        t->recover = VC4_RECOVER_START;
+        t->coast_ms = 0u;
+    }
+    t->partial_touch_side = side;
+    t->partial_touch_um = travel_um;
+    t->partial_touching = true;
+}
+
 static int32_t clamp_steer(int32_t v, int32_t lim)
 {
     return v > lim ? lim : (v < -lim ? -lim : v);
@@ -95,6 +130,8 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
         t->cross_um = travel_um;
         t->bias = 0;          /* the arm, not a curve */
         t->exit_side = 0;
+        t->partial_touch_side = 0;
+        t->partial_touching = false;
         t->recover = VC4_RECOVER_START;
         t->coast_ms = 0u;
     }
@@ -115,6 +152,7 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
     }
 
     if (white) {
+        track_partial_bend(t, nl, nr, travel_um);
         /* The sensor was fully on the tape too long ago: the line faded
          * back toward the centre, it did not go out past the sensor. */
         if (!t->was_white && t->exit_side != 0 &&
@@ -162,6 +200,7 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
                               (int32_t)steps, VC4_BIAS_MAX);
         target = clamp_steer(target + t->bias, VC4_STEER_MAX);
         track_exit(t, nl, nr, dt_ms);
+        track_partial_bend(t, nl, nr, travel_um);
         if (raw >= VC4_SIDE_MIN) {
             t->last_side = 1;
         } else if (raw <= -VC4_SIDE_MIN) {
