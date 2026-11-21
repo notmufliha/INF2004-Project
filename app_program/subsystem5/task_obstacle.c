@@ -56,7 +56,8 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
     {
         distance_cm = s5_wire_cm(profile->nearest_cm,
                                  S5_WIRE_DISTANCE_MAX_CM);
-        width_cm = s5_wire_cm(profile->estimated_width_cm,
+        width_cm = s5_wire_cm(profile->frontal_width_cm > 0.0f ?
+                              profile->frontal_width_cm : profile->estimated_width_cm,
                               S5_WIRE_WIDTH_MAX_CM);
         left_cm = s5_wire_cm(profile->left_clearance_cm,
                              S5_WIRE_DISTANCE_MAX_CM);
@@ -740,6 +741,7 @@ static void live_controller_mode(void)
     S5Controller c;
     S5Scan coarse = {0}, fine = {0};
     S5ScanPoint width_points[S5_WIDTH_SCAN_COUNT];
+    S5ScanPoint opposite_width_points[S5_WIDTH_SCAN_COUNT];
     bool coarse_ready = false, fine_ready = false;
     bool stop_requested = false;
     bool sensor_unavailable = false;
@@ -751,6 +753,9 @@ static void live_controller_mode(void)
     unsigned look_clear_hits = 0u;
     float look_obstacle_cm = 0.0f;
     S5Side look_first_side = S5_SIDE_LEFT;
+    enum { LOOK_BYPASS, LOOK_OPPOSITE, LOOK_HOME } look_phase = LOOK_BYPASS;
+    bool opposite_ready = false;
+    bool width_view_done = false;
     if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
     s5_controller_init(&c);
     tm_printf((UB*)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
@@ -843,6 +848,9 @@ static void live_controller_mode(void)
             s5_controller_init(&c);
             coarse_ready = fine_ready = stop_requested = false;
             look_pending = false;
+            look_phase = LOOK_BYPASS;
+            opposite_ready = false;
+            width_view_done = false;
             look_attempted = false;
             look_clear_hits = 0u;
             s5_mission_publish(s5_bridge_ready() ? S5_MISSION_FOLLOW : S5_MISSION_FAULT);
@@ -859,6 +867,46 @@ static void live_controller_mode(void)
         if (look_pending) {
             if (!s5_navigation_probe_complete() || !s5_navigation_stopped()) {
                 tk_dly_tsk(1);
+                continue;
+            }
+            const int heading = look_first_side == S5_SIDE_LEFT ?
+                -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG;
+            if (look_phase == LOOK_OPPOSITE) {
+                s5_width_flank_scan(-heading, opposite_width_points);
+                if (!s5_mission_enabled()) continue;
+                opposite_ready = true;
+                look_phase = LOOK_HOME;
+                if (!begin_viewpoint(heading))
+                    emergency_halt("width viewpoint return rejected");
+                continue;
+            }
+            if (look_phase == LOOK_HOME) {
+                look_phase = LOOK_BYPASS;
+                if (!begin_viewpoint(heading))
+                    emergency_halt("bypass viewpoint rejected");
+                continue;
+            }
+            if (!width_view_done && !c.profile.valid &&
+                c.last_coarse.points[0].angle_deg == ROBOT_WIDTH_SCAN_MIN_DEG) {
+                S5ScanPoint turned[S5_WIDTH_SCAN_COUNT];
+                s5_width_flank_scan(heading, turned);
+                if (!s5_mission_enabled()) continue;
+                S5Profile measured = s5_estimate_width_from_views(width_points,
+                    opposite_ready ? opposite_width_points : NULL, turned, heading);
+                tm_printf((UB*)"[S5-WIDTH-RESULT] valid=%d envelope_cm_x100=%d face_cm_x100=%d left_deg=%d right_deg=%d\n",
+                    (int)measured.valid, (int)(measured.estimated_width_cm * 100.0f),
+                    (int)(measured.frontal_width_cm * 100.0f),
+                    (int)measured.left_boundary_deg, (int)measured.right_boundary_deg);
+                if (measured.valid) {
+                    measured.left_clearance_cm = c.profile.left_clearance_cm;
+                    measured.right_clearance_cm = c.profile.right_clearance_cm;
+                    c.profile = measured;
+                    print_profile(&c.profile);
+                    s5_report_profile(&c.profile, S5_SIDE_NONE);
+                }
+                /* Refresh head-on clearance after recentering the servo. */
+                look_clear_hits = 0u;
+                width_view_done = true;
                 continue;
             }
             if (!in.front_valid ||
@@ -907,6 +955,10 @@ static void live_controller_mode(void)
                       (int)(c.last_coarse.points[4].distance_cm * 100.0f),
                       (int)ROBOT_BYPASS_SIDE_CLEAR_CM, (int)ROBOT_BYPASS_FRONT_TURN_CM);
         cmd = s5_controller_step(&c, &in);
+        /* Publish the scan outcome while stopped, clearing any previous
+         * width when this sweep could not bracket the frontal obstacle. */
+        if (in.width_points)
+            s5_report_profile(&c.profile, S5_SIDE_NONE);
         if (in.fine_ready) {
             unsigned coarse_valid = 0u, fine_valid = 0u;
             for (int i = 0; i < S5_SCAN_COUNT; ++i) {
@@ -946,6 +998,9 @@ static void live_controller_mode(void)
         case S5_CMD_SCAN_COARSE:
             if (!s5_navigation_stopped()) emergency_halt("scan requires encoder-confirmed STOP");
             look_attempted = false;
+            look_phase = LOOK_BYPASS;
+            opposite_ready = false;
+            width_view_done = false;
             if (ROBOT_OBSTACLE_TEST) {
                 s5_coarse_scan(&coarse);
                 print_scan("COARSE", &coarse);
@@ -1014,8 +1069,14 @@ static void live_controller_mode(void)
                 if (c.last_coarse.points[0].angle_deg != ROBOT_WIDTH_SCAN_MIN_DEG &&
                     s5_probe_side(&c.last_coarse) == S5_SIDE_LEFT)
                     look_first_side = S5_SIDE_LEFT;
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ?
-                                    -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG))
+                const int heading = look_first_side == S5_SIDE_LEFT ?
+                    -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG;
+                const float opposite_clearance = look_first_side == S5_SIDE_LEFT ?
+                    c.profile.right_clearance_cm : c.profile.left_clearance_cm;
+                if (!c.profile.valid && in.width_points &&
+                    opposite_clearance > ROBOT_BYPASS_FRONT_TURN_CM && begin_viewpoint(-heading))
+                    look_phase = LOOK_OPPOSITE;
+                else if (!begin_viewpoint(heading))
                     emergency_halt("preferred viewpoint rejected");
                 look_pending = true;
                 break;
@@ -1064,7 +1125,7 @@ EXPORT void s5_task(INT stacd, void *exinf)
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] %s %s B5-BYPASS-SCAN-30-120-V6-LIFT: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
+    tm_printf((UB*)"[FW-ID] %s %s B5-EDGE-SWEEP: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
               __DATE__, __TIME__, (int)ROBOT_ENABLE_BYPASS,
               (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MIN_DEG : ROBOT_WIDTH_SWEEP_MIN_DEG),
               (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MAX_DEG : ROBOT_WIDTH_SWEEP_MAX_DEG),

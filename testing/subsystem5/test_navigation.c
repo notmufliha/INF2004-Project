@@ -184,7 +184,7 @@ static void finish_middle(S5Side side)
     assert(!s5_bridge_motion_complete());
     tick(120.0f);
     assert(maneuver.state == S5_MAN_FORWARD && maneuver.pending_id);
-    assert(last_turn == inward && last_angle == 45);
+    assert(last_turn == inward && last_angle == ROBOT_COURSE_PASS_TURN_DEG);
     finish_leg();
     tick(120.0f);
     assert(maneuver.state == S5_MAN_PASS && maneuver.pending_id);
@@ -308,14 +308,14 @@ int main(void)
     assert(turn_calls == 3u && last_turn == MOTION_TURN_RIGHT && last_angle == ROBOT_COURSE_RETURN_TURN_DEG);
     finish_leg();
     tick(120.0f);
-    assert(move_calls == 3u && last_move == maneuver.offset_done_cm);
+    assert(move_calls == 3u && last_move == maneuver.search_limit_cm);
     line_state.line_flags = B3_LINE_F_DETECTED;
     status.left_distance_mm = status.right_distance_mm = (last_move - 2.0f) * 10.0f;
     tick(120.0f);
-    assert(maneuver.state == S5_MAN_SEARCH && maneuver.pending_id);
+    assert(maneuver.state == S5_MAN_LINE_STOP && maneuver.pending_id && !allowed);
     assert(!s5_bridge_line_found());
-    status.left_distance_mm = status.right_distance_mm = last_move * 10.0f;
-    finish_leg();
+    result = status;
+    for (unsigned n = 0u; n < ROBOT_BYPASS_LINE_CONFIRM; ++n) tick(120.0f);
     assert(s5_bridge_line_found());
     assert(s5_bridge_request(S5_CMD_RESUME, &p));
     assert(!s5_bridge_line_found());

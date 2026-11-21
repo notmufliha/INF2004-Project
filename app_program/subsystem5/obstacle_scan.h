@@ -18,6 +18,7 @@ typedef struct {
 
 void s5_coarse_scan(S5Scan *scan);
 void s5_width_scan(S5Scan *scan, S5ScanPoint points[S5_WIDTH_SCAN_COUNT]);
+void s5_width_flank_scan(int heading, S5ScanPoint points[S5_WIDTH_SCAN_COUNT]);
 void s5_probe_scan(S5Scan *scan);
 void s5_fine_scan(S5Scan *scan, uint16_t center_deg);
 int s5_find_nearest(const S5ScanPoint *points, int count);

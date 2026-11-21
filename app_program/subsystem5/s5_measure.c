@@ -199,9 +199,14 @@ bool s5_measure_front_cm(float *out_cm) { return measure_stable(out_cm, true, tr
 bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false, ROBOT_ECHO_SAMPLES); }
 bool s5_measure_probe_cm(float *out_cm)
 {
-    /* Completed far echoes can agree on a corridor ray. A close return
-     * or missing/incomplete echoes keep the corridor unconfirmed. */
-    return measure_one_batch(out_cm, false, true, false, ROBOT_ECHO_SAMPLES);
+    if (out_cm == NULL) return false;
+    if (measure_one_batch(out_cm, false, true, false, ROBOT_ECHO_SAMPLES))
+        return true;
+
+    /* Retry an inconclusive stationary ray using actual echoes only.
+     * A second batch of apparent open space cannot erase a close return. */
+    tk_dly_tsk(ROBOT_ECHO_BATCH_RETRY_PAUSE_MS);
+    return measure_one_batch(out_cm, false, false, false, ROBOT_ECHO_SAMPLES);
 }
 
 /* Chatter protection: an invalid or close moving echo still stops the
