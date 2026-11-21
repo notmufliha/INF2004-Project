@@ -89,6 +89,7 @@ TELEMETRY = [
     ("hump_valid", 1, False), ("hump_last_mm", 7, False), ("hump_peak_mm", 7, False),
     ("obs_d_cm", 9, False), ("obs_w_cm", 7, False),    # B5
     ("obs_lc_cm", 9, False), ("obs_rc_cm", 9, False),
+    ("roll_dd", 12, True),
 ]
 EVENT_HEADER = [("ver", 3, False), ("type", 2, False), ("seq", 8, False),
                 ("t_ds", 20, False)]
@@ -172,7 +173,7 @@ def _check_version(d):
 #  Decoders: raw fields plus readable extras
 # --------------------------------------------------------------------------
 def decode_telemetry(data):
-    d, _ = unpack(TELEMETRY, data)
+    d, _ = unpack(TELEMETRY[:-1] if len(data) == 29 else TELEMETRY, data)
     _check_version(d)
     d["t_s"] = d["t_ds"] / 10
     d["state_name"] = _name(ROBOT_STATES, d["state"])
@@ -183,6 +184,7 @@ def decode_telemetry(data):
     d["nav_name"] = _name(NAV, d["nav"])
     d["motion_name"] = _name(MOTION_STATES, d["motion"])
     d["pitch_deg"] = d["pitch_dd"] / 10
+    d["roll_deg"] = d["roll_dd"] / 10 if "roll_dd" in d else None
     d["obs_d_cm"] = _cm(d["obs_d_cm"])
     d["obs_open_space"] = d["obs_d_cm"] == 510  # Front-only assumed no-target code
     d["obs_w_cm"] = _cm(d["obs_w_cm"], WIDTH_INVALID)

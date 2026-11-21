@@ -110,7 +110,7 @@ comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
 
 /** @brief IMU motion state (0..7) and pitch in 0.1 degree (B4). */
 void
-comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg)
+comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg, int16_t roll_ddeg)
 {
     uint32_t pitch = comm_pack_twos(comm_pack_sat_s(pitch_ddeg,
                                                     COMM_PITCH_MAX),
@@ -120,6 +120,8 @@ comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg)
     {
         g_s1_telem.motion     = (UINT)motion_state & MOTION_MASK;
         g_s1_telem.pitch_ddeg = pitch & PITCH_MASK;
+        g_s1_telem.roll_ddeg = comm_pack_twos(
+            comm_pack_sat_s(roll_ddeg, COMM_ROLL_MAX), COMM_ROLL_BITS) & 0xFFFU;
         telem_unlock();
     }
 }
@@ -216,12 +218,14 @@ comm_report_hump (bool b_valid, int16_t height_mm, int16_t peak_mm)
     return (post_event(&event));
 }
 
-/** @brief Forget the highest hump (RESET_PEAK, via the VC). */
+/** @brief Clear the reported hump measurements (RESET_PEAK, via the VC). */
 void
 comm_reset_hump_peak (void)
 {
     if (telem_lock())
     {
+        g_s1_telem.hump_valid   = 0U;
+        g_s1_telem.hump_last_mm = 0U;
         g_s1_telem.hump_peak_mm = 0U;
         telem_unlock();
     }
@@ -304,7 +308,7 @@ comm_get_stats (comm_stats_t * p_out)
 
 /** @brief Lock the snapshot; false = not in time, skip the update.
  *
- * The holder only copies 24 bytes and TA_INHERIT raises a low-priority
+ * The holder only copies a small snapshot and TA_INHERIT raises a low-priority
  * holder, so in practice this never times out.
  */
 static bool

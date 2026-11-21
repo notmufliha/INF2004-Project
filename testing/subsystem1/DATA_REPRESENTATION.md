@@ -51,7 +51,7 @@ They are still 3 bits on the wire.
 
 | Packed data | Writers | Protection |
 |---|---|---|
-| `COMM_TELEMETRY` bit-fields (24 B) | B2 (via S1 poll), B3, B4, B5, VC, comm_task | every read and write holds `mtx_telem` (`TA_INHERIT`, 5 ms limit); values are saturated before taking the lock |
+| `COMM_TELEMETRY` bit-fields (28 B) | B2 (via S1 poll), B3, B4, B5, VC, comm_task | every read and write holds `mtx_telem` (`TA_INHERIT`, 5 ms limit); values are saturated before taking the lock |
 | Fault bitmask | B1, B2, B3, B4, B5 tasks and ISRs | kernel event flag: `tk_set_flg` / `tk_clr_flg` are atomic and ISR-safe — no read-modify-write in application code. Test S1-U20 |
 | `COMM_EVENT`, `REMOTE_CMD` bit-fields | one task each | built on the caller's stack and copied whole by `tk_snd_mbf`; never shared while being written |
 
@@ -74,7 +74,7 @@ Inter-task messages:
 
 | Structure | Before | After |
 |---|---|---|
-| `COMM_TELEMETRY` snapshot | 40 B | 24 B |
+| `COMM_TELEMETRY` snapshot | 40 B | 28 B (24 B before B4 roll) |
 | `COMM_EVENT` (mbf_events) | 44 B | 8 B |
 | `REMOTE_CMD` (mbf_remote_cmd → VC) | 8 B | 4 B |
 | `COMM_STATS` | 32 B | 16 B |

@@ -20,7 +20,21 @@ typedef struct
     float32_t roll_level_deg; /* Hysteresis for baseline and return to level. */
     float32_t roll_trend_deg; /* Meaningful absolute-roll change, degrees. */
     float32_t wheel_track_mm; /* Tyre centre spacing; one-wheel model. */
+    /* Flat-ground rejection.  Accelerometer roll also sees sideways
+     * acceleration: steering jerks give short spikes, curves a steady
+     * offset.  A hump must hold roll_enter_deg for roll_enter_ms (0 = the
+     * two-sample rule only), and cannot start while the wheel speeds differ
+     * by more than roll_curve_ratio of the faster wheel (0 = no check). */
+    uint32_t  roll_enter_ms;
+    float32_t roll_curve_ratio;
+    /* Height accuracy.  The peak used for the height is the trimmed mean of
+     * the last roll_peak_samples unfiltered accelerometer rolls (the top and
+     * bottom third dropped), so the jolt as a wheel hits the hump edge does
+     * not count as roll.  1 = single-sample peak.  1..IMU_ROLL_PEAK_MAX. */
+    uint32_t  roll_peak_samples;
 } imu_analysis_config_t;
+
+#define IMU_ROLL_PEAK_MAX 9U
 
 typedef enum
 {
@@ -77,6 +91,9 @@ typedef struct
     uint32_t               roll_stable_count;
     float32_t              roll_baseline_deg;
     float32_t              roll_peak_deg;
+    float32_t              roll_window[IMU_ROLL_PEAK_MAX];
+    uint32_t               roll_window_count;
+    uint32_t               roll_window_next;
     float32_t              highest_hump_cm;
     bool                   b_highest_hump_valid;
 } imu_analysis_t;

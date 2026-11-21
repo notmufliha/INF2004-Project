@@ -2216,7 +2216,9 @@ static void controller_task(INT stacd, void *exinf)
             bool halt_command = remote.type == RCMD_STOP || remote.type == RCMD_ESTOP ||
                 remote.type == RCMD_PAUSE || remote.type == RCMD_MODE;
             if (halt_command || remote.type == RCMD_START) autostart_pending = false;
-            if (!stop_barrier || halt_command) vehicle_controller_command(&c, &remote);
+            if (!stop_barrier || halt_command || remote.type == RCMD_RESET_PEAK) {
+                vehicle_controller_command(&c, &remote);
+            }
             if (halt_command) stop_barrier = true;
         }
         for (UINT i = 0u; i < B3_NAV_QUEUE_LENGTH; ++i) {

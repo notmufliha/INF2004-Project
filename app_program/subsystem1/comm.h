@@ -102,7 +102,7 @@ typedef enum
     RCMD_RESUME,     /* continue after PAUSE                   */
     RCMD_MODE,       /* arg = comm_run_mode_t                  */
     RCMD_SPEED,      /* arg = target speed, percent 0..100     */
-    RCMD_RESET_PEAK, /* forget the highest hump measured so far */
+    RCMD_RESET_PEAK, /* clear the latest and highest hump measurements */
     RCMD_COUNT
 } comm_remote_cmd_type_t;
 
@@ -145,6 +145,8 @@ typedef enum
 /* Widths of the fields that hold signed values (two's complement). */
 #define COMM_SPEED_BITS     14U
 #define COMM_PITCH_BITS     10U
+#define COMM_ROLL_BITS      12U
+#define COMM_ROLL_MAX       1800  /* 0.1 deg, up to +/-180 deg */
 #define COMM_ENC_MASK       0xFFFFFFU /* encoder totals keep 24 bits     */
 
 /* ---------------------------------------------------------------------
@@ -212,6 +214,8 @@ typedef struct
     UINT obs_left_cm  : 9;  /* left clearance                  */
     UINT obs_right_cm : 9;  /* right clearance                 */
     UINT spare4       : 5;
+
+    UINT roll_ddeg    : 12; /* 0.1 deg, two's complement */
 } comm_telemetry_t;
 
 /** @brief Link counters: 16 bits, wrapping; the laptop uses differences
@@ -235,7 +239,7 @@ void comm_set_motion (int32_t speed_l_cps, int32_t speed_r_cps,
                       int32_t enc_l, int32_t enc_r);
 void comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
                     uint8_t flags);
-void comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg);
+void comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg, int16_t roll_ddeg);
 void comm_set_obstacle_dist (uint16_t dist_cm);
 void comm_get_telemetry (comm_telemetry_t * p_out);
 

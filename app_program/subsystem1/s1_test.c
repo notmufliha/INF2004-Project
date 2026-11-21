@@ -262,7 +262,7 @@ test_frames (void)
               (WIRE_EVT_ERR_LEN == n_err) && (WIRE_EVT_MAX_LEN == n_obs) &&
               (WIRE_STATUS_LEN == n_sta) && (WIRE_ACK_LEN == n_ack) &&
               (-1 == n_small) && (GUARD_BYTE == buf[COMM_PAYLOAD_MAX]) &&
-              (24U == sizeof(comm_telemetry_t)) &&
+              (28U == sizeof(comm_telemetry_t)) &&
               (8U == sizeof(comm_pack_event_t)) &&
               (4U == sizeof(comm_remote_cmd_t)),
           "binary frame sizes and bounded packing");
@@ -311,7 +311,7 @@ test_setters (void)
 
     comm_set_motion(123, -9000, 1000, -1);
     comm_set_line(11U, 5000U, 1U, LINE_F_DETECTED | LINE_F_JUNCTION);
-    comm_set_imu(3U, -700);
+    comm_set_imu(3U, -700, -123);
     comm_set_obstacle_dist(COMM_CM_INVALID);
     comm_get_telemetry(&telem);
 

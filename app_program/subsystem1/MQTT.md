@@ -19,7 +19,7 @@ checks the first two agree bit for bit.
 
 | Topic | Direction | QoS | Retained | Rate | Frame |
 |---|---|---|---|---|---|
-| `<prefix>/telemetry` | car → laptop | 0 | no | every 500 ms (change with `TELEM`) | 29 B |
+| `<prefix>/telemetry` | car → laptop | 0 | no | every 500 ms (change with `TELEM`) | 30 B |
 | `<prefix>/event` | car → laptop | 1 | no | when it happens | 5–9 B |
 | `<prefix>/status` | car → laptop | 0 (heartbeat), 1 (online/offline) | online/offline: **yes** | every 5 s | 23 B / 1 B |
 | `<prefix>/cmd` | laptop → car | 1 | no | on demand | 3 B |
@@ -45,7 +45,7 @@ bits to a whole byte. Every frame starts with a 3-bit wire **version = 1**.
 its action to 4 bits; every frame starts with version 2, so a version-1
 decoder rejects them instead of misreading.
 
-### Telemetry — 226 bits → 29 bytes (was 290 B typical, 374 B worst as JSON)
+### Telemetry — 238 bits → 30 bytes
 
 | # | Field | Bits | Range / unit | Source |
 |---|---|---|---|---|
@@ -68,6 +68,9 @@ decoder rejects them instead of misreading.
 | 21 | obstacle distance | 9 | 0–510 cm, **511 = no echo / not measured** | B5 |
 | 22 | obstacle width | 7 | 0–126 cm, 127 = not measured | B5 |
 | 23–24 | clearance L, R | 9 each | 0–510 cm, 511 = not measured | B5 |
+| 25 | roll | 12 signed | 0.1° steps, ±180° | B4 |
+
+Older 29-byte telemetry frames omit roll. The decoders report roll as unavailable for those frames.
 
 **Encoder totals.** B2 keeps signed 32-bit counters (Tribunal decision:
 retain until the range is validated). Only the low 24 bits are sent. At B2's
