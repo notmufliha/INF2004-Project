@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $sourceDir = Join-Path $projectRoot 'app_program/subsystem4'
 
-foreach ($testName in @('testmock_main', 'testanal_main', 'testdemo_main', 'testproc_main', 'testgyro_main', 'testnum_main')) {
+foreach ($testName in @('testmock_main', 'testanal_main', 'testdemo_main', 'testproc_main', 'testgyro_main', 'testnum_main', 'testlift_main')) {
     $testSources = @((Join-Path $PSScriptRoot 'imu_test_support.c'),
                      (Join-Path $sourceDir 'imu_mock.c'),
                      (Join-Path $sourceDir 'imu_numeric.c'))
@@ -17,6 +17,9 @@ foreach ($testName in @('testmock_main', 'testanal_main', 'testdemo_main', 'test
     }
     if ($testName -eq 'testgyro_main') {
         $testSources += Join-Path $sourceDir 'gy511.c'
+    }
+    if ($testName -eq 'testlift_main') {
+        $testSources += Join-Path $sourceDir 'imu_lift.c'
     }
     $testSources += Join-Path $PSScriptRoot "$testName.c"
     $testExecutable = Join-Path $PSScriptRoot "$testName.exe"

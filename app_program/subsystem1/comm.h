@@ -202,7 +202,7 @@ typedef struct
 
     UINT enc_right    : 24;
     UINT hump_last_mm : 7;  /* height of the most recent hump  */
-    UINT spare2       : 1;
+    UINT imu_lifted   : 1;  /* B4 lift-stop: car picked up     */
 
     UINT pitch_ddeg   : 10; /* 0.1 deg, two's complement      */
     UINT hump_peak_mm : 7;  /* highest hump this run           */
@@ -240,6 +240,8 @@ void comm_set_motion (int32_t speed_l_cps, int32_t speed_r_cps,
 void comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
                     uint8_t flags);
 void comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg, int16_t roll_ddeg);
+/* B4 lift-stop flag: true while B4 reports the car picked up. */
+void comm_set_lifted (bool b_lifted);
 void comm_set_obstacle_dist (uint16_t dist_cm);
 void comm_get_telemetry (comm_telemetry_t * p_out);
 

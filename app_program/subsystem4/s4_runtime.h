@@ -62,6 +62,16 @@
 #define S4_ROLL_HUMP_PEAK_SAMPLES 7U
 #endif
 
+/* Lift-stop (imu_lift.h): a pick-up must reach this upward speed and rise.
+ * Lower them if lifting the car is not caught ("[B4] LIFTED" not printed);
+ * raise them if the car stops while driving on the floor. */
+#ifndef S4_LIFT_SPEED_MPS
+#define S4_LIFT_SPEED_MPS 0.25f
+#endif
+#ifndef S4_LIFT_RISE_M
+#define S4_LIFT_RISE_M 0.03f
+#endif
+
 /* Prioritize hump sampling; 0 restores full magnetic reads and their delays. */
 #ifndef S4_IMU_MAG_IDLE_ONLY
 #define S4_IMU_MAG_IDLE_ONLY 1

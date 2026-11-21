@@ -151,6 +151,8 @@ svg.chart { width: 100%; height: 150px; display: block; }
       <dt>Hump detected</dt><dd id="hump-detected">–</dd>
       <dt>Hump height</dt><dd id="hump">–</dd>
       <dt>Humps detected</dt><dd id="hump-count">0</dd>
+      <dt>Lifted</dt><dd id="lifted">–</dd>
+      <dt>Last lifted</dt><dd id="lift-last">never</dd>
     </dl>
   </section>
 
@@ -224,7 +226,7 @@ const HISTORY_S = 60;
 const state = { client: null, demo: null, seq: 0, lastTelem: null, lastTelemAt: 0,
   lastHbAt: 0, telemMs: 500, gaps: 0, encL: new W.Unwrap24(), encR: new W.Unwrap24(),
   speed: [], dist: [], pendingAck: {}, carOnline: null, mode: null,
-  humpCount: 0, lastHumpEvent: null, humpReset: null };
+  humpCount: 0, lastHumpEvent: null, humpReset: null, liftCount: 0, lifted: false };
 
 /* ---------- theme ---------- */
 $("theme").onclick = () => {
@@ -385,6 +387,18 @@ function onTelemetry(d) {
   $("imu").textContent = d.motion_name;
   $("pitch").textContent = `${d.pitch_deg.toFixed(1)}°`;
   $("roll").textContent = d.roll_deg === null ? "unavailable" : `${d.roll_deg.toFixed(1)}°`;
+  /* B4 lift-stop.  The car reports "lifted" for ~1 s after the pick-up
+   * (the IMU cannot tell "held still in the air" from "on the floor"), so
+   * the time of the last lift stays shown. */
+  $("lifted").textContent = d.lifted ? "LIFTED: motors stopped" : "No";
+  $("lifted").style.color = d.lifted ? "var(--critical)" : "";
+  $("lifted").style.fontWeight = d.lifted ? "600" : "";
+  if (d.lifted && !state.lifted) {
+    state.liftCount += 1;
+    $("lift-last").textContent =
+      `${new Date().toLocaleTimeString()} (${state.liftCount} this session)`;
+  }
+  state.lifted = d.lifted;
   $("hump-detected").textContent = d.hump_valid ? "Yes" : "No";
   $("hump").textContent = d.hump_valid ? `${d.hump_last_mm} mm` : "not measured";
   if (state.humpReset?.acceptedAt !== undefined && !d.hump_valid &&
@@ -534,6 +548,12 @@ function stopAll() {
   state.humpReset = null;
   $("hump-reset-status").textContent = "";
   $("hump-count").textContent = "0";
+  state.liftCount = 0;
+  state.lifted = false;
+  $("lifted").textContent = "–";
+  $("lifted").style.color = "";
+  $("lifted").style.fontWeight = "";
+  $("lift-last").textContent = "never";
 }
 $("connect").onclick = () => {
   stopAll();
@@ -555,7 +575,7 @@ $("connect").onclick = () => {
 
 /* ---------- demo: real binary frames from a fake car ---------- */
 function startDemo() {
-  const car = { running: true, state: 2, speed: 20, enc: 0, seq: 0, hb: 0, ev: 0, t: 0, hump: null, peak: 0, faults: 0 };
+  const car = { running: true, state: 2, speed: 20, enc: 0, seq: 0, hb: 0, ev: 0, t: 0, hump: null, peak: 0, faults: 0, liftedUntil: 0 };
   const pack = W.pack, V = W.WIRE_VERSION;
   const emit = (kind, layout, v) => handle(kind, pack(layout, Object.assign({ ver: V }, v)));
   const event = (type, body) => {
@@ -569,6 +589,10 @@ function startDemo() {
     const spd = car.running ? car.speed * 50 : 0;
     car.enc += spd / 2;
     const dist = 40 + Math.round(30 * Math.sin(car.t / 40) + Math.random() * 6);
+    if (car.running && car.t % 170 === 0) { // picked up: B4 lift-stop
+      car.liftedUntil = car.t + 10;          // reported for 1 s
+      car.running = false; car.state = 8;    // SAFE_STOP until Start
+    }
     emit("telemetry", W.TELEMETRY, { seq: (car.seq = (car.seq + 1) & 65535), t_ds: car.t,
       state: car.state, faults: car.faults, spd_l: spd + Math.round(Math.random() * 30),
       spd_r: Math.max(0, spd - Math.round(Math.random() * 30)), enc_l: Math.round(car.enc),
@@ -577,7 +601,7 @@ function startDemo() {
       motion: car.running ? 1 : 0, pitch_dd: Math.round(Math.random() * 20 - 10),
       roll_dd: Math.round(15 * Math.sin(car.t / 20)),
       hump_valid: Number(car.hump !== null), hump_last_mm: car.hump ?? 0, hump_peak_mm: car.peak, obs_d_cm: dist,
-      obs_w_cm: 12, obs_lc_cm: 30, obs_rc_cm: 9 });
+      obs_w_cm: 12, obs_lc_cm: 30, obs_rc_cm: 9, lifted: Number(car.t < car.liftedUntil) });
     if (car.t % 50 === 0) emit("status", W.STATUS, { online: 1, link: 3, demo: 1,
       seq: ++car.hb, t_ds: car.t, ip: 0x1701A8C0, telem_ds: 5, faults: car.faults,
       tx: car.seq + car.hb, drop: 0, evdrop: 0, rx: 3, rej: 1, reconn: 1 });

@@ -2284,6 +2284,9 @@ static void controller_task(INT stacd, void *exinf)
             }
         }
 #endif
+        /* B4 lift detection (subsystem4/imu_lift.h): a pick-up stops the
+         * motors like the controller's own lift rules (START to resume). */
+        in.lifted_imu = in.lifted_imu || (imu.b_valid && imu.b_lifted);
         in.barcode_active = b3_barcode_active();
         in.barcode_rejects = (UH)b3_barcode_rejects();
         in.imu_valid = imu.b_valid && now.lo - imu.timestamp_ms <= VC_IMU_MAX_AGE_MS;
