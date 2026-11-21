@@ -16,9 +16,9 @@ typedef struct
 
 typedef struct
 {
-    bool b_fault_active;
-    bool b_fault_started; /* One-call transition pulses. */
-    bool b_recovered;
+    bool b_fault_active : 1;
+    bool b_fault_started : 1; /* One-call transition pulses. */
+    bool b_recovered : 1;
 } imu_processing_health_t;
 
 typedef struct
@@ -28,9 +28,9 @@ typedef struct
     uint32_t                last_good_ms;
     uint32_t                failures;
     uint32_t                recovery;
-    bool                    b_have_good_time;
-    bool                    b_seeded;
-    bool                    b_fault_active;
+    bool                    b_have_good_time : 1;
+    bool                    b_seeded : 1;
+    bool                    b_fault_active : 1;
 } imu_processing_t;
 
 void imu_processing_default_config (imu_processing_config_t * p_config);

@@ -59,7 +59,9 @@ imu_notice_track (imu_notice_tracker_t * p_tracker, const imu_event_t * p_event)
 
         p_tracker->pending.last_sequence     = p_tracker->sequence;
         p_tracker->pending.last_timestamp_ms = p_event->timestamp_ms;
-        p_tracker->pending.events |= events;
+        p_tracker->pending.events =
+            (p_tracker->pending.events | (unsigned int)events) &
+            IMU_NOTICE_EVENT_MASK;
         p_tracker->emission_ms = p_event->timestamp_ms;
     }
 }

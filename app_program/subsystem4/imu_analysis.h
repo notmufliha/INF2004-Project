@@ -72,21 +72,13 @@ typedef struct
 {
     imu_analysis_config_t  config;
     uint32_t               last_timestamp_ms;
-    bool                   b_has_timestamp;
     uint32_t               reset_reasons; /* Current process call only. */
-    bool                   b_require_motion;
-    bool                   b_have_counts;
     int32_t                left_count;
     int32_t                right_count;
     uint32_t               last_progress_ms;
-    bool                   b_have_progress;
-    imu_analysis_roll_t    roll_state;
     uint32_t               roll_count;
     uint32_t               roll_start_ms;
-    bool                   b_roll_positive;
-    imu_analysis_terrain_t roll_terrain;
     float32_t              roll_anchor_deg;
-    int8_t                 roll_direction;
     uint32_t               roll_trend_count;
     uint32_t               roll_stable_count;
     float32_t              roll_baseline_deg;
@@ -95,7 +87,15 @@ typedef struct
     uint32_t               roll_window_count;
     uint32_t               roll_window_next;
     float32_t              highest_hump_cm;
-    bool                   b_highest_hump_valid;
+    imu_analysis_roll_t    roll_state : 2;
+    imu_analysis_terrain_t roll_terrain : 2;
+    int8_t                 roll_direction; /* -1, 0, +1 */
+    bool                   b_has_timestamp : 1;
+    bool                   b_require_motion : 1;
+    bool                   b_have_counts : 1;
+    bool                   b_have_progress : 1;
+    bool                   b_roll_positive : 1;
+    bool                   b_highest_hump_valid : 1;
 } imu_analysis_t;
 
 void imu_analysis_default_config (imu_analysis_config_t * p_config);

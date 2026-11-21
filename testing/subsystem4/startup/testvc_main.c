@@ -36,7 +36,7 @@ main (void)
     g_create_error = E_OK;
     assert(E_OK == imu_vc_init());
     assert(E_OBJ == imu_vc_init());
-    notice.events = UINT32_MAX;
+    notice.events = IMU_NOTICE_EVENT_MASK;
     assert(E_TMOUT == imu_vc_receive(&notice, 25));
     assert((0U == notice.events) && (25 == g_receive_timeout));
     gb_bad_length = true;

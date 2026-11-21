@@ -10,10 +10,11 @@ $testSources = @(
     (Join-Path $PSScriptRoot 'testboot_main.c')
 )
 
+# Isolate B4 startup from the B5 bypass profile, which requires robot mode.
 foreach ($robotMode in @(0, 1)) {
     foreach ($testMode in @(0, 1)) {
         foreach ($mockMode in @(0, 1)) {
-            & gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'boot_stub.h') "-DROBOT_MODE=$robotMode" "-DAPP_TEST=$testMode" "-DS4_IMU_USE_MOCK=$mockMode" @testSources -o $testExecutable
+            & gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'boot_stub.h') -DROBOT_ENABLE_BYPASS=0 "-DROBOT_MODE=$robotMode" "-DAPP_TEST=$testMode" "-DS4_IMU_USE_MOCK=$mockMode" @testSources -o $testExecutable
             if ($LASTEXITCODE -ne 0) { throw 'Startup test compilation failed' }
             & $testExecutable
             if ($LASTEXITCODE -ne 0) { throw 'Startup test failed' }
@@ -67,7 +68,7 @@ $driveSources = @(
     (Join-Path $sourceDirectory 'imu_numeric.c'),
     (Join-Path $PSScriptRoot 'testdrive_main.c')
 )
-& gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'motion_stub.h') -DROBOT_MODE=1 -DAPP_TEST=1 -DS4_IMU_USE_MOCK=0 @driveSources -lm -o $driveExecutable
+& gcc -std=c99 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -pedantic "-I$sourceDirectory" -include (Join-Path $PSScriptRoot 'motion_stub.h') -DROBOT_MODE=1 -DAPP_TEST=1 -DS4_IMU_USE_MOCK=0 -DS4_MOTION_TEST_ENABLE=1 @driveSources -lm -o $driveExecutable
 if ($LASTEXITCODE -ne 0) { throw 'B4 movement test compilation failed' }
 foreach ($scenario in @(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14)) {
     & $driveExecutable $scenario

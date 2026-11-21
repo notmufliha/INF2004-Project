@@ -60,10 +60,11 @@ only the latest completion's details remain. `completion_timestamp_ms`,
 when the latest snapshot is quiet. Read height only when HUMP_DONE is present
 and its dedicated validity flag is true. Height units are centimetres.
 
-On the current ARM ABI each notice is 88 bytes; eight aligned kernel slots use
-736 bytes, excluding kernel control blocks. The producer also holds a small
-fixed tracker and temporary stack copies. This is additional RAM, not a RAM
-optimization. No heap allocation or unbounded history is introduced.
+On the current ARM ABI each packed notice is 64 bytes. Eight aligned kernel
+slots use 544 bytes excluding control blocks, down from 736 bytes. The
+analysis task owns the 76-byte tracker. The controller receives a copy via
+the kernel queue. See [data representation](DATA_REPRESENTATION.md) for the
+size comparison.
 
 Run `testing/subsystem4/startup/run_tests.ps1` for production interface tests
 with a native bounded-queue stub, including saturation, retries, fault recovery,

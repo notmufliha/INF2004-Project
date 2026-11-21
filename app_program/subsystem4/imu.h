@@ -54,15 +54,10 @@ typedef struct
 
     /* Turn rate in degrees per second. */
     float32_t turn_rate_dps;
-    bool      b_valid;
-    bool      b_turn_rate_valid;
     float32_t magnetic_x_ut;
     float32_t magnetic_y_ut;
     float32_t magnetic_z_ut;
-    bool      b_magnetic_valid;
     float32_t heading_deg;
-    bool      b_heading_valid;
-    bool      b_heading_calibrated;
     uint32_t  sample_sequence;
 
     /* Encoder snapshot captured by the sampling task, never fabricated. */
@@ -70,49 +65,53 @@ typedef struct
     int32_t      encoder_right;
     uint32_t     encoder_left_errors;
     uint32_t     encoder_right_errors;
-    bool         b_odometry_valid;
     imu_motion_t motion;
 
     /* Millisecond timings saturate at UINT16_MAX; flags identify available
      * measurements. The real pairing window starts before the acceleration
      * burst; timestamp_ms retains burst completion, not final encoder time.
-     * Pair metadata adds eight bytes; sensor-read durations add four more.
      */
     uint16_t odometry_age_ms;
     uint16_t odometry_encoder_ms;
     uint16_t odometry_context_ms;
-    uint8_t  odometry_reasons;
-    uint8_t  odometry_time_valid;
     uint16_t acceleration_read_ms;
     uint16_t magnetic_read_ms;
+    unsigned int odometry_reasons : 6;
+    unsigned int odometry_time_valid : 6;
+    bool b_valid : 1;
+    bool b_turn_rate_valid : 1;
+    bool b_magnetic_valid : 1;
+    bool b_heading_valid : 1;
+    bool b_heading_calibrated : 1;
+    bool b_odometry_valid : 1;
 } imu_data_t;
 
 /* Motion and terrain analysis results. */
 typedef struct
 {
-    imu_motion_state_t motion_state;
     float32_t          pitch_deg;
     float32_t          roll_deg;
     float32_t          turn_rate_dps;
-    bool               b_hump_detected;
-    bool b_hump_completed; /* One-reading pulse after a complete traversal. */
-    bool b_tilt_detected;
-    bool b_valid;
-    bool b_height_valid; /* Accepted completed-traversal estimate. */
-    bool b_highest_hump_valid;
-    bool b_sensor_fault; /* Invalid fault notifications carry valid=false. */
-    bool b_sensor_recovered; /* One-notification recovery pulse. */
-    bool b_turn_rate_valid;
     float32_t heading_deg;
-    bool      b_heading_valid;
-    bool      b_heading_calibrated;
 
     /* Estimated hump height in centimetres. */
     float32_t hump_peak_cm;
     float32_t highest_hump_cm;
-    bool      b_sudden_impact;
-    bool      b_lifted; /* Picked up off the floor (imu_lift.h); VC stops. */
     uint32_t  timestamp_ms;
+    imu_motion_state_t motion_state : 3;
+    bool b_hump_detected : 1;
+    bool b_hump_completed : 1; /* One-reading pulse after a complete traversal. */
+    bool b_tilt_detected : 1;
+    bool b_valid : 1;
+    bool b_height_valid : 1;
+    bool b_highest_hump_valid : 1;
+    bool b_sensor_fault : 1;
+    bool b_sensor_recovered : 1;
+    bool b_turn_rate_valid : 1;
+    bool b_heading_valid : 1;
+    bool b_heading_calibrated : 1;
+    bool b_sudden_impact : 1;
+    bool b_lifted : 1;
 } imu_event_t;
 
 #endif /* IMU_H. */

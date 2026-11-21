@@ -24,8 +24,8 @@ bytes in the checked ARM layout. Historical milestone sizes below are retained.
 adapts the existing kernel/B2 interfaces. New state uses fixed-width counts,
 Boolean prefixes, private static helpers and finite/range-checked calculations.
 Tests cover analytic profiles, filtered terrain integration, acquisition races,
-queue sequence loss and rejection/recovery. Reading/event queues use sizeof;
-their checked native layouts are now 80/52 bytes, not the historical 56/48.
+queue sequence loss and rejection/recovery. Reading/event queues use sizeof.
+See [data representation](DATA_REPRESENTATION.md) for the ARM payload sizes.
 
 2026-11-01 startup update: production B4 uses C99 checks in eight robot/demo,
 real/mock and test/normal configurations. Readiness uses bounded kernel waits,
@@ -76,7 +76,7 @@ conformance claim.
 | 5.2 Widths | Width-sensitive application data uses fixed-width integers; kernel ABI aliases remain at API boundaries. Plain char is for strings; main retains ISO-required int. |
 | 5.3 Signedness | Unsigned decoding/masks; no signed bit fields or Boolean bitwise accumulation. Conversion/sign-conversion warnings are errors. Monitor division widens safely. |
 | 5.4 Floating point | Binary32 checked at compile time; f-suffixed constants and tolerance comparisons. Computed tilt, magnetic values, heading/rate, filter output and calibration statistics checked for finiteness before acceptance. Rationale below. |
-| 5.5 Layout | Peripheral values decoded byte by byte. Native structs are same-image queue payloads, never wire formats. sizeof/alignment and compile-time payload bounds determine storage. No bit fields. |
+| 5.5 Layout | Peripheral values are decoded byte by byte. Application bit-fields are allowed in same-image queue payloads and task-owned state for the minimum-bit requirement. MQTT uses explicit packing. sizeof/alignment and compile-time payload bounds determine queue storage. |
 | 5.6 Booleans | bool status values; numeric masks converted through comparisons; Boolean pointer names use pb_. |
 | 6.1 Procedures | Module-prefixed public functions, descriptive private names, uppercase macros and names at most 31 characters. ISO-required main keeps its mandated name. |
 | 6.2 Functions | Own-header prototypes, static private helpers, named parameters and at most 100 lines after formatting. Preferred practices discussed below. |

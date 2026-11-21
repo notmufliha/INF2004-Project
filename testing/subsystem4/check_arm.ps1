@@ -3,10 +3,11 @@ param([string]$Compiler = 'arm-none-eabi-gcc')
 $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $sourceDirectory = Join-Path $projectRoot 'app_program/subsystem4'
+# The B4 matrix includes non-robot builds, which cannot enable B5 bypass.
 $compilerArguments = @(
     '-mcpu=cortex-m0plus', '-mthumb', '-ffreestanding', '-std=c99',
     '-Wall', '-Wextra', '-Wconversion', '-Wsign-conversion', '-Werror',
-    '-Wno-cast-function-type', '-D_PICO_RP2040_', '-DCNF_SMP=1',
+    '-Wno-cast-function-type', '-D_PICO_RP2040_', '-DCNF_SMP=1', '-DROBOT_ENABLE_BYPASS=0',
     "-I$(Join-Path $projectRoot 'include')",
     "-I$(Join-Path $projectRoot 'config')",
     "-I$(Join-Path $projectRoot 'kernel/knlinc')", '-fsyntax-only'

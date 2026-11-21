@@ -17,13 +17,13 @@ typedef struct
     float32_t left_travel_cm;
     float32_t right_travel_cm;
     float32_t total_travel_cm;
-    bool      b_valid;
-    bool      b_running;
-    bool      b_forward;
-    bool      b_reverse;
-    bool      b_turning;
-    bool      b_stopped;
-    bool      b_fault;
+    bool      b_valid : 1;
+    bool      b_running : 1;
+    bool      b_forward : 1;
+    bool      b_reverse : 1;
+    bool      b_turning : 1;
+    bool      b_stopped : 1;
+    bool      b_fault : 1;
 } imu_motion_t;
 
 /* Capture only, never submit a command or raise/clear a B2 fault. Failure
