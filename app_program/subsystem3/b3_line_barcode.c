@@ -405,8 +405,8 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 				  "fixed thresholds");
 		}
 		/* Range in use, whenever it changes (at most once a second). */
-		if (report_ms < 1000U) report_ms += B3_LINE_UPDATE_MS;
-		if (report_ms >= 1000U &&
+		if (report_ms < 3000U) report_ms += B3_LINE_UPDATE_MS;
+		if (report_ms >= 3000U &&
 		    (reported_left != (uint16_t)(left_black - left_white) ||
 		     reported_centre != (uint16_t)(centre_black - centre_white))) {
 			report_ms = 0U;
