@@ -103,11 +103,9 @@
  * not exact (a U-turn stopped far short and the car drove off straight):
  * both sensors on floor after a turn is NOT "centred". */
 #define VC_TURN_SHORT_DEG 20
-/* Spread layout steering (BlackberryDealer/INF2004_Project's law, own
- * code): target = e * |e| / 1000 scaled to B3_LINE_STEER_MAX, e = right -
- * left (normalised).  Small errors give almost no steering (smooth
- * straights), large ones strong steering; no deadband step. */
-#define VC_STRADDLE_QUADRATIC 1
+/* Spread layout: use the deadbanded linear scale below. The quadratic
+ * response was too weak for moderate sensor readings on bends. */
+#define VC_STRADDLE_QUADRATIC 0
 /* Spread layout, line lost: rotate ON THE SPOT (B2 turns of
  * VC_SPIN_STEP_DEG) toward the side the line was last seen, stopping as
  * soon as a sensor sees it; widening sweeps: 90 deg one way, back 180,
@@ -139,7 +137,7 @@
  * hard toward that sensor: the curve is tighter than the turn, so keep
  * turning (no coast, arc from the current steering).  Smaller steering:
  * the usual coast (the line most likely went back between the sensors). */
-#define VC_STRADDLE_BEND_STEER 450
+#define VC_STRADDLE_BEND_STEER 600
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
