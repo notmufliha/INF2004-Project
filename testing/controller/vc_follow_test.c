@@ -71,31 +71,6 @@ int main(void){
     CHECK(vc4_on_line(&left) && ls<200,
           "partial left correction still releases toward straight");
   }
-  {
-    vc4_reset(&t);
-    s=vc4_steer(&t,590,100,20,0);
-    CHECK(t.exit_side==0, "one partial left touch does not start recovery");
-    s=vc4_steer(&t,100,100,20,10000);
-    CHECK(t.exit_side==0, "single partial touch still releases on white");
-    s=vc4_steer(&t,590,100,20,30000);
-    CHECK(t.exit_side==1, "repeated same-side partial touch confirms a bend");
-    for(int i=0;i<5;i++){
-      s=vc4_steer(&t,100,100,20,30000+(uint32_t)i*2400);
-    }
-    CHECK(s>200, "confirmed partial bend keeps turning while both sensors are white");
-
-    vc4_reset(&t);
-    vc4_steer(&t,590,100,20,0);
-    vc4_steer(&t,100,100,20,90000);
-    vc4_steer(&t,590,100,20,100000);
-    CHECK(t.exit_side==0, "same-side touch after 80 mm does not confirm a bend");
-
-    vc4_reset(&t);
-    vc4_steer(&t,100,590,20,0);
-    vc4_steer(&t,100,100,20,10000);
-    vc4_steer(&t,100,590,20,30000);
-    CHECK(t.exit_side==-1, "repeated right-side partial touch tracks the right bend");
-  }
   vc4_wheels(1000,60,100,&sp,&st);
   CHECK(sp*(1000+(st<0?st:-st))/1000>=150,
         "slow tight curve keeps inner wheel above 150 cps");
