@@ -785,8 +785,9 @@ static bool v4_turn(VEHICLE_CONTROLLER *c, const VC_INPUT *in, INT deg,
         stop_motion(c);
         return false;
     }
-    INT turn_mm_s = c->v4_phase == V4_CROSS && c->navigation == B3_NAV_LEFT ?
-        VC4_JCT_LEFT_TURN_MM_S : VC4_TURN_MM_S;
+    bool side_turn = c->v4_phase == V4_CROSS &&
+        (c->navigation == B3_NAV_LEFT || c->navigation == B3_NAV_RIGHT);
+    INT turn_mm_s = side_turn ? VC4_JCT_SIDE_TURN_MM_S : VC4_TURN_MM_S;
     if (motion_turn_degrees(deg, vc4_mm_s_to_cps(turn_mm_s),
                             left ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT,
                             &c->v4_motion_id) != E_OK) {
@@ -975,11 +976,13 @@ static void v4_start_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     c->v4_sub = 5u; /* forward arc before the reverse/sweep fallback */
 }
 
-/* Barcode turn at a cross-junction: stop, advance 60 mm, turn. */
+/* Barcode turn at a cross-junction: advance to the turn point, then turn. */
 static void v4_cross(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
 {
     INT done;
     UB nav = c->navigation;
+    bool side_turn = nav == B3_NAV_LEFT || nav == B3_NAV_RIGHT;
+    bool branch_seen = (in->centre >= VC4_BLACK) != (in->left >= VC4_BLACK);
 
     set_state(c, ROBOT_NAV_COMMAND);
     /* The step's clearance wait safe-stops after 3 s WITHOUT clearance,
@@ -1012,10 +1015,8 @@ static void v4_cross(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
             v4_enter(c, V4_FOLLOW, in->now_ms);
             return;
         }
-        if (nav == B3_NAV_LEFT) {
-            started = v4_turn(c, in, VC4_JCT_LEFT_TURN_DEG, true);
-        } else if (nav == B3_NAV_RIGHT) {
-            started = v4_turn(c, in, 90, false);
+        if (side_turn) {
+            started = v4_turn(c, in, VC4_JCT_SIDE_TURN_DEG, nav == B3_NAV_LEFT);
         } else if (nav == B3_NAV_UTURN) {
             started = v4_turn(c, in, 180, true);
         } else if (nav == B3_NAV_SPIN) {
@@ -1027,12 +1028,25 @@ static void v4_cross(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         if (started) c->v4_sub = 2u;
         return;
     }
+    case 2u:
+        /* At 75 degrees, a single sensor on tape can guide the handoff.
+         * If the branch is still ambiguous, finish the last 15 degrees. */
+        if (side_turn && !branch_seen) {
+            if (v4_turn(c, in, VC4_JCT_SIDE_TRIM_DEG, nav == B3_NAV_LEFT)) {
+                c->v4_sub = 3u;
+            }
+            return;
+        }
+        /* fall through */
     default:
         run_log_event(in->now_ms, RUN_EV_NAV_DONE, (uint16_t)nav);
         tm_printf((UB *)"[VC4] barcode action %d done at the junction\n",
                   (INT)nav);
         c->navigation = 0u;
         v4_reset_follow(c);
+        if (side_turn && branch_seen) {
+            (void)vc4_steer(&c->trk, in->centre, in->left, VC_PERIOD_MS, c->travel_um);
+        }
         v4_enter(c, V4_FOLLOW, in->now_ms);
         return;
     }
@@ -1307,7 +1321,12 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
             /* At confirmation the sensors are already beyond the tape.
              * Put the axle over its centre, not another full offset ahead. */
             float passed_cm = (float)(c->travel_um - exit_um + width_um / 2u) / 10000.0f;
-            c->v4_jct_advance_cm = VC4_JCT_ADVANCE_CM - passed_cm;
+            float turn_point_cm = VC4_JCT_ADVANCE_CM;
+            if (c->pending_navigation == B3_NAV_LEFT ||
+                c->pending_navigation == B3_NAV_RIGHT) {
+                turn_point_cm += VC4_JCT_SIDE_EXTRA_CM;
+            }
+            c->v4_jct_advance_cm = turn_point_cm - passed_cm;
             if (c->v4_jct_advance_cm < 0.0f) c->v4_jct_advance_cm = 0.0f;
         }
     } else {
@@ -1423,9 +1442,9 @@ void vehicle_controller_init(VEHICLE_CONTROLLER *c)
 {
     *c = (VEHICLE_CONTROLLER){0};
     tm_printf((UB *)"[VC-TUNE] build=" __DATE__ " " __TIME__
-              " v4=%d filter=%d split=%d left_junction_deg=%d\n",
+              " v4=%d filter=%d split=%d side_junction_deg=%d\n",
               (INT)VC_FOLLOW_V4, (INT)VC4_FILT_DIV,
-              (INT)VC4_SPLIT_FULL_X10, (INT)VC4_JCT_LEFT_TURN_DEG);
+              (INT)VC4_SPLIT_FULL_X10, (INT)VC4_JCT_SIDE_TURN_DEG);
     c->line_pos = B3_LINE_POS_CENTRE;
     c->mode = MODE_AUTO;
     c->speed_percent = VC_FOLLOW_V4 ? 29u : 20u; /* v4: 29 % = 120 mm/s */

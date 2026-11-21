@@ -307,10 +307,10 @@
 #define VC4_BAR_REVERSE_MM_S 60   /* controlled barcode rewind           */
 #define VC4_BAR_READ_MM_S 60      /* retry target after settling         */
 #define VC4_JCT_ADVANCE_CM 6.0f   /* line sensors to axle                */
-/* Floor trial: left junction turns overshoot at 90 degrees / 150 mm/s.
- * Shorten only that command and approach its endpoint more slowly. */
-#define VC4_JCT_LEFT_TURN_DEG 80
-#define VC4_JCT_LEFT_TURN_MM_S 90
+#define VC4_JCT_SIDE_EXTRA_CM 2.0f /* measured early turn on the floor */
+#define VC4_JCT_SIDE_TURN_DEG 75
+#define VC4_JCT_SIDE_TRIM_DEG (90 - VC4_JCT_SIDE_TURN_DEG)
+#define VC4_JCT_SIDE_TURN_MM_S 90
 #define VC4_MOTION_TIMEOUT_MS 10000u
 /* Barcode slow re-read. */
 #define VC4_BAR_STRIP_EDGES 3u    /* GP28 changes: bars, not a tape      */

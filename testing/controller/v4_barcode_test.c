@@ -238,6 +238,7 @@ int main(void)
         assert(c.v4_phase == V4_FOLLOW && c.pending_navigation == B3_NAV_LEFT);
     }
     input.centre = input.left = 100;
+    uint32_t exit_um = c.travel_um + 2000u;
     for (int i = 0; i < 20 && c.v4_phase == V4_FOLLOW; ++i) {
         input.now_ms += VC_PERIOD_MS;
         c.travel_um += 2000;
@@ -245,27 +246,38 @@ int main(void)
         v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
     }
     assert(c.v4_phase == V4_CROSS && c.navigation == B3_NAV_LEFT);
-    assert(c.v4_jct_advance_cm > 0 && c.v4_jct_advance_cm < VC4_JCT_ADVANCE_CM);
+    float passed_cm = (float)(c.travel_um - exit_um + 10000u) / 10000.0f;
+    assert(c.v4_jct_advance_cm == VC4_JCT_ADVANCE_CM + VC4_JCT_SIDE_EXTRA_CM - passed_cm);
     assert(c.pending_navigation == B3_NAV_NONE);
     v4_cross(&c, &input); /* advance from sensors to axle */
     result_ready = true;
     result.command_id = c.v4_motion_id;
     result.status = MOTION_STATUS_COMPLETED;
     v4_cross(&c, &input);
-    assert(sent.type == MOTION_CMD_TURN && sent.target_angle_deg == VC4_JCT_LEFT_TURN_DEG);
+    assert(sent.type == MOTION_CMD_TURN && sent.target_angle_deg == VC4_JCT_SIDE_TURN_DEG);
     assert(sent.turn_direction == MOTION_TURN_LEFT);
-    assert(sent.target_speed_cps == vc4_mm_s_to_cps(VC4_JCT_LEFT_TURN_MM_S));
+    assert(sent.target_speed_cps == vc4_mm_s_to_cps(VC4_JCT_SIDE_TURN_MM_S));
+    input.centre = 950;
     v4_cross(&c, &input);
     assert(c.v4_phase == V4_FOLLOW && c.navigation == B3_NAV_NONE);
+    assert(c.trk.filt > 0);
     c = reading();
     c.bar_phase = BAR_IDLE;
     c.v4_phase = V4_CROSS;
     c.v4_sub = 1;
     c.navigation = B3_NAV_RIGHT;
     v4_cross(&c, &input);
-    assert(sent.type == MOTION_CMD_TURN && sent.target_angle_deg == 90);
+    assert(sent.type == MOTION_CMD_TURN && sent.target_angle_deg == VC4_JCT_SIDE_TURN_DEG);
     assert(sent.turn_direction == MOTION_TURN_RIGHT);
-    assert(sent.target_speed_cps == vc4_mm_s_to_cps(VC4_TURN_MM_S));
+    assert(sent.target_speed_cps == vc4_mm_s_to_cps(VC4_JCT_SIDE_TURN_MM_S));
+    input.centre = input.left = 100;
+    result_ready = true;
+    result.status = MOTION_STATUS_COMPLETED;
+    v4_cross(&c, &input);
+    assert(c.v4_phase == V4_CROSS && sent.target_angle_deg == VC4_JCT_SIDE_TRIM_DEG);
+    assert(sent.turn_direction == MOTION_TURN_RIGHT);
+    v4_cross(&c, &input);
+    assert(c.v4_phase == V4_FOLLOW && c.navigation == B3_NAV_NONE);
 
     /* A decode can arrive before the controller enters its read phase. */
     c = reading();
