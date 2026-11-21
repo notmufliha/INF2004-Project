@@ -211,9 +211,26 @@ tilt_impact_edges (imu_notice_tracker_t * p_tracker,
         events |= IMU_NOTICE_IMPACT;
     }
 
+    /* A lift is sent at once, not with the next periodic state. */
+    if ((p_event->b_lifted) && (!p_tracker->b_lifted))
+    {
+        events |= IMU_NOTICE_LIFT;
+    }
+    else if ((!p_event->b_lifted) && (p_tracker->b_lifted))
+    {
+        /* Put down: refresh the controller's snapshot at once so a START
+         * straight after is not refused on an old lifted flag. */
+        events |= IMU_NOTICE_STATE;
+    }
+    else
+    {
+        /* No lift change. */
+    }
+
     p_tracker->b_tilt_known = true;
     p_tracker->b_tilt       = p_event->b_tilt_detected;
     p_tracker->b_impact     = p_event->b_sudden_impact;
+    p_tracker->b_lifted     = p_event->b_lifted;
     return events;
 }
 

@@ -126,6 +126,17 @@ comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg, int16_t roll_ddeg)
     }
 }
 
+/** @brief B4 lift-stop: true while the car is reported picked up. */
+void
+comm_set_lifted (bool b_lifted)
+{
+    if (telem_lock())
+    {
+        g_s1_telem.imu_lifted = b_lifted ? 1U : 0U;
+        telem_unlock();
+    }
+}
+
 /** @brief Front ultrasonic distance in cm, or COMM_CM_INVALID (B5). */
 void
 comm_set_obstacle_dist (uint16_t dist_cm)

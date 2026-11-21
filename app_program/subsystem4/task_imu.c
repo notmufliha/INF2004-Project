@@ -10,6 +10,7 @@
 #include "subsystem4.h"
 #include "s4_runtime.h"
 #include "imu_analysis.h"
+#include "imu_lift.h"
 #include "imu_processing.h"
 #include "imu_vc.h"
 #include "s4_diag.h"
@@ -52,7 +53,14 @@ static volatile uint32_t g_sample_sequence;
 static INT  console_integer (float32_t value);
 static H    telemetry_integer (float32_t value);
 static void report_hump (const imu_event_t * p_event, uint32_t sequence);
-static bool initialise_analysis (imu_analysis_t * p_analysis);
+static bool initialise_analysis (imu_analysis_t * p_analysis,
+                                 imu_lift_t * p_lift, uint32_t max_gap_ms);
+static bool initialise_lift (imu_lift_t * p_lift, uint32_t max_gap_ms);
+static void update_lift (imu_lift_t * p_lift, const imu_data_t * p_processed,
+                         imu_event_t * p_event);
+static bool analyse_sample (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
+                            const imu_data_t * p_processed,
+                            imu_event_t * p_event);
 static void report_fault_detail (const imu_data_t * p_data,
                                   const imu_processing_t * p_processing,
                                   uint32_t previous_good_ms);
@@ -204,6 +212,7 @@ void
 task_imu_analysis_task (INT stacd, void * p_exinf)
 {
     imu_analysis_t          analysis;
+    imu_lift_t              lift;
     imu_data_t              data;
     imu_data_t              processed;
     imu_processing_t        processing;
@@ -231,7 +240,7 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
         return;
     }
 
-    if (!initialise_analysis(&analysis))
+    if (!initialise_analysis(&analysis, &lift, processing_config.max_gap_ms))
     {
         tm_printf((UB *)"[B4] ERROR: analysis configuration failed\n");
         tk_ext_tsk();
@@ -259,7 +268,7 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
         /* An invalid processed reading resets any incomplete terrain sequence.
          */
         reset_peak_request(&analysis);
-        bool b_analysed = imu_analysis_process(&analysis, &processed, &event);
+        bool b_analysed = analyse_sample(&analysis, &lift, &processed, &event);
 
         /* Completed roll events include the one-wheel geometric estimate. */
 #if APP_TEST
@@ -329,9 +338,58 @@ reset_peak_request (imu_analysis_t * p_analysis)
     }
 }
 
+/** @brief Lift-stop detector with the runtime thresholds (s4_runtime.h). */
+static bool
+initialise_lift (imu_lift_t * p_lift, uint32_t max_gap_ms)
+{
+    imu_lift_config_t config;
+
+    imu_lift_default_config(&config);
+    config.rise_speed_mps = S4_LIFT_SPEED_MPS;
+    config.rise_m         = S4_LIFT_RISE_M;
+    config.max_gap_ms     = max_gap_ms;
+    return imu_lift_init(p_lift, &config);
+}
+
+/** @brief Hump/motion analysis, then lift detection, for one sample. */
+static bool
+analyse_sample (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
+                const imu_data_t * p_processed, imu_event_t * p_event)
+{
+    bool b_analysed = imu_analysis_process(p_analysis, p_processed, p_event);
+
+    /* After analysis: imu_analysis_process clears the whole event. */
+    update_lift(p_lift, p_processed, p_event);
+    return b_analysed;
+}
+
+/** @brief Report a pick-up to the Vehicle Controller, which stops the
+ *         motors on b_lifted (IMU_NOTICE_LIFT reaches it on this publish).
+ */
+static void
+update_lift (imu_lift_t * p_lift, const imu_data_t * p_processed,
+             imu_event_t * p_event)
+{
+    /* Unusable readings arrive with b_valid false (imu_processing_process)
+     * and never report a lift; the hold still runs out on time. */
+    p_event->b_lifted = (p_processed->b_valid) &&
+                        (imu_lift_step(p_lift, p_processed));
+    if ((p_event->b_lifted) && (imu_lift_started(p_lift, p_processed)))
+    {
+        tm_printf((UB *)"[B4] LIFTED: up %d mm/s, rise %d mm\n",
+                  console_integer(p_lift->peak_speed_mps * 1000.0f),
+                  console_integer(p_lift->peak_rise_m * 1000.0f));
+    }
+    if ((p_processed->b_valid) && (imu_lift_changed(p_lift)))
+    {
+        comm_set_lifted(p_lift->b_lifted);   /* dashboard "Lifted" (B1) */
+    }
+}
+
 /** @brief Select the real detector without changing portable mock defaults. */
 static bool
-initialise_analysis (imu_analysis_t * p_analysis)
+initialise_analysis (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
+                     uint32_t max_gap_ms)
 {
     imu_analysis_config_t config;
 
@@ -354,7 +412,8 @@ initialise_analysis (imu_analysis_t * p_analysis)
     config.roll_curve_ratio = 0.0f;
     config.roll_peak_samples = 1U;
 #endif
-    if (!imu_analysis_init(p_analysis, &config))
+    if ((!imu_analysis_init(p_analysis, &config)) ||
+        (!initialise_lift(p_lift, max_gap_ms)))
     {
         return false;
     }

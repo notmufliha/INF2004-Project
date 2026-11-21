@@ -40,10 +40,31 @@ function telemetry(distance, seq) {
 telemetry(50, 1);
 assert.equal(element("o-d").textContent, "50 cm");
 const rollFrame = { ver: W.WIRE_VERSION, seq: 1, roll_dd: -123 };
-assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY.slice(0, -1), rollFrame)).roll_deg, null);
+// A 29-byte frame from before B4 roll (and lifted): no roll, not lifted.
+const oldFrame = W.decode("telemetry", W.pack(W.TELEMETRY.slice(0, -2), rollFrame));
+assert.equal(oldFrame.roll_deg, null);
+assert.equal(oldFrame.lifted, false);
+// A 30-byte frame from before the lifted flag: padding bit 0, not lifted.
+assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY.slice(0, -1), rollFrame)).lifted, false);
 context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, rollFrame));
 vm.runInContext("onTelemetry(frame)", context);
 assert.equal(element("roll").textContent, "-12.3°");
+assert.equal(element("lifted").textContent, "No");
+// B4 lift-stop: shown while reported, then the time of the last lift stays.
+context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, { ...rollFrame, seq: 2, lifted: 1 }));
+vm.runInContext("onTelemetry(frame)", context);
+assert.equal(element("lifted").textContent, "LIFTED: motors stopped");
+assert.match(element("lift-last").textContent, /\(1 this session\)$/);
+context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, { ...rollFrame, seq: 3, lifted: 1 }));
+vm.runInContext("onTelemetry(frame)", context);
+assert.match(element("lift-last").textContent, /\(1 this session\)$/); // same lift
+context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, { ...rollFrame, seq: 4, lifted: 0 }));
+vm.runInContext("onTelemetry(frame)", context);
+assert.equal(element("lifted").textContent, "No");
+assert.match(element("lift-last").textContent, /\(1 this session\)$/);
+context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, { ...rollFrame, seq: 5, lifted: 1 }));
+vm.runInContext("onTelemetry(frame)", context);
+assert.match(element("lift-last").textContent, /\(2 this session\)$/);
 assert.equal(element("o-echo").textContent, "Measured return");
 telemetry(510, 2);
 assert.equal(element("o-d").textContent, "No target (assumed open)");

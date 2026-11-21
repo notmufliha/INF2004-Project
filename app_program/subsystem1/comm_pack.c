@@ -297,6 +297,9 @@ comm_pack_telemetry (uint8_t * p_out, uint32_t cap, uint16_t seq,
     comm_pack_bits_put(&bits, p_telem->obs_left_cm, BITS_DIST);
     comm_pack_bits_put(&bits, p_telem->obs_right_cm, BITS_DIST);
     comm_pack_bits_put(&bits, p_telem->roll_ddeg, COMM_ROLL_BITS); /* B4 extension */
+    /* B4 lift-stop: bit 239 of 240, so the frame stays WIRE_TELEM_LEN; an
+     * older 30-byte frame has 0 there (not lifted). */
+    comm_pack_bits_put(&bits, p_telem->imu_lifted, BITS_FLAG);
 
     return (comm_pack_bits_bytes(&bits));
 }

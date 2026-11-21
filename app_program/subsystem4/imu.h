@@ -111,6 +111,7 @@ typedef struct
     float32_t hump_peak_cm;
     float32_t highest_hump_cm;
     bool      b_sudden_impact;
+    bool      b_lifted; /* Picked up off the floor (imu_lift.h); VC stops. */
     uint32_t  timestamp_ms;
 } imu_event_t;
 

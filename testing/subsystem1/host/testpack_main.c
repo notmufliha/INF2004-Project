@@ -64,6 +64,7 @@ typedef struct telem_case
     uint8_t  faults;
     uint8_t  barcode;
     uint8_t  nav;
+    uint8_t  lifted;   /* B4 lift-stop flag */
 } telem_case_t;
 
 static void             check_eq (const char * p_what, int64_t got,
@@ -175,6 +176,7 @@ make_telemetry (const telem_case_t * p_case)
     telem.roll_ddeg     = comm_pack_twos(comm_pack_sat_s(p_case->pitch,
                                                         COMM_ROLL_MAX),
                                          COMM_ROLL_BITS) & 0xFFFU;
+    telem.imu_lifted   = p_case->lifted & 1U;
 
     return (telem);
 }
@@ -211,7 +213,7 @@ telemetry_vector (const telem_case_t * p_case)
            "enc_l=%d enc_r=%d ir_l=%u ir_c=%u ir_r=%u line=%u "
            "barcode=%u nav=%u motion=%u pitch_dd=%d hump_valid=%u "
            "hump_last_mm=%u hump_peak_mm=%u obs_d_cm=%u obs_w_cm=%u "
-           "obs_lc_cm=%u obs_rc_cm=%u roll_dd=%d\n",
+           "obs_lc_cm=%u obs_rc_cm=%u roll_dd=%d lifted=%u\n",
            (unsigned)p_case->seq, (unsigned)p_case->tds,
            (unsigned)p_case->state, (unsigned)p_case->faults, (int)spd_l,
            (int)spd_r,
@@ -227,7 +229,8 @@ telemetry_vector (const telem_case_t * p_case)
            (unsigned)p_case->hump_peak, (unsigned)p_case->dist,
            (unsigned)p_case->width, (unsigned)p_case->left,
            (unsigned)p_case->right,
-           (int)comm_pack_sign_extend(telem.roll_ddeg, COMM_ROLL_BITS));
+           (int)comm_pack_sign_extend(telem.roll_ddeg, COMM_ROLL_BITS),
+           (unsigned)telem.imu_lifted);
 }
 
 /** @brief Pack one event, check its length and print it. */
@@ -342,19 +345,20 @@ vectors (void)
     static const telem_case_t telem_cases[] =
     {
         /* minimum / zero */
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0U},
         /* maximum of every field, B2 max speed 5000 counts/s */
         {5000, -5000, 8388607, -8388608, 4095, 4095, 1, 7, 7, 511, 1, 126,
          126, 510, 126, 510, 510, 65535, 0xFFFFFU, ROBOT_SAFE_STOP, 0xFF, 4,
-         NAV_UTURN},
+         NAV_UTURN, 1U},
         /* saturation and invalid markers */
         {20000, -20000, 1000, -1, 9999, 4096, 1, 1, 3, -900, 0, 0, 0, 0x1FF,
          0x7F, 0x1FF, 0x1FF, 1234, 98765, ROBOT_LINE_FOLLOW, FAULT_WIFI_LOSS,
-         1, NAV_LEFT},
+         1, NAV_LEFT, 0U},
         /* typical, with a wrapped encoder total (> 2^24 counts) */
         {3000, 2987, 16777216 + 42, 123456, 812, 2400, 0, LINE_F_DETECTED, 1,
          -45, 1, 23, 31, 250, 12, 30, 9, 42, 2100, ROBOT_HUMP,
-         FAULT_NO_ECHO | FAULT_IMU, 2, NAV_RIGHT},
+         FAULT_NO_ECHO | FAULT_IMU, 2, NAV_RIGHT, 0U},
         {.barcode = 26U, .nav = NAV_RIGHT},  /* Z */
         {.barcode = 5U, .nav = NAV_WAIT},    /* E */
         {.barcode = 31U, .nav = 15U},        /* field maxima */

@@ -17,6 +17,7 @@
 #define IMU_NOTICE_RECOVERED 0x0100U
 #define IMU_NOTICE_UNAVAILABLE 0x0200U
 #define IMU_NOTICE_STATE 0x0400U
+#define IMU_NOTICE_LIFT 0x0800U /* Car picked up: stop the motors now. */
 #define IMU_NOTICE_OVERFLOW 0x80000000U
 #define IMU_NOTICE_PERIOD_MS 1000U
 
@@ -47,6 +48,7 @@ typedef struct
     bool         b_tilt_known;
     bool         b_tilt;
     bool         b_impact;
+    bool         b_lifted;
     bool         b_fault;
     bool         b_recovered;
 } imu_notice_tracker_t;
