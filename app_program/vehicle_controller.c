@@ -852,6 +852,7 @@ static void v4_new_run(VEHICLE_CONTROLLER *c)
     c->bar_edges_l = c->bar_edges_r = 0u;
     c->bar_phase = BAR_IDLE;
     c->bar_tries = 0u;
+    c->bar_reverse_nav = B3_NAV_NONE;
     c->bar_speed_cps = 0;
     c->bar_clear_known = c->bar_wait_clear = false;
     c->post_avoid_slow = false;
@@ -1057,6 +1058,7 @@ static void v4_bar_clear(VEHICLE_CONTROLLER *c)
     bool owned_steering = c->bar_phase != BAR_IDLE || c->bars_active ||
         (c->strip_active && !c->bar_wait_clear);
     c->bar_phase = BAR_IDLE;
+    c->bar_reverse_nav = B3_NAV_NONE;
     c->bar_clear_um = c->travel_um;
     c->bar_clear_known = true;
     c->bar_wait_clear = true;
@@ -1071,8 +1073,15 @@ static void v4_bar_clear(VEHICLE_CONTROLLER *c)
  * or hold path returns. Movement still goes through all safety checks. */
 static bool v4_accept_barcode(VEHICLE_CONTROLLER *c, UB nav)
 {
-    if (c->mode != MODE_AUTO || nav < B3_NAV_LEFT || nav >= B3_NAV_COUNT ||
-        (c->bar_phase != BAR_IDLE && c->bar_phase != BAR_READ)) return false;
+    bool full_reverse = (nav & B3_NAV_FULL_REVERSE) != 0u;
+    nav &= (UB)~B3_NAV_FULL_REVERSE;
+    if (c->mode != MODE_AUTO || nav < B3_NAV_LEFT || nav >= B3_NAV_COUNT) return false;
+    if (c->bar_phase == BAR_REVERSE || c->bar_phase == BAR_SETTLE) {
+        if (!full_reverse) return false;
+        c->bar_reverse_nav = nav;
+        return true;
+    }
+    if (c->bar_phase != BAR_IDLE && c->bar_phase != BAR_READ) return false;
     if (nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL) {
         c->slow_mode = nav == B3_NAV_SLOW;
     } else {
@@ -1104,6 +1113,7 @@ static bool v4_barcode(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
                       (INT)(c->bar_back_um / 1000u), (INT)c->bar_tries + 1);
             run_log_event(in->now_ms, RUN_EV_RESCAN,
                           (uint16_t)(c->bar_back_um / 1000u));
+            c->bar_reverse_nav = B3_NAV_NONE;
             c->bar_phase = BAR_REVERSE;
         }
         return true;
@@ -1127,6 +1137,11 @@ static bool v4_barcode(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         if (!in->motion.physically_stopped ||
             in->now_ms - c->bar_ms < VC4_BAR_WAIT_MS) return true;
         c->bar_phase = BAR_READ;
+        if (c->bar_reverse_nav != B3_NAV_NONE) {
+            (void)v4_accept_barcode(c, c->bar_reverse_nav);
+            v4_reset_follow(c);
+            return false;
+        }
         c->bar_speed_cps = vc4_mm_s_to_cps(VC4_BAR_READ_MM_S);
         c->bar_mark_um = c->travel_um;
         c->bar_ms = in->now_ms;
@@ -1249,8 +1264,7 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
 
     /* A decoded barcode arms the next cross-junction (a newer one
      * replaces it), whatever the car is doing. */
-    /* Decodes while stopping/reversing over a strip are partial or
-     * backwards reads: ignored (the slow pass reads it). */
+    /* A complete reverse read can be retained until the rewind settles. */
     (void)v4_accept_barcode(c, nav);
 
     /* A consumed strip must no longer mask a line sensor or disable
@@ -2245,7 +2259,8 @@ static void controller_task(INT stacd, void *exinf)
             if (was_running && c.running && !stop_barrier)
                 (void)v4_accept_barcode(&c, next);
 #else
-            if (nav == 0u && was_running && c.running && !stop_barrier) nav = next;
+            if (nav == 0u && was_running && c.running && !stop_barrier)
+                nav = next & (UB)~B3_NAV_FULL_REVERSE;
 #endif
         }
         in.line_valid = b3_get_timed_state(&line, &line_ms) == E_OK;

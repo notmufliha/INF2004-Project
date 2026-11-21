@@ -452,6 +452,7 @@ typedef struct {
     float v4_jct_advance_cm;
     uint32_t v4_line_seen_ms;
     UB bar_phase, bar_tries;
+    UB bar_reverse_nav;   /* complete decode retained until rewind settles */
     INT bar_speed_cps;     /* fixed target for this pass, across edge gaps */
     uint32_t bar_mark_um, bar_back_um, bar_ms, bar_clear_um;
     bool bar_clear_known;

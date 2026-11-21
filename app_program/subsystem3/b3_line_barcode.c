@@ -106,7 +106,7 @@ static bool b3_pop_edge(B3_EDGE *edge);
 static uint8_t b3_take_overflow(void);
 static void b3_process_edge(const B3_EDGE *edge,
 			    B3_CODE39_DECODER *decoder);
-static void b3_publish_barcode(uint8_t barcode, uint8_t nav);
+static void b3_publish_barcode(uint8_t barcode, uint8_t nav, bool full_reverse);
 static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder);
 static void b3_log_reject(const B3_CODE39_DECODER *decoder);
 static void b3_delay(uint32_t delay_ms);
@@ -633,7 +633,8 @@ static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
 	nav = b3_routes[symbol - 'A'];
 	/* Deliver the action before console/beep work can delay the decoder.
      * The controller needs this event to release its straight read pass. */
-	b3_publish_barcode(B3_BARCODE_CODE(symbol), nav);
+	b3_publish_barcode(B3_BARCODE_CODE(symbol), nav,
+			   decoder->last_reversed != 0U && decoder->last_partial == 0U);
 	b3_buzzer_beep(B3_BEEP_READ, B3_TIMER_RAWL);
 	run_log_event(0U, RUN_EV_BARCODE_READ, (uint16_t)symbol);
 	now = nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL;
@@ -697,9 +698,9 @@ EXPORT bool b3_barcode_active(void)
 		(uint32_t)(B3_TIMER_RAWL - g_last_edge_us) < B3_BARCODE_ACTIVE_US;
 }
 
-static void b3_publish_barcode(uint8_t barcode, uint8_t nav)
+static void b3_publish_barcode(uint8_t barcode, uint8_t nav, bool full_reverse)
 {
-	uint8_t command = nav;
+	uint8_t command = nav | (full_reverse ? B3_NAV_FULL_REVERSE : 0u);
 	UB barcode_character = (UB)('A' + barcode - 1U);
 	ER error;
 

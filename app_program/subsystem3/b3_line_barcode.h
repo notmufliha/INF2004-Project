@@ -135,6 +135,7 @@ _Static_assert(sizeof(B3_STATE) == 5U,
 	       "B3_STATE must occupy five bytes on the RP2040 toolchain");
 
 /* Message buffer owned by B3; each message is one B3_NAV_COMMAND byte. */
+#define B3_NAV_FULL_REVERSE 0x80u /* queue-only flag for a complete reverse read */
 IMPORT ID mbf_nav_cmd;
 IMPORT ID mtx_b3_state;
 
@@ -153,6 +154,7 @@ IMPORT void b3_line_raw(uint16_t *gp26, uint16_t *gp27);
  *
  * Call from core 0 after b3_init(). The navigation consumer must receive
  * one uint8_t message from mbf_nav_cmd for each decoded command.
+ * Mask B3_NAV_FULL_REVERSE to obtain the navigation command.
  */
 IMPORT ER b3_start(void);
 

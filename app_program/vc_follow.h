@@ -93,7 +93,7 @@
 #define VC4_EXIT_LOST_UM    60000u /* ...and this much travel               */
 
 /* ---- junction classifier ---------------------------------------------- */
-#define VC4_JCT_MIN_UM      10000u /* tape at least this wide             */
+#define VC4_JCT_MIN_UM      8000u  /* effective overlap at the sensors    */
 #define VC4_JCT_CONFIRM_UM  12000u /* clear travel after the crossbar     */
 /* Crossing tape (both sensors on tape): steer straight and ignore which
  * sensor touched it first/last, until both are back on floor or this far

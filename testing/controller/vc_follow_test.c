@@ -170,6 +170,14 @@ int main(void){
     if(pos>=100 && pos<118){nl=1000;nr=1000;}
     j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=2400; }
   CHECK(got==VC4_JCT_CROSS, "18 mm crossing tape -> CROSS");
+  /* Sensor overlap from the missed-junction run, with sub-mm encoder distance. */
+  vc4_reset(&t);
+  const uint32_t pos[] = {1171500, 1172000, 1174000, 1176000, 1178000, 1180000, 1181000};
+  for (unsigned i = 0; i < 5; i++) vc4_junction(&t, 1000, 1000, pos[i]);
+  vc4_junction(&t, 642, 1000, pos[5]);
+  vc4_junction(&t, 54, 1000, pos[6]);
+  CHECK(vc4_junction(&t, 0, 0, pos[6] + VC4_JCT_CONFIRM_UM) == VC4_JCT_CROSS,
+        "logged short sensor overlap confirms a crossing");
   /* narrow (5mm) -> nothing */
   vc4_reset(&t); um=0; got=0;
   for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=100,nr=100;

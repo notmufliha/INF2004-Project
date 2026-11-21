@@ -174,6 +174,16 @@ int main(void)
     }
     assert(sent.target_speed_cps == vc4_mm_s_to_cps(VC4_BAR_READ_MM_S));
 
+    c = reading();
+    c.bar_phase = BAR_REVERSE;
+    assert(!v4_accept_barcode(&c, B3_NAV_RIGHT)); /* partial read */
+    assert(v4_accept_barcode(&c, B3_NAV_RIGHT | B3_NAV_FULL_REVERSE));
+    assert(c.pending_navigation == B3_NAV_NONE);
+    c.bar_phase = BAR_SETTLE;
+    c.bar_ms = input.now_ms - VC4_BAR_WAIT_MS;
+    assert(!v4_barcode(&c, &input));
+    assert(c.bar_phase == BAR_IDLE && c.pending_navigation == B3_NAV_RIGHT);
+
     /* Exhaustion skips this strip and keeps driving, without re-arming
      * retries on its remaining bars. A later strip can still be read. */
     c = reading();
