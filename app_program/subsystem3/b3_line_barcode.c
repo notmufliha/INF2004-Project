@@ -97,9 +97,10 @@ EXPORT ID mtx_b3_state;
 
 static void b3_gpio_irq_handler(UINT intno);
 static ER b3_read_adc(uint8_t channel, uint16_t *value);
+static ER b3_read_line_pair(uint16_t *left, uint16_t *centre);
 static volatile uint16_t g_raw_left, g_raw_centre;
 static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
-			      uint8_t flags);
+                              uint8_t flags, uint32_t sample_ms, bool timed);
 static void b3_set_barcode_state(uint8_t barcode, uint8_t nav);
 static bool b3_pop_edge(B3_EDGE *edge);
 static uint8_t b3_take_overflow(void);
@@ -109,6 +110,7 @@ static void b3_publish_barcode(uint8_t barcode, uint8_t nav);
 static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder);
 static void b3_log_reject(const B3_CODE39_DECODER *decoder);
 static void b3_delay(uint32_t delay_ms);
+static void b3_line_wait(uint32_t started_ms, bool timed);
 
 /**
  * @brief Create the ADC handle, navigation queue, and state mutex.
@@ -345,19 +347,13 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	b3_line_cal_init(&centre_cal);
 
 	for (;;) {
-		error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &left);
+		SYSTIM cycle_start = {0};
+		bool timed = tk_get_tim(&cycle_start) == E_OK;
+		error = b3_read_line_pair(&left, &centre);
 		if (error != E_OK) {
-			CHECK(error, "B3 GP26 ADC read");
+			CHECK(error, "B3 paired GP26/GP27 ADC read");
             b3_invalidate_line();
-			b3_delay(B3_LINE_UPDATE_MS);
-			continue;
-		}
-
-		error = b3_read_adc(B3_ADC_CENTRE_CHANNEL, &centre);
-		if (error != E_OK) {
-			CHECK(error, "B3 GP27 ADC read");
-            b3_invalidate_line();
-			b3_delay(B3_LINE_UPDATE_MS);
+			b3_line_wait(cycle_start.lo, timed);
 			continue;
 		}
 
@@ -390,7 +386,8 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 		}
 
 		/* Controller gets normalised values; dashboard gets raw ADC. */
-		b3_set_line_state(left_norm, centre_norm, right, flags);
+		b3_set_line_state(left_norm, centre_norm, right, flags,
+                          cycle_start.lo, timed);
 		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
         if (++diagnostic_samples >= 50U) {
             diagnostic_samples = 0U;
@@ -419,7 +416,7 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 				  (int)left_white, (int)left_black,
 				  (int)centre_white, (int)centre_black);
 		}
-		b3_delay(B3_LINE_UPDATE_MS);
+		b3_line_wait(cycle_start.lo, timed);
 	}
 }
 
@@ -462,6 +459,26 @@ EXPORT void b3_barcode_task(INT stacd, void *exinf)
 	}
 }
 
+/* Alternate the channels so both averages cover the same time window.
+ * Grouping eight conversions per channel gave the physical left sensor
+ * an extra eight-conversion delay on moving curves. Publish only a full pair. */
+static ER b3_read_line_pair(uint16_t *left, uint16_t *centre)
+{
+    uint32_t sum_left = 0u, sum_centre = 0u;
+    for (unsigned i = 0u; i < B3_ADC_OVERSAMPLE; ++i) {
+        uint16_t l, c;
+        ER error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &l);
+        if (error != E_OK) return error;
+        error = b3_read_adc(B3_ADC_CENTRE_CHANNEL, &c);
+        if (error != E_OK) return error;
+        sum_left += l;
+        sum_centre += c;
+    }
+    *left = (uint16_t)(sum_left / B3_ADC_OVERSAMPLE);
+    *centre = (uint16_t)(sum_centre / B3_ADC_OVERSAMPLE);
+    return E_OK;
+}
+
 static ER b3_read_adc(uint8_t channel, uint16_t *value)
 {
 	uint32_t adc_word = 0U;
@@ -472,28 +489,20 @@ static ER b3_read_adc(uint8_t channel, uint16_t *value)
 		return E_PAR;
 	}
 
-	uint32_t sum = 0U;
-
-	/* Average several conversions: GP26's black/white span is only ~100
-	 * counts, so single-sample ADC noise moved the steering signal. */
-	for (unsigned i = 0U; i < B3_ADC_OVERSAMPLE; ++i) {
-		result = tk_srea_dev(g_adc_device, (W)channel, &adc_word, 1U,
-				     &actual_size);
-		if (result != E_OK) {
-			return result;
-		}
-		if (actual_size != 1 || adc_word > 4095U) {
-			return E_IO;
-		}
-		sum += adc_word & 0x0FFFU;
+	result = tk_srea_dev(g_adc_device, (W)channel, &adc_word, 1U,
+                         &actual_size);
+	if (result != E_OK) {
+		return result;
 	}
-
-	*value = (uint16_t)(sum / B3_ADC_OVERSAMPLE);
+	if (actual_size != 1 || adc_word > 4095U) {
+		return E_IO;
+	}
+	*value = (uint16_t)adc_word;
 	return E_OK;
 }
 
 static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
-			      uint8_t flags)
+                              uint8_t flags, uint32_t sample_ms, bool timed)
 {
 	ER error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
 
@@ -506,11 +515,10 @@ static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
 	g_b3_state.ir_centre = centre & 0x0FFFU;
 	g_b3_state.ir_right = (right != 0U) ? 1U : 0U;
 	g_b3_state.line_flags = flags & 0x07U;
-    {
-        SYSTIM now;
-        g_line_sample_valid = tk_get_tim(&now) == E_OK;
-        if (g_line_sample_valid) g_line_sample_ms = now.lo;
-    }
+    /* Age includes ADC acquisition and publication waits, not just the
+     * time since this mutex was acquired. */
+    g_line_sample_valid = timed;
+    if (timed) g_line_sample_ms = sample_ms;
 	error = tk_unl_mtx(mtx_b3_state);
 	if (error != E_OK) {
 		CHECK(error, "B3 state unlock");
@@ -622,10 +630,12 @@ static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
 			  "(reversed)" : "(forward)");
 		return;
 	}
-	b3_buzzer_beep(B3_BEEP_READ, B3_TIMER_RAWL);
-	run_log_event(0U, RUN_EV_BARCODE_READ,
-		      (uint16_t)symbol);
 	nav = b3_routes[symbol - 'A'];
+	/* Deliver the action before console/beep work can delay the decoder.
+     * The controller needs this event to release its straight read pass. */
+	b3_publish_barcode(B3_BARCODE_CODE(symbol), nav);
+	b3_buzzer_beep(B3_BEEP_READ, B3_TIMER_RAWL);
+	run_log_event(0U, RUN_EV_BARCODE_READ, (uint16_t)symbol);
 	now = nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL;
 	tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s %s\n",
 		  symbol, decoder->last_reversed != 0U ?
@@ -633,7 +643,6 @@ static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
 		  decoder->last_partial != 0U ?
 		  " (partial: one '*' lost)" : "",
 		  nav_names[nav], now ? "now" : "at next junction");
-	b3_publish_barcode(B3_BARCODE_CODE(symbol), nav);
 }
 
 static void b3_log_reject(const B3_CODE39_DECODER *decoder)
@@ -713,4 +722,17 @@ static void b3_delay(uint32_t delay_ms)
 	if (error < E_OK) {
 		CHECK(error, "B3 task delay");
 	}
+}
+
+/* Keep a 20 ms start-to-start cadence instead of work time plus 20 ms.
+ * An overrun still yields so lower-priority tasks can make progress. */
+static void b3_line_wait(uint32_t started_ms, bool timed)
+{
+    SYSTIM now;
+    uint32_t wait_ms = B3_LINE_UPDATE_MS;
+    if (timed && tk_get_tim(&now) == E_OK) {
+        uint32_t elapsed = now.lo - started_ms;
+        wait_ms = elapsed < B3_LINE_UPDATE_MS ? B3_LINE_UPDATE_MS - elapsed : 1u;
+    }
+    b3_delay(wait_ms);
 }

@@ -35,21 +35,24 @@ static inline void encoder_count_write(volatile encoder_count_t *value, int32_t 
     value->bytes[2] = (uint8_t)(raw >> 16);
 }
 
-/* Saturate instead of wrapping; false requires a latched encoder fault. */
-static inline bool encoder_count_step(volatile encoder_count_t *value, int32_t delta)
+/* Shortest signed displacement across rollover. Sample before either
+ * wheel travels half the counter range (over 340 m between readings). */
+static inline int32_t encoder_count_delta(int32_t now, int32_t previous)
 {
-    int64_t next = (int64_t)encoder_count_read(value) + delta;
-    bool valid = next >= ENC_COUNT_MIN && next <= ENC_COUNT_MAX;
-    if (next > ENC_COUNT_MAX)
-    {
-        next = ENC_COUNT_MAX;
-    }
-    if (next < ENC_COUNT_MIN)
-    {
-        next = ENC_COUNT_MIN;
-    }
-    encoder_count_write(value, (int32_t)next);
-    return valid;
+    uint32_t raw = ((uint32_t)now - (uint32_t)previous) &
+        UINT32_C(0xffffff);
+    return raw >= UINT32_C(0x800000) ?
+        (int32_t)raw - INT32_C(16777216) : (int32_t)raw;
+}
+
+/* Unsigned rollover is intentional; absolute travel is not a fault. */
+static inline void encoder_count_step(volatile encoder_count_t *value,
+    int32_t delta)
+{
+    uint32_t raw = ((uint32_t)encoder_count_read(value) + (uint32_t)delta) &
+        UINT32_C(0xffffff);
+    encoder_count_write(value, raw >= UINT32_C(0x800000) ?
+        (int32_t)raw - INT32_C(16777216) : (int32_t)raw);
 }
 
 /* Fault detection uses the original float before this telemetry clamp. */

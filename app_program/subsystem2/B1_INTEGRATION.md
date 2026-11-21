@@ -7,8 +7,9 @@
 - The low-priority telemetry task reads B2's measured signed speeds and full
   signed encoder totals. With the binary B1 header (`COMM_SPEED_MAX` defined),
   `b2_integration.c` calls `comm_set_motion(left_cps, right_cps, left, right)`.
-  B2 does not truncate totals to 24 bits; B1 owns packing and the laptop owns
-  reconstruction. B2's 5000 limit applies to requested speed, not encoder totals.
+  B2 provides sign-extended rolling 24-bit totals; B1 packs those same bits
+  and the laptop reconstructs rollover. B2's 5000 limit applies to requested
+  speed. Absolute encoder totals no longer impose a travel stop.
 - The current branch still has the older JSON B1 API. The adapter retains
   its five-argument mm/s call until B1 is merged, then selects the counts/s
   interface automatically. Do not describe this branch's old JSON speed as

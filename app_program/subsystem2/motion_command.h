@@ -133,7 +133,7 @@ typedef struct
      */
     uint32_t command_id;
 
-    /* Signed 24-bit net counts; driver faults on range exhaustion. */
+    /* Signed 24-bit rolling counts; rollover does not stop motion. */
     INT left_encoder_counts : 24;
     INT right_encoder_counts : 24;
 

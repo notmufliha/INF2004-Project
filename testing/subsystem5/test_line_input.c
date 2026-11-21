@@ -43,13 +43,26 @@ static uint32_t values[2] = {370u, 1500u};
 static int fail_channel = -1;
 static bool busy, short_read, bad_clock;
 static uint32_t time_ms = 100u;
+static uint32_t adc_delay_ms, last_wait_ms;
+static bool moving_surface, check_decode_order, nav_delivered;
+static unsigned adc_index;
+static UB delivered_nav;
 static uint32_t sio[2], timer[12], io[80];
 #define B3_SIO_BASE ((uintptr_t)sio)
 #define B3_TIMER_BASE ((uintptr_t)timer)
 #define B3_IO_BANK_BASE ((uintptr_t)io)
 static ID tk_cre_mbf(T_CMBF *m) { (void)m; return 6; }
 static ER tk_del_mbf(ID id) { (void)id; return E_OK; }
-static ER tk_snd_mbf(ID id, const void *p, INT n, int t) { (void)id; (void)p; (void)n; (void)t; return E_OK; }
+static ER tk_snd_mbf(ID id, const void *p, INT n, int t)
+{
+    (void)id; (void)t;
+    if (check_decode_order) {
+        assert(n == 1);
+        delivered_nav = *(const UB *)p;
+        nav_delivered = true;
+    }
+    return E_OK;
+}
 static ER gpio_set_pin(unsigned pin, int mode) { (void)pin; (void)mode; return E_OK; }
 #define GPIO_MODE_IN 0
 static ER app_gpio_irq_register(UW mask, void (*f)(UINT)) { (void)mask; (void)f; return E_OK; }
@@ -68,6 +81,11 @@ static ER tk_srea_dev(ID id, int channel, UW *out, int size, SZ *actual)
     assert(id == 3 && channel >= 0 && channel <= 1 && size == 1);
     if (channel == fail_channel) return E_OBJ;
     *out = values[channel];
+    if (moving_surface) {
+        assert((unsigned)channel == adc_index % 2u);
+        *out += adc_index++;
+    }
+    time_ms += adc_delay_ms;
     *actual = short_read ? 0 : 1;
     return E_OK;
 }
@@ -75,14 +93,15 @@ static ER tk_get_tim(SYSTIM *time) { time->lo = time_ms; return bad_clock ? E_OB
 static void comm_set_line(uint16_t l, uint16_t c, unsigned r, unsigned flags)
 { assert(l <= 4095u && c <= 4095u && r == 0u && flags != 0u); }
 static ER tk_dly_tsk(unsigned ms)
-{ assert(ms == B3_LINE_UPDATE_MS); longjmp(iteration, 1); }
+{ assert(ms >= 1 && ms <= B3_LINE_UPDATE_MS); last_wait_ms = ms; longjmp(iteration, 1); }
 static ID app_start_task(FP entry, INT pri, UW core, const char *name)
 { assert(entry && (pri == 16 || pri == 17) && core == TP_PRC1 && name); return 5; }
 #define B3_BUZZER_H
 #define RUN_LOG_ENABLE 0
 typedef enum { B3_BEEP_READ = 0, B3_BEEP_REJECT } B3_BEEP;
 static void b3_buzzer_init(void) {}
-static void b3_buzzer_beep(B3_BEEP p, uint32_t t) { (void)p; (void)t; }
+static void b3_buzzer_beep(B3_BEEP p, uint32_t t)
+{ (void)p; (void)t; if (check_decode_order) assert(nav_delivered); }
 static void b3_buzzer_poll(uint32_t t) { (void)t; }
 #include "../../app_program/subsystem3/b3_line_barcode.c"
 static void sample(void)
@@ -169,6 +188,34 @@ int main(void)
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     busy = true;
     assert(b3_get_timed_state(&out, &timestamp) == E_TMOUT);
+    busy = false;
+    /* Sixteen ADC conversions at 1 ms each leave 4 ms of the period.
+     * The sample timestamp must precede acquisition, not hide its age. */
+    adc_delay_ms = 1u;
+    uint32_t started_ms = time_ms;
+    sample();
+    assert(last_wait_ms == 4u);
+    assert(b3_get_timed_state(&out, &timestamp) == E_OK);
+    assert(timestamp == started_ms && time_ms - timestamp == 17u);
+    adc_delay_ms = 2u;
+    sample();
+    assert(last_wait_ms == 1u); /* overrun yields without another 20 ms wait */
+    moving_surface = true;
+    adc_index = 0;
+    adc_delay_ms = 0;
+    values[0] = values[1] = 300u;
+    sample();
+    uint16_t raw_r, raw_l;
+    b3_line_raw(&raw_r, &raw_l);
+    assert(adc_index == 2u * B3_ADC_OVERSAMPLE);
+    assert(raw_r == 307 && raw_l == 308); /* one conversion apart, not eight */
+    moving_surface = false;
+    check_decode_order = true;
+    B3_CODE39_DECODER decoder;
+    b3_code39_reset(&decoder);
+    b3_handle_symbol('B', &decoder);
+    assert(nav_delivered && delivered_nav == B3_NAV_LEFT);
+    check_decode_order = false;
     puts("PASS B3 line input: GP26/27 channel mapping, polarity, timestamp, initialization, complete ADC pairs, invalidation, recovery, bounded locking");
     return 0;
 }

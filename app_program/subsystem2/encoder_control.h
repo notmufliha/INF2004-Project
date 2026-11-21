@@ -10,10 +10,9 @@
 
 ER encoder_init(void);
 
-/* Signed 24-bit net counts, returned sign-extended to the platform INT.
- * Exhaustion saturates and latches a fault until encoder initialization. */
+/* Signed 24-bit rolling counts, sign-extended to the platform INT.
+ * Use encoder_count_delta for displacement across rollover. */
 void encoder_get_counts(INT *p_left, INT *p_right);
-bool encoder_range_fault(void);
 /* Cumulative impossible A/B transitions; read atomically as a pair. */
 void encoder_get_invalid_counts(UW *left, UW *right);
 /* Wheel geometry and encoder resolution. */
@@ -41,7 +40,8 @@ void encoder_get_invalid_counts(UW *left, UW *right);
 #define ENC_LEFT_COUNTS_PER_REV  2499
 #define ENC_RIGHT_COUNTS_PER_REV 2341
 
-/* Calculate signed wheel travel from encoder count differences. */
+/* Signed travel from a starting count, valid within half a counter cycle.
+ * Long-running consumers must accumulate sampled encoder_count_delta. */
 void encoder_get_distance_cm(
     INT left_start,
     INT right_start,

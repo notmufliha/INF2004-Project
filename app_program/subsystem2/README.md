@@ -223,14 +223,15 @@ signed 24-bit encoder totals and signed 14-bit published speeds. Two bits
 still represent each previous quadrature state. Motor ownership, calibration
 and the 10 ms control period retain their existing contracts.
 
-The count range is -8,388,608..8,388,607 net counts, approximately +/-686 m
-for the left wheel and +/-732 m for the right at the current calibration.
-Counts use explicit three-byte storage in the ISR and speed history. On an
-edge that would exceed this range, the counter saturates and latches a range
-fault until encoder initialization/restart. The control task checks this flag
-under the encoder lock and requests a safety STOP / MOTION_FAULT_ENCODER.
-It never interprets a wrapped count as reverse travel. Reinitializing counters
-while a motion or odometry consumer is running is unsupported.
+Counters retain the signed 24-bit representation (-8,388,608..8,388,607),
+but now roll over without stopping the robot. ISR totals and speed history
+still use three bytes per count. PID, telemetry speed and B4 direction
+checks use modular differences, so rollover is not interpreted as reversal
+or an enormous speed spike. Motion distance accumulates per-sample travel.
+Consumers must sample within half a counter cycle (over 340 m of wheel
+travel); absolute totals alone are not lifetime distance. The binary B1
+format is unchanged. Reinitializing counters while consumers run remains
+unsupported. Speed, invalid-transition and stall faults remain active.
 
 Published speeds use -8192..8191 counts/s, matching B1's signed 14-bit format.
 This is a new operational limit on instantaneous sampled speed, independent
@@ -339,7 +340,8 @@ real pending slot for every steering value -1000..1000, maximum speed, maximum
 MOVE distance, maximum durations, 360-degree right turns and STOP identity.
 Invalid values that would alias valid values after truncation are rejected.
 Signed 24-bit boundary/sign-extension tests, all 16,384 published speed values,
-high-origin encoder history and safety STOP on speed/range faults are covered.
+high-origin encoder history, forward/reverse rollover with continuous motor
+output, and safety STOP on speed faults are covered.
 The simulator now divides large movement jumps across samples below 8191 cps
 instead of teleporting hundreds of counts in 10 ms. Both B1 legacy and binary
 integration variants pass. B4's real motion-reader and odometry-adapter host

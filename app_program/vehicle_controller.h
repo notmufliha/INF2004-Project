@@ -342,6 +342,7 @@
 typedef struct {
     uint32_t now_ms, safety_generation;
     uint32_t line_age_ms;
+    uint32_t loop_ms;
     bool clearance, line_valid, imu_valid, hump, hazard, motion_valid;
     bool barcode_active; /* B3 barcode sensor is crossing bars */
     bool obstacle_active, obstacle_fault;
