@@ -4,6 +4,8 @@
 #include <math.h>
 #include "../../app_program/vc_follow.h"
 static int fails;
+/* Bare mat: B3 floor tracking makes it read ~0 (below VC4_WHITE). */
+#define FLOOR 30u
 #define CHECK(c,m) do{ if(!(c)){printf("FAIL: %s\n",m);fails++;} else printf("ok: %s\n",m);}while(0)
 
 /* Normalised reading of a sensor d mm from the centre of an 18 mm tape
@@ -57,17 +59,17 @@ int main(void){
     int32_t ls=0, rs=0, lsp, lst, rsp, rst;
     vc4_reset(&left); vc4_reset(&right);
     for(int i=0;i<4;i++){
-      ls=vc4_steer(&left,600,100,20,(uint32_t)i*2000);
-      rs=vc4_steer(&right,100,600,20,(uint32_t)i*2000);
+      ls=vc4_steer(&left,600,FLOOR,20,(uint32_t)i*2000);
+      rs=vc4_steer(&right,FLOOR,600,20,(uint32_t)i*2000);
     }
-    CHECK(rs==-589, "right curve entry retains previous steering response");
+    CHECK(rs<=-589, "right curve entry steers at least as hard as before");
     CHECK(ls==-rs && ls<=VC4_STEER_MAX,
           "left and right curve entry retain the same filter response");
     vc4_wheels(500,120,100,&lsp,&lst);
     vc4_wheels(-500,120,100,&rsp,&rst);
     CHECK(lsp==rsp && lst==-rst,
           "left adjustment leaves wheel split and speed mapping unchanged");
-    for(int i=0;i<20;i++) ls=vc4_steer(&left,100,100,20,8000+(uint32_t)i*2000);
+    for(int i=0;i<20;i++) ls=vc4_steer(&left,FLOOR,FLOOR,20,8000+(uint32_t)i*2000);
     CHECK(vc4_on_line(&left) && ls<200,
           "partial left correction still releases toward straight");
   }
@@ -86,7 +88,7 @@ int main(void){
   CHECK(!t.cross_hold && s>300, "curve plus grey floor cannot force crossing straight hold");
   /* centred straight: both white forever -> never lost, steer 0 */
   vc4_reset(&t);
-  for(int i=0;i<500;i++){ s=vc4_steer(&t,100,100,20,um); um+=2400; }
+  for(int i=0;i<500;i++){ s=vc4_steer(&t,FLOOR,FLOOR,20,um); um+=2400; }
   CHECK(vc4_on_line(&t) && s==0, "centred both-white never lost");
   /* line drifts under left sensor -> steer + (left), wheels turn left */
   for(int i=0;i<10;i++){ s=vc4_steer(&t,900,50,20,um); um+=2400; }
@@ -104,52 +106,52 @@ int main(void){
   printf("   lost at tick %d, recovery steer %d\n",lost_at,s);
   CHECK(s>0, "recovery arc toward exit side (left)");
   /* found again */
-  s=vc4_steer(&t,800,100,20,um);
+  s=vc4_steer(&t,800,FLOOR,20,um);
   CHECK(vc4_on_line(&t), "found again on black");
   /* The left exit in the robot log faded through the sensor for about
    * 250 ms before both sensors went white. Keep only left-side memory over
    * that interval; leave the known-good right-side freshness unchanged. */
   vc4_reset(&t); um=0;
-  vc4_steer(&t,884,100,20,um); um+=2400;
+  vc4_steer(&t,884,FLOOR,20,um); um+=2400;
   for(int i=0;i<12;i++){
-    vc4_steer(&t,500,100,20,um); um+=2400;
+    vc4_steer(&t,500,FLOOR,20,um); um+=2400;
   }
-  s=vc4_steer(&t,100,100,20,um);
+  s=vc4_steer(&t,FLOOR,FLOOR,20,um);
   CHECK(t.exit_side==1, "left exit survives a 240 ms partial fade");
   for(int i=0;i<5;i++){
-    s=vc4_steer(&t,100,100,20,um); um+=2400;
+    s=vc4_steer(&t,FLOOR,FLOOR,20,um); um+=2400;
   }
   CHECK(s>200, "left steering is retained after the logged fade");
 
   vc4_reset(&t); um=0;
-  vc4_steer(&t,100,884,20,um); um+=2400;
+  vc4_steer(&t,FLOOR,884,20,um); um+=2400;
   for(int i=0;i<12;i++){
-    vc4_steer(&t,100,500,20,um); um+=2400;
+    vc4_steer(&t,FLOOR,500,20,um); um+=2400;
   }
-  vc4_steer(&t,100,100,20,um);
+  vc4_steer(&t,FLOOR,FLOOR,20,um);
   CHECK(t.exit_side==0, "right exit retains the original 200 ms freshness");
 
   vc4_reset(&t); um=0;
-  vc4_steer(&t,884,100,20,um); um+=2400;
+  vc4_steer(&t,884,FLOOR,20,um); um+=2400;
   for(int i=0;i<25;i++){
-    vc4_steer(&t,500,100,20,um); um+=2400;
+    vc4_steer(&t,500,FLOOR,20,um); um+=2400;
   }
-  vc4_steer(&t,100,100,20,um);
+  vc4_steer(&t,FLOOR,FLOOR,20,um);
   CHECK(t.exit_side==0, "left exit memory still expires after a long fade");
   /* grey graze then white: not lost */
   vc4_reset(&t);
-  for(int i=0;i<5;i++) vc4_steer(&t,500,100,20,um);
-  for(int i=0;i<100;i++){ vc4_steer(&t,100,100,20,um); um+=2400; }
+  for(int i=0;i<5;i++) vc4_steer(&t,500,FLOOR,20,um);
+  for(int i=0;i<100;i++){ vc4_steer(&t,FLOOR,FLOOR,20,um); um+=2400; }
   CHECK(vc4_on_line(&t), "grey graze then white = centred, not lost");
   /* junction: both black for 18 mm then 30 mm -> CROSS */
   vc4_reset(&t); um=0; vc4_jct_t j=0, got=0;
-  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=100,nr=100;
+  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
     if(pos>=100 && pos<118){nl=1000;nr=1000;}
     j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=2400; }
   CHECK(got==VC4_JCT_CROSS, "18 mm crossing tape -> CROSS");
   /* narrow (5mm) -> nothing */
   vc4_reset(&t); um=0; got=0;
-  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=100,nr=100;
+  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
     if(pos>=100 && pos<105){nl=1000;nr=1000;}
     j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=1000; }
   CHECK(got==VC4_JCT_NONE, "5 mm stripe not a junction");
@@ -160,7 +162,7 @@ int main(void){
   /* unmarked cross met at an angle: left sensor hits the arm 6 mm first
    * and leaves 6 mm later -> car must go straight, never lost */
   { vc4_reset(&t); um=0; int32_t maxs=0; bool lostx=false;
-    for(int i=0;i<300;i++){ uint32_t pos=um/1000; uint32_t nl=100,nr=100;
+    for(int i=0;i<300;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
       if(pos>=100 && pos<124) nl=1000;
       if(pos>=106 && pos<130) nr=1000;
       s=vc4_steer(&t,nl,nr,20,um);
@@ -176,11 +178,11 @@ int main(void){
   /* curve: line drifts onto the left sensor; steering must be strong
    * while the sensor is still only part-way on the tape */
   { vc4_reset(&t); um=0; int32_t s2=0;
-    for(int i=0;i<4;i++){ s2=vc4_steer(&t,600,100,20,um); um+=2400; }
+    for(int i=0;i<4;i++){ s2=vc4_steer(&t,600,FLOOR,20,um); um+=2400; }
     printf("   half on tape for 80 ms: steer %d\n",s2);
     CHECK(s2>350, "curve: part-way onto the sensor already steers hard");
-    for(int i=0;i<2;i++){ s2=vc4_steer(&t,950,100,20,um); um+=2400; }
-    for(int i=0;i<3;i++){ s2=vc4_steer(&t,100,100,20,um); um+=2400; }
+    for(int i=0;i<2;i++){ s2=vc4_steer(&t,950,FLOOR,20,um); um+=2400; }
+    for(int i=0;i<3;i++){ s2=vc4_steer(&t,FLOOR,FLOOR,20,um); um+=2400; }
     printf("   60 ms after the line left the left sensor: steer %d\n",s2);
     CHECK(s2>300, "curve exit: recovery arc starts at once, not after a coast"); }
   /* Steady curve: hold one smooth turn (model video), not turn /

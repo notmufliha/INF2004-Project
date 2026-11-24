@@ -1,0 +1,281 @@
+﻿#SERIAL opened COM8 18:58:53
+
+
+microT-Kernel Version 3.00
+
+
+=== micro T-Kernel on Raspberry Pi Pico W (spec 0x6300, product 0x0003) ===
+single-core build
+[ROBOT] Guarded real-hardware mode; drive=1 bypass=1
+[B2] Both motor PWM channels initialized
+[B2] Encoder interrupts initialized
+[B2-TUNE] build=Nov 24 2026 18:58:12 forward_trial=1 baseL=6 baseR=12 inner_adjust=off curve_feedback=adaptive
+[B2-FW] move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway_max=45
+[B2] Motion subsystem initialized
+[ROBOT] Waiting for B4: keep the car level/still
+[B4] IMU starting: REAL GY-511, target period=10 ms
+[B4] Hump mode=ROLL; thresholds provisional; height uses tyre centre spacing and peak roll
+wifi: cyw43_utk_task starting (proc 1)
+wifi: cyw43_init() ...
+wifi: cyw43_init() returned, bringing interface up ...
+[B4] GY-511 connected on I2C0 (GP4/GP5)
+[B4] Calibration starting: keep level/still for 200 samples
+[B4] Invalid reading/timing: terrain sequence reset
+[B4-FAULT-DETAIL] raw_valid=0 sample_gap_ms=3355769976 failures=3
+[B4] Sensor fault/unavailable: readings suppressed
+wifi: joining "iPhone" ...
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+[B4] Level calibration complete
+[B4] Magnetic calibration pending; turn rate unavailable
+[B4] Sensor recovered: readings valid
+[ROBOT] B1/B2/B3/B4/B5 + controller started; configured autostart waits for healthy sensors
+[VC-TUNE] build=Nov 24 2026 18:58:09 v4=1 filter=4 split=650 left_junction_deg=80
+[VC] line sensors: SPREAD (line between them) layout (VC_LINE_STRADDLE)
+[VC] state=1
+[VC-BOOT-WAIT] line=0 detected=0 imu=1 motion=0 hazard=1 obstacle_fault=0 clearance=0 faults=0
+[FW-ID] Nov 24 2026 18:58:18 B5-EDGE-SWEEP: autonomous=1 scan=30..120 stop_cm=15 release_cm=18 straight_trim=-20
+[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12
+[S5-TEST] obstacle_test=0 bounded_reverse=0 reverse_cm=8 rear_space=operator_checked startup_clear_cm=15
+[S5-FW] CLOSERETREAT-V47 encoder_distance=1 speed_cps=680 turn_deg=55 sensor_turn_guard_x100=1000 opening_pivot_x100=2500
+[S5-GEOMETRY] sensor_offset_x100=500 uncertainty_x100=100 pivot_turn_guard_x100=1400
+[S5-REJOIN-CFG] on=1 turn=90 plan_width_x100=1400 box_depth_x100=1000 half_width_x100=625 rear_x100=800 side_margin_x100=250 lookahead_x100=1200 tape_advance_x100=550
+[S5-CLOCK] timer_tick_cycles=12 expected=12 (1 MHz)
+[S5-INIT] TRIG=GP16 ECHO=GP17 echo_level=0 PWM_CSR=17 DIV=2000 TOP=65535 (expected 17/2000/65535)
+[S5-BOOT] ultrasonic pins initialized
+[S5-SERVO] GP12 PWM slice=6 50Hz center=1450us init errors=0,0,0,0,0
+[S5-SCAN-MAP] reversed=1 logical70=LEFT logical110=RIGHT pulse_left=1561 pulse_right=1339
+[S5-SERVO] GP12 startup PWM readback function=4 enabled=1 pulse_us=1450
+[S5-BOOT] servo PWM initialized at 50Hz
+[B4 #206] Motion=unknown/quiet
+[B4 #206] B2 motion context=N/A
+[B4 #206] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #206] Accel X=-2 Y=2 Z=1003 mg
+[B4 #206] Heading=N/A
+[B4 #206] TurnRate=N/A
+s1: WiFi & Telemetry task started
+s1: link INITIALISING -> CONNECTING_WIFI  faults=0x00
+s1: EVENT error 0x81 (S4 #1) detail 0
+[S5-BOOT] straight-ahead servo command applied at 1450 us
+[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO
+[S5] B2 owns motors, B3 owns IR line, navigation arbitrates commands
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=11977 pulse_us=6984 nav_error=NONE
+[S5-STARTUP-WAIT] echo=OK valid_hits=1; motors stopped, retrying
+[VC-BOOT-WAIT] line=1 detected=0 imu=1 motion=1 hazard=0 obstacle_fault=0 clearance=0 faults=0
+[B4 #240] Motion=stationary
+[B4 #240] B2 speed L=0 R=0 counts/s
+[B4 #240] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #240] Accel X=-6 Y=4 Z=995 mg
+[B4 #240] Heading=N/A
+[B4 #240] TurnRate=N/A
+[VC-BOOT] sensors and front clearance ready; START
+[VC] state=2
+[VC-STEER] t=3355776936 state=2 R26=0 L27=0 flags=2 steer=0 base=100 measL=0 measR=0 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355776946 type=1 steer=0 targetL=98 targetR=95 measL=0 measR=0 pwmReqL=7 pwmReqR=13 dt=10
+[VC4] on a ramp: short obstacle stop
+wifi: joining "iPhone" ...
+[VC-STEER] t=3355777206 state=2 R26=0 L27=0 flags=2 steer=0 base=1000 measL=900 measR=500 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=209 GP27=169 norm26=0 norm27=0 low_is_black=0
+wifi: link status -> joined AP, waiting for IP (1)
+[B2-SPEED] t=3355777446 type=1 steer=72 targetL=1441 targetR=1169 measL=1310 measR=1170 pwmReqL=13 pwmReqR=18 dt=10
+[VC-STEER] t=3355777476 state=2 R26=841 L27=0 flags=1 steer=666 base=714 measL=1500 measR=1200 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=11576 pulse_us=6750 nav_error=NONE
+[VC-STEER] t=3355777746 state=2 R26=122 L27=0 flags=2 steer=468 base=783 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #278] Motion=unknown/quiet
+[B4 #278] B2 speed L=1100 R=0 counts/s
+[B4 #278] Tilt Pitch=0 Roll=-1 deg Detected=no
+[B4 #278] Accel X=9 Y=-3 Z=985 mg
+[B4 #278] Heading=N/A
+[B4 #278] TurnRate=N/A
+[B3-CAL] observed GP26 min=209 max=354; GP27 min=142 max=239; tracking uses fixed thresholds
+[B2-SPEED] t=3355777946 type=1 steer=-207 targetL=943 targetR=1345 measL=1230 measR=700 pwmReqL=8 pwmReqR=19 dt=10
+[VC-STEER] t=3355778016 state=2 R26=0 L27=474 flags=1 steer=-381 base=988 measL=1100 measR=400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+[VC-STEER] t=3355778286 state=2 R26=340 L27=0 flags=1 steer=-3 base=788 measL=400 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355778446 type=1 steer=666 targetL=813 targetR=152 measL=970 measR=560 pwmReqL=7 pwmReqR=8 dt=10
+[VC-STEER] t=3355778556 state=2 R26=0 L27=0 flags=2 steer=120 base=871 measL=900 measR=700 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=10864 pulse_us=6335 nav_error=NONE
+[LINE-RAW] GP26=210 GP27=212 norm26=0 norm27=46 low_is_black=0
+[B4 #312] Motion=unknown/quiet
+[B4 #312] B2 speed L=1300 R=1100 counts/s
+[B4 #312] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #312] Accel X=23 Y=-73 Z=1021 mg
+[B4 #312] Heading=N/A
+[B4 #312] TurnRate=N/A
+[VC-STEER] t=3355778826 state=2 R26=900 L27=825 flags=5 steer=147 base=981 measL=1200 measR=1000 age=0 line_age=30 phase=0 bar=0 pending=0 jct=1 loop_ms=30
+[B2-SPEED] t=3355778946 type=1 steer=10 targetL=1293 targetR=1188 measL=1140 measR=790 pwmReqL=11 pwmReqR=16 dt=10
+[VC-STEER] t=3355779096 state=2 R26=0 L27=661 flags=1 steer=0 base=1429 measL=1300 measR=1300 age=0 line_age=30 phase=0 bar=0 pending=0 jct=2 loop_ms=30
+[VC4] junction class 1 (1 cross, 2 left, 3 right), armed 0
+[VC-STEER] t=3355779366 state=2 R26=0 L27=792 flags=1 steer=-166 base=1429 measL=1200 measR=1400 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355779446 type=1 steer=-399 targetL=858 targetR=1872 measL=1120 measR=1180 pwmReqL=7 pwmReqR=23 dt=10
+[VC-STEER] t=3355779636 state=2 R26=979 L27=0 flags=1 steer=665 base=1429 measL=1800 measR=1200 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=9804 pulse_us=5717 nav_error=NONE
+[ROBOT-HEALTH] Nov 24 2026 18:58:09 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=2890,2224 enc_bad=0,1
+[LINE] GP26=0 GP27=544 flags=1 black_min=201
+[B4 #346] Motion=unknown/quiet
+[B4 #346] B2 speed L=1300 R=500 counts/s
+[B4 #346] Tilt Pitch=-1 Roll=1 deg Detected=no
+[B4 #346] Accel X=31 Y=26 Z=967 mg
+[B4 #346] Heading=N/A
+[B4 #346] TurnRate=N/A
+[VC-STEER] t=3355779906 state=2 R26=0 L27=910 flags=1 steer=-665 base=1429 measL=600 measR=1600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355779946 type=1 steer=-666 targetL=250 targetR=1170 measL=570 measR=1270 pwmReqL=4 pwmReqR=16 dt=10
+[VC-STEER] t=3355780176 state=2 R26=1000 L27=0 flags=1 steer=665 base=476 measL=900 measR=800 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=379 GP27=155 norm26=1000 norm27=0 low_is_black=0
+[B3-RANGE] GP26 white=230 black=375; GP27 white=183 black=700
+[B2-SPEED] t=3355780446 type=1 steer=666 targetL=892 targetR=167 measL=910 measR=440 pwmReqL=8 pwmReqR=7 dt=10
+[VC-STEER] t=3355780446 state=2 R26=1000 L27=0 flags=1 steer=665 base=536 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=8990 pulse_us=5242 nav_error=NONE
+[VC-STEER] t=3355780716 state=2 R26=21 L27=1000 flags=1 steer=-665 base=524 measL=400 measR=900 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #380] Motion=accelerating
+[B4 #380] B2 speed L=600 R=600 counts/s
+[B4 #380] Tilt Pitch=0 Roll=3 deg Detected=no
+[B4 #380] Accel X=-8 Y=110 Z=985 mg
+[B4 #380] Heading=N/A
+[B4 #380] TurnRate=N/A
+[B2-SPEED] t=3355780946 type=1 steer=666 targetL=813 targetR=152 measL=910 measR=400 pwmReqL=7 pwmReqR=7 dt=10
+[VC-STEER] t=3355780986 state=2 R26=401 L27=128 flags=1 steer=315 base=576 measL=800 measR=0 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355781256 state=2 R26=1000 L27=55 flags=1 steer=665 base=595 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355781446 type=1 steer=471 targetL=1141 targetR=384 measL=690 measR=310 pwmReqL=12 pwmReqR=10 dt=10
+[VC-STEER] t=3355781526 state=2 R26=0 L27=1000 flags=1 steer=-666 base=571 measL=700 measR=200 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=370 GP27=161 norm26=965 norm27=0 low_is_black=0
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=8468 pulse_us=4938 nav_error=NONE
+[ROBOT-HEALTH] Nov 24 2026 18:58:09 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=4361,3435 enc_bad=0,2
+[LINE] GP26=972 GP27=0 flags=1 black_min=201
+[VC-STEER] t=3355781796 state=2 R26=972 L27=0 flags=1 steer=665 base=524 measL=900 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[B4 #414] Motion=unknown/quiet
+[B4 #414] B2 speed L=1000 R=400 counts/s
+[B4 #414] Tilt Pitch=0 Roll=0 deg Detected=no
+[B4 #414] Accel X=-14 Y=14 Z=1017 mg
+[B4 #414] Heading=N/A
+[B4 #414] TurnRate=N/A
+[B2-SPEED] t=3355781946 type=1 steer=290 targetL=949 targetR=489 measL=890 measR=440 pwmReqL=9 pwmReqR=10 dt=10
+[VC-STEER] t=3355782066 state=2 R26=0 L27=234 flags=1 steer=-491 base=893 measL=700 measR=1100 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355782336 state=2 R26=103 L27=58 flags=2 steer=665 base=893 measL=1100 measR=600 age=0 line_age=30 phase=0 bar=0 pending=0 jct=0 loop_ms=30
+[VC4] barcode start seen: reading it at a steady speed
+[B2-SPEED] t=3355782446 type=1 steer=0 targetL=815 targetR=911 measL=1060 measR=560 pwmReqL=7 pwmReqR=15 dt=10
+[VC-STEER] t=3355782606 state=2 R26=0 L27=181 flags=2 steer=0 base=893 measL=700 measR=900 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=7774 pulse_us=4533 nav_error=NONE
+[VC-STEER] t=3355782876 state=2 R26=0 L27=52 flags=2 steer=0 base=893 measL=900 measR=1000 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[B4 #448] Motion=unknown/quiet
+[B4 #448] B2 speed L=900 R=1000 counts/s
+[B4 #448] Tilt Pitch=1 Roll=0 deg Detected=no
+[B4 #448] Accel X=-4 Y=-9 Z=987 mg
+[B4 #448] Heading=N/A
+[B4 #448] TurnRate=N/A
+[B2-SPEED] t=3355782946 type=1 steer=0 targetL=741 targetR=983 measL=820 measR=800 pwmReqL=8 pwmReqR=15 dt=10
+wifi: joining "iPhone" ...
+[VC-STEER] t=3355783146 state=2 R26=1000 L27=66 flags=1 steer=0 base=893 measL=900 measR=900 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=386 GP27=190 norm26=1000 norm27=0 low_is_black=0
+wifi: link status -> joined AP, waiting for IP (1)
+[VC-STEER] t=3355783416 state=2 R26=1000 L27=0 flags=1 steer=0 base=893 measL=800 measR=800 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355783446 type=1 steer=0 targetL=687 targetR=1036 measL=800 measR=810 pwmReqL=7 pwmReqR=16 dt=10
+[VC-STEER] t=3355783686 state=2 R26=1000 L27=0 flags=1 steer=0 base=893 measL=800 measR=900 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 24 2026 18:58:09 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=6081,4845 enc_bad=0,3
+[LINE] GP26=917 GP27=0 flags=1 black_min=201
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=6997 pulse_us=4080 nav_error=NONE
+[B4 #487] Motion=unknown/quiet
+[B4 #487] B2 speed L=800 R=1200 counts/s
+[B4 #487] Tilt Pitch=0 Roll=-1 deg Detected=no
+[B4 #487] Accel X=1 Y=-79 Z=999 mg
+[B4 #487] Heading=N/A
+[B4 #487] TurnRate=N/A
+[B2-SPEED] t=3355783946 type=1 steer=0 targetL=718 targetR=1005 measL=820 measR=920 pwmReqL=7 pwmReqR=15 dt=10
+[VC-STEER] t=3355783956 state=2 R26=0 L27=0 flags=2 steer=0 base=893 measL=900 measR=100 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355784226 state=2 R26=0 L27=0 flags=2 steer=0 base=893 measL=900 measR=400 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355784446 type=1 steer=0 targetL=763 targetR=962 measL=840 measR=870 pwmReqL=7 pwmReqR=16 dt=10
+[VC-STEER] t=3355784496 state=2 R26=0 L27=0 flags=2 steer=0 base=893 measL=900 measR=800 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[LINE-RAW] GP26=207 GP27=147 norm26=0 norm27=0 low_is_black=0
+[B3-RANGE] GP26 white=227 black=375; GP27 white=178 black=700
+[VC-STEER] t=3355784766 state=2 R26=0 L27=0 flags=2 steer=0 base=893 measL=900 measR=1100 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=6474 pulse_us=3775 nav_error=NONE
+[B4 #521] Motion=unknown/quiet
+[B4 #521] B2 speed L=800 R=700 counts/s
+[B4 #521] Tilt Pitch=0 Roll=2 deg Detected=no
+[B4 #521] Accel X=1 Y=84 Z=989 mg
+[B4 #521] Heading=N/A
+[B4 #521] TurnRate=N/A
+[B2-SPEED] t=3355784946 type=1 steer=0 targetL=779 targetR=946 measL=850 measR=860 pwmReqL=7 pwmReqR=16 dt=10
+[VC-STEER] t=3355785036 state=2 R26=0 L27=0 flags=2 steer=0 base=893 measL=900 measR=1200 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[VC-STEER] t=3355785306 state=2 R26=0 L27=0 flags=2 steer=0 base=893 measL=800 measR=300 age=0 line_age=30 phase=0 bar=4 pending=0 jct=0 loop_ms=30
+[B2-SPEED] t=3355785446 type=1 steer=0 targetL=782 targetR=943 measL=850 measR=810 pwmReqL=6 pwmReqR=16 dt=10
+s1: EVENT barcode 'C' -> RIGHT
+[B3] barcode *C* read (forward) -> RIGHT at next junction
+[VC4] barcode done: line following resumed
+[VC4] decode retained: action=2 pending=2 slow=0
+[VC-STEER] t=3355785576 state=2 R26=0 L27=0 flags=2 steer=0 base=1190 measL=1000 measR=1100 age=0 line_age=30 phase=0 bar=0 pending=2 jct=0 loop_ms=30
+[ROBOT-HEALTH] Nov 24 2026 18:58:09 mission=1 b5=0 motion=1 fault=0 stopped=0 enc=7815,6568 enc_bad=0,4
+[LINE] GP26=0 GP27=0 flags=2 black_min=201
+[VC-STEER] t=3355785846 state=2 R26=0 L27=0 flags=2 steer=0 base=1390 measL=1000 measR=1200 age=0 line_age=30 phase=0 bar=0 pending=2 jct=0 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=6671 pulse_us=3890 nav_error=NONE
+[B4 #555] Motion=accelerating
+[B4 #555] B2 speed L=1100 R=1100 counts/s
+[B4 #555] Tilt Pitch=2 Roll=-1 deg Detected=no
+[B4 #555] Accel X=25 Y=-145 Z=1017 mg
+[B4 #555] Heading=N/A
+[B4 #555] TurnRate=N/A
+[B2-SPEED] t=3355785946 type=1 steer=0 targetL=995 targetR=1303 measL=1070 measR=910 pwmReqL=7 pwmReqR=20 dt=10
+[VC-STEER] t=3355786116 state=2 R26=0 L27=0 flags=2 steer=0 base=1440 measL=1000 measR=200 age=0 line_age=30 phase=0 bar=0 pending=2 jct=0 loop_ms=30
+[LINE-RAW] GP26=205 GP27=135 norm26=0 norm27=0 low_is_black=0
+[B4 #565] Motion=climbing
+[VC] state=4
+[B4 #567] Motion=descending
+[VC-STEER] t=3355786386 state=4 R26=55 L27=0 flags=2 steer=26 base=1167 measL=900 measR=800 age=0 line_age=30 phase=0 bar=0 pending=2 jct=0 loop_ms=30
+wifi: link status -> joined AP, no IP yet (2)
+[B2-SPEED] t=3355786446 type=1 steer=41 targetL=1189 targetR=1026 measL=920 measR=680 pwmReqL=10 pwmReqR=21 dt=10
+[B4 #573] Motion=climbing
+wifi: link up, ip=172.20.10.10
+mqtt: connecting to 172.20.10.4:1883 as "inf2004-g25-car" ...
+s1: link CONNECTING_WIFI -> CONNECTING_MQTT  faults=0x00
+[VC-STEER] t=3355786656 state=4 R26=811 L27=647 flags=1 steer=121 base=1040 measL=1100 measR=100 age=0 line_age=30 phase=0 bar=0 pending=2 jct=1 loop_ms=30
+[B4 #585] Motion=descending
+[VC-STEER] t=3355786926 state=4 R26=909 L27=1000 flags=5 steer=1 base=1179 measL=1300 measR=100 age=0 line_age=30 phase=0 bar=0 pending=2 jct=1 loop_ms=30
+[S5-LIVE] state=FOLLOW echo=OK cm_x100=5301 pulse_us=3091 nav_error=NONE
+[B4 #590] Motion=climbing
+[B2-SPEED] t=3355786946 type=1 steer=1 targetL=1180 targetR=1103 measL=1370 measR=580 pwmReqL=8 pwmReqR=23 dt=10
+[B4 #591] Motion=climbing
+[B4 #591] B2 speed L=1500 R=800 counts/s
+[B4 #591] Tilt Pitch=3 Roll=23 deg Detected=yes
+[B4 #591] Accel X=-52 Y=374 Z=885 mg
+[B4 #591] Heading=N/A
+[B4 #591] TurnRate=N/A
+[B4 #598] Motion=descending
+[VC-STEER] t=3355787196 state=4 R26=804 L27=607 flags=1 steer=1 base=1179 measL=1400 measR=800 age=0 line_age=30 phase=0 bar=0 pending=2 jct=1 loop_ms=30
+[B4 #602] Motion=climbing
+[B2-SPEED] t=3355787446 type=1 steer=0 targetL=1379 targetR=1385 measL=1230 measR=1000 pwmReqL=11 pwmReqR=24 dt=10
+[VC-STEER] t=3355787466 state=4 R26=1000 L27=1000 flags=5 steer=0 base=1429 measL=1400 measR=0 age=0 line_age=30 phase=0 bar=0 pending=2 jct=1 loop_ms=30
+[B4 #610] Motion=descending
+[VC-STOP-REASON] motion_valid=1 imu_valid=1 hazard=1 obstacle_fault=0 faults=0 motion_status=1
+[VC] state=8
+[B4 #612] Motion=suspected-impact
+[LINE-RAW] GP26=410 GP27=3318 norm26=1000 norm27=1000 low_is_black=0
+[ROBOT-HEALTH] Nov 24 2026 18:58:09 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=9821,7810 enc_bad=0,5
+[LINE] GP26=1000 GP27=1000 flags=5 black_min=201
+[B4 #626] Motion=stationary
+[B4 #626] B2 speed L=0 R=0 counts/s
+[B4 #626] Tilt Pitch=-1 Roll=38 deg Detected=yes
+[B4 #626] Accel X=19 Y=590 Z=751 mg
+[B4 #626] Heading=N/A
+[B4 #626] TurnRate=N/A
+mqtt: connected to 172.20.10.4
+s1: link CONNECTING_MQTT -> CONNECTED  faults=0x00
+s1: heartbeat #1  link=CONNECTED  faults=0x00  tx=2 drop=0 rx=0 rej=0
+[S5-LIVE] state=FOLLOW echo=OPEN_SPACE_ASSUMED cm_x100=40000 pulse_us=59192 nav_error=NONE
+mqtt: subscribed to inf2004/g25/car/cmd
+[B4 #660] Motion=stationary
+[B4 #660] B2 speed L=0 R=0 counts/s
+[B4 #660] Tilt Pitch=-2 Roll=37 deg Detected=yes
+[B4 #660] Accel X=37 Y=592 Z=759 mg
+[B4 #660] Heading=150 deg Calibrated=no
+[B4 #660] TurnRate=N/A
+[S5-LIVE] state=FOLLOW echo=OPEN_SPACE_ASSUMED cm_x100=40000 pulse_us=59189 nav_error=NONE
+[LINE-RAW] GP26=412 GP27=3292 norm26=1000 norm27=1000 low_is_black=0
+[B3-RANGE] GP26 white=232 black=375; GP27 white=183 black=700
+[ROBOT-HEALTH] Nov 24 2026 18:58:09 mission=0 b5=0 motion=2 fault=0 stopped=1 enc=9821,7810 enc_bad=0,5
+[LINE] GP26=1000 GP27=1000 flags=5 black_min=201
+[B4 #694] Motion=stationary
+[B4 #694] B2 speed L=0 R=0 counts/s
+[B4 #694] Tilt Pitch=-2 Roll=37 deg Detected=yes
+[B4 #694] Accel X=39 Y=580 Z=751 mg
+[B4 #694] Heading=150 deg Calibrated=no
+[B4 #694] TurnRate=N/A

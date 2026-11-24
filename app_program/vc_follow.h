@@ -17,7 +17,14 @@
 #include <stdint.h>
 
 /* ---- thresholds on normalised readings (0..1000) ---------------------- */
-#define VC4_WHITE           300   /* below on both = both white            */
+/* Both below this = line between the sensors.  B3 now tracks each
+ * sensor's floor, so bare mat reads 0 and anything above ~60 is the
+ * sensor reaching the tape edge: steer on it at once (was 300, which
+ * threw away the early edge signal, so the car ran straight and then
+ * corrected late). */
+#ifndef VC4_WHITE
+#define VC4_WHITE           60
+#endif
 #define VC4_BLACK           700   /* at/above = line under that sensor     */
 /* Line counts as having gone out past a sensor (exit side) only if that
  * sensor was fully on the tape.  A partial touch that fades means the
@@ -48,8 +55,12 @@
 #define VC4_FILT_DIV        4     /* per 10 ms: filt += (target-filt)/4    */
 #define VC4_SIDE_MIN        150   /* |error| that records the line's side  */
 /* Below this |error| the response is squared (calm on the straight),
- * above it linear, so a curve gets full steering before the line leaves. */
-#define VC4_SOFT_BAND       300
+ * above it linear.  1 = linear everywhere: a small edge reading gives a
+ * small, immediate correction instead of none (track simulation:
+ * mean offset 3.1 -> 2.3 mm, worst 7.3 -> 4.8 mm). */
+#ifndef VC4_SOFT_BAND
+#define VC4_SOFT_BAND       1
+#endif
 /* Proportional part, percent of the error (the curve memory adds to it). */
 /* Damping, percent of the error's change per 20 ms: steers against the
  * line's movement so a correction stops before it overshoots. */
@@ -64,7 +75,7 @@
 #define VC4_D_SMOOTH        3     /* damping input: move 1/n per tick      */
 #endif
 #ifndef VC4_P_PCT
-#define VC4_P_PCT           80
+#define VC4_P_PCT           120
 #endif
 #define VC4_COAST_MS        40u   /* black exit: coast before the arc      */
 #define VC4_FLIP_COAST_MS   200u  /* exit on the other side from last one  */
