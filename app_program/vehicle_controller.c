@@ -1292,14 +1292,21 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     /* ---- FOLLOW ---- */
     barcode_straight = c->bar_phase == BAR_READ ||
         (strip_pending && c->strip_edges >= VC4_BAR_STRIP_EDGES);
+    /* Keep following the line while the barcode passes under GP28 (as the
+     * other INF2004 teams do): driving the pass blind and straight took
+     * the car 350 mm off a bending line on 24 Nov.  Speed is still held
+     * steady below (the decoder times bar widths), junctions are still
+     * ignored on the strip, and bar_filter() above already blanks a line
+     * sensor that is reading bars instead of the line.  On the strip:
+     * a stale lost/recovery state is dropped, steering is limited to
+     * +-VC4_BAR_STEER_MAX (bars flickering under a line sensor must not
+     * swing the car), and the line is never declared lost mid-strip. */
+    if (barcode_straight && c->trk.lost) vc4_reset(&c->trk);
+    steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
     if (barcode_straight) {
-        /* Barcode bars are not line-position evidence. Keep the complete
-         * pass (including retry lead-in and gaps) straight, and forget
-         * any old recovery arc before normal following resumes. */
-        vc4_reset(&c->trk);
-        steer = 0;
-    } else {
-        steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
+        if (steer > VC4_BAR_STEER_MAX) steer = VC4_BAR_STEER_MAX;
+        if (steer < -VC4_BAR_STEER_MAX) steer = -VC4_BAR_STEER_MAX;
+        c->trk.lost = false;
     }
     if (!vc4_on_line(&c->trk)) {
         if (c->bar_phase == BAR_READ) v4_bar_clear(c);
@@ -2222,6 +2229,9 @@ static void controller_task(INT stacd, void *exinf)
     imu_notice_t notice = {0};
     imu_event_t imu = {0};
     bool hazard = false;
+    bool impact = false;
+    bool hump_seen = false;
+    uint32_t last_hump_ms = 0u;
     bool autostart_pending = ROBOT_AUTOSTART != 0;
     uint32_t last_boot_log_ms = 0u;
     uint32_t previous_cycle_ms = 0u;
@@ -2257,8 +2267,9 @@ static void controller_task(INT stacd, void *exinf)
         for (UINT i = 0u; i < IMU_VC_QUEUE_DEPTH; ++i) {
             if (imu_vc_receive(&notice, TMO_POL) != E_OK) break;
             imu = notice.snapshot;
-            if (notice.events & (IMU_NOTICE_IMPACT | IMU_NOTICE_FAULT |
-                                 IMU_NOTICE_UNAVAILABLE)) hazard = true;
+            if (notice.events & (IMU_NOTICE_FAULT | IMU_NOTICE_UNAVAILABLE))
+                hazard = true;
+            if (notice.events & IMU_NOTICE_IMPACT) impact = true;
         }
         for (UINT i = 0u; i < REMOTE_CMD_QUEUE_LEN; ++i) {
             REMOTE_CMD remote;
@@ -2341,7 +2352,20 @@ static void controller_task(INT stacd, void *exinf)
         in.barcode_rejects = (UH)b3_barcode_rejects();
         in.imu_valid = imu.b_valid && now.lo - imu.timestamp_ms <= VC_IMU_MAX_AGE_MS;
         in.hump = imu.b_hump_detected;
-        in.hazard = hazard || imu.b_sudden_impact ||
+        /* Crossing the hump jolts the IMU past its impact threshold (run
+         * 24 Nov 19:13: roll only -6 deg, then "suspected-impact" and a
+         * safe stop on the course hump).  A jolt during or just after the
+         * hump is the hump; tilt limits and IMU faults still stop the car. */
+        if (in.hump || c.state == ROBOT_HUMP) {
+            last_hump_ms = now.lo;
+            hump_seen = true;
+        }
+        impact = impact || imu.b_sudden_impact;
+        if (impact && hump_seen && now.lo - last_hump_ms <= VC_HUMP_IMPACT_GRACE_MS) {
+            if (c.running) tm_printf((UB *)"[VC] jolt on the hump: not a hazard\n");
+            impact = false;
+        }
+        in.hazard = hazard || impact ||
             imu.roll_deg > 25.0f || imu.roll_deg < -25.0f ||
             imu.pitch_deg > 40.0f || imu.pitch_deg < -40.0f;
         in.motion_valid = in.motion_valid &&
@@ -2421,6 +2445,7 @@ static void controller_task(INT stacd, void *exinf)
         /* Hazards stop this tick even when coalesced with recovery. A later
          * explicit START is required; no automatic mission restart. */
         hazard = false;
+        impact = false;
         {
             SYSTIM finished;
             uint32_t wait_ms = VC_PERIOD_MS;

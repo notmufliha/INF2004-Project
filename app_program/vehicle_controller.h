@@ -141,6 +141,8 @@
 /* Motor stall: up to this many automatic retries (stop, wait
  * VC_STALL_RETRY_MS, drive again) before the car stays stopped for START.
  * The count resets after VC_STALL_RETRY_RESET_MS without a stall. */
+/* An IMU impact this soon after the hump was detected is the hump. */
+#define VC_HUMP_IMPACT_GRACE_MS 1500u
 #define VC_STALL_AUTO_RETRIES 2u
 #define VC_STALL_RETRY_MS 1000u
 #define VC_STALL_RETRY_RESET_MS 10000u
@@ -317,7 +319,8 @@
 #define VC4_BAR_LEAD_UM 40000u    /* reverse this far before the 1st bar */
 #define VC4_BAR_BACK_EXTRA_UM 70000u
 #define VC4_BAR_RETRY_EXTRA_UM 10000u
-#define VC4_BAR_REWIND_MAX_UM 600000u
+#define VC4_BAR_REWIND_MAX_UM 260000u /* strip ~144 mm + lead-in; reversing is blind */
+#define VC4_BAR_STEER_MAX 400     /* line steering limit on a barcode strip */
 #define VC4_BAR_WAIT_MS 600u      /* stand still: B3 ends a scan after 500 ms quiet */
 #define VC4_BAR_READ_UM 650000u   /* give up a pass after this travel    */
 #define VC4_BAR_READ_MS 15000u

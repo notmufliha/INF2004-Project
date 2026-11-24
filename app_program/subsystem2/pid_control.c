@@ -51,6 +51,18 @@
 #define PID_PI 3.14159265f
 /* Preliminary noise/edge-loss limit over a 100 ms observation window. */
 #define PID_ENCODER_INVALID_LIMIT 8u
+/* Encoder dropout in forward DRIVE (24 Nov runs): the right encoder read 0
+ * for over a second while its wheel was clearly turning, so the PI pushed
+ * that motor to PID_MAX_PWM (35 %) against ~6 % on the left and the car
+ * swerved left, then stall-faulted.  A wheel whose encoder is silent while
+ * it is asked to move and the other wheel runs normally is driven open
+ * loop (its feed-forward plus the other wheel's correction) instead.  After
+ * PID_DROPOUT_MAX_MS the normal stall fault applies again, so a wheel that
+ * is really jammed still stops the car. */
+#define PID_DROPOUT_MIN_CPS 300.0f
+#define PID_DROPOUT_SILENT_CPS 60.0f
+#define PID_DROPOUT_AFTER_MS 150
+#define PID_DROPOUT_MAX_MS 3000
 
 typedef struct
 {
@@ -96,6 +108,12 @@ typedef struct
     uint32_t maximum_interval_ms;
     UW left_invalid_start;
     UW right_invalid_start;
+    int64_t left_silent_ms;   /* encoder silent since (valid if flag set) */
+    int64_t right_silent_ms;
+    bool left_silent;
+    bool right_silent;
+    bool left_open_loop;      /* reported, for the log */
+    bool right_open_loop;
     int64_t encoder_window_ms;
 #if B2_SPEED_DIAGNOSTICS
     uint32_t speed_log_ms;
@@ -287,6 +305,8 @@ static void pid_begin(pid_state_t *state, const motion_command_t *command)
     state->right_progress_ms = state->now_ms;
     state->left_applied_pwm = state->right_applied_pwm = 0;
     state->left_profile_speed = state->right_profile_speed = 0.0f;
+    state->left_silent = state->right_silent = false;
+    state->left_open_loop = state->right_open_loop = false;
     state->settling = command->type == MOTION_CMD_STOP;
     state->settling_since_ms = state->now_ms;
     pid_set_directions(state);
@@ -553,6 +573,91 @@ static float pid_base_pwm(const pid_state_t *state, bool left)
     return PID_MIN_MOVE_PWM;
 }
 
+/* See PID_DROPOUT_*: replace one wheel's PWM with an open-loop value while
+ * its encoder is silent and the other wheel is demonstrably moving. */
+static void pid_dropout_wheel(pid_state_t *state, bool left, INT *pwm,
+    float target, float measured, float other_target, float other_measured,
+    INT other_pwm)
+{
+    bool *silent = left ? &state->left_silent : &state->right_silent;
+    bool *open_loop = left ? &state->left_open_loop :
+        &state->right_open_loop;
+    int64_t *since = left ? &state->left_silent_ms :
+        &state->right_silent_ms;
+    const char *side = left ? "left" : "right";
+    bool now_silent = (target >= PID_DROPOUT_MIN_CPS) &&
+        (measured < PID_DROPOUT_SILENT_CPS) &&
+        (other_target > 0.0f) &&
+        (other_measured >= PID_DROPOUT_MIN_CPS) &&
+        (other_measured >= other_target * 0.5f);
+    int64_t elapsed;
+    float correction;
+    float output;
+
+    if (!now_silent)
+    {
+        if (*open_loop)
+        {
+            tm_printf((UB *)"[B2] %s encoder counting again: closed loop\n",
+                side);
+        }
+        *silent = false;
+        *open_loop = false;
+        return;
+    }
+    if (!*silent)
+    {
+        *silent = true;
+        *since = state->now_ms;
+    }
+    elapsed = state->now_ms - *since;
+    if ((elapsed < PID_DROPOUT_AFTER_MS) || (elapsed > PID_DROPOUT_MAX_MS))
+    {
+        return;
+    }
+    if (!*open_loop)
+    {
+        *open_loop = true;
+        tm_printf((UB *)"[B2] %s encoder silent while driven "
+            "(target %d cps, other wheel %d cps): open loop\n",
+            side, (INT)target, (INT)other_measured);
+    }
+    /* The healthy wheel's PI correction, bounded, carries over (load and
+     * battery affect both motors alike). */
+    correction = (float)other_pwm - (pid_base_pwm(state, !left) +
+        PID_FF_PWM_PER_CPS * other_target);
+    if (correction < -5.0f)
+    {
+        correction = -5.0f;
+    }
+    if (correction > 8.0f)
+    {
+        correction = 8.0f;
+    }
+    output = pid_base_pwm(state, left) + PID_FF_PWM_PER_CPS * target +
+        correction;
+    if (output < 0.0f)
+    {
+        output = 0.0f;
+    }
+    if (output > (float)PID_MAX_PWM)
+    {
+        output = (float)PID_MAX_PWM;
+    }
+    *pwm = (INT)(output + 0.5f);
+    /* No integral wind-up, and not a stall while the dropout is bridged. */
+    if (left)
+    {
+        state->left_integral = 0.0f;
+        state->left_progress_ms = state->now_ms;
+    }
+    else
+    {
+        state->right_integral = 0.0f;
+        state->right_progress_ms = state->now_ms;
+    }
+}
+
 static INT pid_turn_breakaway_pwm(int64_t no_progress_ms)
 {
     int64_t pwm = PID_MAX_PWM +
@@ -626,6 +731,25 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
         if (right_start > breakaway_cap) right_start = breakaway_cap;
         if (profile.left_speed > 0.0f && left_pwm < (INT)left_start) left_pwm = (INT)left_start;
         if (profile.right_speed > 0.0f && right_pwm < (INT)right_start) right_pwm = (INT)right_start;
+    }
+    if ((state->command.type == MOTION_CMD_DRIVE) &&
+        (state->command.direction == MOTION_DIR_FORWARD))
+    {
+        float left_target = profile.left_speed / pid_mm_per_count(true);
+        float right_target = profile.right_speed / pid_mm_per_count(false);
+        float left_measured = left_cps * state->left_sign;
+        float right_measured = right_cps * state->right_sign;
+        pid_dropout_wheel(state, false, &right_pwm, right_target,
+            right_measured, left_target, left_measured, left_pwm);
+        pid_dropout_wheel(state, true, &left_pwm, left_target,
+            left_measured, right_target, right_measured, right_pwm);
+    }
+    else
+    {
+        state->left_silent = false;
+        state->right_silent = false;
+        state->left_open_loop = false;
+        state->right_open_loop = false;
     }
     /* Ramp forward MOVE torque instead of toggling instantly between PI
      * braking and the loaded-wheel floor. Reached targets stop immediately. */
