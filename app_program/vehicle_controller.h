@@ -295,9 +295,10 @@
 /* 1: steering from line_follow_ref.c (simple proportional follower with
  * smoothing, deadband, between-sensors hold and last-side search).
  * 0: vc_follow.c's vc4_steer().  Junctions, barcodes, the line search
- * itself and the wheel mapping are shared by both. */
+ * itself and the wheel mapping are shared by both. Keep the reference
+ * follower opt-in: it bypasses v4's curve memory and crossing hold. */
 #ifndef VC_FOLLOW_REF
-#define VC_FOLLOW_REF 1
+#define VC_FOLLOW_REF 0
 #endif
 #endif
 /* Lost line: first back up over the stretch driven on white (the sensors

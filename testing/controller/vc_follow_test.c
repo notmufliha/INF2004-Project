@@ -74,6 +74,19 @@ int main(void){
           "partial left correction still releases toward straight");
   }
   vc4_wheels(1000,60,100,&sp,&st);
+  /* A sustained left bend need not reach the full-black exit threshold. */
+  vc4_reset(&t); um=0;
+  for(int i=0;i<12;i++){
+    vc4_steer(&t,650,FLOOR,20,um); um+=2400;
+  }
+  CHECK(t.exit_side==1, "sustained partial left tape arms curve recovery");
+  for(int i=0;i<8;i++){
+    s=vc4_steer(&t,FLOOR,FLOOR,20,um); um+=2400;
+  }
+  CHECK(s>400 && vc4_on_line(&t), "left bend keeps turning through floor gap");
+  vc4_steer(&t,FLOOR,900,20,um);
+  CHECK(t.exit_side==-1, "opposite tape replaces left recovery");
+  vc4_wheels(1000,60,100,&sp,&st);
   CHECK(sp*(1000+(st<0?st:-st))/1000>=150,
         "slow tight curve keeps inner wheel above 150 cps");
   vc4_reset(&t);
@@ -99,6 +112,8 @@ int main(void){
   vc4_wheels(1000,120,100,&sp,&st);
   printf("   full: speed_cps=%d steer=%d\n",sp,st);
   CHECK(sp>0 && st>-1000, "full steer keeps inner wheel moving");
+  CHECK(st<=-790 && sp*(1000+st)/1000>=150,
+        "tight bend permits 80 percent split with usable inner-wheel speed");
   /* line leaves past left sensor: coast then arc left, lost after 200ms+60mm */
   int lost_at=-1;
   for(int i=0;i<100;i++){ s=vc4_steer(&t,50,50,20,um); um+=2400; if(!vc4_on_line(&t)&&lost_at<0) lost_at=i; }
@@ -149,6 +164,12 @@ int main(void){
     if(pos>=100 && pos<118){nl=1000;nr=1000;}
     j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=2400; }
   CHECK(got==VC4_JCT_CROSS, "18 mm crossing tape -> CROSS");
+  /* Angled crossing: one sensor only partly covers the tape. */
+  vc4_reset(&t); um=0; got=0;
+  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
+    if(pos>=100 && pos<118){nl=450;nr=650;}
+    j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=2000; }
+  CHECK(got==VC4_JCT_CROSS, "partial-coverage crossing -> CROSS");
   /* narrow (5mm) -> nothing */
   vc4_reset(&t); um=0; got=0;
   for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
@@ -201,6 +222,13 @@ int main(void){
     circle_run(-150.0, &sc, &stt, &mo, &lo);
     CHECK(!lo && sc == 0 && stt < 40 && mo < 9.0,
           "right curve remains smooth with baseline filter"); }
+  for(int dir=-1;dir<=1;dir+=2){
+    int sc, stt; double mo; bool lo;
+    circle_run(dir*85.0, &sc, &stt, &mo, &lo);
+    printf("   circle r=%d: lost %d, side changes %d, straight %d, offset %.1f mm\n",
+           dir*85, (int)lo, sc, stt, mo);
+    CHECK(!lo && sc==0 && stt<40 && mo<9.0, "85 mm circle stays on line");
+  }
   printf("cps(120)=%d cps(60)=%d\n", vc4_mm_s_to_cps(120), vc4_mm_s_to_cps(60));
   printf(fails? "FAILED %d\n":"ALL PASS\n",fails); return fails;
 }

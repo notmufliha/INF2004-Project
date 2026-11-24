@@ -29,16 +29,19 @@
  * TOP of the floor band so the mat reads 0; black at 375 still counts
  * earlier logs' 361..400 tape as a junction (>= 800 from ~365). Re-check
  * [LINE-RAW] if the sensors are moved or the mats change. */
-#define B3_LINE_GP26_WHITE (325U)
-#define B3_LINE_GP26_BLACK (375U)
-#define B3_LINE_GP27_WHITE (260U)
-#define B3_LINE_GP27_BLACK (842U)
+/* Current stationary captures: floor GP26=205 / GP27=144,
+ * black GP26=360 / GP27=539. Small floor margins reject noise.
+ * These endpoints supersede the older course values above. */
+#define B3_LINE_GP26_WHITE (220U)
+#define B3_LINE_GP26_BLACK (360U)
+#define B3_LINE_GP27_WHITE (160U)
+#define B3_LINE_GP27_BLACK (539U)
 /* 1: white follows each sensor's own floor (b3_floor_update), so the
  * same sensitivity holds on every mat.  Tuned on the 24 Nov runs (17:58,
  * 18:12, 18:38): GP26 floor 190..320 / tape 355..425; GP27 floor 125..225
  * / tape edge 300..700, fully on 1000+.  0: the fixed endpoints above. */
 #ifndef B3_LINE_FLOOR_TRACK
-#define B3_LINE_FLOOR_TRACK (1)
+#define B3_LINE_FLOOR_TRACK (0) /* use current measured endpoints */
 #endif
 /* init, lo, hi, band, tape, margin, black_min, span */
 #define B3_LINE_GP26_FLOOR_CFG { 250U, 150U, 330U, 45U, 340U, 25U, 375U, 90U }

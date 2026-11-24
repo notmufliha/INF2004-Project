@@ -33,6 +33,10 @@
 #ifndef VC4_EXIT_MIN
 #define VC4_EXIT_MIN        850
 #endif
+/* Sustained partial left tape can be a curve even without full coverage.
+ * Require 200 ms with the right sensor on floor to reject short grazes. */
+#define VC4_LEFT_CURVE_MIN  600u
+#define VC4_LEFT_CURVE_MS   200u
 /* ...and only if it was that fully on the tape at most this long before
  * both sensors saw floor (else the line faded back to the centre). */
 #ifndef VC4_EXIT_FRESH_MS
@@ -133,9 +137,9 @@
 #define VC4_CRUISE_MM_S     120
 #define VC4_SLOW_MM_S       100   /* obstacle ahead, after a bypass        */
 /* (VC4_BARCODE_MM_S removed: barcodes are read at the following speed.) */
-/* Full steering error changes each wheel by 65 mm/s before the inner-wheel
+/* Full steering error changes each wheel by 85 mm/s before the inner-wheel
  * limit. Stronger split lets the robot follow tighter curves at low speed. */
-#define VC4_SPLIT_FULL_X10  650
+#define VC4_SPLIT_FULL_X10  850
 #define VC4_CURVE_SLOW_PCT  50    /* base speed cut at full error          */
 /* Wheel travel per encoder count on this car (pi x 65 mm / ~2420). */
 #define VC4_UM_PER_COUNT    84u
@@ -155,6 +159,7 @@ typedef struct {
     int8_t   last_side;   /* -1 right / +1 left: last side with an error  */
     int8_t   exit_side;   /* side the line went black under, 0 = between */
     uint32_t exit_age_ms; /* since a sensor was last fully on the tape    */
+    uint32_t left_curve_ms; /* continuous strong left-only tape */
     int8_t   prev_exit;
     bool     was_white;
     int32_t  recover;

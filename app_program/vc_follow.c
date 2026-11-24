@@ -11,6 +11,7 @@ void vc4_reset(vc4_track_t *t)
     t->last_side = 0;
     t->exit_side = 0;
     t->exit_age_ms = 0u;
+    t->left_curve_ms = 0u;
     t->prev_exit = 0;
     t->was_white = true;
     t->recover = VC4_RECOVER_START;
@@ -44,7 +45,13 @@ static void track_exit(vc4_track_t *t, uint32_t nl, uint32_t nr,
         t->recover = VC4_RECOVER_START;
         t->coast_ms = 0u;
     }
-    if (bl && !br) {
+    if (nl >= VC4_LEFT_CURVE_MIN && nr < VC4_WHITE) {
+        if (t->left_curve_ms < VC4_LEFT_CURVE_MS)
+            t->left_curve_ms += dt_ms;
+    } else {
+        t->left_curve_ms = 0u;
+    }
+    if ((bl && !br) || t->left_curve_ms >= VC4_LEFT_CURVE_MS) {
         t->exit_side = 1;
         t->exit_age_ms = 0u;
     } else if (br && !bl) {
@@ -94,6 +101,7 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
         t->cross_hold = true;
         t->cross_um = travel_um;
         t->bias = 0;          /* the arm, not a curve */
+        t->left_curve_ms = 0u;
         t->exit_side = 0;
         t->recover = VC4_RECOVER_START;
         t->coast_ms = 0u;
@@ -123,6 +131,7 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
             if (t->exit_age_ms > fresh_ms) t->exit_side = 0;
         }
         t->was_white = true;
+        t->left_curve_ms = 0u;
         if (t->exit_side != 0) {
             if (t->coast_ms < coast_len(t)) {
                 /* Coast: keep the steering the car already had (a curve
@@ -295,7 +304,7 @@ void vc4_wheels(int32_t s, int32_t base_mm_s, int32_t slow_mm_s,
          * error bends the path as much per mm as at slow speed. */
         diff_x10 = diff_x10 * base_mm_s / slow_mm_s;
     }
-    diff_max = 2 * base_x10 / 3;              /* inner >= 1/3 of base */
+    diff_max = 4 * base_x10 / 5;              /* inner >= 1/5 of base */
     if (diff_x10 > diff_max) diff_x10 = diff_max;
     if (diff_x10 < -diff_max) diff_x10 = -diff_max;
     /* + s = line left: slow the left wheel. */

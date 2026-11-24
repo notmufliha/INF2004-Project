@@ -20,26 +20,32 @@ static VEHICLE_CONTROLLER reading(void)
 int main(void)
 {
     VEHICLE_CONTROLLER c = reading();
-    /* Raw readings from the final-course run (logs/run-20261124-175800):
-     * mat GP26 ~300 / GP27 ~200, tape GP26 ~405 / GP27 1000+.
+    /* Current stationary captures:
+     * floor GP26=205 / GP27=144, tape GP26=360 / GP27=539.
      * Exercise channel scaling before testing the actual control path. */
-    uint16_t floor_r = b3_line_cal_scale(300, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK);
-    uint16_t floor_l = b3_line_cal_scale(200, B3_LINE_GP27_WHITE, B3_LINE_GP27_BLACK);
-    uint16_t tape_r = b3_line_cal_scale(405, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK);
-    uint16_t tape_l = b3_line_cal_scale(1030, B3_LINE_GP27_WHITE, B3_LINE_GP27_BLACK);
+    uint16_t floor_r = b3_line_cal_scale(205, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK);
+    uint16_t floor_l = b3_line_cal_scale(144, B3_LINE_GP27_WHITE, B3_LINE_GP27_BLACK);
+    uint16_t tape_r = b3_line_cal_scale(360, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK);
+    uint16_t tape_l = b3_line_cal_scale(539, B3_LINE_GP27_WHITE, B3_LINE_GP27_BLACK);
     assert(floor_r == 0 && floor_l == 0 && tape_r == 1000 && tape_l == 1000);
-    /* The darker end of that mat must not count as "on the line": it held
-     * the steering at full right through the whole logged run. */
-    assert(b3_line_cal_scale(330, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK) < B3_LINE_ACTIVE_MIN);
-    /* Earlier logs' fainter tape (361+) still counts for a junction. */
-    assert(b3_line_cal_scale(366, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK) >= B3_LINE_JUNCTION_MIN);
-    assert(b3_line_cal_scale(280, B3_LINE_GP27_WHITE, B3_LINE_GP27_BLACK) < B3_LINE_ACTIVE_MIN);
+    assert(!B3_LINE_FLOOR_TRACK); /* old adaptive spans must not override captures */
+    assert(b3_line_cal_scale(215, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK) == 0);
+    assert(b3_line_cal_scale(155, B3_LINE_GP27_WHITE, B3_LINE_GP27_BLACK) == 0);
     assert(B3_LINE_IS_JUNCTION(tape_r, tape_l));
     c.bar_phase = BAR_IDLE;
     input.centre = tape_l;
     input.left = floor_r;
     v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
     assert(sent.steering_permille < 0); /* physical GP27 left */
+    assert(c.trk.exit_side == 1); /* measured black arms left recovery */
+    for (int i = 0; i < 8; ++i) {
+        input.now_ms += VC_PERIOD_MS;
+        c.travel_um += 2000;
+        input.centre = floor_l;
+        input.left = floor_r;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+    }
+    assert(c.v4_phase == V4_FOLLOW && sent.steering_permille < -100);
     c = reading();
     c.bar_phase = BAR_IDLE;
     input.centre = floor_l;
