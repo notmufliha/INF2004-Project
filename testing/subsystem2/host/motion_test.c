@@ -629,6 +629,17 @@ static void test_controlled_forward_speed(void)
     state.left_mm = state.right_mm = 100000.0f * pid_mm_per_count(true) - 15.0f;
     motion_profile_t slow = pid_profile(&state);
     CHECK(slow.left_speed / pid_mm_per_count(true) < 200.0f);
+    /* Slow encoder progress keeps resetting the kick timer on the final
+     * approach. An unfinished wheel still needs holding torque. */
+    state.left_progress_ms = state.right_progress_ms = state.now_ms;
+    state.left_integral = state.right_integral = 0.0f;
+    state.left_speed_cps = state.right_speed_cps = 0.0f;
+    slow.right_speed = 0.0f; /* Right wheel already reached its target. */
+    for (INT i = 0; i < PID_BOUNDED_MIN_PWM; ++i) {
+        state.sample_count = 0u;
+        pid_apply(&state, slow);
+    }
+    CHECK(pwm_left >= PID_BOUNDED_MIN_PWM && pwm_right == 0);
 #if B2_FORWARD_FEEDFORWARD_TRIAL
     CHECK(pid_base_pwm(&state, true) == (float)B2_LEFT_BASE_PWM);
     CHECK(pid_base_pwm(&state, false) == (float)B2_RIGHT_BASE_PWM);

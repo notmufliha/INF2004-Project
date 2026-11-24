@@ -323,7 +323,7 @@
 #define VC4_BAR_READ_MS 15000u
 #define VC4_BAR_RETRIES 2u
 #define VC4_BAR_REARM_UM 60000u
-/* After an obstacle bypass: slow speed and no junctions for 150 mm. */
+/* After an obstacle bypass: slow speed for 150 mm. */
 #define VC4_POST_AVOID_UM 150000u
 /* Lift-stop: car picked up while running -> stop. */
 #define VC4_LIFT_IR_RAW 3500u     /* both line sensors (no floor below)  */
@@ -458,6 +458,8 @@ typedef struct {
     bool bar_wait_clear;   /* decoded/skipped strip must fully leave GP28 */
     UH bar_rejects;
     bool post_avoid_slow;
+    bool post_avoid_wait_clear;
+    uint32_t post_avoid_clear_um;
     uint32_t post_avoid_um;
     uint32_t lift_ir_ms;
     bool on_ramp;

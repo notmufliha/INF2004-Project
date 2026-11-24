@@ -163,7 +163,7 @@ svg.chart { width: 100%; height: 150px; display: block; }
     <dl class="kv">
       <dt>Front</dt><dd id="o-d">–</dd>
       <dt>Echo status</dt><dd id="o-echo">not received</dd>
-      <dt>Width</dt><dd id="o-w">–</dd>
+      <dt>Estimated width</dt><dd id="o-w">–</dd>
       <dt>Clearance L / R</dt><dd id="o-lr">–</dd>
     </dl>
   </section>
@@ -409,7 +409,8 @@ function onTelemetry(d) {
   $("o-d").textContent = d.obs_open_space ? "No target (assumed open)" : fmtCm(d.obs_d_cm);
   $("o-echo").textContent = d.obs_open_space ? "No measured distance; open-space policy" :
     d.obs_d_cm === null ? "Unavailable / not measured" : "Measured return";
-  $("o-w").textContent = d.obs_w_cm === null ? "not measured" : `${d.obs_w_cm} cm`;
+  const widthStatus = d.state_name === "OBSTACLE_SCAN" ? "Measuring…" : "Edges unresolved";
+  $("o-w").textContent = d.obs_w_cm === null ? widthStatus : `${d.obs_w_cm} cm`;
   $("o-lr").textContent = `${fmtCm(d.obs_lc_cm)} / ${fmtCm(d.obs_rc_cm)}`;
   redraw();
 }
@@ -442,7 +443,7 @@ function onEvent(d) {
       $("hump-count").textContent = String(++state.humpCount);
     }
   }
-  else if (d.type === 2) text += `front ${fmtCm(d.d_cm)}, width ${d.w_cm === null ? "?" : d.w_cm + " cm"}, L ${fmtCm(d.lc_cm)}, R ${fmtCm(d.rc_cm)} → ${d.action_name}`;
+  else if (d.type === 2) text += `front ${fmtCm(d.d_cm)}, width ${d.w_cm === null ? "edges unresolved" : d.w_cm + " cm"}, L ${fmtCm(d.lc_cm)}, R ${fmtCm(d.rc_cm)} → ${d.action_name}`;
   else {
     text += `${d.err_text} (detail ${d.detail})`;
     $("diag-error").textContent = `${d.err_text} (detail ${d.detail})`;

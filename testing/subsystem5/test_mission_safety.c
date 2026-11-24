@@ -17,11 +17,11 @@ int main(void)
     uint32_t generation;
     s5_mission_init();
     assert(!s5_mission_approach_slow());
-    s5_mission_front(true, 30.0f);
+    s5_mission_front(true, ROBOT_OBSTACLE_APPROACH_CM);
     assert(s5_mission_approach_slow());
     s5_mission_front(false, 0.0f);
     assert(s5_mission_approach_slow()); /* Missing data cannot accelerate the approach. */
-    s5_mission_front(true, 31.0f);
+    s5_mission_front(true, ROBOT_OBSTACLE_APPROACH_CM + 1.0f);
     assert(!s5_mission_approach_slow());
     s5_mission_front(false, 20.0f);
     assert(!s5_mission_approach_slow());

@@ -38,6 +38,8 @@
  * 500 ms stall fault. */
 #define PID_KICK_PWM 12.0f
 #define PID_KICK_AFTER_MS 100
+#define PID_TURN_BREAKAWAY_MAX_PWM 45
+#define PID_TURN_BREAKAWAY_STEP_MS 20
 /* Loaded robot stalled at a 145 cps finishing target during a 45-degree
  * turn. Keep unfinished MOVE/TURN wheels above the usable speed floor. */
 #define PID_BOUNDED_MIN_CPS 300.0f
@@ -551,6 +553,14 @@ static float pid_base_pwm(const pid_state_t *state, bool left)
     return PID_MIN_MOVE_PWM;
 }
 
+static INT pid_turn_breakaway_pwm(int64_t no_progress_ms)
+{
+    int64_t pwm = PID_MAX_PWM +
+        (no_progress_ms - PID_KICK_AFTER_MS) / PID_TURN_BREAKAWAY_STEP_MS;
+    return pwm < PID_TURN_BREAKAWAY_MAX_PWM ? (INT)pwm :
+        PID_TURN_BREAKAWAY_MAX_PWM;
+}
+
 static void pid_apply(pid_state_t *state, motion_profile_t profile)
 {
     UINT slot = state->history_index;
@@ -582,19 +592,19 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
         right_cps * state->right_sign, &state->right_integral, dt,
         state->command.type != MOTION_CMD_MOVE && state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
         pid_base_pwm(state, false), curve_feedback);
-    /* Captured left-turn failure: the unfinished left wheel stayed still
-     * at 30% while the right wheel had finished. Use the existing 35%
-     * ceiling for breakaway only; stall/deadline guards remain unchanged. */
+    /* An unfinished wheel can stick under pivot load even at normal maximum
+     * duty. Ramp breakaway torque until encoder progress resumes. */
     if (state->command.type == MOTION_CMD_TURN) {
         if (profile.left_speed > 0.0f && state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS)
-            left_pwm = PID_MAX_PWM;
+            left_pwm = pid_turn_breakaway_pwm(state->now_ms - state->left_progress_ms);
         if (profile.right_speed > 0.0f && state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS)
-            right_pwm = PID_MAX_PWM;
+            right_pwm = pid_turn_breakaway_pwm(state->now_ms - state->right_progress_ms);
     }
     /* Loaded TURN/MOVE wheels can stop between kick pulses at the 15%
      * feed-forward base. Supply holding torque only while below target;
      * allow PI braking when faster than target and zero PWM when reached. */
-    if (state->command.type == MOTION_CMD_TURN) {
+    if (state->command.type == MOTION_CMD_TURN ||
+        state->command.type == MOTION_CMD_MOVE) {
         if (profile.left_speed > 0.0f &&
             left_cps * state->left_sign < profile.left_speed / pid_mm_per_count(true) &&
             left_pwm < PID_BOUNDED_MIN_PWM) left_pwm = PID_BOUNDED_MIN_PWM;
@@ -736,7 +746,8 @@ void pid_init(void)
               " curve_feedback=adaptive\n",
               (INT)B2_FORWARD_FEEDFORWARD_TRIAL,
               (INT)B2_LEFT_BASE_PWM, (INT)B2_RIGHT_BASE_PWM);
-    tm_printf((UB *)"[B2-FW] CLOSERETREAT-V47 move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway=35; stall guards active\n");
+    tm_printf((UB *)"[B2-FW] move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway_max=%d\n",
+              PID_TURN_BREAKAWAY_MAX_PWM);
 }
 
 void pid_cyclic_handler(void *p_exinf)

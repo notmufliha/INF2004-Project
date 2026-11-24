@@ -58,6 +58,18 @@ int main(void)
     assert(s5_measure_front_cm(&cm) == (ROBOT_NO_TARGET_FORWARD != 0));
     load(S5_ECHO_OUT_OF_RANGE, 500.0f);
     assert(s5_measure_front_cm(&cm) == (ROBOT_NO_TARGET_FORWARD != 0));
+    load(S5_ECHO_OUT_OF_RANGE, 1014.5f);
+    assert(s5_measure_probe_cm(&cm) == (ROBOT_COMPLETED_FAR_ECHO != 0));
+    load(S5_ECHO_OUT_OF_RANGE, 1014.5f);
+    readings[1] = (S5EchoReading){S5_ECHO_OK, 10262u, 17.60f};
+    assert(!s5_measure_probe_cm(&cm)); /* A close return vetoes apparent open space. */
+    load(S5_ECHO_OK, 17.60f);
+    for (unsigned i = 0u; i < ROBOT_ECHO_SAMPLES; ++i)
+        readings[i] = (S5EchoReading){S5_ECHO_NO_FALL, 0u, 0.0f};
+    assert(s5_measure_probe_cm(&cm) && cm > 17.59f && cm < 17.61f);
+    assert(cursor == 2u * ROBOT_ECHO_SAMPLES);
+    load(S5_ECHO_NO_RISE, 0.0f);
+    assert(!s5_measure_probe_cm(&cm));
     load(S5_ECHO_NO_RISE, 0.0f);
     assert(s5_measure_scan_cm(&cm) == (ROBOT_NO_TARGET_SCAN && ROBOT_NO_TARGET_FORWARD));
     for (int status = S5_ECHO_STUCK_HIGH; status <= S5_ECHO_TOO_SHORT; ++status) {
