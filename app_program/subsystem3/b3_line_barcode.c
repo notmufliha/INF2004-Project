@@ -736,3 +736,4 @@ static void b3_line_wait(uint32_t started_ms, bool timed)
     }
     b3_delay(wait_ms);
 }
+
