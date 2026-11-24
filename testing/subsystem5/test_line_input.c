@@ -143,8 +143,9 @@ int main(void)
             assert(!(out.line_flags & B3_LINE_F_LOST));
         }
     }
-    values[0] = B3_LINE_GP26_WHITE;
-    values[1] = B3_LINE_GP27_WHITE;
+    /* Bare mat (24 Nov 18:38 run): off-line with fixed or tracked white. */
+    values[0] = 200u;
+    values[1] = 140u;
     sample();
     assert(b3_get_timed_state(&out, &timestamp) == E_OK);
     assert(out.ir_left == 0u && out.ir_centre == 0u);

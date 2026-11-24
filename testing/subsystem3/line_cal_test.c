@@ -179,5 +179,42 @@ int main(void)
     assert(b3_line_cal_scale(300U, 400U, 200U) == 0U);
     puts("PASS measured per-channel contrast: white off, black on, "
          "interpolation and invalid range");
+
+	/* Floor tracking (GP26 settings), values from the 24 Nov run logs. */
+	{
+		const B3_FLOOR_CFG gp26 = { 250U, 150U, 330U, 45U, 340U, 25U, 375U, 90U };
+		B3_FLOOR f;
+		uint16_t w = 0U, b = 0U;
+
+		/* Car starts with the sensor on tape (17:58: raw ~413). */
+		b3_floor_init(&f);
+		for (unsigned i = 0U; i < 250U; ++i)
+			b3_floor_update(&f, &gp26, 413U, 20U, &w, &b);
+		assert(b3_line_cal_scale(413U, w, b) == 1000U);
+		/* Bright mat (17:58: floor 290..320): settles to off-line. */
+		for (unsigned i = 0U; i < 300U; ++i)
+			b3_floor_update(&f, &gp26, (uint16_t)(290U + (i % 4U) * 10U), 20U, &w, &b);
+		assert(b3_line_cal_scale(320U, w, b) < ON_LINE);
+		assert(b3_line_cal_scale(405U, w, b) >= 800U);
+		/* Dark mat (18:38: floor 190..210): the tape edge (300) is seen,
+		 * which the fixed 325 white missed completely. */
+		for (unsigned i = 0U; i < 100U; ++i)
+			b3_floor_update(&f, &gp26, (uint16_t)(190U + (i % 3U) * 10U), 20U, &w, &b);
+		assert(b3_line_cal_scale(210U, w, b) == 0U);
+		assert(b3_line_cal_scale(300U, w, b) >= ON_LINE);
+		assert(b3_line_cal_scale(365U, w, b) >= 800U);
+		/* Riding the tape edge on a curve for 1 s does not move the floor. */
+		{
+			uint16_t w0 = w;
+			for (unsigned i = 0U; i < 50U; ++i)
+				b3_floor_update(&f, &gp26, 300U, 20U, &w, &b);
+			assert(w == w0);
+		}
+		/* Lifted car (raw 3500+) never becomes floor. */
+		for (unsigned i = 0U; i < 500U; ++i)
+			b3_floor_update(&f, &gp26, 3600U, 20U, &w, &b);
+		assert(w <= 330U + 25U);
+		puts("PASS floor tracking: tape at boot, bright and dark mats, edge riding, lifted");
+	}
 	return 0;
 }

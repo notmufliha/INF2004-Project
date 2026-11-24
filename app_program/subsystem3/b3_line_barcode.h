@@ -33,6 +33,16 @@
 #define B3_LINE_GP26_BLACK (375U)
 #define B3_LINE_GP27_WHITE (260U)
 #define B3_LINE_GP27_BLACK (842U)
+/* 1: white follows each sensor's own floor (b3_floor_update), so the
+ * same sensitivity holds on every mat.  Tuned on the 24 Nov runs (17:58,
+ * 18:12, 18:38): GP26 floor 190..320 / tape 355..425; GP27 floor 125..225
+ * / tape edge 300..700, fully on 1000+.  0: the fixed endpoints above. */
+#ifndef B3_LINE_FLOOR_TRACK
+#define B3_LINE_FLOOR_TRACK (1)
+#endif
+/* init, lo, hi, band, tape, margin, black_min, span */
+#define B3_LINE_GP26_FLOOR_CFG { 250U, 150U, 330U, 45U, 340U, 25U, 375U, 90U }
+#define B3_LINE_GP27_FLOOR_CFG { 170U,  90U, 280U, 70U, 450U, 40U, 700U, 400U }
 /* 1: once a sensor has seen both floor and tape (slide the car across the
  * line once after power-up), normalise with its own learned white/black
  * instead of the fixed endpoints above.  Needed whenever the sensors are

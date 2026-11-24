@@ -56,6 +56,7 @@
 #include "app.h"
 #include "robot_config.h"
 #include "subsystem2/b2_motor.h"
+#include "subsystem2/encoder_control.h"
 #include "subsystem3/b3_line_barcode.h"
 #include "vehicle_controller.h"
 #include "subsystem4/subsystem4.h"
@@ -242,12 +243,17 @@ robot_startup_complete:
         B3_STATE line;
         uint32_t sample;
         tk_dly_tsk(2000);
+        UW enc_bad_left = 0u, enc_bad_right = 0u;
+        /* Quadrature steps where both channels changed at once: a loose or
+         * noisy encoder wire. Healthy encoders stay near 0. */
+        encoder_get_invalid_counts(&enc_bad_left, &enc_bad_right);
         if (motion_get_status(&status) == E_OK)
             tm_printf((UB*)"[ROBOT-HEALTH] " __DATE__ " " __TIME__
-                      " mission=%d b5=%d motion=%d fault=%d stopped=%d enc=%d,%d\n",
+                      " mission=%d b5=%d motion=%d fault=%d stopped=%d enc=%d,%d enc_bad=%d,%d\n",
                       (int)s5_mission_enabled(), (int)s5_mission_state(),
                       (int)status.status, (int)status.fault, (int)status.physically_stopped,
-                      (int)status.left_encoder_counts, (int)status.right_encoder_counts);
+                      (int)status.left_encoder_counts, (int)status.right_encoder_counts,
+                      (int)enc_bad_left, (int)enc_bad_right);
         if (b3_get_timed_state(&line, &sample) == E_OK)
             tm_printf((UB*)"[LINE] GP26=%d GP27=%d flags=%d black_min=%d\n",
                       (int)line.ir_left, (int)line.ir_centre,

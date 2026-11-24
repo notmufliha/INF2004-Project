@@ -340,11 +340,21 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
 	B3_LINE_CAL centre_cal;
 	bool calibration_reported = false;
     unsigned diagnostic_samples = 0U;
+#if B3_LINE_FLOOR_TRACK
+	static const B3_FLOOR_CFG left_floor_cfg = B3_LINE_GP26_FLOOR_CFG;
+	static const B3_FLOOR_CFG centre_floor_cfg = B3_LINE_GP27_FLOOR_CFG;
+	B3_FLOOR left_floor;
+	B3_FLOOR centre_floor;
+#endif
 
 	(void)stacd;
 	(void)exinf;
 	b3_line_cal_init(&left_cal);
 	b3_line_cal_init(&centre_cal);
+#if B3_LINE_FLOOR_TRACK
+	b3_floor_init(&left_floor);
+	b3_floor_init(&centre_floor);
+#endif
 
 	for (;;) {
 		SYSTIM cycle_start = {0};
@@ -372,6 +382,13 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
         centre_black = B3_LINE_GP27_BLACK;
         b3_track_range(&left_cal, &left_white, &left_black);
         b3_track_range(&centre_cal, &centre_white, &centre_black);
+#if B3_LINE_FLOOR_TRACK
+        b3_floor_update(&left_floor, &left_floor_cfg, left,
+                        (uint16_t)B3_LINE_UPDATE_MS, &left_white, &left_black);
+        b3_floor_update(&centre_floor, &centre_floor_cfg, centre,
+                        (uint16_t)B3_LINE_UPDATE_MS, &centre_white,
+                        &centre_black);
+#endif
         left_norm = b3_track_normalise(left, left_white, left_black);
         centre_norm = b3_track_normalise(centre, centre_white, centre_black);
 		flags = 0U;

@@ -17,6 +17,54 @@ static void block_reset(B3_LINE_CAL *cal)
 	for (unsigned i = 0U; i < B3_CAL_BLOCK_SAMPLES; ++i) cal->window[i] = 0U;
 }
 
+void b3_floor_init(B3_FLOOR *f)
+{
+	if (f != NULL) {
+		f->floor_x16 = 0U;
+		f->high_ms = 0U;
+		f->started = false;
+	}
+}
+
+void b3_floor_update(B3_FLOOR *f, const B3_FLOOR_CFG *cfg, uint16_t raw,
+		     uint16_t dt_ms, uint16_t *white, uint16_t *black)
+{
+	int32_t fl, target;
+	uint32_t w, b;
+
+	if (f == NULL || cfg == NULL || white == NULL || black == NULL) return;
+	if (!f->started) {
+		f->floor_x16 = (uint32_t)cfg->init * 16U;
+		f->started = true;
+	}
+	fl = (int32_t)(f->floor_x16 / 16U);
+	target = (int32_t)raw * 16;
+	if ((int32_t)raw < fl) {
+		f->floor_x16 = (uint32_t)((int32_t)f->floor_x16 +
+			(target - (int32_t)f->floor_x16) / B3_FLOOR_DOWN_DIV);
+		f->high_ms = 0U;
+	} else if ((int32_t)raw < fl + (int32_t)cfg->band) {
+		f->floor_x16 = (uint32_t)((int32_t)f->floor_x16 +
+			(target - (int32_t)f->floor_x16) / B3_FLOOR_UP_DIV);
+		f->high_ms = 0U;
+	} else if (raw < cfg->tape) {
+		if (f->high_ms < 60000U) f->high_ms = (uint16_t)(f->high_ms + dt_ms);
+		if (f->high_ms >= B3_FLOOR_SHIFT_MS) {
+			f->floor_x16 = (uint32_t)((int32_t)f->floor_x16 +
+				(target - (int32_t)f->floor_x16) / B3_FLOOR_UP_DIV);
+		}
+	} else {
+		f->high_ms = 0U;
+	}
+	if (f->floor_x16 < (uint32_t)cfg->lo * 16U) f->floor_x16 = (uint32_t)cfg->lo * 16U;
+	if (f->floor_x16 > (uint32_t)cfg->hi * 16U) f->floor_x16 = (uint32_t)cfg->hi * 16U;
+	w = f->floor_x16 / 16U + cfg->margin;
+	b = w + cfg->span;
+	if (b < cfg->black_min) b = cfg->black_min;
+	*white = (uint16_t)w;
+	*black = (uint16_t)b;
+}
+
 void b3_line_cal_init(B3_LINE_CAL *cal)
 {
 	if (cal != NULL) {
