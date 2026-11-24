@@ -838,6 +838,7 @@ static void v4_end_run(VEHICLE_CONTROLLER *c, const char *why)
 static void v4_reset_follow(VEHICLE_CONTROLLER *c)
 {
     vc4_reset(&c->trk);
+    lfr_reset(&c->lfr);
     c->drive_sent = false;
     c->last_speed = c->last_steer = 0;
 }
@@ -1302,7 +1303,21 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
      * +-VC4_BAR_STEER_MAX (bars flickering under a line sensor must not
      * swing the car), and the line is never declared lost mid-strip. */
     if (barcode_straight && c->trk.lost) vc4_reset(&c->trk);
+#if VC_FOLLOW_REF
+    {
+        lfr_out_t ref = lfr_step(&c->lfr, nl, nr, dt);
+        steer = ref.steer;
+        if (ref.search) {
+            /* Hand the lost line to the shared search, toward the side
+             * the line was last seen on. */
+            c->trk.filt = 0;
+            c->trk.last_side = ref.search_side;
+            c->trk.lost = true;
+        }
+    }
+#else
     steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
+#endif
     if (barcode_straight) {
         if (steer > VC4_BAR_STEER_MAX) steer = VC4_BAR_STEER_MAX;
         if (steer < -VC4_BAR_STEER_MAX) steer = -VC4_BAR_STEER_MAX;

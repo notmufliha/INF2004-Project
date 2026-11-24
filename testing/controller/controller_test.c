@@ -6,6 +6,7 @@
 #define RUN_LOG_ENABLE 0
 #include "../../app_program/vehicle_controller.c"
 #include "../../app_program/vc_follow.c"
+#include "../../app_program/line_follow_ref.c"
 #include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>

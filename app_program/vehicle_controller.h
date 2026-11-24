@@ -5,6 +5,7 @@
 #include "subsystem2/motion_command.h"
 #include <stdbool.h>
 #include "vc_follow.h"
+#include "line_follow_ref.h"
 
 /* Temporary steering diagnosis: set to 0 and rebuild to remove logging. */
 #ifndef VC_STEERING_DIAGNOSTICS
@@ -291,6 +292,13 @@
  */
 #ifndef VC_FOLLOW_V4
 #define VC_FOLLOW_V4 1
+/* 1: steering from line_follow_ref.c (simple proportional follower with
+ * smoothing, deadband, between-sensors hold and last-side search).
+ * 0: vc_follow.c's vc4_steer().  Junctions, barcodes, the line search
+ * itself and the wheel mapping are shared by both. */
+#ifndef VC_FOLLOW_REF
+#define VC_FOLLOW_REF 1
+#endif
 #endif
 /* Lost line: first back up over the stretch driven on white (the sensors
  * sit only 6 cm ahead of the axle, so a spin from where the car stopped
@@ -446,6 +454,7 @@ typedef struct {
     UB navigation, pending_navigation;
     /* Line following v4 (VC_FOLLOW_V4). */
     vc4_track_t trk;
+    lfr_t lfr;               /* VC_FOLLOW_REF steering state */
     UB v4_phase;           /* V4_FOLLOW, V4_SEARCH, V4_CROSS, V4_BARCODE */
     UB v4_sub;
     uint32_t v4_last_ms, v4_phase_ms, v4_motion_id;
