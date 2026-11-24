@@ -44,11 +44,25 @@
 #ifndef VC4_LEFT_EXIT_FRESH_MS
 #define VC4_LEFT_EXIT_FRESH_MS 400u
 #endif
-#define VC4_SAT             600   /* both sensors need usable tape contrast */
-#define VC4_JCT_SUM_MIN     1300  /* nL + nR on a crossing tape            */
-#define VC4_JCT_SENSOR_MIN  600   /* each sensor must independently see tape */
-#define VC4_JCT_KEEP_MIN    450   /* hysteresis through a fading tape edge */
-#define VC4_JCT_KEEP_SUM    1100
+/* Junction thresholds, lowered 24 Nov from 600/1300 (keep 450/1100):
+ * an off-centre or angled crossing half-covers one sensor (~300..500).
+ * Replaying the day's runs: 5 crossings found before, 7 now, the same 7
+ * at 300; one line under one sensor (a curve) never reaches both. */
+#ifndef VC4_SAT
+#define VC4_SAT             400   /* both sensors need usable tape contrast */
+#endif
+#ifndef VC4_JCT_SUM_MIN
+#define VC4_JCT_SUM_MIN     1000  /* nL + nR on a crossing tape            */
+#endif
+#ifndef VC4_JCT_SENSOR_MIN
+#define VC4_JCT_SENSOR_MIN  400   /* each sensor must independently see tape */
+#endif
+#ifndef VC4_JCT_KEEP_MIN
+#define VC4_JCT_KEEP_MIN    300   /* hysteresis through a fading tape edge */
+#endif
+#ifndef VC4_JCT_KEEP_SUM
+#define VC4_JCT_KEEP_SUM    800
+#endif
 
 /* ---- steering ---------------------------------------------------------- */
 #define VC4_STEER_MAX       1000
