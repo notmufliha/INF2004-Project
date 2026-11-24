@@ -54,6 +54,25 @@ static void circle_run(double r, int *side_changes, int *straight_ticks,
 }
 int main(void){
   vc4_track_t t; uint32_t um=0; int32_t s; int32_t sp, st;
+  /* A crossbar must cancel an existing curve immediately. */
+  for(int side=-1;side<=1;side+=2){
+    vc4_reset(&t);
+    t.filt=side*900; t.bias=side*700; t.exit_side=(int8_t)side;
+    t.prev_exit=(int8_t)side; t.lost=true;
+    s=vc4_steer(&t,900,650,20,0);
+    CHECK(s==0 && !t.lost && t.exit_side==0 && t.bias==0,
+          "junction cancels stale curve and loss immediately");
+  }
+  /* Low-contrast alternating sensor noise on an otherwise straight line. */
+  vc4_reset(&t);
+  { int peak=0;
+    for(int i=0;i<100;i++){
+      s=vc4_steer(&t,i%2?100:FLOOR,i%2?FLOOR:100,20,(uint32_t)i*2400);
+      if(s>peak) peak=s;
+      if(-s>peak) peak=-s;
+    }
+    CHECK(peak<50, "small alternating edge readings produce gentle steering");
+  }
   {
     vc4_track_t left, right;
     int32_t ls=0, rs=0, lsp, lst, rsp, rst;

@@ -73,11 +73,10 @@
 #define VC4_FILT_DIV        4     /* per 10 ms: filt += (target-filt)/4    */
 #define VC4_SIDE_MIN        150   /* |error| that records the line's side  */
 /* Below this |error| the response is squared (calm on the straight),
- * above it linear.  1 = linear everywhere: a small edge reading gives a
- * small, immediate correction instead of none (track simulation:
- * mean offset 3.1 -> 2.3 mm, worst 7.3 -> 4.8 mm). */
+ * above it linear. Attenuate small edge noise without discarding it;
+ * strong curve entries retain the existing gain and wheel split. */
 #ifndef VC4_SOFT_BAND
-#define VC4_SOFT_BAND       1
+#define VC4_SOFT_BAND       200
 #endif
 /* Proportional part, percent of the error (the curve memory adds to it). */
 /* Damping, percent of the error's change per 20 ms: steers against the

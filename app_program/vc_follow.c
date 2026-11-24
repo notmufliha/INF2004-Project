@@ -101,6 +101,9 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
         t->cross_hold = true;
         t->cross_um = travel_um;
         t->bias = 0;          /* the arm, not a curve */
+        t->filt = 0;          /* do not carry the approach turn onto tape */
+        t->lost = false;
+        t->prev_exit = 0;
         t->left_curve_ms = 0u;
         t->exit_side = 0;
         t->recover = VC4_RECOVER_START;
@@ -190,6 +193,11 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
          * damping would steer away from it. */
         if (!t->lost) {
             int32_t d = (rs - t->prev_raw) * VC4_D_PCT / 100;
+            /* Small alternating tape-edge readings must not receive the
+             * same derivative kick as a genuine curve entry. */
+            int32_t edge = iabs32(raw);
+            if (iabs32(t->prev_raw) > edge) edge = iabs32(t->prev_raw);
+            if (edge < VC4_SOFT_BAND) d = d * edge / VC4_SOFT_BAND;
             if (white && t->exit_side != 0) d = d * VC4_D_EXIT_PCT / 100;
             if (dt_ms > 0u) d = d * 20 / (int32_t)dt_ms;
             d = clamp_steer(d, VC4_D_MAX);

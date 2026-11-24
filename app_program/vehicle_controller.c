@@ -1299,9 +1299,9 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
      * steady below (the decoder times bar widths), junctions are still
      * ignored on the strip, and bar_filter() above already blanks a line
      * sensor that is reading bars instead of the line.  On the strip:
-     * a stale lost/recovery state is dropped, steering is limited to
-     * +-VC4_BAR_STEER_MAX (bars flickering under a line sensor must not
-     * swing the car), and the line is never declared lost mid-strip. */
+     * a stale lost/recovery state is dropped and the line is never declared
+     * lost mid-strip. Limit steering only when a line sensor was identified
+     * as reading bars; GP28 activity alone must not weaken a real curve. */
     if (barcode_straight && c->trk.lost) vc4_reset(&c->trk);
 #if VC_FOLLOW_REF
     {
@@ -1319,8 +1319,10 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     steer = vc4_steer(&c->trk, nl, nr, dt, c->travel_um);
 #endif
     if (barcode_straight) {
-        if (steer > VC4_BAR_STEER_MAX) steer = VC4_BAR_STEER_MAX;
-        if (steer < -VC4_BAR_STEER_MAX) steer = -VC4_BAR_STEER_MAX;
+        if (c->bars_active && c->bar_ignore != 0) {
+            if (steer > VC4_BAR_STEER_MAX) steer = VC4_BAR_STEER_MAX;
+            if (steer < -VC4_BAR_STEER_MAX) steer = -VC4_BAR_STEER_MAX;
+        }
         c->trk.lost = false;
     }
     if (!vc4_on_line(&c->trk)) {
@@ -1421,7 +1423,7 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
      * split while lowering forward speed tightens the turning radius. */
     {
         INT mag = steer < 0 ? -steer : steer;
-        if (mag > 300 && !barcode_straight) {
+        if (mag > 300) {
             INT curve_limit = VC4_CRUISE_MM_S - (mag - 300) * 40 / 700;
             if (base_mm > curve_limit) base_mm = curve_limit;
         }
@@ -1457,6 +1459,19 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
         command.target_speed_cps = c->last_speed;
     }
     if (command.target_speed_cps < 1) command.target_speed_cps = 1;
+    /* The barcode speed hold replaces vc4_wheels()' mean speed. Keep the
+     * strongest split that still leaves the inner wheel at its usable
+     * floor, rather than imposing the old blanket steering reduction. */
+    if (strip_pending || barcode_straight || c->bar_phase == BAR_READ) {
+        INT limit = 0;
+        if (command.target_speed_cps >= VC_STRADDLE_MIN_INNER_CPS) {
+            limit = 1000 - (VC_STRADDLE_MIN_INNER_CPS * 1000 +
+                           command.target_speed_cps - 1) /
+                          command.target_speed_cps;
+        }
+        if (command.steering_permille > limit) command.steering_permille = limit;
+        if (command.steering_permille < -limit) command.steering_permille = -limit;
+    }
     c->last_speed = command.target_speed_cps;
     c->last_steer = command.steering_permille;
     c->follow_steer = command.steering_permille;

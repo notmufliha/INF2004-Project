@@ -20,6 +20,22 @@ static VEHICLE_CONTROLLER reading(void)
 int main(void)
 {
     VEHICLE_CONTROLLER c = reading();
+    /* GP28 detecting bars must not weaken a real sustained line bend. */
+    for (int side = -1; side <= 1; side += 2) {
+        c = reading();
+        input.barcode_active = false;
+        for (int i = 0; i < 10; ++i) {
+            input.now_ms += VC_PERIOD_MS;
+            c.travel_um += 1000;
+            input.centre = side > 0 ? 950 : 30;
+            input.left = side < 0 ? 950 : 30;
+            v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+        }
+        assert(c.bar_phase == BAR_READ && c.v4_phase == V4_FOLLOW);
+        assert(sent.steering_permille * side < -600);
+        assert(sent.target_speed_cps == vc4_mm_s_to_cps(60));
+    }
+    c = reading();
     /* Current stationary captures:
      * floor GP26=205 / GP27=144, tape GP26=360 / GP27=539.
      * Exercise channel scaling before testing the actual control path. */
@@ -209,9 +225,9 @@ int main(void)
         v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
         assert(c.running && c.bar_phase == BAR_READ);
         assert(c.v4_phase == V4_FOLLOW && !c.trk.lost);
-        /* Line steering stays on during the pass, limited on the strip. */
+        /* Clean line sensors retain full steering during the pass. */
         assert(sent.type == MOTION_CMD_DRIVE &&
-               sent.steering_permille <= 400 && sent.steering_permille >= -400);
+               sent.steering_permille <= 800 && sent.steering_permille >= -800);
         assert(sent.target_speed_cps == vc4_mm_s_to_cps(60));
         assert(c.trk.jct_state == 0);
     }
@@ -225,7 +241,7 @@ int main(void)
     c.trk.lost = true;
     v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
     assert(c.bar_phase == BAR_READ && c.v4_phase == V4_FOLLOW && !c.trk.lost);
-    assert(sent.steering_permille <= 400 && sent.steering_permille >= -400);
+    assert(sent.steering_permille <= 800 && sent.steering_permille >= -800);
 
     /* Reject -> bounded reverse, never a recovery TURN. */
     c = reading();
@@ -269,8 +285,8 @@ int main(void)
     UINT previous_drives = drives;
     v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
     assert(c.running && c.bar_phase == BAR_IDLE && drives > previous_drives);
-    assert(sent.type == MOTION_CMD_DRIVE && sent.steering_permille <= 400 &&
-           sent.steering_permille >= -400);   /* follows the line, no recovery arc */
+    assert(sent.type == MOTION_CMD_DRIVE && sent.steering_permille <= 800 &&
+           sent.steering_permille >= -800);   /* follows the line, no recovery arc */
     assert(c.bar_clear_known && c.v4_phase == V4_FOLLOW);
     for (int i = 0; i < 10; ++i) {
         input.now_ms += VC_PERIOD_MS;
