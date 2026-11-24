@@ -803,6 +803,10 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                 c->side = right_turn && (!left_turn ||
                     right_room - left_room > ROBOT_BYPASS_SIDE_TIE_CM) ?
                     S5_SIDE_RIGHT : S5_SIDE_LEFT;
+                /* Go around on the side of the pending barcode turn: the
+                 * rejoin then lands on that branch of the next crossing. */
+                if (in->turn_hint < 0 && left_turn) c->side = S5_SIDE_LEFT;
+                else if (in->turn_hint > 0 && right_turn) c->side = S5_SIDE_RIGHT;
                 c->profile.bypass_side = c->side;
                 c->error = S5_ERR_NONE;
                 return change(c, S5_AVOID,

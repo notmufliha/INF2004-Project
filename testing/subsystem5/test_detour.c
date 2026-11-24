@@ -18,7 +18,13 @@ int main(void)
         float swept = sqrtf(ROBOT_CHASSIS_HALF_LENGTH_CM * ROBOT_CHASSIS_HALF_LENGTH_CM +
                             ROBOT_CHASSIS_HALF_WIDTH_CM * ROBOT_CHASSIS_HALF_WIDTH_CM);
         assert(ROBOT_BYPASS_MIN_TURN_CM > swept + 0.4f);
-        assert(fabsf(m.offset_cm - 40.3587f) < 0.01f);
+        /* Centred test box: half width + half chassis + margin, along the
+         * 40-degree diagonal, plus the extra diagonal, scaled. (40.36 cm
+         * with the earlier 16 cm chassis estimate.) */
+        float expected_offset = ((20.0f * 0.5f + ROBOT_CHASSIS_HALF_WIDTH_CM +
+            ROBOT_OBSTACLE_MARGIN_CM) / sinf(40.0f * 0.01745329252f) +
+            ROBOT_BYPASS_EXTRA_DIAGONAL_CM) * ROBOT_BYPASS_DIAGONAL_DISTANCE_SCALE;
+        assert(fabsf(m.offset_cm - expected_offset) < 0.01f);
         assert(fabsf(m.search_limit_cm - m.offset_cm) < 0.01f);
         assert(fabsf(m.pass_cm - 22.0f) < 0.01f);
         unsigned turns = 0u, moves = 0u;

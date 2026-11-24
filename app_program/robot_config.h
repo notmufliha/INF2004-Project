@@ -81,8 +81,50 @@
 #define ROBOT_COURSE_PASS_CM 15.0f
 #define ROBOT_COURSE_CLEAR_STEP_CM 5.0f
 #define ROBOT_COURSE_BYPASS_LEG_CM 25.0f
-#define ROBOT_COURSE_BOX_DEPTH_CM 20.0f
+/* Final course obstacle: about 14 cm wide (across the line), 10 cm deep. */
+#define ROBOT_COURSE_BOX_DEPTH_CM 10.0f
 #define ROBOT_BYPASS_SIDE_TIE_CM 0.5f
+
+/* Rejoin route (normal build). The crossing tape on the final course is
+ * only ~15 cm past the obstacle, less than the robot needs to be past the
+ * box AND straight on the line. So the car does not try to rejoin before
+ * the crossing:
+ *   1. pivot 90 deg to the bypass side, move sideways just enough to clear
+ *      the box, pivot back to parallel;
+ *   2. drive forward alongside the box, watching the line sensors;
+ *   3a. a tape seen on this leg is the crossing's side branch: put the
+ *      axle on it and pivot 90 deg the way the pending barcode turn says
+ *      (toward the bypass side = along that branch; the other way = back
+ *      across the junction centre). That IS the barcode turn, so the VC
+ *      forgets it. With no pending turn the car crosses the tape and
+ *      comes back to the original line below the crossing;
+ *   3b. no tape: pivot 90 deg toward the line, drive to it, put the axle
+ *      on it and pivot back to the original heading.
+ * The bypass side follows the pending barcode turn when that side is open.
+ * Set 0 to use the earlier 55/40/40-degree course route. */
+#ifndef ROBOT_REJOIN_ROUTE
+#define ROBOT_REJOIN_ROUTE (!ROBOT_OBSTACLE_TEST)
+#endif
+#define ROBOT_REJOIN_TURN_DEG 90
+/* Plan with at least this width; the 7-ray sweep can under-read a box. */
+#define ROBOT_REJOIN_MIN_PLAN_WIDTH_CM 14.0f
+/* Gap between the chassis side and the obstacle edge while passing it. */
+#define ROBOT_REJOIN_SIDE_MARGIN_CM 2.5f
+#define ROBOT_REJOIN_MAX_LATERAL_CM 30.0f
+/* Rear clearance past the obstacle's far edge before turning back in. */
+#define ROBOT_REJOIN_PAST_MARGIN_CM 2.0f
+/* Keep driving this far beyond that point looking for a crossing tape. */
+#define ROBOT_REJOIN_LOOKAHEAD_CM 12.0f
+/* After the sensors first see a tape: axle onto the tape's centre. The
+ * sensors are 6 cm ahead of the axle; ~0.5 cm is lost to the stop. */
+#define ROBOT_REJOIN_TAPE_ADVANCE_CM 5.5f
+/* No pending turn at a crossing: get the line sensors fully past the
+ * crossing tape (sensor offset + tape + margin) before turning in. */
+#define ROBOT_REJOIN_CROSS_EXTRA_CM 11.0f
+/* Return leg: give up this far beyond the lateral offset. */
+#define ROBOT_REJOIN_SEARCH_EXTRA_CM 12.0f
+/* A close echo pauses a rejoin leg; give up after this long. */
+#define ROBOT_REJOIN_BLOCKED_MS 8000u
 /* Fixed test route: if the first diagonal is blocked after meaningful travel,
  * take the scheduled opposite turn once rotation clearance is confirmed. */
 #define ROBOT_BYPASS_BLOCKED_FIRST_MIN_CM 20.0f
@@ -196,8 +238,11 @@
 #else
 #define ROBOT_OBSTACLE_MAX_BYPASS_CM 30.0f
 #endif
-#define ROBOT_CHASSIS_HALF_WIDTH_CM 8.0f
+/* Measured: 12.5 cm wheel-outside to wheel-outside. */
+#define ROBOT_CHASSIS_HALF_WIDTH_CM 6.25f
 #define ROBOT_CHASSIS_HALF_LENGTH_CM 10.0f
+/* Measured: wheel axle to the back edge of the robot. */
+#define ROBOT_CHASSIS_REAR_CM 8.0f
 #ifndef ROBOT_SENSOR_FORWARD_OFFSET_CM
 #define ROBOT_SENSOR_FORWARD_OFFSET_CM 5.0f
 #endif

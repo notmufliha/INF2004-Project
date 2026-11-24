@@ -945,6 +945,7 @@ static void live_controller_mode(void)
         in.line_found = s5_bridge_line_found();
         in.coarse_ready = coarse_ready;
         in.fine_ready = fine_ready;
+        in.turn_hint = s5_mission_turn_hint();
         if (coarse_ready) {
             in.coarse = coarse;
             if (!ROBOT_OBSTACLE_TEST) in.width_points = width_points;
@@ -1062,7 +1063,7 @@ static void live_controller_mode(void)
                       (int)(c.profile.left_clearance_cm * 100.0f),
                       (int)(c.profile.right_clearance_cm * 100.0f));
             print_profile(&c.profile);
-            if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE) {
+            if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE && !ROBOT_REJOIN_ROUTE) {
                 /* Verify the ranked side head-on before committing to a drive.
                  * The completed viewpoint turn doubles as the outward turn. */
                 look_attempted = true;
@@ -1149,6 +1150,12 @@ EXPORT void s5_task(INT stacd, void *exinf)
               (int)(ROBOT_SENSOR_FORWARD_OFFSET_CM * 100.0f),
               (int)(ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM * 100.0f),
               (int)(ROBOT_BYPASS_MIN_TURN_CM * 100.0f));
+    tm_printf((UB*)"[S5-REJOIN-CFG] on=%d turn=%d plan_width_x100=%d box_depth_x100=%d half_width_x100=%d rear_x100=%d side_margin_x100=%d lookahead_x100=%d tape_advance_x100=%d\n",
+              (int)ROBOT_REJOIN_ROUTE, (int)ROBOT_REJOIN_TURN_DEG,
+              (int)(ROBOT_REJOIN_MIN_PLAN_WIDTH_CM * 100.0f), (int)(ROBOT_COURSE_BOX_DEPTH_CM * 100.0f),
+              (int)(ROBOT_CHASSIS_HALF_WIDTH_CM * 100.0f), (int)(ROBOT_CHASSIS_REAR_CM * 100.0f),
+              (int)(ROBOT_REJOIN_SIDE_MARGIN_CM * 100.0f), (int)(ROBOT_REJOIN_LOOKAHEAD_CM * 100.0f),
+              (int)(ROBOT_REJOIN_TAPE_ADVANCE_CM * 100.0f));
     if (!s5_ultrasonic_init()) {
         s5_mission_publish(S5_MISSION_FAULT);
         b2_request_stop();

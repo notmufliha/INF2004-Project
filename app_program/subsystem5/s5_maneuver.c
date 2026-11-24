@@ -98,6 +98,40 @@ bool s5_maneuver_plan_equal_legs(S5Maneuver *m, float obstacle_front_cm)
     m->equal_leg_route = true;
     return true;
 }
+bool s5_maneuver_plan_rejoin(S5Maneuver *m, const S5Profile *p,
+                             float obstacle_front_cm, int turn_hint)
+{
+    float width, toward, lateral;
+    if (!m || !p || m->state != S5_MAN_TURN_OUT ||
+        (m->side != S5_SIDE_LEFT && m->side != S5_SIDE_RIGHT) ||
+        !(obstacle_front_cm > 0.0f) || obstacle_front_cm > S5_MAX_RANGE_CM)
+        return false;
+    width = p->estimated_width_cm;
+    if (!(width >= ROBOT_REJOIN_MIN_PLAN_WIDTH_CM)) width = ROBOT_REJOIN_MIN_PLAN_WIDTH_CM;
+    /* Obstacle centre shifted toward the bypass side needs more offset. */
+    toward = m->side == S5_SIDE_LEFT ? -p->center_x_cm : p->center_x_cm;
+    if (!(toward > -width) || !(toward < width)) toward = 0.0f;
+    lateral = width * 0.5f + toward + ROBOT_CHASSIS_HALF_WIDTH_CM +
+              ROBOT_REJOIN_SIDE_MARGIN_CM;
+    if (lateral < ROBOT_CHASSIS_HALF_WIDTH_CM + ROBOT_REJOIN_SIDE_MARGIN_CM)
+        lateral = ROBOT_CHASSIS_HALF_WIDTH_CM + ROBOT_REJOIN_SIDE_MARGIN_CM;
+    if (lateral > ROBOT_REJOIN_MAX_LATERAL_CM) return false;
+    m->rejoin_route = true;
+    m->equal_leg_route = m->guarded_probe_route = false;
+    m->turn_hint = turn_hint < 0 ? -1 : turn_hint > 0 ? 1 : 0;
+    m->lateral_cm = m->offset_cm = lateral;
+    m->minimum_offset_cm = 0.0f;
+    /* Axle travel until the rear clears the far edge of the box. */
+    m->pass_needed_cm = obstacle_front_cm + ROBOT_SENSOR_FORWARD_OFFSET_CM +
+        ROBOT_COURSE_BOX_DEPTH_CM + ROBOT_CHASSIS_REAR_CM + ROBOT_REJOIN_PAST_MARGIN_CM;
+    m->pass_cm = m->pass_needed_cm + ROBOT_REJOIN_LOOKAHEAD_CM;
+    m->search_limit_cm = lateral + ROBOT_REJOIN_SEARCH_EXTRA_CM;
+    m->offset_done_cm = m->pass_done_cm = m->searched_cm = 0.0f;
+    m->rejoin_step = 0;
+    m->crossing_seen = m->turn_done = m->blocked = false;
+    m->final_turn_deg = 0;
+    return positive(m->offset_cm) && positive(m->pass_cm) && positive(m->search_limit_cm);
+}
 bool s5_maneuver_plan_probe_route(S5Maneuver *m, float obstacle_front_cm)
 {
     if (obstacle_front_cm <= ROBOT_BYPASS_FRONT_TURN_CM) return false;
@@ -142,6 +176,173 @@ static void next_leg(S5Maneuver *m, S5ManeuverState state, uint32_t now)
         m->search_limit_cm = lateral_cm / sinf(return_heading * radians_per_degree);
     }
 }
+/* ---- Rejoin route (see ROBOT_REJOIN_ROUTE in robot_config.h) ---------- */
+#define REJOIN_LINE_HITS 2u
+static int rejoin_outward(const S5Maneuver *m)
+{
+    return m->side == S5_SIDE_LEFT ? -ROBOT_REJOIN_TURN_DEG : ROBOT_REJOIN_TURN_DEG;
+}
+static float *rejoin_counter(S5Maneuver *m)
+{
+    if (m->state == S5_MAN_OFFSET) return &m->offset_done_cm;
+    if (m->state == S5_MAN_PASS) return &m->pass_done_cm;
+    if (m->state == S5_MAN_SEARCH) return &m->searched_cm;
+    return &m->active_move_cm; /* ALIGN advance: unused total */
+}
+static float rejoin_target(const S5Maneuver *m)
+{
+    if (m->state == S5_MAN_OFFSET) return m->offset_cm;
+    if (m->state == S5_MAN_PASS) return m->pass_cm;
+    if (m->state == S5_MAN_SEARCH) return m->search_limit_cm;
+    return ROBOT_REJOIN_TAPE_ADVANCE_CM;
+}
+static void rejoin_leg(S5Maneuver *m, S5ManeuverState state, int step, uint32_t now)
+{
+    next_leg(m, state, now);
+    m->rejoin_step = step;
+    m->blocked = m->stopping = m->stop_for_line = false;
+    m->line_hits = 0u;
+}
+/* Tape found on the pass leg (a crossing) or the return leg (the line). */
+static void rejoin_line_event(S5Maneuver *m, uint32_t now)
+{
+    int outward = rejoin_outward(m);
+    int side_sign = m->side == S5_SIDE_LEFT ? -1 : 1;
+    if (m->state == S5_MAN_SEARCH) {
+        m->final_turn_deg = outward; /* back to the original heading */
+        rejoin_leg(m, S5_MAN_ALIGN, 0, now);
+        return;
+    }
+    m->crossing_seen = true;
+    if (m->turn_hint != 0) {
+        /* Turn onto the crossing tape in the barcode's direction. */
+        m->final_turn_deg = m->turn_hint == side_sign ? outward : -outward;
+        m->turn_done = true;
+        rejoin_leg(m, S5_MAN_ALIGN, 0, now);
+        return;
+    }
+    /* No turn armed: cross this tape, then return to the original line. */
+    float extended = m->pass_done_cm + ROBOT_REJOIN_CROSS_EXTRA_CM;
+    if (extended < m->pass_needed_cm) extended = m->pass_needed_cm;
+    m->pass_cm = extended;
+}
+static S5Action rejoin_step(S5Maneuver *m, const S5ManeuverInput *in)
+{
+    const S5Action none = {S5_ACT_NONE, 0.0f, 0};
+    const S5Action halt = {S5_ACT_STOP, 0.0f, 0};
+    bool fresh_line = in->line_sample_ms != m->last_line_ms;
+    bool front_ok = in->front_valid && in->front_cm > 0.0f && in->front_cm <= S5_MAX_RANGE_CM;
+    bool moving_state = m->state == S5_MAN_OFFSET || m->state == S5_MAN_PASS ||
+        m->state == S5_MAN_SEARCH || (m->state == S5_MAN_ALIGN && m->rejoin_step == 0);
+    bool watch_line = m->state == S5_MAN_SEARCH ||
+        (m->state == S5_MAN_PASS && !m->crossing_seen);
+    int outward = rejoin_outward(m);
+
+    /* A command the adapter could not submit (B2 still acknowledging the
+     * last STOP) is simply asked for again. */
+    m->issuing = false;
+    if (fresh_line) m->last_line_ms = in->line_sample_ms;
+
+    if (m->pending_id) {
+        if (!in->motion_terminal || in->result_id != m->pending_id || !in->stopped) {
+            if (moving_state && !m->stopping) {
+                if (watch_line && fresh_line) {
+                    if (in->line_detected) ++m->line_hits;
+                    else m->line_hits = 0u;
+                    if (m->line_hits >= REJOIN_LINE_HITS) m->stopping = m->stop_for_line = true;
+                }
+                if (!m->stopping && front_ok && in->front_cm <= ROBOT_BYPASS_MOVE_STOP_CM) {
+                    m->stopping = m->blocked = true;
+                    m->blocked_since_ms = in->now_ms;
+                    m->clear_hits = 0u;
+                }
+            }
+            return m->stopping ? halt : none;
+        }
+        if (!in->motion_success && !in->motion_cancelled)
+            return stop(m, S5_ERR_MOTION_TIMEOUT);
+        if (moving_state) {
+            float done = in->motion_progress_cm;
+            if (!(done > 0.0f)) done = in->motion_success ? m->active_move_cm : 0.0f;
+            if (done > m->active_move_cm) done = m->active_move_cm;
+            *rejoin_counter(m) += done;
+        }
+        m->pending_id = 0u;
+        m->stopping = false;
+        if (m->stop_for_line) {
+            m->stop_for_line = false;
+            m->line_hits = 0u;
+            rejoin_line_event(m, in->now_ms);
+            return none;
+        }
+        if (!moving_state) {
+            /* A pivot finished. */
+            switch (m->state) {
+            case S5_MAN_TURN_OUT: m->outward_turn_complete = false;
+                                  rejoin_leg(m, S5_MAN_OFFSET, 0, in->now_ms); break;
+            case S5_MAN_FORWARD:  rejoin_leg(m, S5_MAN_PASS, 0, in->now_ms); break;
+            case S5_MAN_TURN_IN:  rejoin_leg(m, S5_MAN_SEARCH, 0, in->now_ms); break;
+            case S5_MAN_ALIGN:    rejoin_leg(m, S5_MAN_COMPLETE, 0, in->now_ms); break;
+            default: return stop(m, S5_ERR_MOTION_TIMEOUT);
+            }
+            return none;
+        }
+        if (m->state == S5_MAN_ALIGN) { /* advance finished: final pivot */
+            m->rejoin_step = 1;
+            return none;
+        }
+    }
+
+    if (!moving_state) {
+        int turn;
+        if (!in->stopped) return halt;
+        switch (m->state) {
+        case S5_MAN_TURN_OUT: turn = outward; break;
+        case S5_MAN_FORWARD:
+        case S5_MAN_TURN_IN:  turn = -outward; break;
+        case S5_MAN_ALIGN:    turn = m->final_turn_deg; break;
+        default: return stop(m, S5_ERR_MOTION_TIMEOUT);
+        }
+        m->active_move_cm = 0.0f;
+        m->issuing = true;
+        return (S5Action){S5_ACT_TURN, 0.0f, turn};
+    }
+
+    float remaining = rejoin_target(m) - (m->state == S5_MAN_ALIGN ? 0.0f : *rejoin_counter(m));
+    if (m->blocked) {
+        if (!front_ok || in->front_cm < ROBOT_BYPASS_MOVE_RELEASE_CM) {
+            m->clear_hits = 0u;
+            if (in->now_ms - m->blocked_since_ms >= ROBOT_REJOIN_BLOCKED_MS)
+                return stop(m, S5_ERR_NO_CLEAR_ROUTE);
+            return halt;
+        }
+        if (in->now_ms != m->last_clear_sample_ms) ++m->clear_hits;
+        m->last_clear_sample_ms = in->now_ms;
+        if (m->clear_hits < ROBOT_CLEAR_CONFIRM) return halt;
+        m->blocked = false;
+        m->clear_hits = 0u;
+    }
+    if (m->state != S5_MAN_ALIGN && remaining <= 0.05f) {
+        switch (m->state) {
+        case S5_MAN_OFFSET: rejoin_leg(m, S5_MAN_FORWARD, 0, in->now_ms); return none;
+        /* The bridge holds TURN_IN until the controller asks for FIND_LINE. */
+        case S5_MAN_PASS:   rejoin_leg(m, S5_MAN_TURN_IN, 0, in->now_ms); return none;
+        default:            return stop(m, S5_ERR_LINE_TIMEOUT); /* no line */
+        }
+    }
+    if (!in->stopped) return halt;
+    if (front_ok && in->front_cm <= ROBOT_BYPASS_MOVE_STOP_CM) {
+        m->blocked = true;
+        m->blocked_since_ms = in->now_ms;
+        m->clear_hits = 0u;
+        return halt;
+    }
+    m->line_hits = 0u;
+    m->active_move_cm = remaining;
+    m->issuing = true;
+    return (S5Action){S5_ACT_MOVE, remaining, 0};
+}
+
 S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
 {
     S5Action a = {0};
@@ -159,6 +360,7 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
     if (!in->line_valid ||
         in->now_ms - in->line_sample_ms > ROBOT_BYPASS_LINE_MAX_AGE_MS)
         return stop(m, S5_ERR_LINE_TIMEOUT);
+    if (m->rejoin_route) return rejoin_step(m, in);
     if (!in->line_detected) m->left_original_line = true;
     if (ROBOT_BYPASS_LINE_HANDOFF && m->outward_turn_complete &&
         !m->equal_leg_route &&

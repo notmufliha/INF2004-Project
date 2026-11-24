@@ -746,6 +746,13 @@ static void update_junction_state(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
     }
 }
 
+/* B5 bypasses on the side of the armed barcode turn (see s5_mission.h). */
+static void publish_turn_hint(const VEHICLE_CONTROLLER *c)
+{
+    s5_mission_set_turn_hint(c->pending_navigation == B3_NAV_LEFT ? -1 :
+                             c->pending_navigation == B3_NAV_RIGHT ? 1 : 0);
+}
+
 #if VC_FOLLOW_V4
 /* ---- Line following v4 (see VC_FOLLOW_V4 in vehicle_controller.h) ---- */
 enum { V4_FOLLOW = 0, V4_SEARCH, V4_CROSS, V4_BARCODE };
@@ -1679,6 +1686,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         if (c->navigation != B3_NAV_NONE && c->pending_navigation == B3_NAV_NONE)
             c->pending_navigation = c->navigation;
 #endif
+        publish_turn_hint(c);
         c->navigation = 0u;
         c->navigation_id = 0u;
 #if !VC_FOLLOW_V4
@@ -1695,6 +1703,14 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         return;
     }
     if (c->obstacle_handoff) {
+        if (s5_mission_take_turn_done()) {
+            /* B5's rejoin pivoted onto the crossing in the armed direction:
+             * that was the barcode turn. Do not repeat it at the next one. */
+            tm_printf((UB *)"[VC4] bypass made the barcode turn (action %d); cleared\n",
+                      (INT)c->pending_navigation);
+            run_log_event(in->now_ms, RUN_EV_NAV_START, (uint16_t)c->pending_navigation);
+            c->pending_navigation = B3_NAV_NONE;
+        }
         /* The bypass changed position and heading. Discard steering/speed
          * history from before the obstacle and give a lost line a fresh
          * recovery window, even if we entered avoidance during recovery. */
@@ -1725,6 +1741,7 @@ void vehicle_controller_step(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav)
         c->post_avoid_um = c->travel_um + VC4_POST_AVOID_UM;
 #endif
     }
+    publish_turn_hint(c);
     if (!in->clearance || (in->faults & FAULT_NO_ECHO)) {
         if (c->state != ROBOT_OBSTACLE_SCAN) {
             tm_printf((UB *)"[VC-CLEARANCE-WAIT] now_ms=%d allowed=%d no_echo=%d generation=%d\n",

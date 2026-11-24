@@ -148,6 +148,15 @@ uint16_t b3_barcode_rejects(void) { return 0u; }
 void b3_line_raw(uint16_t *a, uint16_t *b) { if (a) *a = 300u; if (b) *b = 300u; }
 void imu_live_get(imu_live_t *p) { *p = (imu_live_t){0}; }
 void s5_mission_set_ramp(bool on) { (void)on; }
+static int turn_hint_published;
+static bool bypass_turn_done;
+void s5_mission_set_turn_hint(int hint) { turn_hint_published = hint; }
+bool s5_mission_take_turn_done(void)
+{
+    bool done = bypass_turn_done;
+    bypass_turn_done = false;
+    return done;
+}
 static UINT junction_beeps;
 void b3_buzzer_request(B3_BEEP pattern)
 {

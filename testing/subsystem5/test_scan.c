@@ -105,7 +105,9 @@ int main(void)
         assert(p.valid && p.uses_course_bounds);
         assert(p.estimated_width_cm == ROBOT_OBSTACLE_MAX_BYPASS_CM);
         assert(p.bypass_side == S5_SIDE_RIGHT);
-        assert(p.required_lateral_clearance_cm == 46.0f);
+        /* 46 cm with the earlier 16 cm chassis estimate. */
+        assert(p.required_lateral_clearance_cm == ROBOT_OBSTACLE_MAX_BYPASS_CM +
+               ROBOT_CHASSIS_HALF_WIDTH_CM + ROBOT_OBSTACLE_MARGIN_CM);
         s5_controller_init(&controller);
         input.front_valid = true; input.front_cm = ROBOT_STOP_CM - 1.0f;
         assert(s5_controller_step(&controller, &input) == S5_CMD_STOP);
