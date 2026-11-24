@@ -22,9 +22,16 @@
  * Dashboard values remain raw; control uses the independent 0..1000 scales.
  */
 #define B3_LINE_RAW_LOW_IS_BLACK (0U)
-#define B3_LINE_GP26_WHITE (210U)
-#define B3_LINE_GP26_BLACK (355U)
-#define B3_LINE_GP27_WHITE (160U)
+/* Final-course mats (run 2026-11-24 17:58): GP26 floor 260..340 (mostly
+ * 280..300), tape 380..430 (mostly ~400); GP27 floor 160..280, tape
+ * 1000+. The earlier 210/355 made the bare mat read 50..90 % "on the line"
+ * under GP26, so the car steered hard right everywhere. White is set at the
+ * TOP of the floor band so the mat reads 0; black at 375 still counts
+ * earlier logs' 361..400 tape as a junction (>= 800 from ~365). Re-check
+ * [LINE-RAW] if the sensors are moved or the mats change. */
+#define B3_LINE_GP26_WHITE (325U)
+#define B3_LINE_GP26_BLACK (375U)
+#define B3_LINE_GP27_WHITE (260U)
 #define B3_LINE_GP27_BLACK (842U)
 /* 1: once a sensor has seen both floor and tape (slide the car across the
  * line once after power-up), normalise with its own learned white/black

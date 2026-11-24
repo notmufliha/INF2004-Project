@@ -39,7 +39,7 @@ typedef struct { uint32_t lo; } SYSTIM;
 #define TP_PRC1 1
 #include "../../app_program/subsystem3/b3_line_barcode.h"
 static jmp_buf iteration;
-static uint32_t values[2] = {370u, 1500u};
+static uint32_t values[2] = {405u, 1500u}; /* final-course tape */
 static int fail_channel = -1;
 static bool busy, short_read, bad_clock;
 static uint32_t time_ms = 100u;
@@ -128,11 +128,11 @@ int main(void)
            out.ir_centre == 1000u && timestamp == 100u);
     assert(out.line_flags == (B3_LINE_F_DETECTED | B3_LINE_F_JUNCTION));
     {
-        /* Replay black readings from the 2026-11-18 spread-sensor logs
-         * (GP26 fully on tape 361-400, GP27 1419-2994). */
+        /* Replay black readings: final-course run 2026-11-24 (GP26 tape
+         * 380-430) and the 2026-11-18 logs where GP26 still read 376-400. */
         const uint16_t pairs[][2] = {
-            {364u, 1839u}, {369u, 1596u}, {376u, 1419u},
-            {361u, 2895u}, {400u, 1616u}, {362u, 2994u}
+            {382u, 1210u}, {400u, 1500u}, {418u, 1030u},
+            {430u, 2895u}, {376u, 1419u}, {400u, 1616u}
         };
         for (unsigned i = 0u; i < sizeof(pairs) / sizeof(pairs[0]); ++i) {
             values[0] = pairs[i][0]; values[1] = pairs[i][1];
