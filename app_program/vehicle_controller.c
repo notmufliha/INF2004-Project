@@ -2231,6 +2231,7 @@ static void controller_task(INT stacd, void *exinf)
     bool hazard = false;
     bool impact = false;
     bool hump_seen = false;
+    bool b4_lift_ignored = false;
     uint32_t last_hump_ms = 0u;
     bool autostart_pending = ROBOT_AUTOSTART != 0;
     uint32_t last_boot_log_ms = 0u;
@@ -2347,7 +2348,21 @@ static void controller_task(INT stacd, void *exinf)
 #endif
         /* B4 lift detection (subsystem4/imu_lift.h): a pick-up stops the
          * motors like the controller's own lift rules (START to resume). */
-        in.lifted_imu = in.lifted_imu || (imu.b_valid && imu.b_lifted);
+        /* Its 30 mm rise threshold also trips on the course hump (run 24 Nov
+         * 19:27: "climbing", then LIFTED with a 56 mm rise at 0.3 m/s, while
+         * a hand pick-up rises 100-200 mm).  Just after the hump, B4's lift
+         * flag alone does not stop the car; the IR lift rule (both line
+         * sensors off the floor) and the tilt limits still do. */
+        {
+            bool after_hump = hump_seen &&
+                now.lo - last_hump_ms <= VC_HUMP_IMPACT_GRACE_MS;
+            bool b4_lift = imu.b_valid && imu.b_lifted;
+            if (b4_lift && after_hump && c.running && !b4_lift_ignored) {
+                tm_printf((UB *)"[VC] B4 lift right after the hump: ignored\n");
+            }
+            b4_lift_ignored = b4_lift && after_hump;
+            in.lifted_imu = in.lifted_imu || (b4_lift && !after_hump);
+        }
         in.barcode_active = b3_barcode_active();
         in.barcode_rejects = (UH)b3_barcode_rejects();
         in.imu_valid = imu.b_valid && now.lo - imu.timestamp_ms <= VC_IMU_MAX_AGE_MS;
