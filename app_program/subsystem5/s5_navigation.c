@@ -427,8 +427,8 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
                 action.turn_deg < 0 ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT, &id);
         else
             error = motion_move_limited_cm(action.distance_cm < 0 ? -action.distance_cm : action.distance_cm,
-                maneuver.equal_leg_route && maneuver.state == S5_MAN_SEARCH ?
-                    ROBOT_COURSE_RETURN_SPEED_CPS : ROBOT_BYPASS_SPEED_CPS,
+                maneuver.state == S5_MAN_SEARCH ?
+                    ROBOT_REJOIN_SPEED_CPS : ROBOT_BYPASS_SPEED_CPS,
                 action.distance_cm < 0 ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD,
                 ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_DISTANCE_MODE && action.distance_cm > 0 ? ROBOT_BYPASS_FORWARD_MS : 0u, &id);
         if (error != E_OK || !s5_maneuver_submitted(&maneuver, id)) {

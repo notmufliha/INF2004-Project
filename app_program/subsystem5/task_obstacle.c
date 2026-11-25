@@ -1139,6 +1139,8 @@ EXPORT void s5_task(INT stacd, void *exinf)
     tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
     tm_printf((UB*)"[S5-TEST] obstacle_test=%d bounded_reverse=%d reverse_cm=8 rear_space=operator_checked startup_clear_cm=%d\n",
               (int)ROBOT_OBSTACLE_TEST, (int)ROBOT_TEST_BOUNDED_REVERSE, (int)ROBOT_STOP_CM);
+    tm_printf((UB*)"[S5-FW] rejoin_speed_cps=%d (return-to-line legs)\n",
+              (int)ROBOT_REJOIN_SPEED_CPS);
     tm_printf((UB*)"[S5-FW] CLOSERETREAT-V47 encoder_distance=1 speed_cps=%d turn_deg=%d sensor_turn_guard_x100=%d opening_pivot_x100=%d\n",
               (int)ROBOT_BYPASS_SPEED_CPS,
               (int)(ROBOT_OBSTACLE_TEST || ROBOT_BYPASS_EXACT_SEQUENCE ?

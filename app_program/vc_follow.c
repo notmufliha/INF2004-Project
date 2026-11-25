@@ -258,11 +258,9 @@ void vc4_junction_reset(vc4_track_t *t)
 vc4_jct_t vc4_junction(vc4_track_t *t, uint32_t nl, uint32_t nr,
                        uint32_t travel_um)
 {
-    uint32_t sum = nl + nr;
-    bool wide = nl >= VC4_JCT_SENSOR_MIN && nr >= VC4_JCT_SENSOR_MIN &&
-        sum >= VC4_JCT_SUM_MIN;
-    bool still_tape = nl >= VC4_JCT_KEEP_MIN && nr >= VC4_JCT_KEEP_MIN &&
-        sum >= VC4_JCT_KEEP_SUM;
+    /* Both sensors on the tape at the same time (no sum condition). */
+    bool wide = nl >= VC4_JCT_SENSOR_MIN && nr >= VC4_JCT_SENSOR_MIN;
+    bool still_tape = nl >= VC4_JCT_KEEP_MIN && nr >= VC4_JCT_KEEP_MIN;
     vc4_jct_t cls = VC4_JCT_NONE;
 
     switch (t->jct_state) {

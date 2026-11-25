@@ -204,12 +204,25 @@ int main(void){
     if(pos>=100 && pos<118){nl=450;nr=650;}
     j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=2000; }
   CHECK(got==VC4_JCT_CROSS, "partial-coverage crossing -> CROSS");
-  /* narrow (5mm) -> nothing */
+  /* both sensors on tape for 5 mm -> junction */
   vc4_reset(&t); um=0; got=0;
   for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
     if(pos>=100 && pos<105){nl=1000;nr=1000;}
     j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=1000; }
-  CHECK(got==VC4_JCT_NONE, "5 mm stripe not a junction");
+  CHECK(got==VC4_JCT_CROSS, "both sensors 5 mm on tape -> junction");
+  /* 4 mm overlap -> nothing */
+  vc4_reset(&t); um=0; got=0;
+  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
+    if(pos>=100 && pos<104){nl=1000;nr=1000;}
+    j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=1000; }
+  CHECK(got==VC4_JCT_NONE, "both sensors only 4 mm on tape: not a junction");
+  /* each sensor on tape 8 mm but overlapping only 3 mm -> nothing */
+  vc4_reset(&t); um=0; got=0;
+  for(int i=0;i<200;i++){ uint32_t pos=um/1000; uint32_t nl=FLOOR,nr=FLOOR;
+    if(pos>=100 && pos<108) nl=1000;
+    if(pos>=105 && pos<113) nr=1000;
+    j=vc4_junction(&t,nl,nr,um); if(j) got=j; um+=1000; }
+  CHECK(got==VC4_JCT_NONE, "sensors 3 mm together: not a junction");
   /* one sensor only (curve) -> never junction */
   vc4_reset(&t); um=0; got=0;
   for(int i=0;i<200;i++){ j=vc4_junction(&t,1000,200,um); if(j) got=j; um+=2400; }

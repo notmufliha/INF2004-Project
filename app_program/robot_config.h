@@ -73,6 +73,16 @@
 #define ROBOT_BYPASS_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 720 : 680)
 #define ROBOT_BYPASS_TURN_SPEED_CPS (ROBOT_OBSTACLE_TEST ? 450 : 560)
 #define ROBOT_COURSE_RETURN_SPEED_CPS 620
+/* Return-to-line (SEARCH) legs after the bypass, every route: slower than
+ * the bypass legs (680 cps ~57 mm/s) so the car stops ON the 18 mm tape.
+ * B5 checks the line about every 80 ms and then brakes; at 57 mm/s the
+ * sensors could roll past the tape, the stationary check saw floor, and
+ * the search drove on forward, missing the line.  450 cps ~38 mm/s (B2's
+ * bounded-move floor is 300 cps).  The line itself is B3's detection, as
+ * in line following: GP26 raw >= ~250 / GP27 raw >= ~240. */
+#ifndef ROBOT_REJOIN_SPEED_CPS
+#define ROBOT_REJOIN_SPEED_CPS 450
+#endif
 #define ROBOT_BYPASS_FORWARD_MS 5000u
 #define ROBOT_BYPASS_EXTRA_DIAGONAL_CM 10.0f
 #define ROBOT_COURSE_BYPASS_TURN_DEG 55
