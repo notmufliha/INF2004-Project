@@ -17,6 +17,7 @@ void vc4_reset(vc4_track_t *t)
     t->recover = VC4_RECOVER_START;
     t->coast_ms = 0u;
     t->cross_hold = false;
+    t->cross_side = 0;
     t->cross_um = 0u;
     t->white_ms = 0u;
     t->white_start_um = 0u;
@@ -96,8 +97,12 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
 
     /* Crossing tape: forget the side the first sensor touched it on and
      * drive straight across; the line carries on between the sensors. */
-    if (nl >= VC4_JCT_SENSOR_MIN && nr >= VC4_JCT_SENSOR_MIN &&
-        nl + nr >= VC4_JCT_SUM_MIN) {
+    bool both_tape = nl >= VC4_JCT_SENSOR_MIN && nr >= VC4_JCT_SENSOR_MIN &&
+        nl + nr >= VC4_JCT_SUM_MIN;
+    if (both_tape) {
+        /* Side alone on the line before the overlap (before it is cleared
+         * below): see the bend check after this block. */
+        if (!t->cross_hold) t->cross_side = t->exit_side;
         t->cross_hold = true;
         t->cross_um = travel_um;
         t->bias = 0;          /* the arm, not a curve */
@@ -108,6 +113,23 @@ int32_t vc4_steer(vc4_track_t *t, uint32_t nl, uint32_t nr, uint32_t dt_ms,
         t->exit_side = 0;
         t->recover = VC4_RECOVER_START;
         t->coast_ms = 0u;
+    }
+    if (t->cross_hold && !both_tape && t->cross_side != 0) {
+        /* Bend, not a tape: crossing a real tape, the sensor that met it
+         * first also leaves it first, so the one still black afterwards is
+         * the OTHER sensor. If the one still black is the sensor that was
+         * alone on the line before the overlap, the line runs on under it:
+         * the outer sensor only swept across a hard bend (25 Nov run, 14.9 s:
+         * right on the line, left swept black, right still black after; the
+         * hold drove the car straight off the bend). Steer on. */
+        int8_t still = (nl >= VC4_BLACK && nr < VC4_BLACK) ? 1 :
+                       (nr >= VC4_BLACK && nl < VC4_BLACK) ? -1 : 0;
+        if (still != 0 && still == t->cross_side) {
+            t->cross_hold = false;
+            t->cross_side = 0;
+            t->exit_side = still;      /* the line is still on that side */
+            t->exit_age_ms = 0u;
+        }
     }
     if (t->cross_hold) {
         if (white || travel_um - t->cross_um >= VC4_CROSS_HOLD_UM) {

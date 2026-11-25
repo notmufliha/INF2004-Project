@@ -263,6 +263,27 @@ int main(void){
            dir*85, (int)lo, sc, stt, mo);
     CHECK(!lo && sc==0 && stt<40 && mo<9.0, "85 mm circle stays on line");
   }
+  /* 25 Nov 10:15 run, 14.7-15.1 s: hard right bend, right sensor on the
+   * line, left sensor swept across it (both read tape, 421/1000), then the
+   * right sensor alone was black again. The crossing hold drove straight
+   * off the bend at full speed. It is a bend: steering must go back right.
+   * Pairs are {left n27, right n26}, 30 ms apart, ~1 mm per sample. */
+  {
+    static const uint32_t bend[][2] = {
+      {0,1000},{0,1000},{0,1000},{0,1000},{0,1000},{7,1000},{47,957},
+      {211,714},{1000,421},{1000,214},{1000,92},{1000,171},{189,450},
+      {0,914},{0,1000},{0,1000},{0,1000},{0,950}
+    };
+    int32_t last = 0; uint32_t pos = 2717000u;
+    vc4_reset(&t);
+    for (int i = 0; i < 40; ++i) { last = vc4_steer(&t, 0, 1000, 30, pos); pos += 1000u; }
+    for (unsigned i = 0; i < sizeof bend / sizeof bend[0]; ++i) {
+      last = vc4_steer(&t, bend[i][0], bend[i][1], 30, pos); pos += 1000u;
+    }
+    printf("   swept bend: steer after %d, cross_hold %d\n", (int)last, (int)t.cross_hold);
+    CHECK(!t.cross_hold && last < -300,
+          "hard bend swept by the outer sensor keeps steering into the bend");
+  }
   printf("cps(120)=%d cps(60)=%d\n", vc4_mm_s_to_cps(120), vc4_mm_s_to_cps(60));
   printf(fails? "FAILED %d\n":"ALL PASS\n",fails); return fails;
 }

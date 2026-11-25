@@ -183,6 +183,8 @@ typedef struct {
     uint32_t coast_ms;
     bool     cross_hold;  /* passing a crossing tape                      */
     uint32_t cross_um;    /* odometer when both sensors last saw tape     */
+    int8_t   cross_side;  /* side alone on the line before the overlap:
+                             +1 left, -1 right, 0 none (came from white) */
     /* loss */
     uint32_t white_ms;
     uint32_t white_start_um;
