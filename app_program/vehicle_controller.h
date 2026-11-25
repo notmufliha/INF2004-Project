@@ -328,7 +328,13 @@
 #define VC4_BAR_LEAD_UM 40000u    /* reverse this far before the 1st bar */
 #define VC4_BAR_BACK_EXTRA_UM 70000u
 #define VC4_BAR_RETRY_EXTRA_UM 10000u
-#define VC4_BAR_REWIND_MAX_UM 260000u /* strip ~144 mm + lead-in; reversing is blind */
+/* Longest rewind for a retry. A retry backs up the whole failed pass + 10 mm
+ * so it starts where that pass did (110 mm before the strip). The course
+ * strip is ~240 mm, and a pass runs on ~60+ mm past it before B3 declares
+ * the scan over, so a pass is ~420 mm. The earlier 260 mm cap stopped every
+ * retry inside the barcode (25 Nov run: two rewinds, never read). Reversing
+ * is blind, but B2's reverse now drives straight (B2_REVERSE_PWM_SPLIT). */
+#define VC4_BAR_REWIND_MAX_UM 450000u
 #define VC4_BAR_STEER_MAX 400     /* line steering limit on a barcode strip */
 #define VC4_BAR_WAIT_MS 600u      /* stand still: B3 ends a scan after 500 ms quiet */
 #define VC4_BAR_READ_UM 650000u   /* give up a pass after this travel    */
