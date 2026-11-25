@@ -737,6 +737,12 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
     case S5_WAIT_STOP:
         if (in->stopped)
         {
+            if (!ROBOT_OBSTACLE_TEST && c->reverse_attempts == 0u &&
+                in->front_valid && in->front_cm > 0.0f &&
+                in->front_cm <= ROBOT_WIDTH_RETREAT_CM) {
+                ++c->reverse_attempts;
+                return change(c, S5_REVERSE, S5_CMD_REVERSE);
+            }
             return change(c, S5_COARSE, S5_CMD_SCAN_COARSE);
         }
         if (c->ticks_in_state >= S5_WAIT_LIMIT)
@@ -772,6 +778,10 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                     if (c->unresolved_flank)
                         return wait_for_route(c, S5_ERR_INSUFFICIENT_CLEARANCE);
                 }
+                /* Retreat can move a still-present obstacle past the normal
+                 * release threshold. Hold for a new sweep if no route fits. */
+                if (in->width_points && c->reverse_attempts != 0u)
+                    c->unresolved_flank = true;
                 if (c->profile.valid && c->profile.size == S5_SIZE_OVERSIZED)
                     return wait_for_route(c, S5_ERR_INSUFFICIENT_CLEARANCE);
                 const S5ScanPoint *left = &in->coarse.points[0];
@@ -808,6 +818,7 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
                 if (in->turn_hint < 0 && left_turn) c->side = S5_SIDE_LEFT;
                 else if (in->turn_hint > 0 && right_turn) c->side = S5_SIDE_RIGHT;
                 c->profile.bypass_side = c->side;
+                c->unresolved_flank = false;
                 c->error = S5_ERR_NONE;
                 return change(c, S5_AVOID,
                               c->side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT);
@@ -997,9 +1008,12 @@ S5Command s5_controller_step(S5Controller *c, const S5Input *in)
             return change(c, S5_COARSE, S5_CMD_SCAN_COARSE);
         return S5_CMD_NONE;
     case S5_REVERSE:
-        if (in->motion_complete) {
-            if (c->profile.valid && c->side != S5_SIDE_NONE)
+        if (in->motion_complete && in->stopped) {
+            if (ROBOT_OBSTACLE_TEST && c->profile.valid && c->side != S5_SIDE_NONE)
                 return change(c, S5_AVOID, c->side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT);
+            c->profile = (S5Profile){0};
+            c->side = S5_SIDE_NONE;
+            c->encounter_front_cm = in->front_valid ? in->front_cm : 0.0f;
             return change(c, S5_COARSE, S5_CMD_SCAN_COARSE);
         }
         if (c->ticks_in_state >= S5_MOTION_LIMIT)

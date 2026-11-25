@@ -163,8 +163,11 @@
 #define ROBOT_BYPASS_MIDDLE_DISTANCE_SCALE 1.0f
 #define ROBOT_BYPASS_MIDDLE_MAX_CM 22.0f
 #define ROBOT_BYPASS_DIAGONAL_DISTANCE_SCALE 0.80f
-/* User-requested bounded retreat for floor tests; no rear sensor fitted.
- * Operator must keep rear space clear. Normal operation requires rear sensing. */
+/* On the course, a single bounded retreat uses the track behind the robot.
+ * A fitted rear sensor overrides this fallback. Set to 0 to require one. */
+#ifndef ROBOT_BYPASS_BOUNDED_REVERSE
+#define ROBOT_BYPASS_BOUNDED_REVERSE 1
+#endif
 #ifndef ROBOT_TEST_BOUNDED_REVERSE
 #define ROBOT_TEST_BOUNDED_REVERSE ROBOT_OBSTACLE_TEST
 #endif
@@ -251,6 +254,10 @@
 #define ROBOT_SENSOR_TURN_OFFSET_CM ((ROBOT_SENSOR_FORWARD_OFFSET_CM > ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM) ? \
     ROBOT_SENSOR_FORWARD_OFFSET_CM - ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM : 0.0f)
 #define ROBOT_BYPASS_FRONT_TURN_CM (ROBOT_BYPASS_MIN_TURN_CM - ROBOT_SENSOR_TURN_OFFSET_CM)
+/* Front sensor stand-off below which the width sweep needs a retreat. */
+#ifndef ROBOT_WIDTH_RETREAT_CM
+#define ROBOT_WIDTH_RETREAT_CM 13.0f
+#endif
 #define ROBOT_OBSTACLE_MARGIN_CM 8.0f
 
 /* Pin pairs for M1 and M2 on Maker Pi Pico Base.

@@ -26,7 +26,8 @@ static bool (*rear_sensor)(float);
 /* Normal reverse requires rear sensing; bounded floor-test retreat is explicit. */
 static bool reverse_path_clear(void)
 {
-    return rear_sensor ? rear_sensor(ROBOT_BYPASS_REVERSE_CM) : ROBOT_TEST_BOUNDED_REVERSE;
+    return rear_sensor ? rear_sensor(ROBOT_BYPASS_REVERSE_CM) :
+        (ROBOT_OBSTACLE_TEST ? ROBOT_TEST_BOUNDED_REVERSE : ROBOT_BYPASS_BOUNDED_REVERSE);
 }
 static S5Error navigation_error;
 static uint32_t probe_id, probe_started_ms;
@@ -148,7 +149,7 @@ static bool request(S5Command command, const S5Profile *profile)
               (int)(maneuver.search_limit_cm * 100.0f),
               profile ? (int)profile->uses_course_bounds : 0);
     mode = command == S5_CMD_REVERSE ? NAV_REVERSE : NAV_AVOID;
-    comm_set_robot_state(ROBOT_OBSTACLE_AVOID);
+    comm_set_robot_state(command == S5_CMD_REVERSE ? ROBOT_OBSTACLE_SCAN : ROBOT_OBSTACLE_AVOID);
     return true;
 }
 static bool motion_complete(void)
@@ -297,8 +298,10 @@ void s5_navigation_tick(bool front_valid, float front_cm, bool follow)
     in.line_junction = (line.line_flags & B3_LINE_F_JUNCTION) != 0u;
     in.front_valid = front_valid;
     in.front_cm = front_cm;
-    if (front_valid && front_cm > 0.0f && front_cm <= S5_MAX_RANGE_CM &&
-        (mode == NAV_FOLLOW || mode == NAV_STOP)) last_front_cm = front_cm;
+    if (mode == NAV_FOLLOW || mode == NAV_STOP ||
+        (mode == NAV_REVERSE && maneuver.state == S5_MAN_COMPLETE))
+        last_front_cm = front_valid && front_cm > 0.0f && front_cm <= S5_MAX_RANGE_CM ?
+            front_cm : 0.0f;
     if (!maneuver.equal_leg_route || status.command_id == maneuver.pending_id)
         in.motion_progress_cm = (status.left_distance_mm + status.right_distance_mm) / 20.0f;
     in.stopped = status.physically_stopped;

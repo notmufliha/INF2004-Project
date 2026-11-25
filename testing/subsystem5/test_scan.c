@@ -301,6 +301,34 @@ int main(void)
         assert(controller.profile.estimated_width_cm > 7.9f &&
                controller.profile.estimated_width_cm < 8.0f);
 
+        /* A close encounter stops and backs up before the width sweep.
+         * Only the post-retreat sweep decides which way to go. */
+        for (int direction = -1; direction <= 1; direction += 2) {
+            S5Input close = {.front_valid = true, .front_cm = 5.0f};
+            s5_controller_init(&controller);
+            assert(s5_controller_step(&controller, &close) == S5_CMD_STOP);
+            assert(s5_controller_step(&controller, &close) == S5_CMD_STOP);
+            close.stopped = true;
+            assert(s5_controller_step(&controller, &close) == S5_CMD_REVERSE);
+            close.motion_complete = true;
+            close.stopped = false;
+            assert(s5_controller_step(&controller, &close) == S5_CMD_NONE);
+            close.stopped = true;
+            close.front_cm = 22.0f;
+            assert(s5_controller_step(&controller, &close) == S5_CMD_SCAN_COARSE);
+            assert(!controller.profile.valid);
+
+            close.motion_complete = false;
+            close.coarse_ready = true;
+            close.width_points = sweep;
+            close.coarse = input.coarse;
+            close.turn_hint = direction;
+            assert(s5_controller_step(&controller, &close) ==
+                   (direction < 0 ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT));
+            assert(controller.profile.valid && controller.profile.frontal_width_cm > 0.0f);
+            assert(controller.reverse_attempts == 1u);
+        }
+
         /* A live open-space echo must not discard the completed scan. */
         sweep[6].distance_cm = 12.07f;
         input.coarse.points[4] = sweep[6];

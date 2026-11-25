@@ -31,14 +31,15 @@ const context = vm.createContext({ window: { S1Wire: W }, document,
   Date: FakeDate, getComputedStyle: () => ({ getPropertyValue: () => "black" }) });
 const html = fs.readFileSync(path.join(__dirname, "../../../tools/dashboard/index.html"), "utf8");
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
-function telemetry(distance, seq) {
+function telemetry(distance, seq, width = 127) {
   const values = { ver: W.WIRE_VERSION, seq, state: 8, line: 2, obs_d_cm: distance,
-    obs_w_cm: 127, obs_lc_cm: 511, obs_rc_cm: 511 };
+    obs_w_cm: width, obs_lc_cm: 511, obs_rc_cm: 511 };
   context.frame = W.decode("telemetry", W.pack(W.TELEMETRY, values));
   vm.runInContext("onTelemetry(frame)", context);
 }
-telemetry(50, 1);
+telemetry(50, 1, 14);
 assert.equal(element("o-d").textContent, "50 cm");
+assert.equal(element("o-w").textContent, "14 cm");
 const rollFrame = { ver: W.WIRE_VERSION, seq: 1, roll_dd: -123 };
 // A 29-byte frame from before B4 roll (and lifted): no roll, not lifted.
 const oldFrame = W.decode("telemetry", W.pack(W.TELEMETRY.slice(0, -2), rollFrame));

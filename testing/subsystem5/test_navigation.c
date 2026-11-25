@@ -295,7 +295,13 @@ int main(void)
     p.bypass_side = S5_SIDE_LEFT;
     p.estimated_width_cm = 8.0f;
     p.center_y_cm = 55.0f;
-    assert(!s5_bridge_request(S5_CMD_REVERSE, &p)); /* No rear sensor. */
+    assert(s5_bridge_request(S5_CMD_REVERSE, &p)); /* Bounded course retreat. */
+    tick(5.0f);
+    assert(move_calls == 1u && last_direction == MOTION_DIR_REVERSE);
+    assert(last_move == ROBOT_BYPASS_REVERSE_CM && !s5_bridge_motion_complete());
+    finish_leg();
+    assert(s5_bridge_motion_complete() && s5_navigation_stopped());
+    move_calls = 0u;
     assert(s5_bridge_request(S5_CMD_GO_LEFT, &p));
     tick(25.0f); /* Initial turn permitted while front obstacle is near. */
     assert(turn_calls == 1u && last_turn == MOTION_TURN_LEFT);
