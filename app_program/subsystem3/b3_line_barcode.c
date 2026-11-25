@@ -74,10 +74,10 @@ static const uint8_t b3_routes[26] = {
 	B3_NAV_LEFT,     /* J */
 	B3_NAV_RIGHT,    /* K */
 	B3_NAV_STRAIGHT, /* L */
-	B3_NAV_UTURN,    /* M */
-	B3_NAV_STOP,     /* N */
-	B3_NAV_SLOW,     /* O */
-	B3_NAV_NORMAL,   /* P */
+	B3_NAV_RIGHT,    /* M */
+	B3_NAV_STRAIGHT, /* N */
+	B3_NAV_LEFT,     /* O */
+	B3_NAV_UTURN,    /* P */
 	B3_NAV_SPIN,     /* Q */
 	B3_NAV_FINISH,   /* R */
 	B3_NAV_LEFT,     /* S */
