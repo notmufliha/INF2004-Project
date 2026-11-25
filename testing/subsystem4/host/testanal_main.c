@@ -33,6 +33,7 @@ static void test_roll_motion_trends (void);
 static void test_roll_height (void);
 static void test_flat_ground_rejection (void);
 static void test_height_jolt_rejection (void);
+static void test_roll_settle (void);
 
 /** @brief Run classification, timing, movement and roll regressions. */
 int
@@ -59,6 +60,7 @@ main (void)
     test_roll_height();
     test_flat_ground_rejection();
     test_height_jolt_rejection();
+    test_roll_settle();
     puts("All roll-only IMU analysis tests passed.");
     return 0;
 }
@@ -582,5 +584,30 @@ test_height_jolt_rejection (void)
     puts("PASS: hump height ignores the edge jolt (10 mm hump reads 10 mm)");
 }
 
-/*** end of file ***/
+/** @brief settle_ms: no hump may start until the car has driven steadily
+ *         for that long after a movement reset (here a stop). */
+static void
+test_roll_settle (void)
+{
+    short_reset();
+    g_analysis.config.settle_ms = 600U;
+    roll_feed(0.0f, TEST_SHORT_BASELINE);
+    /* Within 600 ms of steady driving: a lean is not a hump. */
+    assert(!roll_feed(6.0f, 5U).b_hump_detected);
+    assert(IMU_ROLL_ACTIVE != g_analysis.roll_state);
+    roll_feed(0.0f, 30U);               /* 600 ms more, level */
+    roll_feed(6.0f, 1U);
+    assert(roll_feed(6.0f, 1U).b_hump_detected);
+    roll_feed(0.0f, TEST_SHORT_SETTLE);
+    /* A stop resets the settle time, as after a junction turn. */
+    g_short_data.motion.b_stopped = true;
+    roll_feed(0.0f, 2U);
+    g_short_data.motion.b_stopped = false;
+    roll_feed(0.0f, TEST_SHORT_BASELINE);
+    assert(!roll_feed(6.0f, 5U).b_hump_detected);
+    roll_feed(0.0f, 30U);
+    roll_feed(6.0f, 1U);
+    assert(roll_feed(6.0f, 1U).b_hump_detected);
+}
 
+/*** end of file ***/

@@ -16,6 +16,7 @@
 #include "s5_navigation.h"
 #include "s5_maneuver.h"
 #include "s5_mission.h"
+#include "s5_width.h"
 #include "s5_startup.h"
 #include "s5_box.h"
 
@@ -737,6 +738,29 @@ static bool begin_viewpoint(int degrees)
         front.cm > ROBOT_BYPASS_FRONT_TURN_CM && front.cm <= S5_MAX_RANGE_CM &&
         s5_navigation_probe_begin(degrees);
 }
+#if ROBOT_FINE_WIDTH_SCAN
+/* Replace the route sweep's width with the fine-sweep measurement
+ * (s5_width.c). Only width, centre and the near point change; the side
+ * choice and clearances stay the controller's own. */
+static void apply_fine_width(S5Profile *p, const S5WidthResult *w)
+{
+    if (!p || !w || !w->valid || !(w->width_cm > 0.0f)) return;
+    p->estimated_width_cm = w->width_cm;
+    p->frontal_width_cm = w->width_cm;
+    p->frontal_sweep = true;
+    p->uses_course_bounds = false;
+    p->center_x_cm = w->center_x_cm;
+    if (!p->valid) {
+        p->valid = true;
+        p->nearest_cm = w->nearest_cm;
+        p->center_y_cm = w->face_cm;
+    }
+    p->size = w->width_cm <= ROBOT_OBSTACLE_SMALL_CM ? S5_SIZE_SMALL :
+              w->width_cm <= ROBOT_OBSTACLE_MAX_BYPASS_CM ? S5_SIZE_LARGE :
+              S5_SIZE_OVERSIZED;
+}
+#endif
+
 static void live_controller_mode(void)
 {
     unsigned startup_hits = 0u;
@@ -759,6 +783,10 @@ static void live_controller_mode(void)
     enum { LOOK_BYPASS, LOOK_OPPOSITE, LOOK_HOME } look_phase = LOOK_BYPASS;
     bool opposite_ready = false;
     bool width_view_done = false;
+#if ROBOT_FINE_WIDTH_SCAN
+    S5ScanPoint fine_points[ROBOT_FINE_WIDTH_POINTS];
+    S5WidthResult fine_width = {0};
+#endif
     if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
     s5_controller_init(&c);
     tm_printf((UB*)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
@@ -959,6 +987,9 @@ static void live_controller_mode(void)
                       (int)(c.last_coarse.points[4].distance_cm * 100.0f),
                       (int)ROBOT_BYPASS_SIDE_CLEAR_CM, (int)ROBOT_BYPASS_FRONT_TURN_CM);
         cmd = s5_controller_step(&c, &in);
+#if ROBOT_FINE_WIDTH_SCAN
+        if (in.width_points) apply_fine_width(&c.profile, &fine_width);
+#endif
         /* Publish the scan outcome while stopped, clearing any previous
          * width when this sweep could not bracket the frontal obstacle. */
         if (in.width_points)
@@ -1016,6 +1047,24 @@ static void live_controller_mode(void)
                     tm_printf((UB*)"[S5-WIDTH] angle=%d valid=%d cm_x100=%d\n",
                               (int)width_points[i].angle_deg, (int)width_points[i].valid,
                               (int)(width_points[i].distance_cm * 100.0f));
+#if ROBOT_FINE_WIDTH_SCAN
+                {
+                    int n = s5_fine_width_scan(fine_points, ROBOT_FINE_WIDTH_POINTS);
+                    for (int i = 0; i < n; ++i)
+                        tm_printf((UB*)"[S5-FINE-WIDTH] angle=%d valid=%d cm_x100=%d\n",
+                                  (int)fine_points[i].angle_deg, (int)fine_points[i].valid,
+                                  (int)(fine_points[i].distance_cm * 100.0f));
+                    fine_width = s5_width_profile(fine_points, n,
+                        ROBOT_FINE_WIDTH_BEAM_CORR_DEG, ROBOT_FINE_WIDTH_DEPTH_CM,
+                        ROBOT_FINE_WIDTH_RANGE_CM, ROBOT_FINE_WIDTH_MAX_CM);
+                    tm_printf((UB*)"[S5-FINE-WIDTH-RESULT] valid=%d width_cm_x100=%d centre_x100=%d face_x100=%d run=%d..%d bracketed=%d capped=%d\n",
+                              (int)fine_width.valid, (int)(fine_width.width_cm * 100.0f),
+                              (int)(fine_width.center_x_cm * 100.0f),
+                              (int)(fine_width.face_cm * 100.0f), fine_width.first,
+                              fine_width.last, (int)fine_width.bracketed,
+                              (int)fine_width.capped);
+                }
+#endif
             }
             coarse_ready = true;
             break;

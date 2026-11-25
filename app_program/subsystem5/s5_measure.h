@@ -13,6 +13,10 @@ bool s5_measure_front_cm(float *out_cm);
 /* Same consensus for scan rays; configured no-target rays are assumed clear. */
 bool s5_measure_scan_cm(float *out_cm);
 bool s5_measure_probe_cm(float *out_cm);
+/* Fine width sweep (AAI03 team's scan rule, used with permission): three
+ * pings, at least two real echoes, the middle one kept. No echo / open
+ * space is false (not on the obstacle), never an assumed distance. */
+bool s5_measure_median3_cm(float *out_cm);
 /* Repeated STOP chatter protection. 'locked' means a TEMPORARY hold,
  * never permission to ignore an echo. After the hold, re-arm requires
  * multiple consecutive, valid, agreeing stationary clearance batches. */

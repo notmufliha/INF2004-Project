@@ -863,6 +863,7 @@ static void v4_new_run(VEHICLE_CONTROLLER *c)
     c->bar_clear_known = c->bar_wait_clear = false;
     c->post_avoid_slow = false;
     c->post_avoid_wait_clear = false;
+    c->settle_active = false;
     c->navigation = 0u;
     c->navigation_id = 0u;
     c->pending_navigation = B3_NAV_NONE;
@@ -890,6 +891,8 @@ static void v4_search(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
                   (INT)(in->now_ms - c->recovery_ms));
         run_log_event(in->now_ms, RUN_EV_NAV_DONE, 0u);
         v4_reset_follow(c); /* discard the arc that caused the search */
+        c->settle_active = true;   /* see VC4_SETTLE_MS */
+        c->settle_ms = in->now_ms;
         /* Start following toward the reacquired line, rather than with
          * zero steering at the outside of the same curve. */
         (void)vc4_steer(&c->trk, in->centre, in->left, VC_PERIOD_MS, c->travel_um);
@@ -1042,6 +1045,8 @@ static void v4_cross(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
                   (INT)nav);
         c->navigation = 0u;
         v4_reset_follow(c);
+        c->settle_active = true;   /* see VC4_SETTLE_MS */
+        c->settle_ms = in->now_ms;
         v4_enter(c, V4_FOLLOW, in->now_ms);
         return;
     }
@@ -1432,9 +1437,26 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
         INT slow = cruise_mm * VC4_SLOW_MM_S / VC4_CRUISE_MM_S;
         if (base_mm > slow) base_mm = slow;
     }
+    bool settling = false;
+    if (c->settle_active) {
+        if ((uint32_t)(in->now_ms - c->settle_ms) >= VC4_SETTLE_MS) {
+            c->settle_active = false;
+        } else if (c->bar_phase != BAR_READ) {
+            INT settle = cruise_mm * VC4_SETTLE_MM_S / VC4_CRUISE_MM_S;
+            if (base_mm > settle) base_mm = settle;
+            settling = true;
+        }
+    }
     vc4_wheels(steer, base_mm,
                cruise_mm * VC4_SLOW_MM_S / VC4_CRUISE_MM_S,
                &speed_cps, &steering);
+    if (settling) {
+        /* Limit the wheel split itself: at the lower speed vc4_wheels()
+         * turns the same error into a sharper split, so capping the error
+         * alone would still pivot. */
+        if (steering > VC4_SETTLE_STEER_MAX) steering = VC4_SETTLE_STEER_MAX;
+        if (steering < -VC4_SETTLE_STEER_MAX) steering = -VC4_SETTLE_STEER_MAX;
+    }
     command.type = MOTION_CMD_DRIVE;
     command.direction = MOTION_DIR_FORWARD;
     command.steering_permille = (INT)steering;

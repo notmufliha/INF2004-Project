@@ -481,6 +481,39 @@ int main(void)
     if (setjmp(task_done) == 0) controller_task(0, NULL);
     assert(clock_ms == 10000u + 4u * VC_PERIOD_MS);
     snapshot_delay = 0u;
+    /* Settle window after a junction action: slower and gentler steering
+     * for VC4_SETTLE_MS, then normal following again. */
+    {
+        INT free_steer, free_speed;
+        input.obstacle_active = false;
+        input.clearance = true;
+        c = reading();
+        c.bar_phase = BAR_IDLE;
+        c.last_speed = vc4_mm_s_to_cps(120);
+        input.centre = 1000; input.left = 0;      /* hard left error */
+        for (int i = 0; i < 20; ++i) {
+            input.now_ms += VC_PERIOD_MS; c.travel_um += 2000;
+            c.last_drive_ms = 0;
+            v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+        }
+        free_steer = sent.steering_permille;
+        /* Outer (faster) wheel speed: the mean is not comparable, since a
+         * pivot on the stopped inner wheel halves it. */
+        free_speed = sent.target_speed_cps *
+            (1000 + (free_steer < 0 ? -free_steer : free_steer)) / 1000;
+        c.settle_active = true; c.settle_ms = input.now_ms;
+        input.now_ms += VC_PERIOD_MS; c.travel_um += 2000; c.last_drive_ms = 0;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+        assert(c.settle_active);
+        assert((sent.steering_permille < 0 ? -sent.steering_permille : sent.steering_permille) <=
+               (free_steer < 0 ? -free_steer : free_steer));
+        assert(sent.target_speed_cps *
+               (1000 + (sent.steering_permille < 0 ? -sent.steering_permille :
+                        sent.steering_permille)) / 1000 <= free_speed);
+        input.now_ms += VC4_SETTLE_MS; c.last_drive_ms = 0;
+        v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
+        assert(!c.settle_active);
+    }
     puts("PASS v4 barcode, recovery and 20 ms task cadence with snapshot work");
     return 0;
 }

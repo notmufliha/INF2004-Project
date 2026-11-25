@@ -39,6 +39,9 @@ bool s5_measure_probe_cm(float *cm)
     *cm = distances[read_calls++];
     return true;
 }
+/* The fine width sweep is covered by test_width.c (s5_width.c) and by
+ * the host sonar model there; these route-sweep tests never call it. */
+bool s5_measure_median3_cm(float *cm) { (void)cm; assert(0); return false; }
 #include "../../app_program/subsystem5/obstacle_scan.c"
 static void reset(void)
 {

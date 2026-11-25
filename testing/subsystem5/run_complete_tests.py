@@ -48,6 +48,7 @@ groups = {
                    "app_program/subsystem3/b3_line_cal.c"],
     "bridge": ["testing/subsystem5/test_bridge.c"],
     "rejoin": ["app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_rejoin.c"],
+    "width": ["app_program/subsystem5/s5_width.c", "testing/subsystem5/test_width.c"],
     "packed": ["app_program/subsystem5/s5_packed.c",
                "testing/subsystem5/test_packed.c"],
 }

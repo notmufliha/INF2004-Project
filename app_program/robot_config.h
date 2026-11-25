@@ -225,6 +225,31 @@
 #define ROBOT_WIDTH_ROUTE_RIGHT_DEG 120u
 #define ROBOT_WIDTH_SWEEP_MAX_DEG 120u
 #define ROBOT_SCAN_SERVO_SETTLE_MS 85u
+/* Obstacle WIDTH from a fine sweep (s5_width.c; method adapted with
+ * permission from the AAI03 team's INF2004 obstacle profile). After the
+ * 7-ray route sweep, while still stopped, the servo steps from MIN to MAX
+ * in STEP degrees, three pings per angle (s5_measure_median3_cm), about
+ * 0.28 s per angle (3.6 s for 60..120 at 5). The width is the run of
+ * echoes around the closest one (within DEPTH_CM of it), each edge bounded
+ * by its own range; it replaces the route sweep's estimate for the MQTT
+ * report and the bypass plan. MIN/MAX are limited by the servo's 30..120.
+ * BEAM_CORR_DEG moves edge points toward the centre by up to that much
+ * (the AAI03 robot used 10); 0 here: on a host sonar model 10 read a 14 cm
+ * box as ~11 cm. TUNE on the real box: if the reported width is too wide,
+ * raise it in steps of 2.5. Set ROBOT_FINE_WIDTH_SCAN 0 to skip. */
+#ifndef ROBOT_FINE_WIDTH_SCAN
+#define ROBOT_FINE_WIDTH_SCAN 1
+#endif
+#define ROBOT_FINE_WIDTH_MIN_DEG 60u
+#define ROBOT_FINE_WIDTH_MAX_DEG 120u
+#define ROBOT_FINE_WIDTH_STEP_DEG 5u
+#define ROBOT_FINE_WIDTH_POINTS 13 /* (MAX - MIN) / STEP + 1 */
+#ifndef ROBOT_FINE_WIDTH_BEAM_CORR_DEG
+#define ROBOT_FINE_WIDTH_BEAM_CORR_DEG 0.0f
+#endif
+#define ROBOT_FINE_WIDTH_DEPTH_CM 8.0f
+#define ROBOT_FINE_WIDTH_RANGE_CM 60.0f
+#define ROBOT_FINE_WIDTH_MAX_CM 25.0f
 #define ROBOT_SONAR_BEAM_HALF_ANGLE_DEG 7.5f
 /* Current mount points right at the lower pulse. Planner bearings are
  * 70=left, 90=front, 110=right. */

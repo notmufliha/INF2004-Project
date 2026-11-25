@@ -48,7 +48,8 @@ imu_analysis_default_config (imu_analysis_config_t * p_config)
         *p_config = (imu_analysis_config_t){8.0f, 1.0f, 15.0f, 6.0f,
                                             3U, 100U, 10000U,
                                             4.0f, 2.0f, 0.5f, 110.0f,
-                                            80U, 0.3f, 7U};
+                                            80U, 0.3f, 7U,
+                                            0U /* settle_ms: off */};
     }
 }
 
@@ -198,6 +199,7 @@ forward_travel (imu_analysis_t * p_analysis, const imu_data_t * p_data)
     if (0U != reason)
     {
         reset_sequence(p_analysis, reason);
+        p_analysis->b_steady = false;
         p_analysis->b_have_counts = false;
         p_analysis->b_have_progress = false;
         return false;
@@ -529,8 +531,16 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
             }
         break;
         case IMU_ROLL_READY:
+            if (curving(p_analysis, p_data) || !p_analysis->b_steady)
+            {
+                /* Restart the settle time (config.settle_ms). */
+                p_analysis->steady_since_ms = p_data->timestamp_ms;
+                p_analysis->b_steady = true;
+            }
             if ((roll >= p_analysis->config.roll_enter_deg) &&
-                (!curving(p_analysis, p_data)))
+                (!curving(p_analysis, p_data)) &&
+                (p_data->timestamp_ms - p_analysis->steady_since_ms >=
+                 p_analysis->config.settle_ms))
             {
                 const bool b_positive = p_data->roll_deg >= 0.0f;
                 p_analysis->roll_count =
