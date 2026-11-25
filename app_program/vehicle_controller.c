@@ -1338,12 +1338,20 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     }
 
     /* Reject the tape used to rejoin, then accept the next crossing even
-     * inside the slow-speed window. Require a continuous clear floor gap. */
+     * inside the slow-speed window.  The rejoin tape is over once BOTH
+     * sensors have been off it for VC4_JCT_CONFIRM_UM (a junction needs
+     * both on the tape).  Was: both below VC4_WHITE (60) for that long,
+     * but GP26's bare floor normalises up to ~180 with the fixed
+     * endpoints, and one sensor on the line in a bend also reset it, so
+     * the wait could last the rest of the run and every junction after an
+     * obstacle was ignored: the barcode action never happened. */
     if (c->post_avoid_wait_clear) {
-        if (nl >= VC4_WHITE || nr >= VC4_WHITE) {
+        if (nl >= VC4_JCT_KEEP_MIN && nr >= VC4_JCT_KEEP_MIN) {
             c->post_avoid_clear_um = c->travel_um;
         } else if (c->travel_um - c->post_avoid_clear_um >= VC4_JCT_CONFIRM_UM) {
             c->post_avoid_wait_clear = false;
+            tm_printf((UB *)"[VC4] past the rejoin tape: junctions armed again (pending %d)\n",
+                      (INT)c->pending_navigation);
         }
     }
     inhibit = c->post_avoid_wait_clear || barcode_straight ||

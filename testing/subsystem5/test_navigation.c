@@ -165,6 +165,33 @@ static void finish_leg(void)
     result = status;
     tick(120.0f);
 }
+/* Course-route rejoin (ROBOT_REJOIN_ALIGN): after the line is confirmed,
+ * advance the sensor-to-axle distance, then turn back parallel to the
+ * line.  Returns the number of extra turns issued. */
+static unsigned finish_rejoin_align(S5Side side)
+{
+#if ROBOT_REJOIN_ALIGN
+    const int net = ROBOT_COURSE_RETURN_TURN_DEG -
+        (ROBOT_COURSE_BYPASS_TURN_DEG - ROBOT_COURSE_PASS_TURN_DEG);
+    tick(120.0f);
+    assert(maneuver.state == S5_MAN_REJOIN_ADVANCE && maneuver.pending_id);
+    assert(last_direction == MOTION_DIR_FORWARD &&
+           last_move > ROBOT_REJOIN_ADVANCE_CM - 0.01f &&
+           last_move < ROBOT_REJOIN_ADVANCE_CM + 0.01f);
+    finish_leg();
+    tick(120.0f);
+    tick(120.0f);
+    assert(maneuver.state == S5_MAN_REJOIN_ALIGN && maneuver.pending_id);
+    assert(last_angle == net);
+    assert(last_turn == (side == S5_SIDE_LEFT ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT));
+    finish_leg();
+    tick(120.0f);
+    return 1u;
+#else
+    (void)side;
+    return 0u;
+#endif
+}
 static void finish_course_turn(void)
 {
     assert(last_angle == ROBOT_COURSE_BYPASS_TURN_DEG);
@@ -316,6 +343,7 @@ int main(void)
     assert(!s5_bridge_line_found());
     result = status;
     for (unsigned n = 0u; n < ROBOT_BYPASS_LINE_CONFIRM; ++n) tick(120.0f);
+    const unsigned rejoin_turns = finish_rejoin_align(p.bypass_side);
     assert(s5_bridge_line_found());
     assert(s5_bridge_request(S5_CMD_RESUME, &p));
     assert(!s5_bridge_line_found());
@@ -349,13 +377,13 @@ int main(void)
     }
     assert(s5_bridge_request(S5_CMD_GO_LEFT, &p));
     tick(25.0f);
-    assert(turn_calls == 4u && last_turn == MOTION_TURN_LEFT);
+    assert(turn_calls == 4u + rejoin_turns && last_turn == MOTION_TURN_LEFT);
     finish_course_turn();
     finish_offset();
     finish_middle(p.bypass_side);
     assert(s5_bridge_request(S5_CMD_FIND_LINE, &p));
     tick(120.0f);
-    assert(last_turn == MOTION_TURN_RIGHT && turn_calls == 6u && last_angle == ROBOT_COURSE_RETURN_TURN_DEG);
+    assert(last_turn == MOTION_TURN_RIGHT && turn_calls == 6u + rejoin_turns && last_angle == ROBOT_COURSE_RETURN_TURN_DEG);
     finish_leg();
     {
         unsigned prior_moves = move_calls;

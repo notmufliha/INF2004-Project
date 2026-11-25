@@ -383,14 +383,17 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
                 m->line_hits = 0u;
                 next_leg(m, S5_MAN_SEARCH, in->now_ms);
             } else if (++m->line_hits >= ROBOT_BYPASS_LINE_CONFIRM) {
-                next_leg(m, m->equal_leg_route ? S5_MAN_COMPLETE : S5_MAN_ALIGN, in->now_ms);
+                next_leg(m, m->equal_leg_route ?
+                         (ROBOT_REJOIN_ALIGN && !m->guarded_probe_route ?
+                          S5_MAN_REJOIN_ADVANCE : S5_MAN_COMPLETE) :
+                         S5_MAN_ALIGN, in->now_ms);
             }
         }
         return (S5Action){S5_ACT_STOP, 0.0f, 0};
     }
     turning = m->state == S5_MAN_TURN_OUT || m->state == S5_MAN_FORWARD ||
               m->state == S5_MAN_TURN_IN || m->state == S5_MAN_ALIGN ||
-              m->state == S5_MAN_ALIGN_CHECK;
+              m->state == S5_MAN_ALIGN_CHECK || m->state == S5_MAN_REJOIN_ALIGN;
     if (!in->front_valid || !(in->front_cm > 0.0f) || in->front_cm > S5_MAX_RANGE_CM)
         return stop(m, S5_ERR_FRONT_SENSOR);
     if (m->guarded_probe_route && translating && m->pending_id &&
@@ -479,6 +482,8 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
         float completed = in->motion_progress_cm > 0.0f ? in->motion_progress_cm : m->active_move_cm;
         switch (m->state) {
         case S5_MAN_TURN_OUT: m->outward_turn_complete = true; next_leg(m, S5_MAN_OFFSET, in->now_ms); break;
+        case S5_MAN_REJOIN_ADVANCE: next_leg(m, S5_MAN_REJOIN_ALIGN, in->now_ms); break;
+        case S5_MAN_REJOIN_ALIGN: next_leg(m, S5_MAN_COMPLETE, in->now_ms); break;
         case S5_MAN_OFFSET:
             m->offset_done_cm += completed;
             if (ROBOT_BYPASS_EXACT_SEQUENCE) {
@@ -548,6 +553,19 @@ S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in)
             (m->side == S5_SIDE_LEFT ? ROBOT_COURSE_RETURN_TURN_DEG : -ROBOT_COURSE_RETURN_TURN_DEG) : -outward};
         break;
     case S5_MAN_PASS: a = (S5Action){S5_ACT_MOVE, m->pass_cm - m->pass_done_cm, 0}; break;
+    case S5_MAN_REJOIN_ADVANCE:
+        a = (S5Action){S5_ACT_MOVE, ROBOT_REJOIN_ADVANCE_CM, 0};
+        break;
+    case S5_MAN_REJOIN_ALIGN: {
+        /* Undo the net heading of the course route (turn out, pass turn,
+         * return turn): back to the original line direction. */
+        int toward_line = m->side == S5_SIDE_LEFT ?
+            ROBOT_COURSE_RETURN_TURN_DEG : -ROBOT_COURSE_RETURN_TURN_DEG;
+        int pass_heading = ROBOT_COURSE_BYPASS_TURN_DEG - ROBOT_COURSE_PASS_TURN_DEG;
+        int net = ROBOT_COURSE_RETURN_TURN_DEG - pass_heading;   /* 25 deg */
+        a = (S5Action){S5_ACT_TURN, 0.0f, toward_line > 0 ? -net : net};
+        break;
+    }
     case S5_MAN_BACK: a = (S5Action){S5_ACT_MOVE, -ROBOT_BYPASS_REVERSE_CM, 0}; break;
     case S5_MAN_ALIGN_CHECK: {
         int heading;

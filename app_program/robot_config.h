@@ -83,6 +83,20 @@
 #ifndef ROBOT_REJOIN_SPEED_CPS
 #define ROBOT_REJOIN_SPEED_CPS 450
 #endif
+/* Course route rejoin: the return leg meets the line at
+ * ROBOT_COURSE_RETURN_TURN_DEG - (BYPASS - PASS) = 25 deg, with the axle
+ * 60 mm * sin(25) = 25 mm to the side.  Handing over at that angle let
+ * the follower run across the line or onto another arm (24/25 Nov).  1:
+ * once the tape is confirmed, drive ROBOT_REJOIN_ADVANCE_CM (the line
+ * sensors' distance ahead of the axle, as VC4_JCT_ADVANCE_CM) so the axle
+ * is over the line, then turn the 25 deg back: the car then faces along
+ * the line it left, centred on it.  0: hand over at once (old). */
+#ifndef ROBOT_REJOIN_ALIGN
+#define ROBOT_REJOIN_ALIGN 1
+#endif
+#ifndef ROBOT_REJOIN_ADVANCE_CM
+#define ROBOT_REJOIN_ADVANCE_CM 6.0f
+#endif
 #define ROBOT_BYPASS_FORWARD_MS 5000u
 #define ROBOT_BYPASS_EXTRA_DIAGONAL_CM 10.0f
 #define ROBOT_COURSE_BYPASS_TURN_DEG 55

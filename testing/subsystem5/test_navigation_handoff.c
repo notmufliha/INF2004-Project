@@ -53,9 +53,11 @@ static void recover_line(S5Side side, bool tape_present)
     result = status;
     result.physically_stopped = false; /* The cancelled result predates live STOP. */
     for (unsigned n = 0u; n < ROBOT_BYPASS_LINE_CONFIRM; ++n) tick(120.0f);
+    unsigned align_turns = maneuver.guarded_probe_route ? 0u :
+        finish_rejoin_align(side);
     assert(s5_bridge_line_found());
     assert(s5_bridge_request(S5_CMD_RESUME, NULL));
-    assert(mode == NAV_FOLLOW && turn_calls == old_turns + 1u);
+    assert(mode == NAV_FOLLOW && turn_calls == old_turns + 1u + align_turns);
 }
 
 static void test_probe_route(S5Side side, bool tape_present)
