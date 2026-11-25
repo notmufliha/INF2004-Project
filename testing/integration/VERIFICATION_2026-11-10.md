@@ -1,6 +1,6 @@
 # Host verification, 2026-11-10
 
-Source: working tree based on `62467ca5a8e84b14ebbcc3d1cef91a188af7dbb2`,
+Source: working tree based on `b1aa6fbe91eac96b63fe2ec7cb12a320c622f55e`,
 including the uncommitted line calibration correction and test runner.
 The assignment PDF was unavailable; requirement compliance remains pending.
 

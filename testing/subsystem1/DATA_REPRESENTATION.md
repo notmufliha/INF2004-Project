@@ -1,8 +1,8 @@
 # Subsystem 1 — Minimum-bit data representation (Change Requirement 1)
 
 Week 13 evidence for Buddy 1 (WiFi Communication, Command & Telemetry).
-"Before" = commit `ec0b859` (JSON/text MQTT, recorded in
-`logs/before_ram.txt`). "After" = this branch. Wire layouts: `app_program/subsystem1/MQTT.md` section 2.
+"Before" = commit `3e34f57` (JSON/text MQTT, recorded in
+`logs/before_ram.txt`). "After" = tag `after-minbits`. Wire layouts: `app_program/subsystem1/MQTT.md` section 2.
 
 ## 1. Data representation table
 
@@ -84,11 +84,11 @@ Inter-task messages:
 
 **Measured** with `arm-none-eabi-size` and `arm-none-eabi-nm` on two builds
 that differ only by this change (`logs/before_ram_main.txt` = `main`
-20e3981, `logs/after_ram.txt` = this branch). Both: pico-sdk 2.2.0,
+423e94a, `logs/after_ram.txt` = this branch). Both: pico-sdk 2.2.0,
 `make SMP=0 NET=lwip MQTT=1`, every subsystem started (`ROBOT_MODE` 0 for
 the build, so subsystem 1 is linked in both). SMP=0 because `main`'s
 `b2_motor.c` no longer builds with SMP=1, so `logs/before_ram.txt`
-(ec0b859, SMP=1, before B4/B5 were merged) cannot be compared directly.
+(3e34f57, SMP=1, before B4/B5 were merged) cannot be compared directly.
 
 | | Before | After | Change |
 |---|---|---|---|

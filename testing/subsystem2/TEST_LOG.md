@@ -31,7 +31,7 @@ mocked RTOS, encoder and safety services.
 
 | Date | Build | Tests | Result | Evidence |
 |---|---|---|---|---|
-| 2026-10-28 | Working tree based on `071640a` | S2-H01..H10 | PASS, 1116 assertions | `logs/2026-10-28_host_motion.txt` |
+| 2026-10-28 | Working tree based on `ffa85e6` | S2-H01..H10 | PASS, 1116 assertions | `logs/2026-10-28_host_motion.txt` |
 | 2026-10-28 | Working tree with optional motion test task | S2-H01..H11 | PASS, 1133 assertions | `logs/2026-10-28_host_motion_harness.txt` |
 | 2026-10-28 | B2/B1 compatibility working tree | S2-H01..H12, S2-I01..I03 | PASS, 1158 controller assertions and both B1 API tests | `logs/2026-10-28_b1_integration.txt` |
 
@@ -65,3 +65,12 @@ Add a new row for every run. Never edit or delete old rows.
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S2-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+
+## Minimum-bit evidence (Change Requirement 1), 2026-11-25
+
+Measured on the Cortex-M0+ target compiler; details in `DATA_REPRESENTATION.md`.
+
+| Date | Test | Commit | Tester | Result | Command | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | S2-MB01 object sizes | `after-minbits` vs `7bad6fb` | B1 | PASS | `python testing/subsystem2/host/measure_sizes.py --before 7bad6fb` | Static + pool storage 668 -> 526 B (-142); PID state 424 -> 392 B. See DATA_REPRESENTATION.md |
+| 2026-11-25 | S2-H host suite | `after-minbits` | B1 | PASS | `host/run_tests.ps1` | 43,091 assertions; B1 legacy and binary integration |

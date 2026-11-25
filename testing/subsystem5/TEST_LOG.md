@@ -35,7 +35,7 @@ The tests use **synthetic** sensor/actuator events; no physical robot was tested
 
 ## Bypass and continuation search, 2026-11-10
 
-Source: working tree based on `549442f`, retaining the PD integration.
+Source: working tree based on `a2c3cc8`, retaining the PD integration.
 
 | ID | Case | Expected result | Host result |
 |---|---|---|---|
@@ -57,3 +57,12 @@ Hardware results remain pending. The single front sensor does not measure
 hidden obstacle depth or identify which black marking is the original line.
 The course must have the expected continuation in the recovery corridor;
 configured chassis, width, depth, encoder and turn calibration must be validated.
+
+## Minimum-bit evidence (Change Requirement 1), 2026-11-25
+
+Measured on the Cortex-M0+ target compiler; details in `DATA_REPRESENTATION.md`.
+
+| Date | Test | Commit | Tester | Result | Command | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | S5-MB01 profile size | `after-minbits` | B1 | PASS | `sh testing/measure_minbits.sh` | Native `S5Profile` 56 B -> packed 6 B (42 data bits); B1 obstacle event 37 bits |
+| 2026-11-25 | All 21 B5 host groups | `after-minbits` | B1 | PASS | `python testing/subsystem5/run_complete_tests.py` | Includes 42-bit packed format + version test |

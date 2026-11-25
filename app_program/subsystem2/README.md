@@ -331,7 +331,7 @@ The kernel's pool allocation alignment can affect actual heap consumption.
 Reproduce with the Arm compiler and nm on PATH:
 
 ```text
-python testing/subsystem2/host/measure_sizes.py --before e7fe907
+python testing/subsystem2/host/measure_sizes.py --before 7bad6fb
 powershell -ExecutionPolicy Bypass -File testing/subsystem2/host/run_tests.ps1
 ```
 

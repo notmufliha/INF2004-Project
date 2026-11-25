@@ -41,14 +41,14 @@ consumer checks above describe the legacy demonstration profile.
 
 | Date | Test IDs | Source | Tester | Result | Evidence |
 |---|---|---|---|---|---|
-| 2026-11-10 | S3-C01 through S3-C06 | Working tree based on `62467ca5a8e84b14ebbcc3d1cef91a188af7dbb2`, including calibration changes | Codex host runner | PASS | [Transcript](../integration/logs/2026-11-10_143429_host.txt) |
+| 2026-11-10 | S3-C01 through S3-C06 | Working tree based on `b1aa6fbe91eac96b63fe2ec7cb12a320c622f55e`, including calibration changes | Codex host runner | PASS | [Transcript](../integration/logs/2026-11-10_143429_host.txt) |
 
 No physical line-tracking result is claimed. See `ROBOT_TEST_STEPS.md` at the
 project root for calibration, direction checks and controlled floor testing.
 
 | Date | Test IDs | Source | Tester | Result | Evidence |
 |---|---|---|---|---|---|
-| 2026-11-10 | S3-C01 through S3-C07; VC/B5 snapshot timing | Working tree based on `62467ca5a8e84b14ebbcc3d1cef91a188af7dbb2`, including 64-count learning and clock-after-snapshot fixes | Codex host runner | PASS | [Transcript](../integration/logs/2026-11-10_150149_host.txt) |
+| 2026-11-10 | S3-C01 through S3-C07; VC/B5 snapshot timing | Working tree based on `b1aa6fbe91eac96b63fe2ec7cb12a320c622f55e`, including 64-count learning and clock-after-snapshot fixes | Codex host runner | PASS | [Transcript](../integration/logs/2026-11-10_150149_host.txt) |
 
 ## PD calibration, 2026-11-10
 
@@ -65,3 +65,12 @@ calibration fixes.
 
 See [integration notes](../integration/PD_CALIBRATION_2026-11-10.md) for the
 controller startup regression and outstanding physical calibration.
+
+## Minimum-bit evidence (Change Requirement 1), 2026-11-25
+
+Measured on the Cortex-M0+ target compiler; details in `DATA_REPRESENTATION.md`.
+
+| Date | Test | Commit | Tester | Result | Command | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | S3-MB01 `B3_STATE` size | `after-minbits` | B1 | PASS | `sh testing/measure_minbits.sh` | 24 -> 5 B (-19, 79 %); 37 bits used; `_Static_assert` enforces 5 B |
+| 2026-11-25 | C39-01..10, S3-PD-C01..C10, line input | `after-minbits` | B1 | PASS | `testing/controller/run_tests.ps1` | All B3 host tests against the packed snapshot |

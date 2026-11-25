@@ -220,7 +220,7 @@ Add a new row for every run. Never edit or delete old rows.
 | 2026-11-01 | S4-H04 and regressions | Working tree | Codex | PASS | [B2 snapshot checks](logs/2026-11-01_b2_snapshots.txt) | B4-only reader, context-gated height and stationary checks; seven host programs, native startup/adapter/reader and eight ARM configurations; physical validation pending |
 | 2026-11-01 | S4-H02/H03 and regressions | Working tree | Codex | PASS | [height verification](logs/2026-11-01_height.txt) | Seven host programs, native startup/adapter tests and eight ARM configurations; full build blocked by B3; physical S4-M01 not run |
 | 2026-11-01 | S4-H01 and desktop regressions | Working tree | Codex | PASS | [startup verification](logs/2026-11-01_startup.txt) | Eight native startup profiles and eight strict ARM B4 configurations; physical/laptop tests not run; full build blocked by B3 assertion |
-| 2026-10-14 | S4-U03 through S4-U09 | `c9dca65` + working changes | Codex | PASS | [host log](logs/2026-10-14_host_imu.txt) | GCC C11 with strict warnings; desktop tests only; hardware and height not validated |
+| 2026-10-14 | S4-U03 through S4-U09 | `dad90f4` + working changes | Codex | PASS | [host log](logs/2026-10-14_host_imu.txt) | GCC C11 with strict warnings; desktop tests only; hardware and height not validated |
 | 2026-10-14 | S4-U03 through S4-U09, S4-U12 | Working changes, RTOS demo | Codex | PASS | [demo host log](logs/2026-10-14_host_imu_demo.txt) | Strict desktop compilation; real RTOS execution not tested |
 | 2026-10-14 | S4-U10, S4-U11 | Working changes, RTOS demo | Codex | NOT RUN | [test firmware build](logs/2026-10-14_uart_test_build.txt) | ARM UART/no-WiFi test image compiles and links; requires Pico execution |
 
@@ -250,3 +250,12 @@ behaviour, startup calibration, mounting directions and sensor accuracy remain
 to be tested using [the hardware guide](../../app_program/subsystem4/HARDWARE.md).
 Mock-only S4-U11/S4-U14 do not run in default hardware mode. Neither real USB/WiFi
 execution nor magnetic calibration, turn-rate accuracy or hump height is claimed.
+
+## Minimum-bit evidence (Change Requirement 1), 2026-11-25
+
+Measured on the Cortex-M0+ target compiler; details in `DATA_REPRESENTATION.md`.
+
+| Date | Test | Commit | Tester | Result | Command | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | S4-MB01 object and queue sizes | `after-minbits` vs `34f8528` | B1 | PASS | `testing/subsystem4/measure_sizes.c` + `arm-none-eabi-nm` | Queues + notice tracker 1,900 -> 1,548 B (-352); analysis context 236 B (156 B at the change, grew with `47c87aa`) |
+| 2026-11-25 | S4-H host suites | `after-minbits` | B1 | PASS | `host/run_tests.ps1` | Time gaps, wrap, roll, hump height, impact, lift |

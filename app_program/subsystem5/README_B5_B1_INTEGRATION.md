@@ -1,6 +1,6 @@
 # Buddy 5: integration with Buddy 1's Wi-Fi/MQTT branch
 
-**Source branch reviewed:** `notmufliha/INF2004-Project`, `b1-wifi-mqtt`, commit `913c3df86d8a4fb5a790b65e7f9ed584f44bb6d3` (2026-10-28 snapshot).
+**Source branch reviewed:** `notmufliha/INF2004-Project`, `b1-wifi-mqtt`, commit `58a9c6a4f61d27fb53d39caae63deb48fddb2376` (2026-10-28 snapshot).
 
 **Scope:** `app_program/subsystem5/task_obstacle.c` only, plus this B5 note and a B5-only host test. No B1/B2/B3/B4/Vehicle Controller, shared header, task priority, or laptop decoder is modified.
 
