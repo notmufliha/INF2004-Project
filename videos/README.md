@@ -39,3 +39,4 @@ Newest at the bottom. Never delete a row.
 | Date | Subsystem | Test ID / demo | Commit | Student ID | Link | Notes |
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S1 | S1-U03 | `abc1234` | | <https://youtu.be/...> | LED blinks at 2 Hz |
+| 2026-11-25 | All | Full feature demo | `44a0178` | | <https://youtu.be/IxkC-dA-UOY> | All robot features on the real hardware |

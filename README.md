@@ -4,6 +4,14 @@
 
 # micro T-Kernel 3.0 project for Raspberry Pi Pico W
 
+## Demo
+
+[![Feature demo](https://img.youtube.com/vi/IxkC-dA-UOY/0.jpg)](https://youtu.be/IxkC-dA-UOY)
+
+▶ [Watch the full feature demo on YouTube](https://youtu.be/IxkC-dA-UOY):
+the robot running every feature on the real hardware. More videos are listed in
+[videos/README.md](videos/README.md).
+
 A starting point for your project: micro T-Kernel 3.0 running on **both cores**
 of the Pico W's RP2040, with a USB serial console and the WiFi driver built in.
 
