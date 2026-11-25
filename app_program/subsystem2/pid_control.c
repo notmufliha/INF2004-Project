@@ -765,6 +765,20 @@ static void pid_apply(pid_state_t *state, motion_profile_t profile)
     }
     state->left_applied_pwm = left_pwm;
     state->right_applied_pwm = right_pwm;
+    /* See B2_REVERSE_PWM_SPLIT. Applied after the slew so both motors
+     * still ramp from rest together; the stored PWM stays symmetric. */
+    if (state->command.type == MOTION_CMD_MOVE &&
+        state->command.direction == MOTION_DIR_REVERSE) {
+        INT half = B2_REVERSE_PWM_SPLIT / 2;
+        if (left_pwm > 0) {
+            left_pwm -= half;
+            if (left_pwm < 1) left_pwm = 1;
+        }
+        if (right_pwm > 0) {
+            right_pwm += B2_REVERSE_PWM_SPLIT - half;
+            if (right_pwm > PID_MAX_PWM) right_pwm = PID_MAX_PWM;
+        }
+    }
     encoder_count_write(&state->left_history[slot], state->left_now);
     encoder_count_write(&state->right_history[slot], state->right_now);
     state->time_history[slot] = state->now_ms;
@@ -867,9 +881,10 @@ void pid_init(void)
     b2_safety_force_stop();
     tm_printf((UB *)"[B2-TUNE] build=" __DATE__ " " __TIME__
               " forward_trial=%d baseL=%d baseR=%d inner_adjust=off"
-              " curve_feedback=adaptive\n",
+              " curve_feedback=adaptive reverse_split=%d\n",
               (INT)B2_FORWARD_FEEDFORWARD_TRIAL,
-              (INT)B2_LEFT_BASE_PWM, (INT)B2_RIGHT_BASE_PWM);
+              (INT)B2_LEFT_BASE_PWM, (INT)B2_RIGHT_BASE_PWM,
+              (INT)B2_REVERSE_PWM_SPLIT);
     tm_printf((UB *)"[B2-FW] move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway_max=%d\n",
               PID_TURN_BREAKAWAY_MAX_PWM);
 }

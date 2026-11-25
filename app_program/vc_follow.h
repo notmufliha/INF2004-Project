@@ -138,8 +138,26 @@
 /* (VC4_BARCODE_MM_S removed: barcodes are read at the following speed.) */
 /* Full steering error changes each wheel by 85 mm/s before the inner-wheel
  * limit. Stronger split lets the robot follow tighter curves at low speed. */
+#ifndef VC4_SPLIT_FULL_X10
 #define VC4_SPLIT_FULL_X10  850
+#endif
+#ifndef VC4_CURVE_SLOW_PCT
 #define VC4_CURVE_SLOW_PCT  50    /* base speed cut at full error          */
+#endif
+/* Tightest turn: the inner wheel may slow to this percentage of the
+ * (curve-reduced) base speed. At full error this cap, not the split, sets
+ * the turn radius. */
+#ifndef VC4_INNER_MIN_PCT
+#define VC4_INNER_MIN_PCT   0     /* was 20: inner >= 1/5 of base     */
+#endif
+/* Steering above this would ask the inner wheel to crawl under B2's
+ * usable 150 cps (and the floor rule below would then speed BOTH wheels up
+ * to keep the radius). Stop the inner wheel instead and pivot on it at the
+ * outer wheel's computed speed. 800 = the old full-error split, so the
+ * pivot only adds steering beyond what the follower could ask for before. */
+#ifndef VC4_PIVOT_STEER
+#define VC4_PIVOT_STEER     800
+#endif
 /* Wheel travel per encoder count on this car (pi x 65 mm / ~2420). */
 #define VC4_UM_PER_COUNT    84u
 

@@ -106,8 +106,9 @@ int main(void){
   vc4_steer(&t,FLOOR,900,20,um);
   CHECK(t.exit_side==-1, "opposite tape replaces left recovery");
   vc4_wheels(1000,60,100,&sp,&st);
-  CHECK(sp*(1000+(st<0?st:-st))/1000>=150,
-        "slow tight curve keeps inner wheel above 150 cps");
+  { int32_t inner=sp*(1000+(st<0?st:-st))/1000;
+    CHECK(inner==0 || inner>=150,
+          "slow tight curve: inner wheel stopped or above 150 cps, never crawling"); }
   vc4_reset(&t);
   vc4_junction(&t,700,700,0);
   for(uint32_t pos=2000;pos<18000;pos+=2000)
@@ -130,9 +131,23 @@ int main(void){
   printf("   s=%d speed_cps=%d steer_permille=%d\n",s,sp,st);
   vc4_wheels(1000,120,100,&sp,&st);
   printf("   full: speed_cps=%d steer=%d\n",sp,st);
-  CHECK(sp>0 && st>-1000, "full steer keeps inner wheel moving");
-  CHECK(st<=-790 && sp*(1000+st)/1000>=150,
-        "tight bend permits 80 percent split with usable inner-wheel speed");
+  /* Full error: the inner wheel stops and the car pivots on it (more
+   * steering than the old 1/5-of-base inner floor), with the outer wheel no
+   * faster than cruise. */
+  CHECK(sp>0 && st==-1000, "full steer pivots on the stopped inner wheel");
+  CHECK(sp*2<=vc4_mm_s_to_cps(120)+1,
+        "pivot does not speed the outer wheel past cruise");
+  /* Medium errors keep the inner wheel out of B2's crawl zone. */
+  for(int32_t e=0;e<=1000;e+=25){
+    int32_t inner;
+    vc4_wheels(e,120,100,&sp,&st);
+    inner=sp*(1000+(st<0?st:-st))/1000;
+    if(!(inner==0 || inner>=149) || sp*(1000+(st<0?-st:st))/1000>2*vc4_mm_s_to_cps(120)){
+      printf("   e=%d speed=%d steer=%d inner=%d\n",(int)e,(int)sp,(int)st,(int)inner);
+      CHECK(0,"wheel split stays usable across all errors");
+      break;
+    }
+  }
   /* line leaves past left sensor: coast then arc left, lost after 200ms+60mm */
   int lost_at=-1;
   for(int i=0;i<100;i++){ s=vc4_steer(&t,50,50,20,um); um+=2400; if(!vc4_on_line(&t)&&lost_at<0) lost_at=i; }

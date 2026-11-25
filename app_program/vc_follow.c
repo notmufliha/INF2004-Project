@@ -312,7 +312,7 @@ void vc4_wheels(int32_t s, int32_t base_mm_s, int32_t slow_mm_s,
          * error bends the path as much per mm as at slow speed. */
         diff_x10 = diff_x10 * base_mm_s / slow_mm_s;
     }
-    diff_max = 4 * base_x10 / 5;              /* inner >= 1/5 of base */
+    diff_max = base_x10 * (100 - VC4_INNER_MIN_PCT) / 100;
     if (diff_x10 > diff_max) diff_x10 = diff_max;
     if (diff_x10 < -diff_max) diff_x10 = -diff_max;
     /* + s = line left: slow the left wheel. */
@@ -330,7 +330,14 @@ void vc4_wheels(int32_t s, int32_t base_mm_s, int32_t slow_mm_s,
      * rather than straightening the requested steering split. */
     if (base_mm_s >= 60 && *speed_cps > 0) {
         int32_t inner_share = 1000 - iabs32(*steering_permille);
-        int32_t minimum_mean = (150000 + inner_share - 1) / inner_share;
-        if (*speed_cps < minimum_mean) *speed_cps = minimum_mean;
+        if (iabs32(*steering_permille) > VC4_PIVOT_STEER) {
+            /* Stop the inner wheel: pivot on it at the outer wheel's speed. */
+            int32_t outer_x10 = left_x10 > right_x10 ? left_x10 : right_x10;
+            *steering_permille = *steering_permille > 0 ? 1000 : -1000;
+            *speed_cps = vc4_mm_s_to_cps(outer_x10 / 20);
+        } else {
+            int32_t minimum_mean = (150000 + inner_share - 1) / inner_share;
+            if (*speed_cps < minimum_mean) *speed_cps = minimum_mean;
+        }
     }
 }
