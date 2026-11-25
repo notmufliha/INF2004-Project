@@ -121,32 +121,18 @@ int main(void)
         v4_drive(&c, &input, B3_NAV_NONE, vc4_mm_s_to_cps(120));
     }
     assert(c.post_avoid_slow && c.v4_phase == V4_CROSS && c.navigation == B3_NAV_LEFT);
-    /* Rejoin route: B5 learns the armed turn and bypasses on that side. If
-     * its rejoin pivots onto the crossing that way, the action is done. */
+    /* v6 bypass: a barcode turn armed before the obstacle stays armed
+     * through the bypass, for the next crossing. */
     c = reading();
-    (void)v4_accept_barcode(&c, B3_NAV_RIGHT);
+    (void)v4_accept_barcode(&c, B3_NAV_LEFT);
     input.centre = input.left = 0;
     input.obstacle_active = true;
     input.now_ms += VC_PERIOD_MS;
     vehicle_controller_step(&c, &input, B3_NAV_NONE);
-    assert(turn_hint_published == 1 && c.pending_navigation == B3_NAV_RIGHT);
-    bypass_turn_done = true;
     input.obstacle_active = false;
     input.now_ms += VC_PERIOD_MS;
     vehicle_controller_step(&c, &input, B3_NAV_NONE);
-    assert(c.pending_navigation == B3_NAV_NONE && !bypass_turn_done);
-    assert(turn_hint_published == 0 && c.post_avoid_wait_clear);
-    /* Without that report the action stays armed for the next crossing. */
-    c = reading();
-    (void)v4_accept_barcode(&c, B3_NAV_LEFT);
-    input.obstacle_active = true;
-    input.now_ms += VC_PERIOD_MS;
-    vehicle_controller_step(&c, &input, B3_NAV_NONE);
-    assert(turn_hint_published == -1);
-    input.obstacle_active = false;
-    input.now_ms += VC_PERIOD_MS;
-    vehicle_controller_step(&c, &input, B3_NAV_NONE);
-    assert(c.pending_navigation == B3_NAV_LEFT && turn_hint_published == -1);
+    assert(c.pending_navigation == B3_NAV_LEFT && c.post_avoid_wait_clear);
     c = reading();
     /* Decode delivery must survive a tick spent waiting for clearance. */
     input.clearance = false;
