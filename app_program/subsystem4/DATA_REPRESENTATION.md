@@ -36,7 +36,7 @@ shifts, with 30-byte telemetry and a 6-byte hump event.
 
 ## Cortex-M0+ size measurements
 
-Baseline is `fddb2e9` on `v7-fix-curve`. Sizes include compiler padding. Queue
+Baseline is the build before the minimum-bit change. Sizes include compiler padding. Queue
 storage derives from the measured payload sizes and the kernel slot formula
 `depth × (4 + align4(payload))`, where 4 bytes hold the message length.
 

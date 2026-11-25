@@ -1,7 +1,7 @@
 # Buddy 5: Barr-C-oriented style and Tribunal minimum-bit change
 
-This folder contains **B5-only application changes** carried forward from the
-`buddy_5` branch onto the team's B1-merged `origin/main`.
+This folder contains the **B5-only application changes** on the team's
+B1-merged tree.
 
 ## Current, integrated team interfaces
 

@@ -50,11 +50,11 @@ project root for calibration, direction checks and controlled floor testing.
 |---|---|---|---|---|---|
 | 2026-11-10 | S3-C01 through S3-C07; VC/B5 snapshot timing | Working tree based on `62467ca5a8e84b14ebbcc3d1cef91a188af7dbb2`, including 64-count learning and clock-after-snapshot fixes | Codex host runner | PASS | [Transcript](../integration/logs/2026-11-10_150149_host.txt) |
 
-## PD branch calibration, 2026-11-10
+## PD calibration, 2026-11-10
 
-The imported `line-follow-pd` calibration uses separate `S3-PD-C*` IDs to
-preserve the historical cases above. Tested source: `robot-fixes` base
-`549442f` plus the PD integration and rolling-window calibration fixes.
+The PD calibration uses separate `S3-PD-C*` IDs to preserve the historical
+cases above. Tested source: the PD integration with the rolling-window
+calibration fixes.
 
 | IDs | Coverage | Result | Evidence |
 |---|---|---|---|

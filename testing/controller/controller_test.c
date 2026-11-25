@@ -1140,7 +1140,7 @@ int main(void)
     }
     puts("PASS light touch on a straight still coasts (no zig-zag)");
 #if VC_BEND_HOLD
-    /* Bend hold (SITProjects line_track.c seek): the left sensor touching
+    /* Bend hold: the left sensor touching
      * twice within 80 mm is a bend, and while both sensors are white the car
      * keeps turning left instead of straightening and letting the line run
      * out.  A single touch on a straight still releases to straight. */

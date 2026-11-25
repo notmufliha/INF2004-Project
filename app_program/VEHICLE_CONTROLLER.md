@@ -139,7 +139,7 @@ obstacle bypass, ramp handling and lift-stop. `VC_FOLLOW_V4 0` and
 | Line search | spin 60° toward the side last seen, 120° back, 60° again; either sensor on tape = found; 5 s → run stops |
 | Junction | nL + nR ≥ 1400 for ≥ 10 mm, classified 30 mm later: both sensors ≥ 900 = cross-junction |
 | Barcode turn | decoded action waits for a cross-junction: stop, forward 60 mm, turn 90° (U-turn 180° left), follow |
-| Barcode read | read on the first pass at the following speed, held steady while the bars pass (as on barcode-robust); a rejected or missing read → stop, reverse past the strip start (+110 mm), wait 600 ms, read again; up to 2 retries |
+| Barcode read | read on the first pass at the following speed, held steady while the bars pass; a rejected or missing read → stop, reverse past the strip start (+110 mm), wait 600 ms, read again; up to 2 retries |
 | Obstacle (`subsystem5/s5_box.c`) | slow at 60 cm, stop at 40 cm (2 agreeing pings), creep to 25 cm, scan; single narrow echo = ramp glint → continue; bypass on the side needing the smaller shift: turn 90 out, lateral leg, turn 90 back, pass leg (distance + 15 cm depth + 10 cm tail), turn 45 in, accept a 15–75 mm wide tape crossing 50–120 % of lateral·√2 along, forward 60 mm, turn 45 back; lateral > 30 cm or pass > 80 cm, side echo < 6 cm, or 20 s without the line → stop |
 | Ramp | while B4 reports a hump / pitch ≥ 2° (held 480 ms and 150 mm after) the obstacle stop distance is 25 cm |
 | Lift-stop | both line sensors raw ≥ 3500 for 300 ms, or the IMU reads lifted/tilted for 60 ms → stop, START needed |

@@ -444,7 +444,7 @@ decode_stdin (void)
 static void
 sizes (void)
 {
-    /* "before" = the JSON/text version (commit ec0b859). */
+    /* "before" = the earlier JSON/text MQTT format. */
     printf("%-28s %12s %8s\n", "item", "before", "after");
     printf("%-28s %12s %8d\n", "telemetry frame (B)", "290 / 374",
            WIRE_TELEM_LEN);

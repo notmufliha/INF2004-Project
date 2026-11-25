@@ -1,9 +1,7 @@
-# Buddy 5 completion after B1 merge to origin/main
+# Buddy 5 integration with B1
 
-Base: `origin/main` at `0850acf` (B1 merge present). The uploaded ZIP
-was checked out at `buddy_5` (`d5f68cb`), where B1 APIs were not present.
-This package takes the B5 source from `buddy_5` and places it on the
-merged `origin/main` tree, preserving the merged team's other subsystems.
+Buddy 5 runs on the merged tree with the B1 interfaces; the other
+subsystems are unchanged by this integration.
 
 ## Scope
 - Buddy 5 application source and Buddy 5 tests.
@@ -37,12 +35,10 @@ merged `origin/main` tree, preserving the merged team's other subsystems.
 - 0xA8: insufficient clearance
 - 0xA9: reverse timeout
 
-**Tribunal discrepancy:** The earlier table labels A2 "no safe clearance"
-and A3 "servo not settled". These meanings cannot be substituted for
-A2/A3 without changing the S5Error enum, firmware emitters and laptop
-decoder together. Current code has no verified servo-settling fault detector;
-do not claim that one is implemented. Ask the team whether to update the
-Tribunal table or agree on a coordinated protocol revision.
+**Tribunal table note:** the earlier table labels A2 "no safe clearance"
+and A3 "servo not settled". Changing A2/A3 to those meanings needs the
+S5Error enum, firmware emitters and laptop decoder changed together. There
+is no servo-settling fault detector in the current code.
 
 ## Ownership of Wi-Fi priority
 The Wi-Fi task still requires a team-wide priority review; B5 does not

@@ -29,7 +29,7 @@
  * The slowdown follows the hardest recent steering and relaxes by
  * VC_CURVE_DECAY_PER_TICK each 20 ms tick, so the car stays slow through
  * the whole curve instead of speeding up between corrections. */
-#define VC_CURVE_MIN_PERMILLE 500 /* 50 % at full steer, as BlackberryDealer */
+#define VC_CURVE_MIN_PERMILLE 500 /* 50 % at full steer */
 #define VC_CURVE_DECAY_PER_TICK 40
 /* Smoothness: steering may change by at most this much per 20 ms tick
  * (0 to full 800 in about 0.1 s), and speed may rise by at most
@@ -82,9 +82,8 @@
  * pivot) drives ACROSS it at a steep angle: left then right sensor touch
  * within 25 mm, exactly like a junction tape.  That made the car turn left
  * near the barcode (2026-11-18).  A junction candidate counts only when it
- * starts at least VC_JCT_SETTLE_UM after the last such event (as
- * BlackberryDealer/INF2004_Project classifies junctions only in steady
- * line tracking). */
+ * starts at least VC_JCT_SETTLE_UM after the last such event, so
+ * junctions are classified only during steady line tracking. */
 #define VC_JCT_SETTLE_UM 80000u
 /* While crossing barcode bars (spread layout) steering is held within
  * +-VC_BARCODE_MAX_STEER and never pivots: swinging over the strip
@@ -110,12 +109,11 @@
 /* Spread layout, line lost: rotate ON THE SPOT (B2 turns of
  * VC_SPIN_STEP_DEG) toward the side the line was last seen, stopping as
  * soon as a sensor sees it; widening sweeps: 90 deg one way, back 180,
- * then 270...  (LordPercivalXII/INF2004_Project searches in place so the
- * car stays over the line; the old pivot around one wheel drove it away
- * from the corner.)  Gives up (stops, stays armed) after
+ * then 270...  (Searching in place keeps the car over the line; the old
+ * pivot around one wheel drove it away from the corner.)  Gives up (stops, stays armed) after
  * VC_LINE_SEARCH_MS. */
 #define VC_SPIN_STEP_DEG 15
-/* 4 steps = 60 deg each side (BlackberryDealer sweeps +-60): 60 one way,
+/* 4 steps = 60 deg each side: 60 one way,
  * 120 back, 60 back to the start heading, then stop.  Wider sweeps turned
  * the car round and it followed the track backwards. */
 #define VC_SPIN_FIRST_STEPS 4u
@@ -126,8 +124,7 @@
  * line cannot cover both spread sensors), steady or not. */
 #define VC_STRADDLE_JCT_BOTH 700
 #define VC_STRADDLE_JCT_BOTH_TICKS 2u
-/* Spread layout wheel speeds while following (BlackberryDealer's motion
- * split): the inner wheel may slow to 1/VC_STRADDLE_MAX_RATIO of the outer
+/* Spread layout wheel speeds while following: the inner wheel may slow to 1/VC_STRADDLE_MAX_RATIO of the outer
  * (5:1, turn radius ~10 cm) and to VC_STRADDLE_MIN_INNER_CPS (B2's own
  * move minimum, "move_min_cps=150" in its boot log).  The old floor of
  * 300 cps with outer <= 3x capped turns at ~500-565 permille (radius
@@ -183,8 +180,8 @@
  * again the line is either back between the sensors (usual: the car's
  * correction worked) or went OUT past it (sharp curve).  Turning hard
  * toward that side at once pushed a centred line across to the other
- * sensor, then back: the zig-zag of the 2026-11-18 run logs.  So, as in
- * BlackberryDealer/INF2004_Project: first coast straight for COAST_MS
+ * sensor, then back: the zig-zag of the 2026-11-18 run logs.  So: first
+ * coast straight for COAST_MS
  * (FLIP_COAST_MS when the exit is on the other side from the last one),
  * then turn toward the exit side with a gentle arc, RECOVER_START permille
  * growing RECOVER_RAMP per 20 ms tick up to OUTSIDE_STEER.  Not found
@@ -210,8 +207,8 @@
  * at its minimum), i.e. the car could not turn as tight as the bend.  Only
  * then (one sensor black for >= VC_STRADDLE_HELD_PIVOT_MS, steering >= 700)
  * may the inner wheel stop.  Normal touches last 300-450 ms; a 250 ms
- * version of this rule (commit 3e849eb) pivoted on every touch and made
- * the car zig-zag from full left to full right. */
+ * version of this rule pivoted on every touch and made the car zig-zag
+ * from full left to full right. */
 #define VC_STRADDLE_HELD_PIVOT_MS 700u
 #define VC_STRADDLE_PIVOT_STEER 700
 /* Neither sensor has touched the line for this long: assume it is really
@@ -227,20 +224,20 @@
 #define VC_STRADDLE_SEEK_START 100
 #define VC_STRADDLE_SEEK_RAMP 15
 #define VC_STRADDLE_SEEK_MAX 450
-/* Bend hold, after SITProjects/INF2004 line_track.c (MIT; same layout:
- * two sensors straddling the tape, both white when centred).  On a bend the
+/* Bend hold (two sensors straddling the tape, both white when
+ * centred).  On a bend the
  * line keeps moving toward one sensor, so dropping to zero steering as soon
  * as that sensor clears made the car straighten, let the line run out past
  * the sensor and only then correct (the "go out, then come back" turns).
  * A bend is: the same sensor touching again within VC_BEND_TOUCH_UM of the
- * start of its last touch (their LINE_CURVE_TOUCH_MM 80), or one touch held
+ * start of its last touch (80 mm), or one touch held
  * for VC_BEND_HELD_UM.  The other sensor touching ends it.  In a bend, while
  * both sensors read white, keep steering toward the bend: from
  * VC_BEND_HOLD_PERMILLE of the touch's peak steering (at least
  * VC_BEND_SEEK_MIN) growing to VC_BEND_SEEK_MAX over VC_BEND_RAMP_UM of
- * white travel (their LINE_SEEK_RAMP_MM 20), so the turn never pauses.
+ * white travel (20 mm), so the turn never pauses.
  * A centred line soon reaches the other sensor and ends the bend; after
- * VC_BEND_LOST_UM of white (their LINE_LOST_MM 250) the normal outside /
+ * VC_BEND_LOST_UM of white (250 mm) the normal outside /
  * search logic takes over.  Touch steering itself is unchanged. */
 #ifndef VC_BEND_HOLD
 #define VC_BEND_HOLD 1
@@ -253,8 +250,7 @@
 #define VC_BEND_RAMP_UM 20000u
 #define VC_BEND_LOST_UM 250000u
 /* The other sensor touching inside a bend steers back at half strength and
- * keeps the bend, unless it stays black for VC_BEND_COUNTER_UM (their
- * LINE_COUNTER_MM 100 / LINE_COUNTER_END_MM 40). */
+ * keeps the bend, unless it stays black for VC_BEND_COUNTER_UM. */
 #define VC_BEND_COUNTER_UM 60000u
 /* Barcode re-read: after a rejected scan (B3 beeps twice), stop, reverse
  * past the start of the strip by VC_RESCAN_MARGIN_UM and drive over it

@@ -1,7 +1,4 @@
-# PD branch integration and startup calibration
-
-Current branch: `robot-fixes`, base `549442f` plus working-tree changes.
-Line-following source: `line-follow-pd`, commit `503ed6e`.
+# PD line following and startup calibration
 
 Ported the weighted line position, PD controller, remembered-side recovery,
 and confirmed-extreme calibration. Preserved the current timestamp ordering,

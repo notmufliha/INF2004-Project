@@ -305,8 +305,8 @@ state and profile belong to the control task. The sample producer transfers
 exclusive ownership of each filled block to the mailbox consumer. No packed
 object receives an unsynchronized read-modify-write from independent tasks.
 
-Measured with the installed Arm GNU compiler for Cortex-M0+ against baseline
-commit `e7fe907` (`CNF_SMP=0`, `APP_TEST=0`, `-O2`):
+Measured with the installed Arm GNU compiler for Cortex-M0+ against the
+baseline build (`CNF_SMP=0`, `APP_TEST=0`, `-O2`):
 
 | Object | Before (bytes) | After (bytes) | Saved |
 |---|---:|---:|---:|

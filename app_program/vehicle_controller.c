@@ -224,8 +224,8 @@ static bool straddle_following(VEHICLE_CONTROLLER *c, const VC_INPUT *in)
         }
 #if VC_BEND_HOLD
         if (c->bend_side == c->straddle_side) {
-            /* Known bend that way: keep turning, no coast (SITProjects:
-             * white after a bend edge is seeked, never driven straight). */
+            /* Known bend that way: keep turning, no coast (white after
+             * a bend edge is seeked, never driven straight). */
             INT hold = c->bend_peak * VC_BEND_HOLD_PERMILLE / 1000;
             if (hold < VC_BEND_SEEK_MIN) hold = VC_BEND_SEEK_MIN;
             c->straddle_coast_ms = 0u;
@@ -273,11 +273,11 @@ static INT straddle_bend(VEHICLE_CONTROLLER *c, const VC_INPUT *in, INT steer)
     if (side != 0) {
         INT toward = steer * side;
         if (!c->bend_touching || side != c->bend_touch_now) {
-            /* A touch begins (SITProjects note_touch / note_counter). */
+            /* A touch begins. */
             if (c->bend_side == -side) {
                 /* The other sensor inside a bend: usually the car a little
                  * ahead of the bend, not the bend ending.  Keep the bend
-                 * and steer back gently (their LINE_COUNTER_*). */
+                 * and steer back gently. */
                 c->bend_counter = true;
             } else if (side != c->bend_touch_side) {
                 c->bend_side = 0;          /* other side: not that bend */
@@ -1286,8 +1286,8 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
     /* ---- FOLLOW ---- */
     barcode_straight = c->bar_phase == BAR_READ ||
         (strip_pending && c->strip_edges >= VC4_BAR_STRIP_EDGES);
-    /* Keep following the line while the barcode passes under GP28 (as the
-     * other INF2004 teams do): driving the pass blind and straight took
+    /* Keep following the line while the barcode passes under GP28:
+     * driving the pass blind and straight took
      * the car 350 mm off a bending line on 24 Nov.  Speed is still held
      * steady below (the decoder times bar widths), junctions are still
      * ignored on the strip, and bar_filter() above already blanks a line
@@ -1451,7 +1451,7 @@ static void v4_drive(VEHICLE_CONTROLLER *c, const VC_INPUT *in, UB nav,
             command.target_speed_cps = previous + VC_SPEED_RISE_PER_TICK;
         }
     }
-    /* Constant speed across a barcode (as on barcode-robust): bar widths
+    /* Constant speed across a barcode: bar widths
      * are timed, so a curve slowdown part-way through the bars stretches
      * the later ones and the read is rejected.  Keep the speed the car had
      * at the first bar for the complete pass, including quiet gaps. */

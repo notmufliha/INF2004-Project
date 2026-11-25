@@ -312,7 +312,7 @@ The USB-only image cannot connect to the dashboard.
    Steering constants are in `b3_line_barcode.h`; change one at a time and
    repeat the same course. Minimum sustainable wheel speed is provisional
    (`VC_MIN_WHEEL_CPS`), so low percentages still have a speed floor.
-   This image uses the weighted-position PD controller from `line-follow-pd`.
+   This image uses the weighted-position PD controller.
    The fixed trim trials have been removed. `B3_LINE_KP_X10` and
    `B3_LINE_KD_X10` are the PD tuning settings; verify physical sensor,
    encoder and motor mapping before tuning gains.

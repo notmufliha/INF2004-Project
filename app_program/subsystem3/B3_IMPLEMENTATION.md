@@ -37,8 +37,8 @@ and controller steering gains are not changed by this trial.
   reaches a line edge, with just the sensor gap left before the line is
   lost. So the correction is immediate and strong: a 40-count deadband,
   then proportional up to full steer (800 permille) at a 400-count
-  difference (the team's original mapping). The weighted-position PD from
-  `503ed6e` gave only ~270 permille with one sensor half off the line, and
+  difference (the team's original mapping). The earlier weighted-position PD
+  gave only ~270 permille with one sensor half off the line, and
   the car ran off at curves. The weighted position (0 left, 500 centre,
   1000 right, values <=50 ignored) is still kept to remember which side the
   line was last seen on, for recovery.
@@ -112,8 +112,8 @@ so decoding does not depend on a fixed robot speed. It requires the standard
 crossed from the far end has each character's elements reversed, so the
 mask is mirrored and looked up in the same table. Bars and spaces are
 classified separately: the IR spot blurs each edge, so on the car every bar
-reads thinner and every space wider than printed (another INF2004 team
-measured narrow spaces at ~45 ms against wide spaces at ~245 ms), and a
+reads thinner and every space wider than printed (narrow spaces measure
+about 45 ms against about 245 ms for wide ones), and a
 narrow space can then be as long as a wide bar. Within each character the
 two widest bars and the widest space are wide (for `$ / + %`: no wide bar,
 three wide spaces), and the narrowest wide element must be at least 1.4x the
