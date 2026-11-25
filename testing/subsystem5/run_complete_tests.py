@@ -47,8 +47,6 @@ groups = {
     "line_input": ["testing/subsystem5/test_line_input.c", "app_program/subsystem3/b3_code39.c",
                    "app_program/subsystem3/b3_line_cal.c"],
     "bridge": ["testing/subsystem5/test_bridge.c"],
-    "rejoin": ["app_program/subsystem5/s5_maneuver.c", "testing/subsystem5/test_rejoin.c"],
-    "width": ["app_program/subsystem5/s5_width.c", "testing/subsystem5/test_width.c"],
     "packed": ["app_program/subsystem5/s5_packed.c",
                "testing/subsystem5/test_packed.c"],
 }
@@ -59,8 +57,6 @@ with tempfile.TemporaryDirectory(prefix="b5_complete_") as folder:
              *(["-DROBOT_OBSTACLE_TEST=0"] if name not in ("obstacle_start", "detour", "reactive") else ["-DROBOT_OBSTACLE_TEST=1"]),
              *(["-DROBOT_BYPASS_LINE_HANDOFF=0"] if name not in ("line_handoff", "navigation_handoff") else []),
              *(["-DROBOT_BYPASS_EXACT_SEQUENCE=0"] if name == "reactive" else []),
-             # Earlier groups pin the previous course route; "rejoin" tests the new one.
-             *(["-DROBOT_REJOIN_ROUTE=0"] if name != "rejoin" else []),
              *(["-DROBOT_SENSOR_FORWARD_OFFSET_CM=0.0f"] if name not in ("obstacle_start", "detour", "reactive") else []),
              "-Iapp_program/subsystem5",
              *sources, "-lm", "-o", str(binary)])

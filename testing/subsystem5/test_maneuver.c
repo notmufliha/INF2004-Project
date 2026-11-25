@@ -142,9 +142,7 @@ int main(void)
         s5_maneuver_init(&m);
         assert(s5_maneuver_begin(&m, side == S5_SIDE_LEFT ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT,
                                   &p, 40.0f, in.now_ms));
-        /* Full width, not half a guessed width (46 cm with a 16 cm chassis). */
-        assert(m.lateral_cm == ROBOT_OBSTACLE_MAX_BYPASS_CM +
-               ROBOT_CHASSIS_HALF_WIDTH_CM + ROBOT_OBSTACLE_MARGIN_CM);
+        assert(m.lateral_cm == 46.0f); /* Full width, not half a guessed width. */
         leg(S5_ACT_TURN, 0.0f, side == S5_SIDE_LEFT ? -ROBOT_BYPASS_TURN_DEG : ROBOT_BYPASS_TURN_DEG);
         in.line_detected = false;
         timed_offset();
@@ -186,9 +184,7 @@ int main(void)
     p = profile(S5_SIDE_LEFT, 24.0f);
     s5_maneuver_init(&m);
     assert(s5_maneuver_begin(&m, S5_CMD_GO_LEFT, &p, 40.0f, 100u));
-    /* Larger obstacle, wider bypass (28 cm with a 16 cm chassis). */
-    assert(m.lateral_cm == 24.0f * 0.5f + ROBOT_CHASSIS_HALF_WIDTH_CM +
-           ROBOT_OBSTACLE_MARGIN_CM);
+    assert(m.lateral_cm == 28.0f); /* Larger obstacle, wider bypass. */
     s5_maneuver_init(&m);
     p.estimated_width_cm = ROBOT_OBSTACLE_MAX_BYPASS_CM + 1.0f;
     assert(!s5_maneuver_begin(&m, S5_CMD_GO_LEFT, &p, 40.0f, 100u));

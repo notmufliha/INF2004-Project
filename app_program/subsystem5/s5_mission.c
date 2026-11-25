@@ -9,8 +9,6 @@ static T_SPLOCK mission_lock;
 static bool enabled;
 static bool approach_slow;
 static bool on_ramp;
-static int turn_hint;
-static bool turn_done;
 static S5MissionState mission_state;
 static void lock(UINT *irq)
 {
@@ -89,28 +87,4 @@ bool s5_mission_ramp(void)
     bool ramp;
     lock(&irq); ramp = on_ramp; unlock(irq);
     return ramp;
-}
-void s5_mission_set_turn_hint(int hint)
-{
-    UINT irq;
-    lock(&irq); turn_hint = hint < 0 ? -1 : hint > 0 ? 1 : 0; unlock(irq);
-}
-int s5_mission_turn_hint(void)
-{
-    UINT irq;
-    int hint;
-    lock(&irq); hint = turn_hint; unlock(irq);
-    return hint;
-}
-void s5_mission_mark_turn_done(void)
-{
-    UINT irq;
-    lock(&irq); turn_done = true; unlock(irq);
-}
-bool s5_mission_take_turn_done(void)
-{
-    UINT irq;
-    bool done;
-    lock(&irq); done = turn_done; turn_done = false; unlock(irq);
-    return done;
 }

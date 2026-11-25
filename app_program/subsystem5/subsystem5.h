@@ -61,8 +61,7 @@
 
 /* Bench checks: startup sweep and first scan. No obstacle is required for
  * the initial scan, but valid echoes ARE required for a valid profile. */
-/* No servo sweep at boot: the servo goes straight to centre. */
-#define S5_STARTUP_SERVO_TEST 0
+#define S5_STARTUP_SERVO_TEST ROBOT_OBSTACLE_TEST
 #define S5_FORCE_STARTUP_SCAN 0
 /* 1 = continuous coarse/fine scan, 0 = scan on confirmed obstacle. */
 #define S5_CONTINUOUS_SWEEP_TEST 0

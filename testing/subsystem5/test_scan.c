@@ -39,9 +39,6 @@ bool s5_measure_probe_cm(float *cm)
     *cm = distances[read_calls++];
     return true;
 }
-/* The fine width sweep is covered by test_width.c (s5_width.c) and by
- * the host sonar model there; these route-sweep tests never call it. */
-bool s5_measure_median3_cm(float *cm) { (void)cm; assert(0); return false; }
 #include "../../app_program/subsystem5/obstacle_scan.c"
 static void reset(void)
 {
@@ -108,9 +105,7 @@ int main(void)
         assert(p.valid && p.uses_course_bounds);
         assert(p.estimated_width_cm == ROBOT_OBSTACLE_MAX_BYPASS_CM);
         assert(p.bypass_side == S5_SIDE_RIGHT);
-        /* 46 cm with the earlier 16 cm chassis estimate. */
-        assert(p.required_lateral_clearance_cm == ROBOT_OBSTACLE_MAX_BYPASS_CM +
-               ROBOT_CHASSIS_HALF_WIDTH_CM + ROBOT_OBSTACLE_MARGIN_CM);
+        assert(p.required_lateral_clearance_cm == 46.0f);
         s5_controller_init(&controller);
         input.front_valid = true; input.front_cm = ROBOT_STOP_CM - 1.0f;
         assert(s5_controller_step(&controller, &input) == S5_CMD_STOP);
@@ -303,34 +298,6 @@ int main(void)
         assert(controller.profile.right_boundary_deg == 112u);
         assert(controller.profile.estimated_width_cm > 7.9f &&
                controller.profile.estimated_width_cm < 8.0f);
-
-        /* A close encounter stops and backs up before the width sweep.
-         * Only the post-retreat sweep decides which way to go. */
-        for (int direction = -1; direction <= 1; direction += 2) {
-            S5Input close = {.front_valid = true, .front_cm = 5.0f};
-            s5_controller_init(&controller);
-            assert(s5_controller_step(&controller, &close) == S5_CMD_STOP);
-            assert(s5_controller_step(&controller, &close) == S5_CMD_STOP);
-            close.stopped = true;
-            assert(s5_controller_step(&controller, &close) == S5_CMD_REVERSE);
-            close.motion_complete = true;
-            close.stopped = false;
-            assert(s5_controller_step(&controller, &close) == S5_CMD_NONE);
-            close.stopped = true;
-            close.front_cm = 22.0f;
-            assert(s5_controller_step(&controller, &close) == S5_CMD_SCAN_COARSE);
-            assert(!controller.profile.valid);
-
-            close.motion_complete = false;
-            close.coarse_ready = true;
-            close.width_points = sweep;
-            close.coarse = input.coarse;
-            close.turn_hint = direction;
-            assert(s5_controller_step(&controller, &close) ==
-                   (direction < 0 ? S5_CMD_GO_LEFT : S5_CMD_GO_RIGHT));
-            assert(controller.profile.valid && controller.profile.frontal_width_cm > 0.0f);
-            assert(controller.reverse_attempts == 1u);
-        }
 
         /* A live open-space echo must not discard the completed scan. */
         sweep[6].distance_cm = 12.07f;

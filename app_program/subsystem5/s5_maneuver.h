@@ -71,18 +71,6 @@ typedef struct {
     int reactive_entry_heading_deg;
     bool forward_paused;
     bool reactive_align_parallel, reactive_parallel_lock;
-    /* Rejoin route (ROBOT_REJOIN_ROUTE). */
-    bool rejoin_route;
-    int turn_hint;          /* -1 left, +1 right, 0 none (barcode turn)  */
-    int rejoin_step;        /* sub-step inside the current state         */
-    bool crossing_seen;     /* a tape was found on the pass leg          */
-    bool turn_done;         /* the barcode turn was made at the crossing */
-    int final_turn_deg;     /* last pivot, signed (negative = left)       */
-    float pass_needed_cm;   /* axle travel to be clear of the box        */
-    bool blocked;           /* leg paused by a close front echo          */
-    bool stopping;          /* STOP sent; waiting for the cancelled move */
-    bool stop_for_line;     /* ...because the line sensors found tape    */
-    uint32_t blocked_since_ms;
 } S5Maneuver;
 
 void s5_maneuver_init(S5Maneuver *m);
@@ -92,9 +80,6 @@ bool s5_maneuver_begin(S5Maneuver *m, S5Command command,
                        const S5Profile *profile, float depth_bound_cm,
                        uint32_t now_ms);
 bool s5_maneuver_plan_equal_legs(S5Maneuver *m, float obstacle_front_cm);
-/* Plan the rejoin route; turn_hint is the pending barcode turn. */
-bool s5_maneuver_plan_rejoin(S5Maneuver *m, const S5Profile *profile,
-                             float obstacle_front_cm, int turn_hint);
 bool s5_maneuver_plan_probe_route(S5Maneuver *m, float obstacle_front_cm);
 bool s5_maneuver_course_room(const S5Profile *profile, S5Side side, float obstacle_front_cm);
 S5Action s5_maneuver_step(S5Maneuver *m, const S5ManeuverInput *in);

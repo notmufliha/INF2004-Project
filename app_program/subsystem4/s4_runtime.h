@@ -61,14 +61,6 @@
 #ifndef S4_ROLL_HUMP_PEAK_SAMPLES
 #define S4_ROLL_HUMP_PEAK_SAMPLES 7U
 #endif
-/* Settle time before a hump can start (imu_analysis_config_t.settle_ms;
- * idea from the AAI03 team's INF2004 hump detector, used with permission).
- * Counted from the end of any stop, B2 turn, reverse or curve. 25 Nov run:
- * a hump was reported just after a junction turn. 600 ms is ~7 cm at
- * cruise; lower it if a real hump sits right after a curve or junction. */
-#ifndef S4_ROLL_HUMP_SETTLE_MS
-#define S4_ROLL_HUMP_SETTLE_MS 600U
-#endif
 
 /* Lift-stop (imu_lift.h): a pick-up must reach this upward speed and rise.
  * Lower them if lifting the car is not caught ("[B4] LIFTED" not printed);

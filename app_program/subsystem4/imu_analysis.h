@@ -32,13 +32,6 @@ typedef struct
      * bottom third dropped), so the jolt as a wheel hits the hump edge does
      * not count as roll.  1 = single-sample peak.  1..IMU_ROLL_PEAK_MAX. */
     uint32_t  roll_peak_samples;
-    /* Settle time (adapted from the AAI03 team's INF2004 hump detector,
-     * used with permission): a hump may only START once the car has driven
-     * forward, not curving and with no movement reset (stop, B2 turn,
-     * reverse, fault), for this long. Pulling away after a junction turn
-     * or a stop, and the end of a curve, lean the car like a one-wheel
-     * hump for a moment. 0 = off. */
-    uint32_t  settle_ms;
 } imu_analysis_config_t;
 
 #define IMU_ROLL_PEAK_MAX 9U
@@ -94,7 +87,6 @@ typedef struct
     uint32_t               roll_window_count;
     uint32_t               roll_window_next;
     float32_t              highest_hump_cm;
-    uint32_t               steady_since_ms; /* see config.settle_ms */
     imu_analysis_roll_t    roll_state : 2;
     imu_analysis_terrain_t roll_terrain : 2;
     int8_t                 roll_direction; /* -1, 0, +1 */
@@ -104,7 +96,6 @@ typedef struct
     bool                   b_have_progress : 1;
     bool                   b_roll_positive : 1;
     bool                   b_highest_hump_valid : 1;
-    bool                   b_steady : 1;    /* steady_since_ms is set */
 } imu_analysis_t;
 
 void imu_analysis_default_config (imu_analysis_config_t * p_config);

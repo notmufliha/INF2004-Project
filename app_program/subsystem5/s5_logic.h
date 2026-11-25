@@ -51,7 +51,6 @@ typedef struct {
     S5Scan fine;
     bool motion_complete;
     bool line_found;
-    int turn_hint; /* pending barcode turn: -1 left, +1 right, 0 none */
 } S5Input;
 
 typedef enum { S5_SIZE_UNKNOWN, S5_SIZE_SMALL, S5_SIZE_LARGE,

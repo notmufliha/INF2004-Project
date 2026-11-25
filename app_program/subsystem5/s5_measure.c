@@ -197,28 +197,6 @@ static bool measure_stable(float *out_cm, bool forward, bool stop_on_close, uint
 bool s5_measure_stable_cm(float *out_cm) { return measure_stable(out_cm, false, false, ROBOT_ECHO_SAMPLES); }
 bool s5_measure_front_cm(float *out_cm) { return measure_stable(out_cm, true, true, ROBOT_ECHO_SAMPLES); }
 bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false, ROBOT_ECHO_SAMPLES); }
-bool s5_measure_median3_cm(float *out_cm)
-{
-    float v[3];
-    uint8_t n = 0u;
-    if (out_cm == NULL) return false;
-    *out_cm = 0.0f;
-    for (uint8_t i = 0u; i < 3u; ++i) {
-        S5EchoReading reading = s5_ultrasonic_read_detailed();
-        if (reading.status == S5_ECHO_OK && reading.cm > 0.0f &&
-            !s5_echo_suppressed_cm(reading.cm)) {
-            /* insertion into ascending order */
-            uint8_t k = n++;
-            while (k > 0u && v[k - 1u] > reading.cm) { v[k] = v[k - 1u]; --k; }
-            v[k] = reading.cm;
-        }
-        if (i < 2u) tk_dly_tsk(reading.status == S5_ECHO_OK ?
-                               S5_ECHO_GAP_MS : ROBOT_ECHO_GAP_AFTER_FAILURE_MS);
-    }
-    if (n < 2u) return false;
-    *out_cm = n == 3u ? v[1] : v[0]; /* middle, or the nearer of two */
-    return true;
-}
 bool s5_measure_probe_cm(float *out_cm)
 {
     if (out_cm == NULL) return false;

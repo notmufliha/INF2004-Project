@@ -341,20 +341,6 @@
 #define VC4_BAR_READ_MS 15000u
 #define VC4_BAR_RETRIES 2u
 #define VC4_BAR_REARM_UM 60000u
-/* Settle window (from the AAI03 team's INF2004 "slow start of line
- * following", used with permission): for VC4_SETTLE_MS after a junction
- * action (turn / straight / U-turn) and after a line search finds the line,
- * follow at no more than VC4_SETTLE_MM_S with the B2 wheel split limited
- * to VC4_SETTLE_STEER_MAX permille (600: inner wheel 1/4 of the outer, not
- * stopped). Meeting the line at an angle at full speed and a full pivot
- * swings the car across it. The bypass keeps its own 150 mm slow window.
- * TUNE: if the car loses the line right after a turn, raise
- * VC4_SETTLE_STEER_MAX (1000 = no limit) or shorten VC4_SETTLE_MS. */
-#ifndef VC4_SETTLE_MS
-#define VC4_SETTLE_MS 600u
-#endif
-#define VC4_SETTLE_MM_S 70
-#define VC4_SETTLE_STEER_MAX 600
 /* After an obstacle bypass: slow speed for 150 mm. */
 #define VC4_POST_AVOID_UM 150000u
 /* Lift-stop: car picked up while running -> stop. */
@@ -491,8 +477,6 @@ typedef struct {
     bool bar_wait_clear;   /* decoded/skipped strip must fully leave GP28 */
     UH bar_rejects;
     bool post_avoid_slow;
-    bool settle_active;    /* VC4_SETTLE_MS window running            */
-    uint32_t settle_ms;    /* ...since this time                      */
     bool post_avoid_wait_clear;
     uint32_t post_avoid_clear_um;
     uint32_t post_avoid_um;

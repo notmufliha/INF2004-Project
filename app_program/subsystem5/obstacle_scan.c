@@ -102,27 +102,6 @@ void s5_width_flank_scan(int heading, S5ScanPoint points[S5_WIDTH_SCAN_COUNT])
     (void)scan_angles(points, heading < 0 ? left : right, 3, true);
 }
 void s5_probe_scan(S5Scan *scan) { scan_five(scan, coarse_angles, true); }
-int s5_fine_width_scan(S5ScanPoint *points, int max)
-{
-    int n = 0;
-    if (!points || max <= 0) return 0;
-    for (uint16_t a = ROBOT_FINE_WIDTH_MIN_DEG;
-         a <= ROBOT_FINE_WIDTH_MAX_DEG && n < max; a += ROBOT_FINE_WIDTH_STEP_DEG)
-        points[n++] = (S5ScanPoint){a, 0.0f, false};
-#if S5_SERVO_ENABLED && S5_HARDWARE_ENABLED && !S5_SIMULATION
-    for (int i = 0; i < n; ++i) {
-        if (!s5_servo_angle(points[i].angle_deg)) {
-            for (int k = 0; k < n; ++k) points[k].valid = false;
-            break;
-        }
-        tk_dly_tsk(S5_SERVO_SETTLE_MS);
-        points[i].valid = s5_measure_median3_cm(&points[i].distance_cm);
-    }
-    (void)s5_servo_angle(90u);
-    tk_dly_tsk(S5_SERVO_SETTLE_MS);
-#endif
-    return n;
-}
 void s5_fine_scan(S5Scan *scan, uint16_t center_deg)
 {
     uint16_t angles[S5_SCAN_COUNT];

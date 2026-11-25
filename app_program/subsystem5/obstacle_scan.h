@@ -22,8 +22,4 @@ void s5_width_flank_scan(int heading, S5ScanPoint points[S5_WIDTH_SCAN_COUNT]);
 void s5_probe_scan(S5Scan *scan);
 void s5_fine_scan(S5Scan *scan, uint16_t center_deg);
 int s5_find_nearest(const S5ScanPoint *points, int count);
-/* Fine width sweep: ROBOT_FINE_WIDTH_MIN_DEG..MAX_DEG in STEP_DEG steps,
- * median of three pings per angle; returns the number of points written
- * (at most max), sorted by angle. */
-int s5_fine_width_scan(S5ScanPoint *points, int max);
 #endif
