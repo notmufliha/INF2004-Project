@@ -32,9 +32,19 @@ typedef struct
      * bottom third dropped), so the jolt as a wheel hits the hump edge does
      * not count as roll.  1 = single-sample peak.  1..IMU_ROLL_PEAK_MAX. */
     uint32_t  roll_peak_samples;
+    /* Jerk rejection.  The GY-511 has no gyroscope, so a level car pushed
+     * sideways reads as tilted: a steering jerk (wheel speed difference
+     * changing) or a speed jerk (mean wheel speed changing) can look like a
+     * hump on flat ground.  Samples where, over the last IMU_JERK_WINDOW
+     * readings, the difference changed by more than roll_steer_jerk_cps or
+     * the mean by more than roll_speed_jerk_cps are skipped: they neither
+     * count toward a hump nor enter the height estimate.  0 = no check. */
+    uint32_t  roll_steer_jerk_cps;
+    uint32_t  roll_speed_jerk_cps;
 } imu_analysis_config_t;
 
 #define IMU_ROLL_PEAK_MAX 9U
+#define IMU_JERK_WINDOW 8U
 
 typedef enum
 {
@@ -87,6 +97,10 @@ typedef struct
     uint32_t               roll_window_count;
     uint32_t               roll_window_next;
     float32_t              highest_hump_cm;
+    int32_t                jerk_left[IMU_JERK_WINDOW];  /* counts/s */
+    int32_t                jerk_right[IMU_JERK_WINDOW]; /* counts/s */
+    uint32_t               jerk_next;
+    uint32_t               jerk_count;
     imu_analysis_roll_t    roll_state : 2;
     imu_analysis_terrain_t roll_terrain : 2;
     int8_t                 roll_direction; /* -1, 0, +1 */

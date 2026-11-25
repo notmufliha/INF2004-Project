@@ -33,6 +33,9 @@ static void test_roll_motion_trends (void);
 static void test_roll_height (void);
 static void test_flat_ground_rejection (void);
 static void test_height_jolt_rejection (void);
+static void test_jolt_and_jerk_rejection (void);
+static void jerk_reset (const imu_analysis_config_t * p_config);
+static imu_event_t jolt_feed (void);
 
 /** @brief Run classification, timing, movement and roll regressions. */
 int
@@ -59,6 +62,7 @@ main (void)
     test_roll_height();
     test_flat_ground_rejection();
     test_height_jolt_rejection();
+    test_jolt_and_jerk_rejection();
     puts("All roll-only IMU analysis tests passed.");
     return 0;
 }
@@ -580,6 +584,94 @@ test_height_jolt_rejection (void)
     config.roll_peak_samples = IMU_ROLL_PEAK_MAX + 1U;
     assert(!imu_analysis_init(&g_analysis, &config));
     puts("PASS: hump height ignores the edge jolt (10 mm hump reads 10 mm)");
+}
+
+/** @brief Level start at steady 600 counts/s with a full jerk history. */
+static void
+jerk_reset (const imu_analysis_config_t * p_config)
+{
+    short_reset();
+    assert(imu_analysis_init(&g_analysis, p_config));
+    g_analysis.b_require_motion = true;
+    g_short_data.motion.left_speed_cps = 600;
+    g_short_data.motion.right_speed_cps = 600;
+    roll_feed(0.0f, TEST_SHORT_BASELINE + IMU_JERK_WINDOW);
+}
+
+/** @brief One moving sample whose acceleration exceeds the impact limit. */
+static imu_event_t
+jolt_feed (void)
+{
+    imu_event_t event = {0};
+
+    g_short_data.timestamp_ms += 20U;
+    g_short_data.motion.timestamp_ms = g_short_data.timestamp_ms;
+    g_short_data.encoder_left += 10;
+    g_short_data.encoder_right += 10;
+    g_short_data.accel_z += 8.0f;
+    assert(imu_analysis_process(&g_analysis, &g_short_data, &event));
+    g_short_data.accel_z -= 8.0f;
+    return event;
+}
+
+/** @brief The hump-edge jolt keeps the hump; steering and speed jerks on
+ *         flat ground (a sideways push read as roll) are not humps. */
+static void
+test_jolt_and_jerk_rejection (void)
+{
+    imu_analysis_config_t config;
+    imu_analysis_config_t unchecked;
+    const float32_t       hump_deg = 5.2165f; /* asin(10 / 110) */
+
+    imu_analysis_default_config(&config);
+    config.roll_enter_deg = 3.5f;
+    config.roll_steer_jerk_cps = 350U;
+    config.roll_speed_jerk_cps = 500U;
+
+    /* Edge jolts before and after the hump starts: still one hump. */
+    jerk_reset(&config);
+    roll_feed(hump_deg, 2U);
+    assert(jolt_feed().b_sudden_impact);
+    assert(!roll_feed(hump_deg, 1U).b_hump_detected); /* 60 ms        */
+    assert(roll_feed(hump_deg, 1U).b_hump_detected);  /* 80 ms: kept  */
+    roll_feed(hump_deg, 2U);
+    imu_event_t event = jolt_feed();
+    assert((event.b_sudden_impact) && (event.b_hump_detected));
+    assert(IMU_ROLL_ACTIVE == g_analysis.roll_state);
+    roll_feed(hump_deg, 2U);
+    assert(roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
+
+    /* Flat ground, both wheels lurch 600 -> 1200 counts/s while the roll
+     * reads 5 degrees: a push, not a hump. */
+    jerk_reset(&config);
+    g_short_data.motion.left_speed_cps = 1200;
+    g_short_data.motion.right_speed_cps = 1200;
+    assert(!roll_feed(5.0f, 5U).b_hump_detected);
+    assert(!roll_feed(0.0f, IMU_JERK_WINDOW).b_hump_completed);
+
+    /* Flat ground, a steering jerk (difference +400, still under the curve
+     * ratio): not a hump either. */
+    g_short_data.motion.right_speed_cps = 1600;
+    assert(!roll_feed(5.0f, 5U).b_hump_detected);
+    assert(!roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
+
+    /* Steady speeds again (history refilled): the same roll is a hump. */
+    g_short_data.motion.right_speed_cps = 1200;
+    roll_feed(0.0f, IMU_JERK_WINDOW);
+    assert(!roll_feed(hump_deg, 4U).b_hump_detected);  /* 0..60 ms */
+    assert(roll_feed(hump_deg, 1U).b_hump_detected);   /* 80 ms    */
+    assert(roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
+
+    /* Control: without the jerk check the lurch reads as a hump. */
+    unchecked = config;
+    unchecked.roll_steer_jerk_cps = 0U;
+    unchecked.roll_speed_jerk_cps = 0U;
+    jerk_reset(&unchecked);
+    g_short_data.motion.left_speed_cps = 1200;
+    g_short_data.motion.right_speed_cps = 1200;
+    assert(roll_feed(5.0f, 5U).b_hump_detected);
+    puts("PASS: hump kept through the edge jolt; steering and speed jerks on "
+         "flat ground are not humps");
 }
 
 /*** end of file ***/

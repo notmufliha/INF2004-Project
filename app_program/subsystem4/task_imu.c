@@ -405,6 +405,8 @@ initialise_analysis (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
     config.roll_enter_ms = S4_ROLL_HUMP_ENTER_MS;
     config.roll_curve_ratio = S4_ROLL_HUMP_CURVE_RATIO;
     config.roll_peak_samples = S4_ROLL_HUMP_PEAK_SAMPLES;
+    config.roll_steer_jerk_cps = S4_ROLL_HUMP_STEER_JERK_CPS;
+    config.roll_speed_jerk_cps = S4_ROLL_HUMP_SPEED_JERK_CPS;
 #else
     /* Scripted mock crossings use the original two-sample entry and
      * single-sample peak. */

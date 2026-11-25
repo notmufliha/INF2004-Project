@@ -153,8 +153,10 @@ measurement_edges (imu_notice_tracker_t * p_tracker,
     uint32_t   events = 0U;
     const bool b_completed =
         b_usable && (p_event->b_hump_completed) && (!p_event->b_sudden_impact);
-    const bool b_active = b_usable && (p_event->b_hump_detected) &&
-                          (!b_completed) && (!p_event->b_sudden_impact);
+    /* A jolt on the hump keeps the hump active (B4 holds it through the
+     * impact sample), so it is not reported as an abort. */
+    const bool b_active =
+        b_usable && (p_event->b_hump_detected) && (!b_completed);
 
     if (b_active && (!p_tracker->b_hump_active))
     {

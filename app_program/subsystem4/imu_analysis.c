@@ -17,12 +17,13 @@ static void reset_sequence (imu_analysis_t * p_analysis, uint32_t reason);
 static void reset_roll (imu_analysis_t * p_analysis);
 static void expire_roll (imu_analysis_t * p_analysis, uint32_t now_ms);
 static void update_roll_motion (imu_analysis_t * p_analysis, float32_t roll);
-static void track_roll_height (imu_analysis_t * p_analysis,
+static void track_roll_height (imu_analysis_t * p_analysis, bool b_jerk,
                                const imu_data_t * p_data, bool b_level);
 static float32_t push_roll_window (imu_analysis_t * p_analysis,
                                    float32_t excursion);
 static void complete_height (imu_analysis_t * p_analysis,
                              imu_event_t * p_event);
+static bool jerking (imu_analysis_t * p_analysis, const imu_data_t * p_data);
 static bool curving (const imu_analysis_t * p_analysis,
                      const imu_data_t * p_data);
 static void update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
@@ -48,7 +49,7 @@ imu_analysis_default_config (imu_analysis_config_t * p_config)
         *p_config = (imu_analysis_config_t){8.0f, 1.0f, 15.0f, 6.0f,
                                             3U, 100U, 10000U,
                                             4.0f, 2.0f, 0.5f, 110.0f,
-                                            80U, 0.3f, 7U};
+                                            80U, 0.3f, 7U, 0U, 0U};
     }
 }
 
@@ -177,7 +178,15 @@ imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
 
     if (p_event->b_sudden_impact)
     {
-        reset_sequence(p_analysis, IMU_ANALYSIS_RESET_IMPACT);
+        /* A wheel hitting the hump's edge jolts the IMU past the impact
+         * threshold (course runs 24 Nov 19:13 and 19:27). Resetting here
+         * threw away the hump being climbed, so humps went undetected.
+         * The jolt sample is skipped instead: the hump state is held (and
+         * still reported), and the impact itself is still flagged. */
+        p_analysis->reset_reasons |= IMU_ANALYSIS_RESET_IMPACT;
+        expire_roll(p_analysis, p_data->timestamp_ms);
+        p_event->b_hump_detected =
+            IMU_ROLL_ACTIVE == p_analysis->roll_state;
         p_event->motion_state = IMU_MOTION_SUDDEN_IMPACT;
         return true;
     }
@@ -374,9 +383,15 @@ update_roll_motion (imu_analysis_t * p_analysis, float32_t roll)
 
 /** @brief Track baseline and excursion independently of detector decisions. */
 static void
-track_roll_height (imu_analysis_t * p_analysis, const imu_data_t * p_data,
-                   bool b_level)
+track_roll_height (imu_analysis_t * p_analysis, bool b_jerk,
+                   const imu_data_t * p_data, bool b_level)
 {
+    if (b_jerk)
+    {
+        /* A sideways push, not tilt: keep it out of baseline and height. */
+        return;
+    }
+
     /* Unfiltered roll: the angle smoothing spreads a jolt over the following
      * samples, where the window below could no longer drop it. */
     const float32_t raw_roll =
@@ -486,6 +501,45 @@ complete_height (imu_analysis_t * p_analysis, imu_event_t * p_event)
     }
 }
 
+/** @brief Record the wheel speeds; true when, over the last
+ *         IMU_JERK_WINDOW readings, their difference (steering) or mean
+ *         (speed) changed by more than the configured limits. */
+static bool
+jerking (imu_analysis_t * p_analysis, const imu_data_t * p_data)
+{
+    const int32_t left   = p_data->motion.left_speed_cps;
+    const int32_t right  = p_data->motion.right_speed_cps;
+    const uint32_t slot  = p_analysis->jerk_next;
+    bool           b_jerk = false;
+
+    if (p_analysis->jerk_count >= IMU_JERK_WINDOW)
+    {
+        /* The oldest reading is in the slot about to be overwritten. */
+        const int32_t old_left  = p_analysis->jerk_left[slot];
+        const int32_t old_right = p_analysis->jerk_right[slot];
+        const int32_t steer = (right - left) - (old_right - old_left);
+        const int32_t speed = ((left + right) - (old_left + old_right)) / 2;
+        const uint32_t steer_change =
+            (uint32_t)((steer < 0) ? -steer : steer);
+        const uint32_t speed_change =
+            (uint32_t)((speed < 0) ? -speed : speed);
+
+        b_jerk = ((0U != p_analysis->config.roll_steer_jerk_cps) &&
+                  (steer_change > p_analysis->config.roll_steer_jerk_cps)) ||
+                 ((0U != p_analysis->config.roll_speed_jerk_cps) &&
+                  (speed_change > p_analysis->config.roll_speed_jerk_cps));
+    }
+    else
+    {
+        ++p_analysis->jerk_count;
+    }
+
+    p_analysis->jerk_left[slot]  = left;
+    p_analysis->jerk_right[slot] = right;
+    p_analysis->jerk_next        = (slot + 1U) % IMU_JERK_WINDOW;
+    return b_jerk;
+}
+
 /** @brief True while the wheel speeds show a curve, whose sideways
  *         acceleration reads as roll on the accelerometer. */
 static bool
@@ -515,7 +569,9 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
         return;
     }
 
-    track_roll_height(p_analysis, p_data, b_level);
+    const bool b_jerk = jerking(p_analysis, p_data);
+
+    track_roll_height(p_analysis, b_jerk, p_data, b_level);
     switch (p_analysis->roll_state)
     {
         case IMU_ROLL_UNARMED:
@@ -530,7 +586,7 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
         break;
         case IMU_ROLL_READY:
             if ((roll >= p_analysis->config.roll_enter_deg) &&
-                (!curving(p_analysis, p_data)))
+                (!curving(p_analysis, p_data)) && (!b_jerk))
             {
                 const bool b_positive = p_data->roll_deg >= 0.0f;
                 p_analysis->roll_count =
@@ -542,6 +598,12 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                 {
                     p_analysis->roll_start_ms = p_data->timestamp_ms;
                 }
+            }
+            else if ((roll >= p_analysis->config.roll_enter_deg) &&
+                     (!curving(p_analysis, p_data)))
+            {
+                /* Jerk: the roll may be a sideways push. Skip the sample,
+                 * neither counting it nor cancelling the candidate. */
             }
             else
             {

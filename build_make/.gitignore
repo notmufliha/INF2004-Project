@@ -5,3 +5,6 @@
 **/*.o
 tools/elf2uf2
 tools/elf2uf2.exe
+# Local Python installs and installer logs (not part of the build)
+Python/
+python_install_*.log

@@ -34,9 +34,12 @@
 #define S4_WHEEL_TRACK_MM 110.0f
 #endif
 
-/* Provisional roll thresholds; validate against flat-ground noise. */
+/* Provisional roll thresholds; validate against flat-ground noise.
+ * One wheel on a 10 mm hump tilts the car only asin(10/110) = 5.2 deg:
+ * 4 deg missed the course hump, 3 deg (without jerk rejection) reported
+ * 8-9 mm humps on straights (25 Nov). Raise if flat runs report humps. */
 #ifndef S4_ROLL_HUMP_ENTER_DEG
-#define S4_ROLL_HUMP_ENTER_DEG 4.0f
+#define S4_ROLL_HUMP_ENTER_DEG 3.5f
 #endif
 #ifndef S4_ROLL_HUMP_LEVEL_DEG
 #define S4_ROLL_HUMP_LEVEL_DEG 2.0f
@@ -52,6 +55,18 @@
 #endif
 /* No new hump while |left - right| wheel speed > this share of the faster
  * wheel: the curve's sideways acceleration reads as roll.  0 disables. */
+/* Skip readings taken during steering or speed jerks (wheel speeds over the
+ * last 8 readings, ~80 ms): with no gyroscope a sideways push reads as roll.
+ * 350 counts/s of steering change ~ 1 deg of false roll with the IMU 50 mm
+ * from the axle; 500 counts/s of mean change ~ 0.5 m/s^2. 0 disables.
+ * Provisional: lower if straights still report humps, raise if real humps
+ * are missed while the follower corrects. */
+#ifndef S4_ROLL_HUMP_STEER_JERK_CPS
+#define S4_ROLL_HUMP_STEER_JERK_CPS 350U
+#endif
+#ifndef S4_ROLL_HUMP_SPEED_JERK_CPS
+#define S4_ROLL_HUMP_SPEED_JERK_CPS 500U
+#endif
 #ifndef S4_ROLL_HUMP_CURVE_RATIO
 #define S4_ROLL_HUMP_CURVE_RATIO 0.3f
 #endif

@@ -150,7 +150,6 @@ svg.chart { width: 100%; height: 150px; display: block; }
       <dt>Roll</dt><dd id="roll">–</dd>
       <dt>Hump detected</dt><dd id="hump-detected">–</dd>
       <dt>Hump height</dt><dd id="hump">–</dd>
-      <dt>Humps detected</dt><dd id="hump-count">0</dd>
       <dt>Lifted</dt><dd id="lifted">–</dd>
       <dt>Last lifted</dt><dd id="lift-last">never</dd>
     </dl>
@@ -226,7 +225,7 @@ const HISTORY_S = 60;
 const state = { client: null, demo: null, seq: 0, lastTelem: null, lastTelemAt: 0,
   lastHbAt: 0, telemMs: 500, gaps: 0, encL: new W.Unwrap24(), encR: new W.Unwrap24(),
   speed: [], dist: [], pendingAck: {}, carOnline: null, mode: null,
-  humpCount: 0, lastHumpEvent: null, humpReset: null, liftCount: 0, lifted: false };
+  humpReset: null, liftCount: 0, lifted: false };
 
 /* ---------- theme ---------- */
 $("theme").onclick = () => {
@@ -438,11 +437,6 @@ function onEvent(d) {
   if (d.type === 0) text += `${d.code_name} → ${d.nav_name}`;
   else if (d.type === 1) {
     text += d.valid ? `height ${d.height_mm} mm, peak ${d.peak_mm} mm` : "height not measured";
-    const key = `${d.seq}/${d.t_ds}`;
-    if (d.valid && key !== state.lastHumpEvent) {
-      state.lastHumpEvent = key;
-      $("hump-count").textContent = String(++state.humpCount);
-    }
   }
   else if (d.type === 2) text += `front ${fmtCm(d.d_cm)}, width ${d.w_cm === null ? "edges unresolved" : d.w_cm + " cm"}, L ${fmtCm(d.lc_cm)}, R ${fmtCm(d.rc_cm)} → ${d.action_name}`;
   else {
@@ -545,11 +539,8 @@ addEventListener("keydown", (e) => { if (e.key === " " && e.target.tagName !== "
 function stopAll() {
   if (state.client) { state.client.end(true); state.client = null; }
   if (state.demo) { state.demo.stop(); state.demo = null; }
-  state.humpCount = 0;
-  state.lastHumpEvent = null;
   state.humpReset = null;
   $("hump-reset-status").textContent = "";
-  $("hump-count").textContent = "0";
   state.liftCount = 0;
   state.lifted = false;
   $("lifted").textContent = "–";

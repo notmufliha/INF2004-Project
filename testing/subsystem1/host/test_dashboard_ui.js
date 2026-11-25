@@ -83,14 +83,12 @@ context.event = { type: 3, seq: 1, type_name: "error", err: 161, detail: 3, err_
 vm.runInContext("onEvent(event)", context);
 assert(element("events").children[0].children[1].textContent.includes("no falling edge"));
 context.event = { type: 1, type_name: "hump", seq: 2, t_ds: 10, valid: 1, height_mm: 10, peak_mm: 10 };
-vm.runInContext("onEvent(event); onEvent(event)", context);
-assert.equal(element("hump-count").textContent, "1");
+vm.runInContext("onEvent(event)", context);
+assert(element("events").children[0].children[1].textContent.includes("height 10 mm"));
 context.event = { ...context.event, seq: 3, t_ds: 20, valid: 0 };
 vm.runInContext("onEvent(event)", context);
-assert.equal(element("hump-count").textContent, "1");
-context.event.valid = 1;
-vm.runInContext("onEvent(event)", context);
-assert.equal(element("hump-count").textContent, "2");
+assert(element("events").children[0].children[1].textContent.includes("height not measured"));
+assert(!elements.has("hump-count")); // no hump counter on the dashboard
 assert.equal(W.decode("telemetry", W.pack(W.TELEMETRY, { ver: W.WIRE_VERSION, obs_d_cm: 400 })).obs_open_space, false);
 
 // Every command button: publish one 3-byte frame on <prefix>/cmd, and the
