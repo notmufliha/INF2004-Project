@@ -259,3 +259,17 @@ Measured on the Cortex-M0+ target compiler; details in `DATA_REPRESENTATION.md`.
 |---|---|---|---|---|---|---|
 | 2026-11-25 | S4-MB01 object and queue sizes | `after-minbits` vs `34f8528` | B1 | PASS | `testing/subsystem4/measure_sizes.c` + `arm-none-eabi-nm` | Queues + notice tracker 1,900 -> 1,548 B (-352); analysis context 236 B (156 B at the change, grew with `47c87aa`) |
 | 2026-11-25 | S4-H host suites | `after-minbits` | B1 | PASS | `host/run_tests.ps1` | Time gaps, wrap, roll, hump height, impact, lift |
+
+## Demo observation, 2026-11-25 (recorded 2026-11-26)
+
+The project user reported: during the demo , the robot was not able to detect the ramp of 5 mm as the ramp was too low.
+This records a qualitative hardware demo pass. Earlier pending entries describe
+previous evidence; numerical hardware measurements remain unverified.
+
+| ID | Scope | Method | Expected result |
+|---|---|---|---|
+| S4-DEMO-01 | Overall integrated demo, including subsystem4 participation | Manual; retrospective user report | Demonstration behaves as intended by the team |
+
+| Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | S4-DEMO-01 | Demo build not recorded | Project user (reported 2026-11-26) | PASS (user-reported demo) | [Saved observation](../system/logs/2026-11-25_demo_observation.txt) | Overall demo report; individual steps and measurements not supplied. Does not certify every subsystem case or full system requirements coverage. |

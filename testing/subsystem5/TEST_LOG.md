@@ -66,3 +66,18 @@ Measured on the Cortex-M0+ target compiler; details in `DATA_REPRESENTATION.md`.
 |---|---|---|---|---|---|---|
 | 2026-11-25 | S5-MB01 profile size | `after-minbits` | B1 | PASS | `sh testing/measure_minbits.sh` | Native `S5Profile` 56 B -> packed 6 B (42 data bits); B1 obstacle event 37 bits |
 | 2026-11-25 | All 21 B5 host groups | `after-minbits` | B1 | PASS | `python testing/subsystem5/run_complete_tests.py` | Includes 42-bit packed format + version test |
+
+## Demo observation, 2026-11-25 (recorded 2026-11-26)
+
+The project user reported: during the demo, the robot was able to detect (using 
+sensor) and measure an obstacle with a width of 16 cm and bypass it successfully. 
+This records a qualitative hardware demo pass. Earlier pending entries describe
+previous evidence; numerical hardware measurements remain unverified.
+
+| ID | Scope | Method | Expected result |
+|---|---|---|---|
+| S5-DEMO-01 | Overall integrated demo, including subsystem5 participation | Manual; retrospective user report | Demonstration behaves as intended by the team |
+
+| Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | S5-DEMO-01 | Demo build not recorded | Project user (reported 2026-11-26) | PASS (user-reported demo) | [Saved observation](../system/logs/2026-11-25_demo_observation.txt) | Overall demo report; individual steps and measurements not supplied. Does not certify every subsystem case or full system requirements coverage. |

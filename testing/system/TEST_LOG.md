@@ -25,3 +25,19 @@ Add a new row for every run. Never edit or delete old rows.
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | SYS-01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
 | 2026-11-26 | SYS-T01 | `3cf1048` (before: `3e34f57`, `7bad6fb`, `34f8528`) | B1 | PASS | `../timing/logs/2026-11-26_m0_cycles.txt` | B1 5.1x faster; B2 ISR 0.84 -> 1.62 us/edge (<= 1.6 % CPU at top speed); B3 +0.2 us; B4 1.9 % faster; B5 +22 us per scan. Instruction-level emulator count, flash wait states not modelled |
+
+## Demo observation, 2026-11-25 (recorded 2026-11-26)
+
+The project user reported: during the demo, the robot started off with barcode reading and decoding, followed by ramp detection, obstacle detection + measurement + bypass (avoiding the obstacle without colliding into it), and perform accordingly to the instruction of the decoded barcode (M -> turn right). 
+Points were gain when the robot was able to read and deocde the barcode which was shown in the dashboard, robot is able to drive over the ramp, detect + measure + bypass the obstacle, and perform its action at the junction. 
+Points deduction included the failurer to measure the ramp and failure to recover the line after turning right at the junction.  
+This records a qualitative hardware demo pass. Earlier pending entries describe
+previous evidence; numerical hardware measurements remain unverified.
+
+| ID | Scope | Method | Expected result |
+|---|---|---|---|
+| SYS-DEMO-01 | Overall integrated demo, including system participation | Manual; retrospective user report | Demonstration behaves as intended by the team |
+
+| Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | SYS-DEMO-01 | Demo build not recorded | Project user (reported 2026-11-26) | PASS (user-reported demo) | [Saved observation](logs/2026-11-25_demo_observation.txt) | Overall demo report; individual steps and measurements not supplied. Does not certify every subsystem case or full system requirements coverage. |

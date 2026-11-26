@@ -74,3 +74,17 @@ Measured on the Cortex-M0+ target compiler; details in `DATA_REPRESENTATION.md`.
 |---|---|---|---|---|---|---|
 | 2026-11-25 | S2-MB01 object sizes | `after-minbits` vs `7bad6fb` | B1 | PASS | `python testing/subsystem2/host/measure_sizes.py --before 7bad6fb` | Static + pool storage 668 -> 526 B (-142); PID state 424 -> 392 B. See DATA_REPRESENTATION.md |
 | 2026-11-25 | S2-H host suite | `after-minbits` | B1 | PASS | `host/run_tests.ps1` | 43,091 assertions; B1 legacy and binary integration |
+
+## Demo observation, 2026-11-25 (recorded 2026-11-26)
+
+The project user reported: during the demo, the robot was able to drive (using B2's motor logic) forward and perform accordingly to the decoded barcode function (M -> turn right).
+This records a qualitative hardware demo pass. Earlier pending entries describe
+previous evidence; numerical hardware measurements remain unverified.
+
+| ID | Scope | Method | Expected result |
+|---|---|---|---|
+| S2-DEMO-01 | Overall integrated demo, including subsystem2 participation | Manual; retrospective user report | Demonstration behaves as intended by the team |
+
+| Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-25 | S2-DEMO-01 | Demo build not recorded | Project user (reported 2026-11-26) | PASS (user-reported demo) | [Saved observation](../system/logs/2026-11-25_demo_observation.txt) | Overall demo report; individual steps and measurements not supplied. Does not certify every subsystem case or full system requirements coverage. |

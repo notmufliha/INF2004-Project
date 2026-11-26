@@ -1,0 +1,28 @@
+DEMO OBSERVATION RECORD (retrospective user report)
+Demo date: 2026-11-25 (Asia/Singapore)
+Recorded: 2026-11-26
+Source: project user's statement in this session:
+The project user reported: during the demo, the robot started off with 
+barcode reading and decoding, followed by ramp detection, obstacle detection + 
+measurement + bypass (avoiding the obstacle without colliding into it), and 
+perform accordingly to the instruction of the decoded barcode (M -> turn right). 
+
+Result: PASS (user-reported overall functional demonstration).
+Hardware: project robot car, as reported by the user.
+Observer: project user; individual operator name not supplied.
+Firmware commit/build: not recorded for the demo.
+
+This is a saved statement of the user's observation, not a serial capture
+or an independently witnessed test. The user did not provide individual
+demo steps, repetition counts, numerical measurements, or a demo video.
+B2/B4/B5 entries reference this same overall observation; they are not
+separate subsystem test runs or confirmation of every subsystem test case.
+
+Scope: overall integrated behavior demonstrated successfully, as reported.
+Not established: B2 distance/turn errors, PI tuning, stop latency or control
+interval; B4 hump/height accuracy, sampling rate or detection statistics;
+B5 distance accuracy, servo settling, scan duration or fault-injection cases.
+No numerical acceptance criteria or complete requirements coverage can be
+certified from this report. Earlier pending measurements remain pending.
+Existing logs/ recordings are separate runs and are not attributed to this
+demo without confirmation.
