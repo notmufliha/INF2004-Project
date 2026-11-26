@@ -15,7 +15,7 @@ Define a test here before running it. Test IDs never change.
 | S1-U02 | comm_task sleeps between loops (no busy-wait) | NFR-B1-3 | auto | `s1_test.c` | `[TEST] S1-U02 PASS` |
 | S1-U03 | valid 3-byte binary commands accepted and decoded (id, arg, seq) | FR-B1-5 | auto | `s1_test.c` | `[TEST] S1-U03 PASS` |
 | S1-U04 | invalid frames rejected: wrong length, version, reserved bits, id, range, extra arg (10 cases) | NFR-B1-5 | auto | `s1_test.c` | `[TEST] S1-U04 PASS` |
-| S1-U05 | binary frames have the documented sizes (28/5-9/23/3 B) and packing never overruns (was: JSON writer bounded) | CR1, robustness | auto | `s1_test.c` | `[TEST] S1-U05 PASS` + size info line |
+| S1-U05 | binary frames have the documented sizes (30/6-9/23/3 B) and packing never overruns (was: JSON writer bounded) | CR1, robustness | auto | `s1_test.c` | `[TEST] S1-U05 PASS` + size info line |
 | S1-U06 | 40 events posted in < 20 ms, never blocks when full | NFR-B1-2 | auto | `s1_test.c` | `[TEST] S1-U06 PASS` |
 | S1-U07 | packed telemetry setters/getter consistent, out-of-range values saturated, encoder low 24 bits | IF-S1-TLM, CR1 | auto | `s1_test.c` | `[TEST] S1-U07 PASS` |
 | S1-U08 | received binary frames validated (1 ok, 1 rejected) | FR-B1-5, NFR-B1-5 | auto | `s1_test.c` | `[TEST] S1-U08 PASS` |
@@ -42,6 +42,7 @@ Define a test here before running it. Test IDs never change.
 | S1-H06 | dashboard JavaScript decoder agrees with the C packer (18 frames), rejects bad commands | NFR-B1-4 | auto (host, node) | `run_host_tests.sh` | `S1-H06 dashboard decoder: 18 frames, 0 failures` |
 | S1-I01..I05, S1-S01..S06 | integration and system tests | see `REQUIREMENTS_TRACE.md` section 3 | manual | dashboard + console | as listed there |
 | S1-M01 | RAM before/after the change | CR1 Week 13 | manual | see `DATA_REPRESENTATION.md` section 3 | `.bss` lower by ~1.6 KB, kernel buffers by 3,232 B |
+| S1-T01 | time to build one telemetry message before (JSON) / after (binary) the change | CR1 Week 13 item 4 | auto (host, Cortex-M0+ emulator) | `sh testing/timing/run_timing.sh` | after not slower than before; frame length 30 B |
 
 *Method:* **auto** = `TEST_CHECK` in code, result printed on the console;
 **manual** = a person observes the result (LED, laptop terminal, broker log).
@@ -57,3 +58,5 @@ Add a new row for every run. Never edit or delete old rows.
 | 2026-10-28 | S1-M01 | PR #7 | B1 | DONE | `logs/before_ram_main.txt`, `logs/after_ram.txt` | data+bss 81,012 -> 79,452 B (-1,560); B1 symbols 1,778 -> 192 B. Build only, not run |
 | 2026-11-02 | S1-H01..H06 | `05d23b9` + dashboard | B1 | PASS | `logs/2026-11-02_host_S1-H01-H06.txt` | after the BARR-C rewrite and reconnect fix; laptop only, no Pico. BARR-C scanner PASS in the same log |
 | 2026-11-02 | build | `05d23b9` | B1 | PASS | - | `NET=lwip MQTT=1 SMP=0` and `TEST=1` link with 0 warnings; B1 built with C99 -Wconversion -Werror. Not flashed |
+| 2026-11-26 | S1-H01..H06 | `3cf1048` + docs fix | B1 | PASS | `logs/2026-11-26_host_S1-H01-H06.txt` | telemetry 30 B (roll + lift), events 6-9 B; 24 frames, dashboard decoder 0 failures; laptop only |
+| 2026-11-26 | S1-T01 | `3cf1048` vs `3e34f57` | B1 | PASS | `../timing/logs/2026-11-26_m0_cycles.txt` | 21,078 -> 4,100 cycles (168.6 -> 32.8 us at 125 MHz), 299 -> 30 B; emulator count, not a stopwatch on the car |

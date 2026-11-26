@@ -1,0 +1,43 @@
+Cortex-M0+ cycles (RP2040 timings, zero wait state), 2026-11-26
+arm-none-eabi-gcc 16.1.0, -O2
+
+== B1 before (3e34f57, JSON); result = bytes
+s1_before_telemetry                14430 instr   21078 cycles   168.62 us @125 MHz
+result                           = 299
+== B1 after (HEAD, binary frame); result = bytes
+s1_after_init                         36 instr      56 cycles     0.45 us @125 MHz
+s1_after_telemetry                  3420 instr    4100 cycles    32.80 us @125 MHz
+result                           = 30
+
+== B2 before (7bad6fb)
+b2_isr_4edges                        242 instr     422 cycles     3.38 us @125 MHz
+b2_cmd_store_load                     15 instr      52 cycles     0.42 us @125 MHz
+result                           = -350
+== B2 after (dc2cc5a)
+b2_isr_4edges                        523 instr     808 cycles     6.46 us @125 MHz
+b2_cmd_store_load                     98 instr     162 cycles     1.30 us @125 MHz
+result                           = -350
+
+== B3 before (plain 32-bit fields)
+b3_write_line                         13 instr      25 cycles     0.20 us @125 MHz
+b3_read_all                           15 instr      25 cycles     0.20 us @125 MHz
+result                           = 3824
+== B3 after (packed B3_STATE)
+b3_write_line                         34 instr      50 cycles     0.40 us @125 MHz
+b3_read_all                           28 instr      36 cycles     0.29 us @125 MHz
+result                           = 3824
+
+== B4 before (34f8528); result = samples accepted
+b4_init                             1749 instr    2742 cycles    21.94 us @125 MHz
+b4_20_samples                     101006 instr  149141 cycles  1193.13 us @125 MHz
+result                           = 20
+== B4 after (d4c6499)
+b4_init                             1752 instr    2738 cycles    21.90 us @125 MHz
+b4_20_samples                      99555 instr  146353 cycles  1170.82 us @125 MHz
+result                           = 20
+
+== B5 before (S5Profile copy) / after (pack + unpack)
+b5_init                               21 instr      40 cycles     0.32 us @125 MHz
+b5_before                            129 instr     195 cycles     1.56 us @125 MHz
+b5_after                            2154 instr    2928 cycles    23.42 us @125 MHz
+result                           = 2

@@ -63,3 +63,16 @@ speed, MOVE distance, maximum durations and 360° turns; signed 24-bit
 boundary and sign-extension tests; all 16,384 published speed values; encoder
 rollover; values that would alias after truncation are rejected. See
 `TEST_LOG.md`.
+
+## 4. Timing (performance)
+
+Measured 2026-11-26 on the Cortex-M0+ instruction set (arm-none-eabi-gcc `-O2`, cycles counted in an emulator with RP2040 timings) by `sh testing/timing/run_timing.sh`; log `testing/timing/logs/2026-11-26_m0_cycles.txt`, method and limits in `testing/timing/README.md`.
+
+| Path | Before (`7bad6fb`) | After (`dc2cc5a`) | Budget |
+|---|---:|---:|---|
+| Encoder GPIO ISR, per edge | 106 cycles / 0.84 µs | 202 cycles / 1.62 µs | ≤ 10,000 edges/s (both wheels at 5000 counts/s) → ≤ 1.6 % CPU; 100 µs between edges |
+| Store + load one motion command | 52 cycles / 0.42 µs | 162 cycles / 1.30 µs | at most once per 20 ms controller cycle → 0.007 % |
+
+The 3-byte encoder total and packed command slot cost extra shift/mask
+instructions, but the ISR still finishes in under 2 % of the time between
+edges at top speed, so no edge is missed and the 10 ms PID loop is unaffected.

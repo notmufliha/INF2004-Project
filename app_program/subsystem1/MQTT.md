@@ -20,7 +20,7 @@ checks the first two agree bit for bit.
 | Topic | Direction | QoS | Retained | Rate | Frame |
 |---|---|---|---|---|---|
 | `<prefix>/telemetry` | car → laptop | 0 | no | every 500 ms (change with `TELEM`) | 30 B |
-| `<prefix>/event` | car → laptop | 1 | no | when it happens | 5–9 B |
+| `<prefix>/event` | car → laptop | 1 | no | when it happens | 6–9 B |
 | `<prefix>/status` | car → laptop | 0 (heartbeat), 1 (online/offline) | online/offline: **yes** | every 5 s | 23 B / 1 B |
 | `<prefix>/cmd` | laptop → car | 1 | no | on demand | 3 B |
 | `<prefix>/cmd/ack` | car → laptop | 1 | no | one per command | 3 B |
@@ -45,7 +45,7 @@ bits to a whole byte. Every frame starts with a 3-bit wire **version = 1**.
 its action to 4 bits; every frame starts with version 2, so a version-1
 decoder rejects them instead of misreading.
 
-### Telemetry — 238 bits → 30 bytes
+### Telemetry — 239 bits → 30 bytes
 
 | # | Field | Bits | Range / unit | Source |
 |---|---|---|---|---|
@@ -69,6 +69,7 @@ decoder rejects them instead of misreading.
 | 22 | obstacle width | 7 | 0–126 cm, 127 = not measured | B5 |
 | 23–24 | clearance L, R | 9 each | 0–510 cm, 511 = not measured | B5 |
 | 25 | roll | 12 signed | 0.1° steps, ±180° | B4 |
+| 26 | lifted | 1 | 1 = car picked up (lift-stop) | B4 |
 
 Older 29-byte telemetry frames omit roll. The decoders report roll as unavailable for those frames.
 

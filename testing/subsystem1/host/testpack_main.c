@@ -448,7 +448,7 @@ sizes (void)
     printf("%-28s %12s %8s\n", "item", "before", "after");
     printf("%-28s %12s %8d\n", "telemetry frame (B)", "290 / 374",
            WIRE_TELEM_LEN);
-    printf("%-28s %12s %8s\n", "event frame (B)", "55-86 / 117", "5-9");
+    printf("%-28s %12s %8s\n", "event frame (B)", "55-86 / 117", "6-9");
     printf("%-28s %12s %8d\n", "status frame (B)", "157 / 233",
            WIRE_STATUS_LEN);
     printf("%-28s %12s %8u\n", "command frame (B)", "11 / 64",

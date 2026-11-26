@@ -1,0 +1,15 @@
+s1_link: 47 checks, 0 failed
+decoded 24 C-packed frames
+checked 14 valid and 10 invalid command frames
+item                               before    after
+telemetry frame (B)             290 / 374       30
+event frame (B)               55-86 / 117      6-9
+status frame (B)                157 / 233       23
+command frame (B)                 11 / 64        3
+ack frame (B)                    60 / 143        3
+COMM_TELEMETRY struct              40       28
+COMM_EVENT struct                  44        8
+REMOTE_CMD struct                   8        4
+COMM_STATS struct                  32       16
+ALL HOST TESTS PASSED
+S1-H06 dashboard decoder: 24 frames, 0 failures

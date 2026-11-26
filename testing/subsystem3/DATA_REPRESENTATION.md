@@ -50,3 +50,15 @@ compile the real B3 sources (run by `testing/controller/run_tests.ps1`):
   recovery, bounded locking).
 
 See `TEST_LOG.md`.
+
+## 4. Timing (performance)
+
+Measured 2026-11-26 on the Cortex-M0+ instruction set (arm-none-eabi-gcc `-O2`, cycles counted in an emulator with RP2040 timings) by `sh testing/timing/run_timing.sh`; log `testing/timing/logs/2026-11-26_m0_cycles.txt`, method and limits in `testing/timing/README.md`.
+
+| Path | Before (plain 32-bit fields) | After (packed `B3_STATE`) | Budget |
+|---|---:|---:|---|
+| Write one line-sensor sample into the snapshot | 25 cycles / 0.20 µs | 50 cycles / 0.40 µs | every 20 ms → 0.002 % |
+| Controller reads the whole snapshot | 25 cycles / 0.20 µs | 36 cycles / 0.29 µs | every 20 ms → 0.0015 % |
+
+The packed snapshot is under 0.5 µs per access, so the time spent holding
+`mtx_b3_state` stays negligible.

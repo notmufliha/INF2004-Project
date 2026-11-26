@@ -31,10 +31,12 @@ Week 13 evidence for Buddy 1 (WiFi Communication, Command & Telemetry).
 | IR left / centre | B3 | 0–4095 | 4096 | `UH` (16) | `: 12` | 12 each |
 | IR right | B3 | 0/1 | 2 | `UB` (8) | `: 1` | 1 |
 | Line flags | B3 | detected/lost/junction | 2³ | `UB` (8) | `: 3` bitmask | 3 |
-| Last barcode | B3 | none, A–D, Z | 6 | ASCII `UB` (8) | `: 3` (0 none, 1–5) | 3 |
-| Last nav command | B3 | none, L, R, straight, U-turn | 5 | `UB` (8) | `: 3` | 3 |
+| Last barcode | B3 | none, A–Z | 27 | ASCII `UB` (8) | `: 5` (0 none, 1–26) | 5 |
+| Last nav command | B3 | none, left, right, straight, U-turn, stop, slow, normal, spin, finish | 10 | `UB` (8) | `: 4` | 4 |
 | IMU motion state | B4 | 8 states (`imu_motion_state_t`) | 8 | `UB` own 7-state list | `: 3`, B4's own enum | 3 |
 | Pitch | B4 | ±51.1° in 0.1° | 1023 | `H` (16) | `INT : 10` | 10 |
+| Roll | B4 | ±180° in 0.1° | 3601 | not sent | `INT : 12` | 12 |
+| Car lifted (lift-stop) | B4 | no / yes | 2 | not represented | `: 1` | 1 |
 | Hump height / peak | B4 | 0–12.6 cm in 0.1 cm | 127 | `H` mm (16) each | `: 7` mm each + 1-bit valid | 7 each, 1 |
 | Obstacle distance | B5 | 0–510 cm, + no-echo | 512 | `H` mm (16) | `: 9` cm, 511 = no echo | 9 |
 | Obstacle width | B5 | 0–126 cm, + invalid | 128 | `H` mm (16) | `: 7` cm, 127 = invalid | 7 |
@@ -63,8 +65,8 @@ field at its widest value (worst), from the old `comm_json.c`.
 
 | Message | Before (typical / worst) | After | Reduction |
 |---|---|---|---|
-| Telemetry | 290 / 374 B | **28 B** | 90 % / 93 % |
-| Event: barcode / hump / obstacle / error | 60 / 55 / 86 / 78 B (worst 117) | **5 / 6 / 9 / 7 B** | ~90 % |
+| Telemetry | 290 / 374 B | **30 B** | 90 % / 92 % |
+| Event: barcode / hump / obstacle / error | 60 / 55 / 86 / 78 B (worst 117) | **6 / 6 / 9 / 7 B** | ~90 % |
 | Status / heartbeat | 157 / 233 B | **23 B** | 85 % / 90 % |
 | Online / Last Will | 15 / 16 B | **1 B** | 94 % |
 | Command | 11 / 64 B | **3 B** | 73 % / 95 % |
@@ -139,4 +141,6 @@ slightly different totals, but the difference should be about the same.
 | Fault-mask bits from different writers never lost | S1-U20 |
 | WiFi-loss bit set and cleared with the link | S1-U21 |
 | End-to-end, real data from B4/B5 | S1-U22 |
-| Timing: radio time per telemetry frame drops ~10×; the 10 ms motor loop must be measured with MQTT on/off (Tribunal test B1 + B2) | to do with B2 |
+| Timing: building one telemetry message is **5.1× faster** (168.6 µs JSON → 32.8 µs binary, 0.007 % CPU at 2 Hz) and 10× fewer bytes go over WiFi (299 → 30 B) | S1-T01, `testing/timing/README.md` |
+
+Measured 2026-11-26 on the Cortex-M0+ instruction set (arm-none-eabi-gcc `-O2`, cycles counted in an emulator with RP2040 timings) by `sh testing/timing/run_timing.sh`; log `testing/timing/logs/2026-11-26_m0_cycles.txt`, method and limits in `testing/timing/README.md`.

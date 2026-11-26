@@ -24,7 +24,7 @@ The wording below restates them in testable form; **check it against the Week
 | NFR-B1-1 | A network fault shall not stop, delay or block any other subsystem's task. | safety of motion |
 | NFR-B1-2 | Every call another subsystem makes into B1 shall return within 5 ms, including when queues are full. | |
 | NFR-B1-3 | B1's own task shall run at the lowest application priority and shall not busy-wait. | |
-| NFR-B1-4 | Telemetry shall use at most 28 bytes per frame, commands and acks 3 bytes (Change Requirement 1). | bandwidth, RAM |
+| NFR-B1-4 | Telemetry shall use at most 30 bytes per frame, commands and acks 3 bytes (Change Requirement 1). | bandwidth, RAM |
 | NFR-B1-5 | Malformed commands (length, version, reserved bits, id, argument range) shall be rejected and never forwarded. | |
 | NFR-B1-6 (new) | After the AP returns, the car shall re-join within 10 s, whether the link was lost by failure or by the AP disappearing; a join stuck for 20 ± 1 s shall be restarted. | Tribunal "still weak" item; bug found |
 | NFR-B1-7 (new) | If a broker host name is configured, a failed or slow DNS lookup (> 5 s) shall not stop reconnection: the last working address is used. | DNS concern raised by team |

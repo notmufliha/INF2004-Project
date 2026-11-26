@@ -1,6 +1,6 @@
 > Current autonomous firmware: see [ROBOT_FIX_NOTES.md](ROBOT_FIX_NOTES.md) for building, flashing and calibration.
 > Step-by-step checks for subsystems 1, 2, 3 and 5: [ROBOT_TEST_STEPS.md](ROBOT_TEST_STEPS.md).
-> Supplied briefing requirements and evidence status: [BRIEFING_COMPLIANCE.md](BRIEFING_COMPLIANCE.md).
+> Week 13 evidence for Change Requirement 1 (minimum-bit data): [section below](#week-13-change-requirement-1-minimum-bit-data-representation).
 
 # micro T-Kernel 3.0 project for Raspberry Pi Pico W
 
@@ -18,6 +18,27 @@ of the Pico W's RP2040, with a USB serial console and the WiFi driver built in.
 You need a **Raspberry Pi Pico W**, a USB cable, and a computer running
 macOS, Linux, or Windows with **WSL (Ubuntu)**. On Windows, run every
 command below inside the WSL Ubuntu terminal.
+
+---
+
+## Week 13: Change Requirement 1 (minimum-bit data representation)
+
+All application data uses only the bits its range needs (C bit-fields or
+explicit masks), MQTT carries compact binary frames instead of text, and
+packed data shared between tasks or with an ISR is protected by a mutex,
+interrupt lock or kernel event flag. Evidence for the four required items:
+
+| Required item | Where |
+|---|---|
+| 1. Data representation table (field, range, bits, implementation) | `DATA_REPRESENTATION.md` section 1 in [B1](testing/subsystem1/DATA_REPRESENTATION.md) · [B2](testing/subsystem2/DATA_REPRESENTATION.md) · [B3](testing/subsystem3/DATA_REPRESENTATION.md) · [B4](testing/subsystem4/DATA_REPRESENTATION.md) · [B5](testing/subsystem5/DATA_REPRESENTATION.md) |
+| 2. RAM usage before / after | same files, size sections; whole-firmware build sizes in [B1 section 3](testing/subsystem1/DATA_REPRESENTATION.md); tags `before-minbits` and `after-minbits`; `sh testing/measure_minbits.sh` |
+| 3. Message size before / after | MQTT frames (telemetry 290 → 30 B, command 11 → 3 B, ack 60 → 3 B): [B1 section 2](testing/subsystem1/DATA_REPRESENTATION.md); inter-task messages and queues in each subsystem's file |
+| 4. Correctness and performance | correctness tests listed in each file and in each `TEST_LOG.md`; timing before / after for every subsystem in [testing/timing/README.md](testing/timing/README.md) (`sh testing/timing/run_timing.sh`) |
+
+Headline results: B1 telemetry 90 % smaller and 5× faster to build; B2
+static and pool storage 668 → 526 B; B3 snapshot 24 → 5 B; B4 queues + notice tracker 1,900 →
+1,548 B; B5 scan result 56 → 6 B. Every changed path stays under 2 % CPU at
+its worst-case rate (B2's encoder ISR, the tightest, takes 1.6 µs per edge).
 
 ---
 

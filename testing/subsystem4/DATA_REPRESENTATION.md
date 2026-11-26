@@ -61,3 +61,14 @@ B4 host suites (`testing/subsystem4/host/run_tests.ps1`) exercise time gaps,
 wraparound, roll classification, hump height, impact and lift with the packed
 types; the startup suite exercises encoder pairing, controller notice delivery,
 queue saturation and recovery. See `TEST_LOG.md`.
+
+## 4. Timing (performance)
+
+Measured 2026-11-26 on the Cortex-M0+ instruction set (arm-none-eabi-gcc `-O2`, cycles counted in an emulator with RP2040 timings) by `sh testing/timing/run_timing.sh`; log `testing/timing/logs/2026-11-26_m0_cycles.txt`, method and limits in `testing/timing/README.md`.
+
+| Path | Before (`34f8528`) | After (`d4c6499`) | Budget |
+|---|---:|---:|---|
+| Filter + terrain/motion analysis, per IMU sample (20 samples over a hump) | 7,457 cycles / 59.7 µs | 7,318 cycles / 58.5 µs | every 10 ms → 0.59 % CPU |
+
+The narrower types make the per-sample pipeline **1.9 % faster**; both
+builds accept all 20 samples.

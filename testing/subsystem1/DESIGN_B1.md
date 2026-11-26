@@ -52,7 +52,7 @@ flowchart LR
 
 ## 2. Sequence diagrams
 
-### SD-1 Telemetry (FR-B1-3). Pre: connected. Post: one 28-byte frame at the laptop.
+### SD-1 Telemetry (FR-B1-3). Pre: connected. Post: one 30-byte frame at the laptop.
 
 ```mermaid
 sequenceDiagram
@@ -64,7 +64,7 @@ sequenceDiagram
   B2->>API: comm_set_motion(...) (saturate, lock, store)
   Note over CT: every 500 ms while CONNECTED
   CT->>API: comm_get_telemetry() (copy under lock)
-  CT->>CT: comm_pack_telemetry() -> 28 B
+  CT->>CT: comm_pack_telemetry() -> 30 B
   CT->>MQ: tx mbf (TMO_POL)
   MQ->>L: publish .../telemetry QoS 0
 ```

@@ -54,3 +54,14 @@ a bypass; the saving applies to every copy that leaves B5.
 - All 21 B5 host groups: `python testing/subsystem5/run_complete_tests.py`.
 
 See `TEST_LOG.md`.
+
+## 4. Timing (performance)
+
+Measured 2026-11-26 on the Cortex-M0+ instruction set (arm-none-eabi-gcc `-O2`, cycles counted in an emulator with RP2040 timings) by `sh testing/timing/run_timing.sh`; log `testing/timing/logs/2026-11-26_m0_cycles.txt`, method and limits in `testing/timing/README.md`.
+
+| Path | Before (copy native `S5Profile`, 56 B) | After (`s5_pack_profile` + `s5_unpack_profile`, 6 B) | Budget |
+|---|---:|---:|---|
+| Hand on one obstacle scan result | 195 cycles / 1.56 µs | 2,928 cycles / 23.4 µs | once per servo scan; < 0.12 % even if run every 20 ms |
+
+Packing adds 22 µs per scan, which is negligible next to the servo sweep
+that produces the scan.
