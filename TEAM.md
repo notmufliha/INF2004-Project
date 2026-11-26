@@ -1,7 +1,6 @@
 # Team and subsystems
 
-The tables are pre-filled with the **example** in `app_program/` (marked
-*example*). Replace those rows with your own as you replace the example code.
+**Team:** CSC25 (Group 25)
 
 Fill this in at the start of the project and keep it up to date. It is the
 single place that says **who owns what**, so that five people can work in
@@ -15,13 +14,17 @@ subsystem, ask its owner or open a pull request for them to review.
 
 ## 1. Members and subsystems
 
-| # | Subsystem (what it does) | Student ID | GitHub username | Code | Tests |
-|---|---|---|---|---|---|
-| 1 | WiFi Communication, Command & Telemetry (MQTT) | 2502999 | notmufliha | `app_program/subsystem1/` | `testing/subsystem1/` |
-| 2 | *example:* Producer: makes a sample every 300 ms | | | `app_program/subsystem2/` | `testing/subsystem2/` |
-| 3 | *example:* Consumer: collects samples into statistics | | | `app_program/subsystem3/` | `testing/subsystem3/` |
-| 4 | Real IMU monitoring and calibrated startup gate; legacy monitor only in demo mode | 2503027 | | `app_program/subsystem4/` | `testing/subsystem4/` |
-| 5 | | | | `app_program/subsystem5/` | `testing/subsystem5/` |
+| # | Subsystem (what it does) | Member | Student ID | GitHub username | Code | Tests |
+|---|---|---|---|---|---|---|
+| 1 | Wi-Fi / MQTT: communication, commands and telemetry | Asyha Mufliha | 2502999 | notmufliha | `app_program/subsystem1/` | `testing/subsystem1/` |
+| 2 | Motion control: motor PWM, wheel encoders and PI speed control | Goh Yi Xuan | 2502313 | xuanz-latte | `app_program/subsystem2/` | `testing/subsystem2/` |
+| 3 | Line following sensors and Code 39 barcode reading | Jerlyn Ho | 2503088 | Jerlynoo | `app_program/subsystem3/` | `testing/subsystem3/` |
+| 4 | IMU / terrain: hump detection and height, tilt and lift detection, calibrated startup gate | Eng Li Qi | 2503027 | liqi-2503027 | `app_program/subsystem4/` | `testing/subsystem4/` |
+| 5 | Obstacle detection and avoidance: ultrasonic ranging and servo scan | Lucas Ee | 2501152 | lucasee3 | `app_program/subsystem5/` | `testing/subsystem5/` |
+
+The vehicle controller (`app_program/vehicle_controller.c`, line following in
+`vc_follow.c`) and the run recorder (`run_log.c`) are shared code, changed by
+team agreement.
 
 Shared files (`app_program/app_main.c`, `app_program/app.h`, this file)
 are changed only by agreement of the team. The exception is claiming an empty
@@ -110,8 +113,8 @@ the drivers have no locking to stop it.
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |
-| ADC | | | GP26–GP28 |
-| PWM slices (list) | | | |
+| ADC | B3 | b3_line_task | GP26 (ADC0, right line sensor), GP27 (ADC1, left line sensor); GP28 is read as a digital input |
+| PWM slices (list) | B2: slices 4, 5 · B5: slice 6, slice 0 B input · B3: slice 3 A | B2: pid_control_task · B5: s5_task · B3: b3 tasks | B2 motors GP8–GP11; B5 servo GP12, echo GP17; B3 buzzer GP22 |
 | WiFi radio, TCP/IP, MQTT | *kernel* (S1 feeds it via `comm_bridge.h`) | `cyw43_utk_task` (built in) | GP23–25, GP29 |
 
 ### WiFi and MQTT are special
@@ -144,13 +147,17 @@ What students *can* do:
 1 is the highest. 1–4 are used by the kernel (USB console 3, WiFi 4). Each subsystem gets its own band by default;
 change it only by team agreement. Write down every task you create.
 
+Robot build (`ROBOT_MODE`=1, the default). The control tasks run above
+their band so sensing and motor control are never starved by telemetry.
+
 | Subsystem | Priority band | Tasks (name – priority – core) |
 |---|---|---|
 | 1 | 12–13 | led_task – 12 – any; comm_task – 13 – any; demo_task – 12 – any (only while `S1_STANDALONE_DEMO`=1) |
-| 2 | 14–15 | *example:* producer_task – 14 – core 1 |
-| 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
-| 4 | 18–19 | task_imu_sampling_task – 18 – any; task_imu_analysis_task – 19 – any; task_monitor_task – 19 – any (ROBOT_MODE=0 only) |
-| 5 | 20–21 | |
+| 2 | 14–15 | pid_control_task – 5 – core 1; b2_telemetry_task – 14 – core 1; (diagnostics and wheels-up test tasks – 14 – core 1, only when enabled) |
+| 3 | 16–17 | b3_line_task – 16 – core 0; b3_barcode_task – 17 – core 0 |
+| 4 | 18–19 | task_imu_sampling_task – 8 – any; task_imu_analysis_task – 9 – any (18 / 19 when `ROBOT_MODE`=0, plus task_monitor_task – 19) |
+| 5 | 20–21 | s5_task – 7 – any (20 when `ROBOT_MODE`=0) |
+| shared | 6 | vehicle_controller – 6 – core 0 |
 | shared | 22 | run_log – 22 – any (run recorder dump, app_program/run_log.c) |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
@@ -180,19 +187,19 @@ Each interface is tested by at least one integration test
 ## 6. Kernel object budget
 
 Limits are set in `config/config.h`. If the team needs more, raise the
-limit there. The numbers below are the example's usage.
+limit there. The numbers below are each subsystem's usage in the robot build.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 2 (+1 demo) | 1 | 1 | 2 real / 3 demo | |
-| Semaphore | 16 | | 1 | | | |
-| Event flag | 16 | 1 | | | 1 | |
-| Mailbox | 12 | | | 1 | | |
+| Task | 32 | 2 (+1 demo) | 2 | 2 | 2 real / 3 demo | 1 |
+| Semaphore | 16 | | 2 | | | |
+| Event flag | 16 | 1 | 1 | | 1 | |
+| Mailbox | 12 | | | | | |
 | Mutex | 12 | 1 | | 1 | | |
-| Message buffer | 12 | 4 | | | 1 real / 2 demo (+1 with TEST=1) | |
+| Message buffer | 12 | 4 | | 1 | 2 real (+1 demo, +1 with TEST=1) | |
 | Fixed memory pool | 12 | | 1 | | | |
 | Variable memory pool | 12 | | | | | |
-| Cyclic handler | 12 | 1 | | | | |
+| Cyclic handler | 12 | 1 | 1 | | | |
 | Alarm handler | 12 | | | | 0 real / 1 demo | |
 
 (The kernel's USB and WiFi service tasks also use a few of these.)
