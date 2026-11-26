@@ -6,11 +6,13 @@
 #include <math.h>
 #include <stddef.h>
 
-static bool accept_sample (imu_lift_t * p_lift, const imu_data_t * p_data,
-                           float32_t * p_magnitude, float32_t * p_dt_s);
+static bool accept_sample (imu_lift_t * p_lift,
+    const imu_data_t *                  p_data,
+    float32_t *                         p_magnitude,
+    float32_t *                         p_dt_s);
 static void integrate (imu_lift_t * p_lift, float32_t excess, float32_t dt_s);
-static void learn_baseline (imu_lift_t * p_lift, float32_t excess,
-                            float32_t dt_s);
+static void learn_baseline (
+    imu_lift_t * p_lift, float32_t excess, float32_t dt_s);
 static void detect (imu_lift_t * p_lift, float32_t dt_s, uint32_t now_ms);
 static void restart_integration (imu_lift_t * p_lift);
 static void expire_hold (imu_lift_t * p_lift, uint32_t now_ms);
@@ -25,8 +27,8 @@ imu_lift_default_config (imu_lift_config_t * p_config)
          * sweep (testlift_main.c): no false lift in 60 s of +-2 m/s^2
          * broadband vibration on every axis; typical/gentle pick-ups
          * caught.  Short low lifts are left to the line-sensor rule. */
-        *p_config = (imu_lift_config_t){0.25f, 0.03f, 0.40f, 0.80f, 2.0f,
-                                        1000U, 40U, 100U};
+        *p_config = (imu_lift_config_t){
+            0.25f, 0.03f, 0.40f, 0.80f, 2.0f, 1000U, 40U, 100U};
     }
 }
 
@@ -36,8 +38,7 @@ imu_lift_init (imu_lift_t * p_lift, const imu_lift_config_t * p_config)
 {
     if ((NULL == p_lift) || (NULL == p_config) ||
         (!isfinite(p_config->rise_speed_mps)) ||
-        (!isfinite(p_config->rise_m)) ||
-        (!isfinite(p_config->speed_leak_s)) ||
+        (!isfinite(p_config->rise_m)) || (!isfinite(p_config->speed_leak_s)) ||
         (!isfinite(p_config->rise_leak_s)) ||
         (!isfinite(p_config->baseline_s)) ||
         (p_config->rise_speed_mps <= 0.0f) || (p_config->rise_m <= 0.0f) ||
@@ -81,7 +82,7 @@ bool
 imu_lift_started (const imu_lift_t * p_lift, const imu_data_t * p_data)
 {
     return (NULL != p_lift) && (NULL != p_data) && (p_lift->b_lifted) &&
-           (p_lift->lifted_ms == p_data->timestamp_ms);
+        (p_lift->lifted_ms == p_data->timestamp_ms);
 }
 
 /** @brief True when the last step changed the lifted flag either way. */
@@ -94,8 +95,10 @@ imu_lift_changed (const imu_lift_t * p_lift)
 /** @brief Validate timing and data; settle the 1 g baseline first.
  *         True when the sample should be integrated. */
 static bool
-accept_sample (imu_lift_t * p_lift, const imu_data_t * p_data,
-               float32_t * p_magnitude, float32_t * p_dt_s)
+accept_sample (imu_lift_t * p_lift,
+    const imu_data_t *      p_data,
+    float32_t *             p_magnitude,
+    float32_t *             p_dt_s)
 {
     uint32_t elapsed;
 
@@ -107,8 +110,8 @@ accept_sample (imu_lift_t * p_lift, const imu_data_t * p_data,
     }
 
     *p_magnitude = sqrtf((p_data->accel_x * p_data->accel_x) +
-                         (p_data->accel_y * p_data->accel_y) +
-                         (p_data->accel_z * p_data->accel_z));
+        (p_data->accel_y * p_data->accel_y) +
+        (p_data->accel_z * p_data->accel_z));
     if (!isfinite(*p_magnitude))
     {
         restart_integration(p_lift);
@@ -133,7 +136,7 @@ accept_sample (imu_lift_t * p_lift, const imu_data_t * p_data,
     {
         ++p_lift->settle_count;
         p_lift->baseline_ms2 += (*p_magnitude - p_lift->baseline_ms2) /
-                                (float32_t)p_lift->settle_count;
+            (float32_t)p_lift->settle_count;
         return false;
     }
 
@@ -146,11 +149,9 @@ accept_sample (imu_lift_t * p_lift, const imu_data_t * p_data,
 static void
 integrate (imu_lift_t * p_lift, float32_t excess, float32_t dt_s)
 {
-    p_lift->speed_mps +=
-        (excess * dt_s) -
+    p_lift->speed_mps += (excess * dt_s) -
         (p_lift->speed_mps * dt_s / p_lift->config.speed_leak_s);
-    p_lift->rise_m +=
-        (p_lift->speed_mps * dt_s) -
+    p_lift->rise_m += (p_lift->speed_mps * dt_s) -
         (p_lift->rise_m * dt_s / p_lift->config.rise_leak_s);
 }
 

@@ -4,5 +4,8 @@
 #ifndef MOTION_SELF_TEST_H
 #define MOTION_SELF_TEST_H
 #include "../app.h"
-ER b2_motion_test_start(void);
+ER b2_motion_test_start (void);
 #endif
+
+/*** end of file ***/
+

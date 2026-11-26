@@ -1,7 +1,8 @@
 /* Check the mechanically enforceable subset of BARR-C used by subsystem 2. */
 const fs = require('fs');
 const path = require('path');
-const root = path.resolve(__dirname, '../app_program/subsystem2');
+const root = process.argv[2] ? path.resolve(process.argv[2]) :
+    path.resolve(__dirname, '../app_program/subsystem2');
 let failures = 0;
 function fail(file, line, message) {
     console.error(`${file}:${line}: ${message}`);
@@ -16,12 +17,15 @@ for (const file of fs.readdirSync(root).filter(name => /\.[ch]$/.test(name))) {
         if (/[ \t]+$/.test(line)) fail(file, index + 1, 'trailing whitespace');
     });
     const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g,
-        token => token.replace(/[^\n]/g, ' '));
+        token => token.replace(/[^\n]/g, ' '))
+        // Directives (including continued #if expressions) are not C bodies.
+        .replace(/^[ \t]*#(?:[^\n]*\\\n)*[^\n]*/gm,
+            token => token.replace(/[^\n]/g, ' '));
     for (const match of code.matchAll(/\b(?:long|short|BOOL)\b|\bwhile\s*\(\s*1\s*\)/g)) {
         fail(file, code.slice(0, match.index).split('\n').length,
             `disallowed token: ${match[0]}`);
     }
-    for (const match of code.matchAll(/^(?:static |EXPORT )?(?:void|ER|INT|UINT|bool|uint32_t|int64_t) (\w+)\([^;{}]*?\)\n\{/gm)) {
+    for (const match of code.matchAll(/^(?:(?:static|EXPORT)\s+)?[A-Za-z_]\w*(?:\s*\*)?\s+(\w+)\s*\([^;{}]*?\)\s*\n\{/gm)) {
         let depth = 1;
         let end = match.index + match[0].length;
         for (; depth && end < code.length; end++) {

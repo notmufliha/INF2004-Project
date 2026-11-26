@@ -46,14 +46,15 @@
 #define B3_CAL_BLOCK_SAMPLES (3U)
 #define B3_CAL_FULL_SCALE (1000U)
 
-typedef struct {
-	uint16_t white;      /* learned minimum (only lowered) */
-	uint16_t black;      /* learned maximum (only raised)  */
-	uint16_t block_min;  /* min / max of the current block */
-	uint16_t block_max;
-	uint8_t block_count;
-	uint8_t window_index;
-	uint16_t window[B3_CAL_BLOCK_SAMPLES];
+typedef struct
+{
+    uint16_t white;     /* learned minimum (only lowered) */
+    uint16_t black;     /* learned maximum (only raised)  */
+    uint16_t block_min; /* min / max of the current block */
+    uint16_t block_max;
+    uint8_t  block_count;
+    uint8_t  window_index;
+    uint16_t window[B3_CAL_BLOCK_SAMPLES];
 } B3_LINE_CAL;
 
 /* Floor (white) tracking for one sensor.  The mats differ: GP26 read the
@@ -63,37 +64,46 @@ typedef struct {
  * followed while the reading is near it (fast down, ~1 s up), held while
  * the sensor is on tape, and moved up to a darker tile only after that
  * reading has lasted 1.5 s without reaching tape level. */
-typedef struct {
-	uint16_t init;      /* floor before anything is seen          */
-	uint16_t lo, hi;    /* floor never leaves lo..hi              */
-	uint16_t band;      /* within floor + band: still floor       */
-	uint16_t tape;      /* at/above: certainly tape, never floor  */
-	uint16_t margin;    /* white = floor + margin (noise)         */
-	uint16_t black_min; /* black = max(black_min, white + span)   */
-	uint16_t span;
+typedef struct
+{
+    uint16_t init;      /* floor before anything is seen          */
+    uint16_t lo, hi;    /* floor never leaves lo..hi              */
+    uint16_t band;      /* within floor + band: still floor       */
+    uint16_t tape;      /* at/above: certainly tape, never floor  */
+    uint16_t margin;    /* white = floor + margin (noise)         */
+    uint16_t black_min; /* black = max(black_min, white + span)   */
+    uint16_t span;
 } B3_FLOOR_CFG;
 
-typedef struct {
-	uint32_t floor_x16;
-	uint16_t high_ms;
-	bool started;
+typedef struct
+{
+    uint32_t floor_x16;
+    uint16_t high_ms;
+    bool     started;
 } B3_FLOOR;
 
-#define B3_FLOOR_UP_DIV (50)      /* per sample toward a floor reading */
+#define B3_FLOOR_UP_DIV (50) /* per sample toward a floor reading */
 #define B3_FLOOR_DOWN_DIV (4)
 #define B3_FLOOR_SHIFT_MS (1500U) /* darker tile: accept after this    */
 
-void b3_floor_init(B3_FLOOR *f);
+void b3_floor_init (B3_FLOOR * f);
 /* Learn from one reading; returns the white/black endpoints to use. */
-void b3_floor_update(B3_FLOOR *f, const B3_FLOOR_CFG *cfg, uint16_t raw,
-		     uint16_t dt_ms, uint16_t *white, uint16_t *black);
+void b3_floor_update (B3_FLOOR * f,
+    const B3_FLOOR_CFG *         cfg,
+    uint16_t                     raw,
+    uint16_t                     dt_ms,
+    uint16_t *                   white,
+    uint16_t *                   black);
 
-void b3_line_cal_init(B3_LINE_CAL *cal);
+void b3_line_cal_init (B3_LINE_CAL * cal);
 /* Scale measured high-is-black endpoints; invalid ranges return off-line. */
-uint16_t b3_line_cal_scale(uint16_t raw, uint16_t white, uint16_t black);
+uint16_t b3_line_cal_scale (uint16_t raw, uint16_t white, uint16_t black);
 /* True only after confirmed observations span the minimum contrast. */
-bool b3_line_cal_ready(const B3_LINE_CAL *cal);
+bool b3_line_cal_ready (const B3_LINE_CAL * cal);
 /* Learn from one raw 12-bit reading and return it normalised 0..1000. */
-uint16_t b3_line_cal_update(B3_LINE_CAL *cal, uint16_t raw);
+uint16_t b3_line_cal_update (B3_LINE_CAL * cal, uint16_t raw);
 
 #endif
+
+/*** end of file ***/
+

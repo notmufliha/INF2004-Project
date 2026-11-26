@@ -28,16 +28,16 @@
 #include <stdbool.h>
 #include "comm.h"
 
-#define WIRE_VERSION      2U  /* 3 bits, first field of every frame */
+#define WIRE_VERSION 2U /* 3 bits, first field of every frame */
 
 /* Frame sizes in bytes */
-#define WIRE_TELEM_LEN    30
-#define WIRE_STATUS_LEN   23
-#define WIRE_ACK_LEN      3
-#define WIRE_CMD_LEN      3U
-#define WIRE_EVT_MAX_LEN  9   /* obstacle; barcode 6, hump 6, error 7 */
-#define WIRE_EVT_BAR_LEN  6
-#define WIRE_EVT_ERR_LEN  7
+#define WIRE_TELEM_LEN 30
+#define WIRE_STATUS_LEN 23
+#define WIRE_ACK_LEN 3
+#define WIRE_CMD_LEN 3U
+#define WIRE_EVT_MAX_LEN 9 /* obstacle; barcode 6, hump 6, error 7 */
+#define WIRE_EVT_BAR_LEN 6
+#define WIRE_EVT_ERR_LEN 7
 
 /** @brief MSB-first bit writer over a byte array. */
 typedef struct
@@ -82,24 +82,24 @@ typedef enum
 typedef struct
 {
     UINT time_ds : 20; /* 0.1 s since boot (wraps after 29 h) */
-    UINT type    : 2;  /* comm_pack_evt_type_t                */
-    UINT val_a   : 9;
-    UINT flag    : 1;
-    UINT val_b   : 9;
-    UINT val_c   : 9;
-    UINT val_d   : 9;
-    UINT val_e   : 4;  /* NAV_CMD (4 bits) or avoid action (3) */
-    UINT spare   : 1;
+    UINT type : 2;     /* comm_pack_evt_type_t                */
+    UINT val_a : 9;
+    UINT flag : 1;
+    UINT val_b : 9;
+    UINT val_c : 9;
+    UINT val_d : 9;
+    UINT val_e : 4; /* NAV_CMD (4 bits) or avoid action (3) */
+    UINT spare : 1;
 } comm_pack_event_t;
 
 /** @brief Heartbeat (status frame) contents. */
 typedef struct
 {
-    uint8_t      link;     /* comm_link_state_t               */
+    uint8_t      link; /* comm_link_state_t               */
     bool         b_demo;
     uint16_t     seq;
     uint32_t     time_ds;
-    uint32_t     ip_addr;  /* lwIP order: first octet lowest  */
+    uint32_t     ip_addr; /* lwIP order: first octet lowest  */
     uint8_t      telem_ds;
     uint8_t      faults;
     comm_stats_t stats;
@@ -107,10 +107,10 @@ typedef struct
 
 /* Commands as sent by the laptop (4-bit id): 1..8 are the
  * comm_remote_cmd_type_t values, then those subsystem 1 handles. */
-#define WCMD_PING   9U  /* reply "pong"                   */
+#define WCMD_PING 9U    /* reply "pong"                   */
 #define WCMD_STATUS 10U /* publish a status frame now     */
-#define WCMD_TELEM  11U /* arg = period in 100 ms, 1..100 */
-#define WCMD_COUNT  12U
+#define WCMD_TELEM 11U  /* arg = period in 100 ms, 1..100 */
+#define WCMD_COUNT 12U
 
 /* Telemetry period limits for WCMD_TELEM, 100 ms units (7 bits). */
 #define COMM_TELEM_MIN_DS 1U
@@ -123,7 +123,7 @@ typedef enum
     CMD_OK_PONG,
     CMD_OK_STATUS,
     CMD_OK_TELEM,
-    CMD_ERR_FIRST = 8,
+    CMD_ERR_FIRST  = 8,
     CMD_ERR_LENGTH = CMD_ERR_FIRST, /* frame is not 3 bytes          */
     CMD_ERR_VERSION,                /* unknown wire version          */
     CMD_ERR_RESERVED,               /* reserved bits not zero        */
@@ -143,39 +143,44 @@ typedef struct
     uint8_t           arg;
 } comm_pack_cmd_t;
 
-void    comm_pack_bits_begin (comm_pack_bits_t * p_bits, uint8_t * p_buf,
-                              uint32_t cap_bytes);
-void    comm_pack_bits_put (comm_pack_bits_t * p_bits, uint32_t value,
-                            uint32_t nbits);
+void comm_pack_bits_begin (
+    comm_pack_bits_t * p_bits, uint8_t * p_buf, uint32_t cap_bytes);
+void comm_pack_bits_put (
+    comm_pack_bits_t * p_bits, uint32_t value, uint32_t nbits);
 int32_t comm_pack_bits_bytes (const comm_pack_bits_t * p_bits);
 
-void     comm_pack_read_begin (comm_pack_reader_t * p_reader,
-                               const uint8_t * p_buf, uint32_t cap_bytes);
+void comm_pack_read_begin (
+    comm_pack_reader_t * p_reader, const uint8_t * p_buf, uint32_t cap_bytes);
 uint32_t comm_pack_read (comm_pack_reader_t * p_reader, uint32_t nbits);
-int32_t  comm_pack_read_signed (comm_pack_reader_t * p_reader,
-                                uint32_t nbits);
+int32_t comm_pack_read_signed (comm_pack_reader_t * p_reader, uint32_t nbits);
 
 uint32_t comm_pack_sat_u (int32_t value, uint32_t max);
-int32_t  comm_pack_sat_s (int32_t value, int32_t max);
+int32_t comm_pack_sat_s (int32_t value, int32_t max);
 uint32_t comm_pack_twos (int32_t value, uint32_t nbits);
-int32_t  comm_pack_sign_extend (uint32_t raw, uint32_t nbits);
+int32_t comm_pack_sign_extend (uint32_t raw, uint32_t nbits);
 
-int32_t comm_pack_telemetry (uint8_t * p_out, uint32_t cap, uint16_t seq,
-                             uint32_t time_ds, uint8_t faults,
-                             const comm_telemetry_t * p_telem);
-int32_t comm_pack_event (uint8_t * p_out, uint32_t cap, uint8_t seq,
-                         const comm_pack_event_t * p_event);
-int32_t comm_pack_status (uint8_t * p_out, uint32_t cap,
-                          const comm_pack_status_t * p_status);
-int32_t comm_pack_ack (uint8_t * p_out, uint32_t cap, uint8_t seq,
-                       uint8_t cmd_id, uint8_t result);
+int32_t comm_pack_telemetry (uint8_t * p_out,
+    uint32_t                           cap,
+    uint16_t                           seq,
+    uint32_t                           time_ds,
+    uint8_t                            faults,
+    const comm_telemetry_t *           p_telem);
+int32_t comm_pack_event (uint8_t * p_out,
+    uint32_t                       cap,
+    uint8_t                        seq,
+    const comm_pack_event_t *      p_event);
+int32_t comm_pack_status (
+    uint8_t * p_out, uint32_t cap, const comm_pack_status_t * p_status);
+int32_t comm_pack_ack (
+    uint8_t * p_out, uint32_t cap, uint8_t seq, uint8_t cmd_id, uint8_t result);
 
 /* Validates one received frame.  cmd_id/seq are filled whenever the
  * frame had the right length, so a rejection can still be matched. */
-comm_pack_result_t comm_pack_cmd_decode (const uint8_t * p_in, uint32_t len,
-                                         comm_pack_cmd_t * p_out);
-const char *       comm_pack_result_text (comm_pack_result_t result);
+comm_pack_result_t comm_pack_cmd_decode (
+    const uint8_t * p_in, uint32_t len, comm_pack_cmd_t * p_out);
+const char * comm_pack_result_text (comm_pack_result_t result);
 
 #endif /* COMM_PACK_H */
 
 /*** end of file ***/
+

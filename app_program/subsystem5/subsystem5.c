@@ -3,7 +3,8 @@
 #include "s5_navigation.h"
 #include "s5_mission.h"
 
-EXPORT ER subsystem5_init(void)
+EXPORT ER
+subsystem5_init (void)
 {
     s5_mission_init();
     /* B2 is initialized before B5 in robot mode. In Wednesday's
@@ -13,13 +14,20 @@ EXPORT ER subsystem5_init(void)
     b2_request_stop();
 #endif
 #if S5_MOTION_BRIDGE_ENABLED
-    if (!s5_navigation_init()) return E_OBJ;
+    if (!s5_navigation_init())
+    {
+        return E_OBJ;
+    }
 #endif
     return E_OK;
 }
 
-EXPORT ER subsystem5_start(void)
+EXPORT ER
+subsystem5_start (void)
 {
     ID tid = app_start_task((FP)s5_task, S5_PRI_MAIN, 0, "s5_task");
     return (tid < E_OK) ? tid : E_OK;
 }
+
+/*** end of file ***/
+

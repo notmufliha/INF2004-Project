@@ -1,0 +1,95 @@
+BARR-C changes and verification - 2026-11-26
+
+Status: common application layout rules fixed; full BARR-C compliance is
+NOT established. The original REPORT.txt and *_checker.txt files are the
+before-change audit. after_style.txt records the passing selected checks.
+
+Changes
+- Applied an explicit common clang-format 21 profile across all 148
+  application C/header files and the existing B1/B4 host checker scopes.
+- Added braces to standalone control bodies, Allman layout, 80-column
+  wrapping, spaces in place of tabs, LF endings and final EOF markers.
+- Added the missing B1/B4 function descriptions reported by their checkers.
+- Split B2 pid_apply into torque, breakaway, slew and reverse-trim helpers.
+  Their order, gains, thresholds and output limits were retained. All B2
+  functions now satisfy the checker's 100-line limit.
+- Extracted B4's acquisition-deadline wait and flattened the height update's
+  nesting. The same clock checks, overrun handling and height updates remain.
+- Removed a redundant unsigned-int cast in the B4 native event mask.
+- Corrected B2's false positives on #if and its missed split-line function
+  definitions. Regression tests cover both cases.
+- Corrected B4's blanket rejection of explicit-width unsigned-int bit-fields.
+  These native records remain packed; no binary layout or bit widths changed.
+- Made B5 source-inspection tests tolerate the new layout and adjacent C
+  string literal wrapping. Existing policy and compiled behavioral checks
+  were retained.
+
+Repeatable tools
+  python tools/format_application.py
+  python tools/check_application_style.py
+  python testing/subsystem1/check_barr_style.py
+  node tools/check-subsystem2-style.cjs
+  python testing/subsystem4/check_barr_style.py
+  python testing/barr_audit/test_layout_checker.py
+
+Formatting requires clang-format 21+. In this environment it was run in
+Ubuntu WSL. Its final repeat run changed 0 of 168 checked files. The common
+layout checker covers application code, not vendor/kernel sources.
+
+Validation
+PASS common layout subset: all 148 application files.
+PASS existing selected B1/B2/B4 style checkers.
+PASS 7 existing checker regression cases and 5 new layout/checker cases.
+PASS B1 host/wire/dashboard checks (see after_host.txt before legacy failure).
+PASS B2: 43,091 assertions, legacy and binary B1 compatibility; PID state
+     remains 392 bytes and all reported motion sizes are unchanged.
+PASS B3 Code 39 and line calibration suites, and current vc_follow tests.
+PASS all 21 B5 host groups (after_b5.txt).
+PASS all 8 B4 strict ARM C99 syntax profiles (after_b4_arm.txt).
+PASS 7 B4 host programs and startup/integration/diagnostic suite
+     (after_b4_host.txt and after_b4_startup.txt).
+PASS GY-511 I2C retry tests.
+PASS SMP=0 USB/Wi-Fi/lwIP/MQTT TEST=0 firmware compilation, linking and UF2
+     generation (after_firmware_build.txt). Existing newlib syscall-stub
+     linker warnings remain.
+PASS git diff whitespace check with the required final blank lines allowed.
+
+Known pre-existing test failure
+The aggregate tools/test_robot.ps1 suite stops in the legacy controller
+profile (VC_FOLLOW_V4=0) at testing/controller/controller_test.c:1410:
+  drives > 0u && first_calibrated_drive_tick == 0u
+This identical assertion failed BEFORE source changes (before_host.txt) and
+AFTER them (after_host.txt). It was not removed, skipped or labelled PASS.
+Later B3/B5 checks were executed separately because the aggregate runner
+stops at this failure. Current V4 barcode and vc_follow tests passed.
+
+Firmware artifacts
+Rebuilt build_make/mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.elf and .uf2.
+Text/data/BSS: 453916 / 428 / 119376 bytes; the original image reported
+453908 / 428 / 119376. Text grew 8 bytes; data/BSS did not grow.
+Previous artifacts are preserved locally in .codex_tmp/barr_before/ as
+ demo-build.elf and demo-build.uf2; their filenames do not establish that
+ they were the image used at the demo. No flash or hardware run was done.
+
+Preservation check
+140/148 application files retain the same non-brace C tokens when comments
+and adjacent string wrapping are normalised. Of the eight other files,
+four only change compile-time diagnostic strings. The four functional-source
+edits are the B2 helper extraction and the B4 nesting/wait/cast changes above.
+This token check supplements behavioral tests; it is not proof of runtime
+or on-car timing equivalence.
+
+Remaining work before claiming full BARR-C compliance
+The broad heuristic scan still reports 2,509 candidates in
+ after_application_candidates.txt. These are not 2,509 confirmed defects:
+ its parser is incomplete and its naming/interface assumptions are B4-specific.
+However, actual unresolved issues remain outside the selected layout scope,
+including B5 mixed-case types (e.g. S5Error), Boolean names without b_
+(e.g. initialized in s5_navigation.c), function documentation, logical
+operand parentheses, constant-first equality comparisons, deep nesting,
+and shared/legacy module interfaces. Resolve the real cases or explicitly
+review and approve project-specific deviations; do not call the whole
+repository fully compliant based on passing the selected checkers.
+Kernel/SDK/vendor code, cast ranges, concurrency and ISR ownership still
+require their own review. Existing convention documents are not new approval
+of exceptions. Earlier demo evidence does not validate this rebuilt image.

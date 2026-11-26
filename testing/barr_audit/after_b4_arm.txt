@@ -1,0 +1,8 @@
+PASS ARM C99 B4 robot=0 mock=0 test=0
+PASS ARM C99 B4 robot=0 mock=0 test=1
+PASS ARM C99 B4 robot=0 mock=1 test=0
+PASS ARM C99 B4 robot=0 mock=1 test=1
+PASS ARM C99 B4 robot=1 mock=0 test=0
+PASS ARM C99 B4 robot=1 mock=0 test=1
+PASS ARM C99 B4 robot=1 mock=1 test=0
+PASS ARM C99 B4 robot=1 mock=1 test=1

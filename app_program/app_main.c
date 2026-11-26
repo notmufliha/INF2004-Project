@@ -1,56 +1,56 @@
 /*
- *	app_main.c
- *	START HERE.  usermain() below is your program's entry point.
+ *  app_main.c
+ *  START HERE.  usermain() below is your program's entry point.
  *
- *	How micro T-Kernel starts your code
- *	-----------------------------------
- *	  reset -> kernel initialises itself -> creates the "initial task"
- *	        -> initial task calls usermain()
+ *  How micro T-Kernel starts your code
+ *  -----------------------------------
+ *    reset -> kernel initialises itself -> creates the "initial task"
+ *          -> initial task calls usermain()
  *
- *	usermain() runs inside that initial task at priority 1 (the highest).
- *	On a single core nothing you create runs until usermain() blocks, but
- *	on the dual-core build the OTHER core may start a new task at once.
- *	So usermain() works in two phases:
- *	  1. every subsystem creates its kernel objects  (subsystemN_init)
- *	  2. every subsystem starts its tasks             (subsystemN_start)
- *	and then puts the initial task to sleep forever.
- *	If usermain() RETURNS, the kernel shuts the whole system down.
+ *  usermain() runs inside that initial task at priority 1 (the highest).
+ *  On a single core nothing you create runs until usermain() blocks, but
+ *  on the dual-core build the OTHER core may start a new task at once.
+ *  So usermain() works in two phases:
+ *    1. every subsystem creates its kernel objects  (subsystemN_init)
+ *    2. every subsystem starts its tasks             (subsystemN_start)
+ *  and then puts the initial task to sleep forever.
+ *  If usermain() RETURNS, the kernel shuts the whole system down.
  *
- *	The example system: one subsystem per folder, one task each
- *	------------------------------------------------------------
- *	  subsystem1/  LED       blinks GP19, paced by a cyclic handler
- *	  subsystem2/  Producer  makes a "sample" every 300 ms     (core 1)
- *	  subsystem3/  Consumer  collects samples into statistics  (priority 16, core 0)
- *	  subsystem4/  Monitor   prints reports, pauses/resumes the LED
- *	  subsystem5/  (empty template for the fifth student)
+ *  The example system: one subsystem per folder, one task each
+ *  ------------------------------------------------------------
+ *    subsystem1/  LED       blinks GP19, paced by a cyclic handler
+ *    subsystem2/  Producer  makes a "sample" every 300 ms     (core 1)
+ *    subsystem3/  Consumer  collects samples into statistics  (priority 16,
+ * core 0) subsystem4/  Monitor   prints reports, pauses/resumes the LED
+ *    subsystem5/  (empty template for the fifth student)
  *
- *	How they talk to each other (the interfaces, see TEAM.md section 5):
- *	  IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
- *	  IF-02  S3 -> S2  semaphore gh_sem_slots + memory pool gh_mpf_samples
- *	                   (owned by S2: S3 hands slots and blocks back)
- *	  IF-03  S3 -> S4  message buffer gh_summary + event flag gh_events
- *	                   (owned by S4)
- *	  IF-04  S4 -> S3  reads app_stats under mutex mtx_stats (owned by S3)
- *	  IF-05  S4 -> S1  suspends/resumes the LED task tid_led (owned by S1)
- *	The subsystem that RECEIVES or OWNS the data creates the object and
- *	publishes its ID in its header; the other side just uses it.
+ *  How they talk to each other (the interfaces, see TEAM.md section 5):
+ *    IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
+ *    IF-02  S3 -> S2  semaphore gh_sem_slots + memory pool gh_mpf_samples
+ *                     (owned by S2: S3 hands slots and blocks back)
+ *    IF-03  S3 -> S4  message buffer gh_summary + event flag gh_events
+ *                     (owned by S4)
+ *    IF-04  S4 -> S3  reads app_stats under mutex mtx_stats (owned by S3)
+ *    IF-05  S4 -> S1  suspends/resumes the LED task tid_led (owned by S1)
+ *  The subsystem that RECEIVES or OWNS the data creates the object and
+ *  publishes its ID in its header; the other side just uses it.
  *
- *	micro T-Kernel APIs used, and where to find them:
- *	  tasks       tk_cre_tsk tk_sta_tsk tk_slp_tsk tk_wup_tsk tk_can_wup
- *	              tk_dly_tsk tk_sus_tsk tk_rsm_tsk tk_chg_pri tk_ref_tsk
- *	              tk_get_tid tk_get_prc                         app_main.c, S1-S4
- *	  semaphore   tk_cre_sem tk_wai_sem tk_sig_sem tk_ref_sem       S2, S3, S4
- *	  mem. pool   tk_cre_mpf tk_get_mpf tk_rel_mpf tk_ref_mpf       S2, S3, S4
- *	  mailbox     tk_cre_mbx tk_snd_mbx tk_rcv_mbx                  S2, S3
- *	  mutex       tk_cre_mtx tk_loc_mtx tk_unl_mtx                  S3, S4
- *	  msg buffer  tk_cre_mbf tk_snd_mbf tk_rcv_mbf                  S3, S4
- *	  event flag  tk_cre_flg tk_set_flg tk_wai_flg                  S3, S4
- *	  cyclic      tk_cre_cyc tk_ref_cyc                             S1
- *	  alarm       tk_cre_alm tk_sta_alm tk_stp_alm                  S4
- *	  time        tk_get_tim                                        S2, S4
- *	  system      tk_ref_ver                                        app_main.c
+ *  micro T-Kernel APIs used, and where to find them:
+ *    tasks       tk_cre_tsk tk_sta_tsk tk_slp_tsk tk_wup_tsk tk_can_wup
+ *                tk_dly_tsk tk_sus_tsk tk_rsm_tsk tk_chg_pri tk_ref_tsk
+ *                tk_get_tid tk_get_prc                         app_main.c,
+ * S1-S4 semaphore   tk_cre_sem tk_wai_sem tk_sig_sem tk_ref_sem       S2, S3,
+ * S4 mem. pool   tk_cre_mpf tk_get_mpf tk_rel_mpf tk_ref_mpf       S2, S3, S4
+ *    mailbox     tk_cre_mbx tk_snd_mbx tk_rcv_mbx                  S2, S3
+ *    mutex       tk_cre_mtx tk_loc_mtx tk_unl_mtx                  S3, S4
+ *    msg buffer  tk_cre_mbf tk_snd_mbf tk_rcv_mbf                  S3, S4
+ *    event flag  tk_cre_flg tk_set_flg tk_wai_flg                  S3, S4
+ *    cyclic      tk_cre_cyc tk_ref_cyc                             S1
+ *    alarm       tk_cre_alm tk_sta_alm tk_stp_alm                  S4
+ *    time        tk_get_tim                                        S2, S4
+ *    system      tk_ref_ver  app_main.c
  *
- *	Output appears on the USB serial port (115200 8N1 in any terminal).
+ *  Output appears on the USB serial port (115200 8N1 in any terminal).
  */
 
 #include "app.h"
@@ -66,93 +66,104 @@
  * Create and start one task (declared in app.h for every subsystem).
  *   prc = TP_PRC1 (core 0), TP_PRC2 (core 1), or 0 for "any core".
  */
-EXPORT ID app_start_task(FP entry, PRI pri, UW prc, const char *name)
+EXPORT ID
+app_start_task (FP entry, PRI pri, UW prc, const char * name)
 {
-	T_CTSK	ctsk = {0};
-	ID	tid;
-	ER	er;
+    T_CTSK ctsk = {0};
+    ID     tid;
+    ER     er;
 
-	ctsk.task    = entry;		/* function the task runs */
-	ctsk.itskpri = pri;		/* initial priority (1 = highest) */
-	ctsk.stksz   = TASK_STACK_SIZE;	/* kernel allocates the stack */
-	ctsk.tskatr  = TA_HLNG		/* written in a high-level language (C) */
-		     | TA_RNG3;		/* runs at user protection level */
+    ctsk.task    = entry;           /* function the task runs */
+    ctsk.itskpri = pri;             /* initial priority (1 = highest) */
+    ctsk.stksz   = TASK_STACK_SIZE; /* kernel allocates the stack */
+    ctsk.tskatr  = TA_HLNG          /* written in a high-level language (C) */
+        | TA_RNG3;                  /* runs at user protection level */
 #if TK_SUPPORT_SMP
-	if (prc != 0) {
-		ctsk.tskatr |= TA_ASSPRC;	/* honour the affinity below */
-		ctsk.assprc  = prc;		/* which core(s) it may run on */
-	}
+    if (prc != 0)
+    {
+        ctsk.tskatr |= TA_ASSPRC; /* honour the affinity below */
+        ctsk.assprc = prc;        /* which core(s) it may run on */
+    }
 #else
-	(void)prc;			/* single-core build: no affinity */
+    (void)prc; /* single-core build: no affinity */
 #endif
 
-	/* tk_cre_tsk: create the task.  It starts in the DORMANT state. */
-	tid = tk_cre_tsk(&ctsk);
-	if (tid < E_OK) {
-		CHECK(tid, name);
-		return tid;
-	}
+    /* tk_cre_tsk: create the task.  It starts in the DORMANT state. */
+    tid = tk_cre_tsk(&ctsk);
+    if (tid < E_OK)
+    {
+        CHECK(tid, name);
+        return tid;
+    }
 
-	/* tk_sta_tsk: DORMANT -> READY.  The int is passed as stacd. */
-	er = tk_sta_tsk(tid, 0);
-	CHECK(er, name);
+    /* tk_sta_tsk: DORMANT -> READY.  The int is passed as stacd. */
+    er = tk_sta_tsk(tid, 0);
+    CHECK(er, name);
 
-	if (er < E_OK) {
-		/*
-		* Task creation succeeded, but starting failed.
-		* Delete the task to avoid leaving an unused
-		* DORMANT task allocated.
-		*/
-		ER del_er = tk_del_tsk(tid);
-		CHECK(del_er, "delete failed-start task");
+    if (er < E_OK)
+    {
+        /*
+         * Task creation succeeded, but starting failed.
+         * Delete the task to avoid leaving an unused
+         * DORMANT task allocated.
+         */
+        ER del_er = tk_del_tsk(tid);
+        CHECK(del_er, "delete failed-start task");
 
-		return er;
-	}
+        return er;
+    }
 
-	return tid;
+    return tid;
 }
 
-EXPORT INT usermain(void)
+EXPORT INT
+usermain (void)
 {
-	T_RVER	ver;
+    T_RVER ver;
 
-	/* tk_ref_ver: ask the kernel who it is */
-	tk_ref_ver(&ver);
-	tm_printf((UB*)"\n=== micro T-Kernel on Raspberry Pi Pico W"
-		  " (spec 0x%04x, product 0x%04x) ===\n", ver.spver, ver.prver);
+    /* tk_ref_ver: ask the kernel who it is */
+    tk_ref_ver(&ver);
+    tm_printf((UB *)"\n=== micro T-Kernel on Raspberry Pi Pico W"
+                    " (spec 0x%04x, product 0x%04x) ===\n",
+        ver.spver,
+        ver.prver);
 #if TK_SUPPORT_SMP
-	tm_printf((UB*)"dual-core (SMP) build, usermain on core %d\n",
-		  tk_get_prc() - 1);	/* tk_get_prc() counts from 1 */
+    tm_printf((UB *)"dual-core (SMP) build, usermain on core %d\n",
+        tk_get_prc() - 1); /* tk_get_prc() counts from 1 */
 #else
-	tm_printf((UB*)"single-core build\n");
+    tm_printf((UB *)"single-core build\n");
 #endif
 
 #if ROBOT_MODE
-    ER robot_er;
+    ER   robot_er;
     BOOL b2_initialized = FALSE;
 
-    tm_printf((UB*)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
-              (int)ROBOT_ENABLE_DRIVE, (int)ROBOT_ENABLE_BYPASS);
+    tm_printf((UB *)"[ROBOT] Guarded real-hardware mode; drive=%d bypass=%d\n",
+        (int)ROBOT_ENABLE_DRIVE,
+        (int)ROBOT_ENABLE_BYPASS);
 
     /* B1 first: it creates the shared fault mask (fault_flags.h) and the
      * telemetry storage that B2's telemetry task and B5 report into.
      * S1_STANDALONE_DEMO is 0, so B1 publishes real data, not the demo.
      */
     robot_er = subsystem1_init();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "subsystem1_init");
         goto robot_startup_failed;
     }
 
     robot_er = subsystem2_init();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "subsystem2_init");
         goto robot_startup_failed;
     }
-	b2_initialized = TRUE;
+    b2_initialized = TRUE;
 
     robot_er = b3_init();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "b3_init");
         goto robot_startup_failed;
     }
@@ -165,7 +176,8 @@ EXPORT INT usermain(void)
     }
 
     robot_er = subsystem5_init();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "subsystem5_init");
         goto robot_startup_failed;
     }
@@ -178,7 +190,7 @@ EXPORT INT usermain(void)
         goto robot_startup_failed;
     }
 
-    tm_printf((UB*)"[ROBOT] Waiting for B4: keep the car level/still\n");
+    tm_printf((UB *)"[ROBOT] Waiting for B4: keep the car level/still\n");
     robot_er = subsystem4_wait_ready(ROBOT_IMU_STARTUP_TIMEOUT_MS);
     if (robot_er < E_OK)
     {
@@ -187,25 +199,29 @@ EXPORT INT usermain(void)
     }
 
     robot_er = b3_start();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "b3_start");
         goto robot_startup_failed;
     }
 
     robot_er = subsystem2_start();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "subsystem2_start");
         goto robot_startup_failed;
     }
 
     robot_er = subsystem5_start();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "subsystem5_start");
         goto robot_startup_failed;
     }
 
     robot_er = vehicle_controller_start();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "vehicle_controller_start");
         goto robot_startup_failed;
     }
@@ -213,12 +229,14 @@ EXPORT INT usermain(void)
     /* Started last, and a failure here does not disable the robot:
      * losing WiFi/MQTT must never stop driving (NFR-B1-1). */
     robot_er = subsystem1_start();
-    if (robot_er < E_OK) {
+    if (robot_er < E_OK)
+    {
         CHECK(robot_er, "subsystem1_start");
-        tm_printf((UB*)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
+        tm_printf((UB *)"[ROBOT] B1 WiFi/MQTT not started; robot continues\n");
     }
 
-    tm_printf((UB*)"[ROBOT] B1/B2/B3/B4/B5 + controller started; configured autostart waits for healthy sensors\n");
+    tm_printf((UB *)"[ROBOT] B1/B2/B3/B4/B5 + controller started; configured "
+                    "autostart waits for healthy sensors\n");
 #if APP_TEST
     subsystem2_test();
     s4_test_run();
@@ -226,66 +244,85 @@ EXPORT INT usermain(void)
     goto robot_startup_complete;
 
 robot_startup_failed:
-    tm_printf((UB*)"[ROBOT] STARTUP FAILED: robot disabled\n");
+    tm_printf((UB *)"[ROBOT] STARTUP FAILED: robot disabled\n");
 
-    if (b2_initialized) {
+    if (b2_initialized)
+    {
         b2_request_stop();
     }
 
-    for (;;) {
-        tm_printf((UB*)"[ROBOT] STARTUP FAILED error=%d; motors disabled\n", (int)robot_er);
+    for (;;)
+    {
+        tm_printf((UB *)"[ROBOT] STARTUP FAILED error=%d; motors disabled\n",
+            (int)robot_er);
         tk_dly_tsk(2000);
     }
 
 robot_startup_complete:
-    for (;;) {
+    for (;;)
+    {
         motion_status_snapshot_t status;
-        B3_STATE line;
-        uint32_t sample;
+        B3_STATE                 line;
+        uint32_t                 sample;
         tk_dly_tsk(2000);
         UW enc_bad_left = 0u, enc_bad_right = 0u;
         /* Quadrature steps where both channels changed at once: a loose or
          * noisy encoder wire. Healthy encoders stay near 0. */
         encoder_get_invalid_counts(&enc_bad_left, &enc_bad_right);
         if (motion_get_status(&status) == E_OK)
-            tm_printf((UB*)"[ROBOT-HEALTH] " __DATE__ " " __TIME__
-                      " mission=%d b5=%d motion=%d fault=%d stopped=%d enc=%d,%d enc_bad=%d,%d\n",
-                      (int)s5_mission_enabled(), (int)s5_mission_state(),
-                      (int)status.status, (int)status.fault, (int)status.physically_stopped,
-                      (int)status.left_encoder_counts, (int)status.right_encoder_counts,
-                      (int)enc_bad_left, (int)enc_bad_right);
+        {
+            tm_printf((UB *)"[ROBOT-HEALTH] " __DATE__ " " __TIME__
+                            " mission=%d b5=%d motion=%d fault=%d stopped=%d "
+                            "enc=%d,%d enc_bad=%d,%d\n",
+                (int)s5_mission_enabled(),
+                (int)s5_mission_state(),
+                (int)status.status,
+                (int)status.fault,
+                (int)status.physically_stopped,
+                (int)status.left_encoder_counts,
+                (int)status.right_encoder_counts,
+                (int)enc_bad_left,
+                (int)enc_bad_right);
+        }
         if (b3_get_timed_state(&line, &sample) == E_OK)
-            tm_printf((UB*)"[LINE] GP26=%d GP27=%d flags=%d black_min=%d\n",
-                      (int)line.ir_left, (int)line.ir_centre,
-                      (int)line.line_flags, (int)B3_LINE_ACTIVE_MIN);
+        {
+            tm_printf((UB *)"[LINE] GP26=%d GP27=%d flags=%d black_min=%d\n",
+                (int)line.ir_left,
+                (int)line.ir_centre,
+                (int)line.line_flags,
+                (int)B3_LINE_ACTIVE_MIN);
+        }
     }
 #else
-	/* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
-	CHECK(subsystem1_init(), "subsystem1_init");
-	CHECK(subsystem2_init(), "subsystem2_init");
-	CHECK(subsystem3_init(), "subsystem3_init");
-	CHECK(subsystem4_init(), "subsystem4_init");
-	CHECK(subsystem5_init(), "subsystem5_init");
-	CHECK(subsystem1_start(), "subsystem1_start");
-	CHECK(subsystem2_start(), "subsystem2_start");
-	CHECK(subsystem3_start(), "subsystem3_start");
-	CHECK(subsystem4_start(), "subsystem4_start");
-	CHECK(subsystem5_start(), "subsystem5_start");
+    /* Original teaching-demo subsystems, unchanged when ROBOT_MODE=0. */
+    CHECK(subsystem1_init(), "subsystem1_init");
+    CHECK(subsystem2_init(), "subsystem2_init");
+    CHECK(subsystem3_init(), "subsystem3_init");
+    CHECK(subsystem4_init(), "subsystem4_init");
+    CHECK(subsystem5_init(), "subsystem5_init");
+    CHECK(subsystem1_start(), "subsystem1_start");
+    CHECK(subsystem2_start(), "subsystem2_start");
+    CHECK(subsystem3_start(), "subsystem3_start");
+    CHECK(subsystem4_start(), "subsystem4_start");
+    CHECK(subsystem5_start(), "subsystem5_start");
 #if APP_TEST
-	/* Test build (make TEST=1): run every subsystem's tests in turn,
-	   here in the initial task, while the system is running.  Tests may
-	   call tk_dly_tsk() to let the other tasks work for a while. */
-	tm_printf((UB*)"[TEST] === test run start ===\n");
-	subsystem1_test();
-	subsystem2_test();
-	subsystem3_test();
-	s4_test_run();
-	subsystem5_test();
-	tm_printf((UB*)"[TEST] === test run end ===\n");
+    /* Test build (make TEST=1): run every subsystem's tests in turn,
+       here in the initial task, while the system is running.  Tests may
+       call tk_dly_tsk() to let the other tasks work for a while. */
+    tm_printf((UB *)"[TEST] === test run start ===\n");
+    subsystem1_test();
+    subsystem2_test();
+    subsystem3_test();
+    s4_test_run();
+    subsystem5_test();
+    tm_printf((UB *)"[TEST] === test run end ===\n");
 #endif
 #endif /* ROBOT_MODE */
 
-	/* Sleep forever.  Returning from usermain() would shut down. */
-	tk_slp_tsk(TMO_FEVR);
-	return 0;
+    /* Sleep forever.  Returning from usermain() would shut down. */
+    tk_slp_tsk(TMO_FEVR);
+    return 0;
 }
+
+/*** end of file ***/
+

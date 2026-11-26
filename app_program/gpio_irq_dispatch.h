@@ -11,5 +11,8 @@
  * is permitted inside callbacks. Do not install another bank-0 handler.
  */
 typedef void (*app_gpio_irq_handler_t)(UINT intno);
-ER app_gpio_irq_register(UW pins, app_gpio_irq_handler_t handler);
+ER app_gpio_irq_register (UW pins, app_gpio_irq_handler_t handler);
 #endif
+
+/*** end of file ***/
+

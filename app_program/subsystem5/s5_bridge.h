@@ -16,13 +16,14 @@
  * the B5 navigation adapter only in the autonomous robot profile. The
  * guarded forward/STOP profile leaves it unregistered.
  */
-typedef struct {
+typedef struct
+{
     /* True only when B2, B3, and exclusive VC motor ownership are ready. */
     bool (*ready)(void);
     /* VC must arbitrate STOP, REVERSE, GO_LEFT/RIGHT, FIND_LINE, RESUME.
      * Reject uncalibrated or unsafe manoeuvres, including reverse without
      * independently verified rear clearance. */
-    bool (*request)(S5Command command, const S5Profile *profile);
+    bool (*request)(S5Command command, const S5Profile * profile);
     /* True only after the current B2 command's ID is COMPLETED, not merely
      * when its queue accepts the command or the wheels happen to stop. */
     bool (*motion_complete)(void);
@@ -34,13 +35,16 @@ typedef struct {
 
 /* Install exactly once during single-threaded startup, before B5 starts.
  * Returns false for NULL/incomplete drivers or repeated registration. */
-bool s5_bridge_install(const S5BridgeDriver *driver);
+bool s5_bridge_install (const S5BridgeDriver * driver);
 
-bool s5_bridge_ready(void);
-bool s5_bridge_request(S5Command command, const S5Profile *profile);
-bool s5_bridge_stopped(void);
-bool s5_bridge_motion_complete(void);
-bool s5_bridge_line_found(void);
-void s5_bridge_emergency_stop(void);
+bool s5_bridge_ready (void);
+bool s5_bridge_request (S5Command command, const S5Profile * profile);
+bool s5_bridge_stopped (void);
+bool s5_bridge_motion_complete (void);
+bool s5_bridge_line_found (void);
+void s5_bridge_emergency_stop (void);
 
 #endif /* S5_BRIDGE_H */
+
+/*** end of file ***/
+

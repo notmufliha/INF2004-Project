@@ -30,7 +30,9 @@ volatile ID gh_imu_data_buffer;
 volatile ID gh_imu_test_events;
 #endif
 
-ER subsystem4_reset_peak (void)
+/** @brief Ask the analysis task to clear its recorded peak height. */
+ER
+subsystem4_reset_peak (void)
 {
     return (gh_events > 0) ? tk_set_flg(gh_events, S4_RESET_PEAK_FLAG) : E_OBJ;
 }
@@ -97,16 +99,18 @@ ER
 subsystem4_start (void)
 {
     /* Start receiver first; all objects were created during init. */
-    ID h_imu_task = app_start_task(task_imu_analysis_task, S4_PRI_IMU_ANALYSIS,
-                                   0, "task_imu_analysis_task");
+    ID h_imu_task = app_start_task(task_imu_analysis_task,
+        S4_PRI_IMU_ANALYSIS,
+        0,
+        "task_imu_analysis_task");
 
     if (h_imu_task < E_OK)
     {
         return h_imu_task;
     }
 
-    h_imu_task = app_start_task(task_imu_sampling_task, S4_PRI_IMU_SAMPLE, 0,
-                                "task_imu_sampling_task");
+    h_imu_task = app_start_task(
+        task_imu_sampling_task, S4_PRI_IMU_SAMPLE, 0, "task_imu_sampling_task");
 
     if (h_imu_task < E_OK)
     {
@@ -117,8 +121,8 @@ subsystem4_start (void)
     return E_OK;
 #else
     /* No affinity: the scheduler may run it on either core. */
-    ID h_monitor_task = app_start_task(task_monitor_task, S4_PRI_MONITOR, 0,
-                                       "task_monitor_task");
+    ID h_monitor_task = app_start_task(
+        task_monitor_task, S4_PRI_MONITOR, 0, "task_monitor_task");
     return (h_monitor_task < E_OK) ? h_monitor_task : E_OK;
 #endif
 }
@@ -145,8 +149,8 @@ subsystem4_wait_ready (TMO timeout_ms)
     }
 
     /* Preserve readiness for later observers; faults clear it explicitly. */
-    return tk_wai_flg(gh_events, S4_IMU_READY_FLAG, TWF_ORW, &flags,
-                      timeout_ms);
+    return tk_wai_flg(
+        gh_events, S4_IMU_READY_FLAG, TWF_ORW, &flags, timeout_ms);
 #endif
 }
 

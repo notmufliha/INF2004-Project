@@ -44,15 +44,15 @@
 /* ---------------------------------------------------------------------
  * Configuration
  * ------------------------------------------------------------------- */
-#define S1_PRI_LED   12 /* priority band 12-13 (TEAM.md)       */
-#define S1_PRI_DEMO  12 /* only when S1_STANDALONE_DEMO == 1   */
-#define S1_PRI_COMM  13 /* lowest in the band (NFR-B1-3)       */
+#define S1_PRI_LED 12  /* priority band 12-13 (TEAM.md)       */
+#define S1_PRI_DEMO 12 /* only when S1_STANDALONE_DEMO == 1   */
+#define S1_PRI_COMM 13 /* lowest in the band (NFR-B1-3)       */
 
-#define S1_LED_PIN   19U  /* GP19: link-status LED + 330R to GND */
-#define S1_TICK_MS   250U /* LED pattern step                     */
+#define S1_LED_PIN 19U  /* GP19: link-status LED + 330R to GND */
+#define S1_TICK_MS 250U /* LED pattern step                     */
 
 #define COMM_TELEM_PERIOD_DS 5U     /* telemetry every 500 ms (2 Hz)  */
-#define COMM_HEARTBEAT_MS    5000U  /* status/heartbeat period         */
+#define COMM_HEARTBEAT_MS 5000U     /* status/heartbeat period         */
 #define COMM_WIFI_OFFLINE_MS 30000U /* WiFi down this long -> OFFLINE  */
 
 /* 1 = standalone test mode: subsystem 1 also runs a fake "robot" that

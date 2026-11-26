@@ -16,10 +16,20 @@ SpaceBeforeParensOptions:
   AfterFunctionDeclarationName: true
   AfterFunctionDefinitionName: true
 PointerAlignment: Middle
-AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AlignFunctionDeclarations: false
+  AlignFunctionPointers: false
 AlignConsecutiveAssignments: Consecutive
 SortIncludes: Never
 SeparateDefinitionBlocks: Always
 BreakStringLiterals: true
 IndentCaseLabels: true
 IndentCaseBlocks: true
+
+InsertBraces: true
+ReflowComments: Always
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+BinPackParameters: false
+BinPackArguments: false

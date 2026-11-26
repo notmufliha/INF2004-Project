@@ -1,0 +1,35 @@
+Command: C:\msys64\ucrt64\bin\python.exe tools/check_application_style.py
+Exit: 0
+PASS: common BARR-C layout subset across 148 C/header files
+Naming, interfaces and semantic rules still require separate review.
+
+Command: C:\msys64\ucrt64\bin\python.exe testing/subsystem1/check_barr_style.py
+Exit: 0
+checked 30 B1 files
+PASS: B1 selected BARR-C style checks (3 documented deviations allowed)
+See testing/subsystem1/CODING_STANDARD.md for the manual review.
+
+Command: node tools/check-subsystem2-style.cjs
+Exit: 0
+PASS: subsystem2 automated BARR-C subset checks
+
+Command: C:\msys64\ucrt64\bin\python.exe testing/subsystem4/check_barr_style.py
+Exit: 0
+PASS: B4 selected BARR-C style checks
+See CODING_STANDARD.md for the rule-by-rule manual review and scope.
+
+Command: C:\msys64\ucrt64\bin\python.exe testing/subsystem4/test_barr_checker.py
+Exit: 0
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.002s
+
+OK
+
+Command: C:\msys64\ucrt64\bin\python.exe testing/barr_audit/test_layout_checker.py
+Exit: 0
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.117s
+
+OK

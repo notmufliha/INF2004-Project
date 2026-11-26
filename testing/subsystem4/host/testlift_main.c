@@ -17,15 +17,18 @@
 
 static imu_lift_t g_lift;
 static imu_data_t g_data;
-static uint32_t   g_noise_state = 12345U;   /* xorshift32 state */
+static uint32_t   g_noise_state = 12345U; /* xorshift32 state */
 
-static void      reset (void);
+static void reset (void);
 static float32_t noise (float32_t amplitude);
-static bool      feed (float32_t up_ms2, float32_t side_ms2, uint32_t count,
-                       float32_t noise_ms2, float32_t scale);
-static void      test_floor (void);
-static void      test_lifts (void);
-static void      test_hold_and_guards (void);
+static bool feed (float32_t up_ms2,
+    float32_t               side_ms2,
+    uint32_t                count,
+    float32_t               noise_ms2,
+    float32_t               scale);
+static void test_floor (void);
+static void test_lifts (void);
+static void test_hold_and_guards (void);
 
 /** @brief Run floor rejection, lift detection, hold and input guards. */
 int
@@ -58,16 +61,18 @@ noise (float32_t amplitude)
     g_noise_state ^= g_noise_state << 13;
     g_noise_state ^= g_noise_state >> 17;
     g_noise_state ^= g_noise_state << 5;
-    return amplitude *
-           (((float32_t)(g_noise_state >> 8) / 8388607.5f) - 1.0f);
+    return amplitude * (((float32_t)(g_noise_state >> 8) / 8388607.5f) - 1.0f);
 }
 
 /** @brief Feed samples: upward and sideways acceleration on top of 1 g
  *         (times scale: accelerometer gain error), plus vibration noise.
  *         Returns true if any sample reported lifted. */
 static bool
-feed (float32_t up_ms2, float32_t side_ms2, uint32_t count,
-      float32_t noise_ms2, float32_t scale)
+feed (float32_t up_ms2,
+    float32_t   side_ms2,
+    uint32_t    count,
+    float32_t   noise_ms2,
+    float32_t   scale)
 {
     bool b_any = false;
 
@@ -77,7 +82,7 @@ feed (float32_t up_ms2, float32_t side_ms2, uint32_t count,
         g_data.accel_x = (side_ms2 + noise(noise_ms2)) * scale;
         g_data.accel_y = noise(noise_ms2) * scale;
         g_data.accel_z = (TEST_G + up_ms2 + noise(noise_ms2)) * scale;
-        b_any = (imu_lift_step(&g_lift, &g_data)) || (b_any);
+        b_any          = (imu_lift_step(&g_lift, &g_data)) || (b_any);
     }
     return b_any;
 }
@@ -141,8 +146,8 @@ test_lifts (void)
     reset();
     feed(0.0f, 0.0f, 100U, 0.5f, 1.0f);
     start_ms = g_data.timestamp_ms;
-    for (uint32_t index = 0U;
-         (index < TEST_LIFT_SAMPLES) && (0U == taken_ms); ++index)
+    for (uint32_t index = 0U; (index < TEST_LIFT_SAMPLES) && (0U == taken_ms);
+        ++index)
     {
         if (feed(index < TEST_LIFT_HALF ? 3.0f : -3.0f, 0.0f, 1U, 0.5f, 1.0f))
         {
@@ -168,10 +173,10 @@ test_lifts (void)
     {
         float32_t up_ms2 = index < TEST_LIFT_HALF ? 3.0f : -3.0f;
         g_data.timestamp_ms += TEST_PERIOD_MS;
-        g_data.accel_x = (TEST_G + up_ms2) * 0.5f;          /* sin 30 */
+        g_data.accel_x = (TEST_G + up_ms2) * 0.5f; /* sin 30 */
         g_data.accel_y = noise(1.0f);
-        g_data.accel_z = (TEST_G + up_ms2) * 0.8660254f;    /* cos 30 */
-        b_lifted = (imu_lift_step(&g_lift, &g_data)) || (b_lifted);
+        g_data.accel_z = (TEST_G + up_ms2) * 0.8660254f; /* cos 30 */
+        b_lifted       = (imu_lift_step(&g_lift, &g_data)) || (b_lifted);
     }
     assert(b_lifted);
     puts("PASS: typical, gentle and tilted pick-ups (also while driving)");
@@ -182,7 +187,7 @@ static void
 test_hold_and_guards (void)
 {
     imu_lift_config_t config;
-    uint32_t          starts = 0U;
+    uint32_t          starts         = 0U;
     uint32_t          lifted_samples = 0U;
 
     reset();
@@ -197,9 +202,9 @@ test_hold_and_guards (void)
         lifted_samples += feed(0.0f, 0.0f, 1U, 0.0f, 1.0f) ? 1U : 0U;
         starts += imu_lift_started(&g_lift, &g_data) ? 1U : 0U;
     }
-    assert(1U == starts);                 /* one detection per lift      */
-    assert(lifted_samples > 50U);         /* held after the motion stops */
-    assert(!feed(0.0f, 0.0f, 1U, 0.0f, 1.0f));   /* then released */
+    assert(1U == starts);                      /* one detection per lift      */
+    assert(lifted_samples > 50U);              /* held after the motion stops */
+    assert(!feed(0.0f, 0.0f, 1U, 0.0f, 1.0f)); /* then released */
 
     /* Re-armed: a second pick-up is caught again. */
     for (uint32_t index = 0U; index < TEST_LIFT_SAMPLES; ++index)
@@ -217,7 +222,7 @@ test_hold_and_guards (void)
         feed(index < TEST_LIFT_HALF ? 3.0f : -3.0f, 0.0f, 1U, 0.0f, 1.0f);
         if (0U == (index % 4U))
         {
-            g_data.timestamp_ms += 500U;       /* sample gap */
+            g_data.timestamp_ms += 500U; /* sample gap */
         }
     }
     assert(!g_lift.b_lifted);

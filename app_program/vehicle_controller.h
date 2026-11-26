@@ -15,11 +15,14 @@
 
 #define VC_PERIOD_MS 20u
 #define VC_LINE_MAX_AGE_MS 100u
-#define VC_IMU_MAX_AGE_MS 1500u /* B4 publishes a quiet snapshot every second. */
+#define VC_IMU_MAX_AGE_MS                                                      \
+    1500u /* B4 publishes a quiet snapshot every second. */
 #define VC_MOTION_MAX_AGE_MS 100u
 #define VC_RECOVERY_MS 3000u
-#define VC_LINE_SEARCH_SWITCH_MS 600u /* first sweep; each later sweep is 600 ms longer */
-#define VC_LINE_SEARCH_MS 8000u /* then hold, still armed, until the line returns */
+#define VC_LINE_SEARCH_SWITCH_MS                                               \
+    600u /* first sweep; each later sweep is 600 ms longer */
+#define VC_LINE_SEARCH_MS                                                      \
+    8000u /* then hold, still armed, until the line returns */
 #define VC_LINE_SEARCH_STEER 250
 /* Line just lost: first turn hard toward the side it was last seen (what
  * Pololu's saturated position + PD does) for this long, then sweep. */
@@ -96,8 +99,9 @@
  * VC_BAR_EDGES times (the other sensor not at all) is reading bars and is
  * ignored until the strip is passed; no junction is taken on a strip. */
 #define VC_BAR_EDGES 2u
-#define VC_BAR_STRIP_EDGES 3u /* GP28 changes before a strip counts as bars
-                               * (a junction tape gives one black run) */
+#define VC_BAR_STRIP_EDGES                                                     \
+    3u /* GP28 changes before a strip counts as bars                           \
+        * (a junction tape gives one black run) */
 /* Barcode turns (spread layout) stop this many degrees short, then keep
  * turning the same way until a line sensor finds the line.  B2's turn is
  * not exact (a U-turn stopped far short and the car drove off straight):
@@ -110,8 +114,8 @@
  * VC_SPIN_STEP_DEG) toward the side the line was last seen, stopping as
  * soon as a sensor sees it; widening sweeps: 90 deg one way, back 180,
  * then 270...  (Searching in place keeps the car over the line; the old
- * pivot around one wheel drove it away from the corner.)  Gives up (stops, stays armed) after
- * VC_LINE_SEARCH_MS. */
+ * pivot around one wheel drove it away from the corner.)  Gives up (stops,
+ * stays armed) after VC_LINE_SEARCH_MS. */
 #define VC_SPIN_STEP_DEG 15
 /* 4 steps = 60 deg each side: 60 one way,
  * 120 back, 60 back to the start heading, then stop.  Wider sweeps turned
@@ -124,11 +128,12 @@
  * line cannot cover both spread sensors), steady or not. */
 #define VC_STRADDLE_JCT_BOTH 700
 #define VC_STRADDLE_JCT_BOTH_TICKS 2u
-/* Spread layout wheel speeds while following: the inner wheel may slow to 1/VC_STRADDLE_MAX_RATIO of the outer
- * (5:1, turn radius ~10 cm) and to VC_STRADDLE_MIN_INNER_CPS (B2's own
- * move minimum, "move_min_cps=150" in its boot log).  The old floor of
- * 300 cps with outer <= 3x capped turns at ~500-565 permille (radius
- * ~13 cm): in curves the line outran the car ("goes straight a bit"). */
+/* Spread layout wheel speeds while following: the inner wheel may slow to
+ * 1/VC_STRADDLE_MAX_RATIO of the outer (5:1, turn radius ~10 cm) and to
+ * VC_STRADDLE_MIN_INNER_CPS (B2's own move minimum, "move_min_cps=150" in its
+ * boot log).  The old floor of 300 cps with outer <= 3x capped turns at
+ * ~500-565 permille (radius ~13 cm): in curves the line outran the car ("goes
+ * straight a bit"). */
 #define VC_STRADDLE_MIN_INNER_CPS 150
 #define VC_STRADDLE_MAX_RATIO 5
 /* Line leaves a sensor while the car was ALREADY steering at least this
@@ -256,15 +261,14 @@
  * past the start of the strip by VC_RESCAN_MARGIN_UM and drive over it
  * again.  At most VC_BARCODE_RESCANS tries per barcode; 0 disables. */
 #define VC_BARCODE_RESCANS 1u
-#define VC_RESCAN_MARGIN_UM 50000u   /* 5 cm before the first bar */
-#define VC_RESCAN_MAX_UM 400000u     /* never reverse more than 40 cm */
+#define VC_RESCAN_MARGIN_UM 50000u /* 5 cm before the first bar */
+#define VC_RESCAN_MAX_UM 400000u   /* never reverse more than 40 cm */
 /* The strip is over when GP28 has not changed for this much travel; only
  * then does the re-read reverse (a pause on the strip also ends a B3 scan,
  * and reversing then backed up from the middle of the barcode). */
 #define VC_STRIP_END_UM 40000u
 #define VC_RESCAN_TIMEOUT_MS 8000u
-#define VC_RESCAN_FORGET_MS 10000u   /* then a new barcode gets new tries */
-
+#define VC_RESCAN_FORGET_MS 10000u /* then a new barcode gets new tries */
 
 /* ---- Line following v4 (vc_follow.c) -------------------------------------
  * 1 (default): the v4 controller runs following, line search, junction
@@ -302,26 +306,26 @@
  * cannot reach a line it overshot), then sweep 90 to the side the line
  * left on, 180 back, 90 to centre. */
 #define VC4_SEARCH_BACK_EXTRA_MM 20
-#define VC4_SEARCH_BACK_MAX_MM  150
+#define VC4_SEARCH_BACK_MAX_MM 150
 #define VC4_SEARCH_SWEEP_DEG 90
 #define VC4_SEARCH_CONFIRM_MS 60u /* sustained tape during the sweep     */
 #define VC4_SEARCH_ARC_MS 800u    /* gentle curve recovery before backup */
 #define VC4_SEARCH_ARC_MM_S 70
 #define VC4_SEARCH_MS 9000u
-#define VC4_TURN_MM_S 150         /* spin turns (search, junction)       */
-#define VC4_MOVE_MM_S 150         /* straight moves (junction advance)   */
+#define VC4_TURN_MM_S 150 /* spin turns (search, junction)       */
+#define VC4_MOVE_MM_S 150 /* straight moves (junction advance)   */
 #define VC4_REVERSE_MM_S 100
-#define VC4_BAR_REVERSE_MM_S 60   /* controlled barcode rewind           */
-#define VC4_BAR_READ_MM_S 60      /* retry target after settling         */
-#define VC4_JCT_ADVANCE_CM 6.0f   /* line sensors to axle                */
+#define VC4_BAR_REVERSE_MM_S 60 /* controlled barcode rewind           */
+#define VC4_BAR_READ_MM_S 60    /* retry target after settling         */
+#define VC4_JCT_ADVANCE_CM 6.0f /* line sensors to axle                */
 /* Floor trial: left junction turns overshoot at 90 degrees / 150 mm/s.
  * Shorten only that command and approach its endpoint more slowly. */
 #define VC4_JCT_LEFT_TURN_DEG 80
 #define VC4_JCT_LEFT_TURN_MM_S 90
 #define VC4_MOTION_TIMEOUT_MS 10000u
 /* Barcode slow re-read. */
-#define VC4_BAR_STRIP_EDGES 3u    /* GP28 changes: bars, not a tape      */
-#define VC4_BAR_LEAD_UM 40000u    /* reverse this far before the 1st bar */
+#define VC4_BAR_STRIP_EDGES 3u /* GP28 changes: bars, not a tape      */
+#define VC4_BAR_LEAD_UM 40000u /* reverse this far before the 1st bar */
 #define VC4_BAR_BACK_EXTRA_UM 70000u
 #define VC4_BAR_RETRY_EXTRA_UM 10000u
 /* Longest rewind for a retry. A retry backs up the whole failed pass + 10 mm
@@ -331,19 +335,20 @@
  * retry inside the barcode (25 Nov run: two rewinds, never read). Reversing
  * is blind, but B2's reverse now drives straight (B2_REVERSE_PWM_SPLIT). */
 #define VC4_BAR_REWIND_MAX_UM 450000u
-#define VC4_BAR_STEER_MAX 400     /* line steering limit on a barcode strip */
-#define VC4_BAR_WAIT_MS 600u      /* stand still: B3 ends a scan after 500 ms quiet */
-#define VC4_BAR_READ_UM 650000u   /* give up a pass after this travel    */
+#define VC4_BAR_STEER_MAX 400 /* line steering limit on a barcode strip */
+#define VC4_BAR_WAIT_MS                                                        \
+    600u /* stand still: B3 ends a scan after 500 ms quiet */
+#define VC4_BAR_READ_UM 650000u /* give up a pass after this travel    */
 #define VC4_BAR_READ_MS 15000u
 #define VC4_BAR_RETRIES 2u
 #define VC4_BAR_REARM_UM 60000u
 /* After an obstacle bypass: slow speed for 150 mm. */
 #define VC4_POST_AVOID_UM 150000u
 /* Lift-stop: car picked up while running -> stop. */
-#define VC4_LIFT_IR_RAW 3500u     /* both line sensors (no floor below)  */
+#define VC4_LIFT_IR_RAW 3500u /* both line sensors (no floor below)  */
 #define VC4_LIFT_IR_MS 300u
-#define VC4_LIFT_TILT_MS2 4.9f    /* |az| below: tilted > 60 deg         */
-#define VC4_LIFT_DG_MS2 2.94f     /* ||a| - 1 g| above: lifted / dropped */
+#define VC4_LIFT_TILT_MS2 4.9f /* |az| below: tilted > 60 deg         */
+#define VC4_LIFT_DG_MS2 2.94f  /* ||a| - 1 g| above: lifted / dropped */
 #define VC4_LIFT_IMU_MS 60u
 /* Ramp: while the car is pitched (B4 hump) and 480 ms / 150 mm after,
  * the obstacle stop uses the shorter ramp distance (B5). */
@@ -351,41 +356,43 @@
 #define VC4_RAMP_CLEAR_UM 150000u
 #define VC4_RAMP_PITCH_DEG 2.0f
 
-typedef struct {
+typedef struct
+{
     uint32_t now_ms, safety_generation;
     uint32_t line_age_ms;
     uint32_t loop_ms;
-    bool clearance, line_valid, imu_valid, hump, hazard, motion_valid;
-    bool barcode_active; /* B3 barcode sensor is crossing bars */
-    bool obstacle_active, obstacle_fault;
-    bool approach_slow;
-    UH left, centre;
-    UH barcode_rejects; /* B3 rejected-scan counter (only increases) */
-    UB right; /* barcode sensor GP28 level (0/1), beside the line */
-    UH raw26, raw27; /* raw ADC of the line sensors (lift-stop) */
-    bool lifted_imu; /* B4 live sample says lifted/tilted (debounced) */
-    float pitch_deg; /* B4 live pitch */
-    UB line_flags, faults;
+    bool     clearance, line_valid, imu_valid, hump, hazard, motion_valid;
+    bool     barcode_active; /* B3 barcode sensor is crossing bars */
+    bool     obstacle_active, obstacle_fault;
+    bool     approach_slow;
+    UH       left, centre;
+    UH       barcode_rejects; /* B3 rejected-scan counter (only increases) */
+    UB       right; /* barcode sensor GP28 level (0/1), beside the line */
+    UH       raw26, raw27; /* raw ADC of the line sensors (lift-stop) */
+    bool     lifted_imu;   /* B4 live sample says lifted/tilted (debounced) */
+    float    pitch_deg;    /* B4 live pitch */
+    UB       line_flags, faults;
     motion_status_snapshot_t motion;
 } VC_INPUT;
 
 /* Owned exclusively by the controller task. Exposed for deterministic tests. */
-typedef struct {
+typedef struct
+{
     ROBOT_STATE state;
-    RUN_MODE mode;
-    UINT speed_percent;
-    bool running, paused, estop, stopped, drive_sent;
+    RUN_MODE    mode;
+    UINT        speed_percent;
+    bool        running, paused, estop, stopped, drive_sent;
     bool obstacle_handoff; /* B5 moved the robot since our last line command. */
     bool line_recovery_active; /* Survives temporary clearance stops. */
     uint32_t last_drive_ms, recovery_ms, navigation_id, navigation_ms;
-    INT last_line_search_direction; /* -1 left / +1 right: last line side */
-    INT line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */
-    INT last_error; /* previous PD error, for the derivative term */
-    INT filtered_error; /* low-passed sensor difference */
+    INT  last_line_search_direction; /* -1 left / +1 right: last line side */
+    INT  line_pos;   /* last on-line position 0..1000 (Pololu _lastPosition) */
+    INT  last_error; /* previous PD error, for the derivative term */
+    INT  filtered_error;     /* low-passed sensor difference */
     bool error_filter_valid; /* filtered_error holds a following sample */
-    INT curve_steer; /* hardest recent steering, decaying; sets curve speed */
-    INT last_steer, last_speed; /* last DRIVE sent, for smoothing */
-    INT follow_steer; /* last steering sent while following the line */
+    INT  curve_steer; /* hardest recent steering, decaying; sets curve speed */
+    INT  last_steer, last_speed; /* last DRIVE sent, for smoothing */
+    INT  follow_steer;     /* last steering sent while following the line */
     uint32_t line_seen_ms; /* last tick the line was detected */
 #if VC_STEERING_DIAGNOSTICS
     uint32_t last_steering_log_ms;
@@ -393,49 +400,49 @@ typedef struct {
     UINT junction_enter_samples, junction_clear_samples;
     bool junction_latched;
     /* Crossing detection from the barcode sensor (see VC_JUNCTION_MIN_UM). */
-    UB gp28_level, floor_level;
-    bool floor_known, travel_time_valid;
+    UB       gp28_level, floor_level;
+    bool     floor_known, travel_time_valid;
     uint32_t gp28_run_um, travel_last_ms;
     /* Fault acknowledgement and stall retries. */
-    bool ack_grace_pending, hold_active, tolerate_active;
+    bool     ack_grace_pending, hold_active, tolerate_active;
     uint32_t hold_until_ms, tolerate_until_ms, last_stall_ms;
-    UINT stall_retries;
-    bool slow_mode; /* SLOW barcode: half following speed until NORMAL */
+    UINT     stall_retries;
+    bool     slow_mode; /* SLOW barcode: half following speed until NORMAL */
     /* Spread sensor layout (VC_LINE_STRADDLE). */
-    bool line_straddle;
-    INT straddle_side;     /* -1/+1: only that sensor is on black, else 0 */
-    INT straddle_touch;    /* -1/+1: the sensor that last touched alone */
+    bool     line_straddle;
+    INT      straddle_side;    /* -1/+1: only that sensor is on black, else 0 */
+    INT      straddle_touch;   /* -1/+1: the sensor that last touched alone */
     uint32_t straddle_side_ms; /* when straddle_side last changed */
-    bool straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
-    INT straddle_outside;  /* -1/+1: line left past that sensor (maybe) */
-    INT straddle_last_exit;  /* side of the previous exit */
+    bool     straddle_deep;    /* ...and it has read >= VC_STRADDLE_DEEP */
+    INT      straddle_outside; /* -1/+1: line left past that sensor (maybe) */
+    INT      straddle_last_exit; /* side of the previous exit */
     uint32_t straddle_coast_ms, straddle_exit_ms;
-    INT straddle_arc_start;
+    INT      straddle_arc_start;
     /* Bend hold (VC_BEND_HOLD). */
-    INT bend_side;         /* -1/+1: in a bend that way, else 0 */
-    INT bend_touch_side;   /* side of the last single-sensor touch */
-    bool bend_touching;    /* that touch is still on */
-    INT bend_peak;         /* hardest steering toward it during the touch */
+    INT      bend_side;       /* -1/+1: in a bend that way, else 0 */
+    INT      bend_touch_side; /* side of the last single-sensor touch */
+    bool     bend_touching;   /* that touch is still on */
+    INT      bend_peak;       /* hardest steering toward it during the touch */
     uint32_t bend_touch_um, bend_white_um;
-    bool bend_counter;     /* the other sensor is touching inside the bend */
-    INT bend_touch_now;
+    bool     bend_counter; /* the other sensor is touching inside the bend */
+    INT      bend_touch_now;
     uint32_t bend_counter_um;
     /* Junction approach before a barcode turn. */
-    bool approach_active;
+    bool     approach_active;
     uint32_t approach_um, approach_start_um;
-    bool straddle_lost;    /* lost until a sensor sees black again */
-    bool straddle_both;    /* both sensors on black since straddle_both_um */
+    bool     straddle_lost; /* lost until a sensor sees black again */
+    bool     straddle_both; /* both sensors on black since straddle_both_um */
     uint32_t straddle_both_um;
     uint32_t straddle_outside_ms, straddle_black_ms;
     /* Barcode re-read after a rejected scan. */
-    UB rescan_phase;       /* 0 none, 1 stopping, 2 reversing */
-    UINT rescan_tries;
-    bool rejects_known, rescan_pending;
-    bool strip_active, strip_known; /* GP28 strip episode (rescan) */
-    UB strip_level;
-    UB strip_edges;        /* GP28 changes in this episode (bars: many) */
+    UB       rescan_phase; /* 0 none, 1 stopping, 2 reversing */
+    UINT     rescan_tries;
+    bool     rejects_known, rescan_pending;
+    bool     strip_active, strip_known; /* GP28 strip episode (rescan) */
+    UB       strip_level;
+    UB       strip_edges; /* GP28 changes in this episode (bars: many) */
     uint32_t strip_start_um, strip_last_um;
-    UH seen_rejects;
+    UH       seen_rejects;
     uint32_t rescan_id, rescan_ms, rescan_back_um;
     uint32_t travel_um; /* odometer, wraps */
     /* Junction evidence, for the run log and the spread layout. */
@@ -444,48 +451,51 @@ typedef struct {
     bool jct_candidate_steady;
     /* Barcode bars under a line sensor (see VC_BAR_EDGES). */
     bool bars_active, bar_prev_l, bar_prev_r;
-    UB bar_edges_l, bar_edges_r;
-    INT bar_ignore; /* -1 left / +1 right sensor ignored, 0 none */
+    UB   bar_edges_l, bar_edges_r;
+    INT  bar_ignore; /* -1 left / +1 right sensor ignored, 0 none */
     /* In-place line search (spread layout). */
     uint32_t spin_id, spin_ms;
-    INT spin_dir;
-    UINT spin_steps, spin_target, spin_sweep;
-    bool spin_done;
-    UINT jct_both_ticks;
+    INT      spin_dir;
+    UINT     spin_steps, spin_target, spin_sweep;
+    bool     spin_done;
+    UINT     jct_both_ticks;
     uint32_t jct_block_um; /* travel at the last unsteady moment */
     uint32_t jct_left_um, jct_right_um;
-    UB navigation, pending_navigation;
+    UB       navigation, pending_navigation;
     /* Line following v4 (VC_FOLLOW_V4). */
     vc4_track_t trk;
-    lfr_t lfr;               /* VC_FOLLOW_REF steering state */
-    UB v4_phase;           /* V4_FOLLOW, V4_SEARCH, V4_CROSS, V4_BARCODE */
-    UB v4_sub;
-    uint32_t v4_last_ms, v4_phase_ms, v4_motion_id;
-    bool v4_time_valid;
-    INT v4_search_first;   /* +1 left / -1 right */
-    INT v4_search_back_mm; /* back-up before the sweep                */
-    float v4_jct_advance_cm;
-    uint32_t v4_line_seen_ms;
-    UB bar_phase, bar_tries;
-    INT bar_speed_cps;     /* fixed target for this pass, across edge gaps */
+    lfr_t       lfr;      /* VC_FOLLOW_REF steering state */
+    UB          v4_phase; /* V4_FOLLOW, V4_SEARCH, V4_CROSS, V4_BARCODE */
+    UB          v4_sub;
+    uint32_t    v4_last_ms, v4_phase_ms, v4_motion_id;
+    bool        v4_time_valid;
+    INT         v4_search_first;   /* +1 left / -1 right */
+    INT         v4_search_back_mm; /* back-up before the sweep                */
+    float       v4_jct_advance_cm;
+    uint32_t    v4_line_seen_ms;
+    UB          bar_phase, bar_tries;
+    INT      bar_speed_cps; /* fixed target for this pass, across edge gaps */
     uint32_t bar_mark_um, bar_back_um, bar_ms, bar_clear_um;
-    bool bar_clear_known;
-    bool bar_wait_clear;   /* decoded/skipped strip must fully leave GP28 */
-    UH bar_rejects;
-    bool post_avoid_slow;
-    bool post_avoid_wait_clear;
+    bool     bar_clear_known;
+    bool     bar_wait_clear; /* decoded/skipped strip must fully leave GP28 */
+    UH       bar_rejects;
+    bool     post_avoid_slow;
+    bool     post_avoid_wait_clear;
     uint32_t post_avoid_clear_um;
     uint32_t post_avoid_um;
     uint32_t lift_ir_ms;
-    bool on_ramp;
+    bool     on_ramp;
     uint32_t ramp_ms, ramp_um;
 } VEHICLE_CONTROLLER;
 
-void vehicle_controller_init(VEHICLE_CONTROLLER *controller);
-void vehicle_controller_command(VEHICLE_CONTROLLER *controller,
-                                const REMOTE_CMD *command);
-void vehicle_controller_step(VEHICLE_CONTROLLER *controller,
-                             const VC_INPUT *input, UB navigation);
-ER vehicle_controller_start(void);
+void vehicle_controller_init (VEHICLE_CONTROLLER * controller);
+void vehicle_controller_command (
+    VEHICLE_CONTROLLER * controller, const REMOTE_CMD * command);
+void vehicle_controller_step (
+    VEHICLE_CONTROLLER * controller, const VC_INPUT * input, UB navigation);
+ER vehicle_controller_start (void);
 
 #endif
+
+/*** end of file ***/
+

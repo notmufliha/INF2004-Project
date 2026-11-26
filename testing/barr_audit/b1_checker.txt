@@ -1,0 +1,12 @@
+Exit code: 1
+checked 30 B1 files
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem1\comm.c:1: BARR-C 3.3.c: missing EOF marker followed by a blank line
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem1\comm.c:1: BARR-C 2.2.h: function needs a documentation comment: comm_clear_obstacle_width
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem1\comm.h:1: BARR-C 3.3.c: missing EOF marker followed by a blank line
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem1\comm_pack.c:1: BARR-C 3.3.c: missing EOF marker followed by a blank line
+app_program\subsystem1\comm_pack.c:299: BARR-C 1.2.a: line exceeds 80 characters
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem1\comm_pack.h:1: BARR-C 3.3.c: missing EOF marker followed by a blank line
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem1\s1_comm.c:1: BARR-C 3.3.c: missing EOF marker followed by a blank line
+app_program\subsystem1\s1_comm.c:531: BARR-C 1.2.a: line exceeds 80 characters
+app_program\subsystem1\s1_comm.c:532: BARR-C 1.2.a: line exceeds 80 characters
+C:\Users\gohyx\Downloads\INF2004-Project\testing\subsystem1\host\testpack_main.c:1: BARR-C 3.3.c: missing EOF marker followed by a blank line

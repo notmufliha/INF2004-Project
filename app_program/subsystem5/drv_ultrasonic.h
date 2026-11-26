@@ -3,7 +3,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef enum {
+typedef enum
+{
     S5_ECHO_OK = 0,
     S5_ECHO_STUCK_HIGH,
     S5_ECHO_NO_RISE,
@@ -12,19 +13,25 @@ typedef enum {
     S5_ECHO_OUT_OF_RANGE,
     S5_ECHO_OPEN_SPACE
 } S5EchoStatus;
-typedef struct {
+
+typedef struct
+{
     S5EchoStatus status;
-    uint32_t pulse_us;
-    float cm;
+    uint32_t     pulse_us;
+    float        cm;
 } S5EchoReading;
 
-float s5_echo_us_to_cm(uint32_t echo_us);
-bool s5_ultrasonic_init(void);
+float s5_echo_us_to_cm (uint32_t echo_us);
+bool s5_ultrasonic_init (void);
 /* Diagnostic version exposes the actual pulse and failure mode.
  * Only call from the Buddy 5 task (never from an ISR). */
-S5EchoReading s5_ultrasonic_read_detailed(void);
-/* Forward-only policy: OPEN_SPACE is assumed clearance, not a measured range. */
-S5EchoReading s5_ultrasonic_read_front(void);
-bool s5_ultrasonic_read_cm(float *out_cm);
-const char *s5_echo_status_name(S5EchoStatus status);
+S5EchoReading s5_ultrasonic_read_detailed (void);
+/* Forward-only policy: OPEN_SPACE is assumed clearance, not a measured range.
+ */
+S5EchoReading s5_ultrasonic_read_front (void);
+bool s5_ultrasonic_read_cm (float * out_cm);
+const char * s5_echo_status_name (S5EchoStatus status);
 #endif
+
+/*** end of file ***/
+

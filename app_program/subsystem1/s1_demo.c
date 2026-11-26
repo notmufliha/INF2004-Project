@@ -21,13 +21,13 @@
 
 #if S1_STANDALONE_DEMO
 
-#define DEMO_STEP_MS      100U
-#define DEMO_FULL_SPEED   5000 /* counts/s at SPEED 100 (B2's max) */
-#define DEMO_PERCENT      100
-#define DEMO_BARCODE_MS   8000U
-#define DEMO_HUMP_MS      13000U
-#define DEMO_OBSTACLE_MS  21000U
-#define DEMO_SEED         2463534242UL
+#define DEMO_STEP_MS 100U
+#define DEMO_FULL_SPEED 5000 /* counts/s at SPEED 100 (B2's max) */
+#define DEMO_PERCENT 100
+#define DEMO_BARCODE_MS 8000U
+#define DEMO_HUMP_MS 13000U
+#define DEMO_OBSTACLE_MS 21000U
+#define DEMO_SEED 2463534242UL
 
 /** @brief Fake controller and sensor state. */
 typedef struct
@@ -42,9 +42,9 @@ typedef struct
 } demo_state_t;
 
 static uint32_t demo_rand (void);
-static void     demo_commands (demo_state_t * p_demo);
-static void     demo_sensors (demo_state_t * p_demo);
-static void     demo_events (demo_state_t * p_demo);
+static void demo_commands (demo_state_t * p_demo);
+static void demo_sensors (demo_state_t * p_demo);
+static void demo_events (demo_state_t * p_demo);
 #endif /* S1_STANDALONE_DEMO */
 
 /** @brief Start the demo task (nothing to do unless it is built in). */
@@ -53,8 +53,7 @@ s1_demo_start (void)
 {
     ER result = E_OK;
 #if S1_STANDALONE_DEMO
-    ID task   = app_start_task((FP)s1_demo_task, S1_PRI_DEMO, 0U,
-                               "demo_task");
+    ID task = app_start_task((FP)s1_demo_task, S1_PRI_DEMO, 0U, "demo_task");
 
     result = (task < E_OK) ? task : E_OK;
 #endif
@@ -125,8 +124,9 @@ demo_commands (demo_state_t * p_demo)
         if (b_more)
         {
             tm_printf((UB *)"s1-demo: controller got %s arg=%d seq=%d\n",
-                      comm_names_remote((comm_remote_cmd_type_t)cmd.type),
-                      (INT)cmd.arg, (INT)cmd.seq);
+                comm_names_remote((comm_remote_cmd_type_t)cmd.type),
+                (INT)cmd.arg,
+                (INT)cmd.seq);
 
             switch (cmd.type)
             {
@@ -176,16 +176,20 @@ demo_sensors (demo_state_t * p_demo)
 
     p_demo->enc += (speed * (int32_t)DEMO_STEP_MS) / 1000;
     /* demo_rand() % 40 is 0..39: fits int32_t. */
-    comm_set_motion(speed, speed - (int32_t)(demo_rand() % 40U),
-                    p_demo->enc, p_demo->enc - 3);
+    comm_set_motion(speed,
+        speed - (int32_t)(demo_rand() % 40U),
+        p_demo->enc,
+        p_demo->enc - 3);
     comm_set_robot_state(p_demo->state);
 
     /* Every modulus below keeps the value well inside 16 bits. */
     comm_set_line((uint16_t)(800U + (demo_rand() % 200U)),
-                  (uint16_t)(2300U + (demo_rand() % 400U)), 0U,
-                  LINE_F_DETECTED);
+        (uint16_t)(2300U + (demo_rand() % 400U)),
+        0U,
+        LINE_F_DETECTED);
     comm_set_imu(p_demo->b_running ? 1U : 0U,
-                 (int16_t)((int32_t)(demo_rand() % 21U) - 10), 0);
+        (int16_t)((int32_t)(demo_rand() % 21U) - 10),
+        0);
     comm_set_obstacle_dist((uint16_t)(60U + (demo_rand() % 100U)));
 }
 
@@ -199,12 +203,11 @@ demo_events (demo_state_t * p_demo)
     {
         /* barcode is 'A'..'D', so NAV_LEFT + 0..3 is a valid command. */
         (void)comm_report_barcode(p_demo->barcode,
-                                  (comm_nav_cmd_t)((uint32_t)NAV_LEFT +
-                                                   ((uint32_t)p_demo->barcode -
-                                                    (uint32_t)'A')));
+            (comm_nav_cmd_t)((uint32_t)NAV_LEFT +
+                ((uint32_t)p_demo->barcode - (uint32_t)'A')));
         p_demo->barcode = (p_demo->barcode >= (uint8_t)'D')
-                              ? (uint8_t)'A'
-                              : (uint8_t)(p_demo->barcode + 1U);
+            ? (uint8_t)'A'
+            : (uint8_t)(p_demo->barcode + 1U);
     }
 
     if (0U == (p_demo->time_ms % DEMO_HUMP_MS))

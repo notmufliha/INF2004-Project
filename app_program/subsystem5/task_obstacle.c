@@ -1,6 +1,6 @@
 #include "subsystem5.h"
 #include "../robot_config.h"
-#include "../subsystem1/subsystem1.h"   /* B1 telemetry + shared fault mask */
+#include "../subsystem1/subsystem1.h" /* B1 telemetry + shared fault mask */
 #include "../subsystem2/b2_motor.h"
 #include "../subsystem2/motion_command.h"
 #if TK_SUPPORT_SMP
@@ -23,11 +23,12 @@
  * application ranges are 0..400 cm (distance/clearance) and 0..100 cm
  * (width).  Invalid data uses B1's reserved all-ones sentinel. */
 #define S5_WIRE_DISTANCE_MAX_CM (400.0f)
-#define S5_WIRE_WIDTH_MAX_CM    (100.0f)
-#define S5_FRONT_ANGLE_DETAIL  (45u) /* 90 degrees / 2, Tribunal A1 */
+#define S5_WIRE_WIDTH_MAX_CM (100.0f)
+#define S5_FRONT_ANGLE_DETAIL (45u) /* 90 degrees / 2, Tribunal A1 */
 
 #if !S5_SIMULATION && S5_HARDWARE_ENABLED
-static UH s5_wire_cm(float cm, float maximum_cm)
+static UH
+s5_wire_cm (float cm, float maximum_cm)
 {
     /* NaN, infinities and negative distances are not measurements.
      * Finite distances beyond B5's range saturate rather than wrap. */
@@ -44,25 +45,27 @@ static UH s5_wire_cm(float cm, float maximum_cm)
     return (UH)(cm + 0.5f);
 }
 
-static void s5_report_profile(const S5Profile *profile, S5Side side)
+static void
+s5_report_profile (const S5Profile * profile, S5Side side)
 {
-    UH distance_cm = COMM_CM_INVALID;
-    UH width_cm = COMM_CM_INVALID;
-    UH left_cm = COMM_CM_INVALID;
-    UH right_cm = COMM_CM_INVALID;
-    AVOID_ACTION action = AVOID_STOP;
+    UH           distance_cm = COMM_CM_INVALID;
+    UH           width_cm    = COMM_CM_INVALID;
+    UH           left_cm     = COMM_CM_INVALID;
+    UH           right_cm    = COMM_CM_INVALID;
+    AVOID_ACTION action      = AVOID_STOP;
 
     if ((profile != NULL) && profile->valid)
     {
-        distance_cm = s5_wire_cm(profile->nearest_cm,
-                                 S5_WIRE_DISTANCE_MAX_CM);
-        width_cm = s5_wire_cm(profile->frontal_sweep && profile->frontal_width_cm > 0.0f ?
-                              profile->frontal_width_cm : profile->estimated_width_cm,
-                              S5_WIRE_WIDTH_MAX_CM);
-        left_cm = s5_wire_cm(profile->left_clearance_cm,
-                             S5_WIRE_DISTANCE_MAX_CM);
-        right_cm = s5_wire_cm(profile->right_clearance_cm,
-                              S5_WIRE_DISTANCE_MAX_CM);
+        distance_cm = s5_wire_cm(profile->nearest_cm, S5_WIRE_DISTANCE_MAX_CM);
+        width_cm    = s5_wire_cm(
+            profile->frontal_sweep && profile->frontal_width_cm > 0.0f
+                ? profile->frontal_width_cm
+                : profile->estimated_width_cm,
+            S5_WIRE_WIDTH_MAX_CM);
+        left_cm =
+            s5_wire_cm(profile->left_clearance_cm, S5_WIRE_DISTANCE_MAX_CM);
+        right_cm =
+            s5_wire_cm(profile->right_clearance_cm, S5_WIRE_DISTANCE_MAX_CM);
 
         if (side == S5_SIDE_LEFT)
         {
@@ -76,25 +79,25 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
         /* Never publish a partly valid measured profile or authorise bypass
          * when any field is malformed. The receiver sees one explicit
          * invalid STOP event, not misleading partial clearance data. */
-        if ((distance_cm == COMM_CM_INVALID) ||
-            (width_cm == COMM_CM_INVALID) ||
-            (left_cm == COMM_CM_INVALID) ||
-            (right_cm == COMM_CM_INVALID))
+        if ((distance_cm == COMM_CM_INVALID) || (width_cm == COMM_CM_INVALID) ||
+            (left_cm == COMM_CM_INVALID) || (right_cm == COMM_CM_INVALID))
         {
             distance_cm = COMM_CM_INVALID;
-            width_cm = COMM_CM_INVALID;
-            left_cm = COMM_CM_INVALID;
-            right_cm = COMM_CM_INVALID;
-            action = AVOID_STOP;
+            width_cm    = COMM_CM_INVALID;
+            left_cm     = COMM_CM_INVALID;
+            right_cm    = COMM_CM_INVALID;
+            action      = AVOID_STOP;
         }
         /* A configured course-width bound is not a measured silhouette. */
         if (profile->uses_course_bounds ||
             (profile->frontal_sweep && profile->frontal_width_cm <= 0.0f))
+        {
             width_cm = COMM_CM_INVALID;
+        }
     }
 
-    (void)comm_report_obstacle(distance_cm, width_cm, left_cm, right_cm,
-                               action);
+    (void)comm_report_obstacle(
+        distance_cm, width_cm, left_cm, right_cm, action);
 }
 #endif /* !S5_SIMULATION && S5_HARDWARE_ENABLED */
 
@@ -104,35 +107,47 @@ static void s5_report_profile(const S5Profile *profile, S5Side side)
 
 #if !S5_SIMULATION && S5_HARDWARE_ENABLED
 #if ROBOT_VERBOSE_SENSOR_LOG || S5_MOTION_BRIDGE_ENABLED
-static void print_scan(const char *label, const S5Scan *s)
+static void
+print_scan (const char * label, const S5Scan * s)
 {
     int i;
-    for (i = 0; i < S5_SCAN_COUNT; ++i) {
-        const S5ScanPoint *p = &s->points[i];
-        tm_printf((UB*)"[S5-%s] angle=%d valid=%d cm_x100=%d\n",
-                  label, (int)p->angle_deg, (int)p->valid,
-                  (int)(p->distance_cm * 100.0f));
+    for (i = 0; i < S5_SCAN_COUNT; ++i)
+    {
+        const S5ScanPoint * p = &s->points[i];
+        tm_printf((UB *)"[S5-%s] angle=%d valid=%d cm_x100=%d\n",
+            label,
+            (int)p->angle_deg,
+            (int)p->valid,
+            (int)(p->distance_cm * 100.0f));
     }
 }
 #endif
-static void print_profile(const S5Profile *p)
+static void
+print_profile (const S5Profile * p)
 {
-    tm_printf((UB*)"[S5-PROFILE] valid=%d width_cm_x100=%d face_cm_x100=%d nearest_cm_x100=%d bearing_deg=%d center_x_cm_x100=%d center_y_cm_x100=%d left_cm_x100=%d right_cm_x100=%d required_cm_x100=%d side=%d\n",
-              (int)p->valid, (int)(p->estimated_width_cm * 100.0f),
-              (int)(p->frontal_width_cm * 100.0f),
-              (int)(p->nearest_cm * 100.0f), (int)p->nearest_angle_deg,
-              (int)(p->center_x_cm * 100.0f), (int)(p->center_y_cm * 100.0f),
-              (int)(p->left_clearance_cm * 100.0f),
-              (int)(p->right_clearance_cm * 100.0f),
-              (int)(p->required_lateral_clearance_cm * 100.0f),
-              (int)p->bypass_side);
+    tm_printf((UB *)"[S5-PROFILE] valid=%d width_cm_x100=%d face_cm_x100=%d "
+                    "nearest_cm_x100=%d bearing_deg=%d center_x_cm_x100=%d "
+                    "center_y_cm_x100=%d left_cm_x100=%d right_cm_x100=%d "
+                    "required_cm_x100=%d side=%d\n",
+        (int)p->valid,
+        (int)(p->estimated_width_cm * 100.0f),
+        (int)(p->frontal_width_cm * 100.0f),
+        (int)(p->nearest_cm * 100.0f),
+        (int)p->nearest_angle_deg,
+        (int)(p->center_x_cm * 100.0f),
+        (int)(p->center_y_cm * 100.0f),
+        (int)(p->left_clearance_cm * 100.0f),
+        (int)(p->right_clearance_cm * 100.0f),
+        (int)(p->required_lateral_clearance_cm * 100.0f),
+        (int)p->bypass_side);
 }
 
 #if S5_MOTION_BRIDGE_ENABLED
-static void emergency_halt(const char *reason)
+static void
+emergency_halt (const char * reason)
 {
     s5_mission_publish(S5_MISSION_FAULT);
-    tm_printf((UB*)"[S5-FAULT] %s; requesting emergency stop\n", reason);
+    tm_printf((UB *)"[S5-FAULT] %s; requesting emergency stop\n", reason);
     s5_bridge_emergency_stop();
     s5_servo_angle(90u);
 
@@ -144,8 +159,8 @@ static void emergency_halt(const char *reason)
 
 #endif /* S5_MOTION_BRIDGE_ENABLED */
 
-
-#if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY && !S5_MOTION_BRIDGE_ENABLED
+#if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY &&                     \
+    !S5_MOTION_BRIDGE_ENABLED
 /* This is a *guarded forward-only demo adapter*, not an obstacle-bypass VC.
  * B2 remains the sole PWM owner. No reverse, turn or line reacquisition.
  * The previous firmware only called b2_request_forward(), which is a safety
@@ -153,19 +168,20 @@ static void emergency_halt(const char *reason)
  * needed because B2's DRIVE command watchdog is 100 ms, while ultrasonic
  * sampling/scan operations can take much longer. */
 #if ROBOT_MOTION_TEST != 0
-#error "B5 forward-only demo requires ROBOT_MOTION_TEST=0 (disable B2 one-shot motion test)"
+#error "B5 forward-only demo requires ROBOT_MOTION_TEST=0."
 #endif
 /* Shared between the sensor task and the B2 command-refresh task.
  * Use the same T-Kernel SMP spinlock API as Buddy 2; no libatomic dependency
  * on RP2040 Cortex-M0+. Never call B2 while holding this lock. */
 static uint32_t s5_demo_last_clear_ms;
-static bool s5_demo_clear_permission;
-static bool s5_demo_drive_fault;
+static bool     s5_demo_clear_permission;
+static bool     s5_demo_drive_fault;
 #if TK_SUPPORT_SMP
 static T_SPLOCK s5_demo_lock;
 #endif
 
-static void s5_demo_lock_enter(UINT *irq)
+static void
+s5_demo_lock_enter (UINT * irq)
 {
 #if TK_SUPPORT_SMP
     (void)ISpinLock(&s5_demo_lock, irq);
@@ -173,7 +189,9 @@ static void s5_demo_lock_enter(UINT *irq)
     DI(*irq);
 #endif
 }
-static void s5_demo_lock_leave(UINT irq)
+
+static void
+s5_demo_lock_leave (UINT irq)
 {
 #if TK_SUPPORT_SMP
     (void)ISpinUnlock(&s5_demo_lock, irq);
@@ -181,16 +199,20 @@ static void s5_demo_lock_leave(UINT irq)
     EI(irq);
 #endif
 }
-static void s5_demo_state_init(void)
+
+static void
+s5_demo_state_init (void)
 {
 #if TK_SUPPORT_SMP
     (void)InitSpinLock(&s5_demo_lock);
 #endif
-    s5_demo_last_clear_ms = 0u;
+    s5_demo_last_clear_ms    = 0u;
     s5_demo_clear_permission = false;
-    s5_demo_drive_fault = false;
+    s5_demo_drive_fault      = false;
 }
-static bool s5_demo_fault_latched(void)
+
+static bool
+s5_demo_fault_latched (void)
 {
     UINT irq;
     bool fault;
@@ -199,15 +221,19 @@ static bool s5_demo_fault_latched(void)
     s5_demo_lock_leave(irq);
     return fault;
 }
-static void s5_demo_state_read(uint32_t *last_clear_ms, bool *permitted)
+
+static void
+s5_demo_state_read (uint32_t * last_clear_ms, bool * permitted)
 {
     UINT irq;
     s5_demo_lock_enter(&irq);
     *last_clear_ms = s5_demo_last_clear_ms;
-    *permitted = s5_demo_clear_permission;
+    *permitted     = s5_demo_clear_permission;
     s5_demo_lock_leave(irq);
 }
-static void s5_demo_clear_stop(void)
+
+static void
+s5_demo_clear_stop (void)
 {
     UINT irq;
     s5_demo_lock_enter(&irq);
@@ -215,10 +241,12 @@ static void s5_demo_clear_stop(void)
     s5_demo_lock_leave(irq);
     b2_request_stop();
 }
-static void s5_demo_clear_publish(void)
+
+static void
+s5_demo_clear_publish (void)
 {
     SYSTIM time;
-    UINT irq;
+    UINT   irq;
     if (tk_get_tim(&time) != E_OK)
     {
         s5_demo_clear_stop();
@@ -227,45 +255,51 @@ static void s5_demo_clear_publish(void)
     s5_demo_lock_enter(&irq);
     if (!s5_demo_drive_fault)
     {
-        s5_demo_last_clear_ms = time.lo;
+        s5_demo_last_clear_ms    = time.lo;
         s5_demo_clear_permission = true;
     }
     s5_demo_lock_leave(irq);
 }
 
-static bool s5_demo_can_refresh(uint32_t now_ms, uint32_t last_clear_ms,
-                                bool clear_permission, bool b2_allowed)
+static bool
+s5_demo_can_refresh (uint32_t now_ms,
+    uint32_t                  last_clear_ms,
+    bool                      clear_permission,
+    bool                      b2_allowed)
 {
     return clear_permission && b2_allowed &&
-           (uint32_t)(now_ms - last_clear_ms) <= S5_DEMO_CLEAR_MAX_AGE_MS;
+        (uint32_t)(now_ms - last_clear_ms) <= S5_DEMO_CLEAR_MAX_AGE_MS;
 }
 
-static void s5_demo_drive_fault_stop(const char *reason)
+static void
+s5_demo_drive_fault_stop (const char * reason)
 {
     UINT irq;
     /* A PID/encoder/watchdog failure must not be automatically rearmed. */
     s5_demo_lock_enter(&irq);
-    s5_demo_drive_fault = true;
+    s5_demo_drive_fault      = true;
     s5_demo_clear_permission = false;
     s5_demo_lock_leave(irq);
     b2_request_stop();
-    tm_printf((UB*)"[S5-B2-FAULT] %s; motor drive locked until reset\n", reason);
+    tm_printf(
+        (UB *)"[S5-B2-FAULT] %s; motor drive locked until reset\n", reason);
 }
 
-static void s5_demo_drive_task(INT stacd, void *exinf)
+static void
+s5_demo_drive_task (INT stacd, void * exinf)
 {
-    bool issued = false;
+    bool     issued             = false;
     uint32_t last_status_log_ms = 0u;
     (void)stacd;
     (void)exinf;
     for (;;)
     {
-        SYSTIM time;
+        SYSTIM                   time;
         motion_status_snapshot_t status;
-        uint32_t last_clear;
-        bool permitted;
-        ER er;
-        motion_command_t command = {0};
+        uint32_t                 last_clear;
+        bool                     permitted;
+        ER                       er;
+        motion_command_t         command = {0};
         if (s5_demo_fault_latched())
         {
             tk_dly_tsk(S5_DEMO_DRIVE_REFRESH_MS);
@@ -277,17 +311,18 @@ static void s5_demo_drive_task(INT stacd, void *exinf)
             continue;
         }
         s5_demo_state_read(&last_clear, &permitted);
-        if (!s5_demo_can_refresh(time.lo, last_clear, permitted,
-                                 b2_safety_motion_allowed()))
+        if (!s5_demo_can_refresh(
+                time.lo, last_clear, permitted, b2_safety_motion_allowed()))
         {
-            if (permitted && (uint32_t)(time.lo - last_clear) >
-                             S5_DEMO_CLEAR_MAX_AGE_MS)
+            if (permitted &&
+                (uint32_t)(time.lo - last_clear) > S5_DEMO_CLEAR_MAX_AGE_MS)
             {
                 /* A delayed ultrasonic task is a recoverable clearance
                  * timeout, NOT a permanent B2/encoder failure. Revoke
                  * permission and require stationary revalidation. */
                 s5_demo_clear_stop();
-                tm_printf((UB*)"[S5-B2] front clearance expired; STOP and recheck (not permanently locked)\n");
+                tm_printf((UB *)"[S5-B2] front clearance expired; STOP and "
+                                "recheck (not permanently locked)\n");
             }
             issued = false;
             tk_dly_tsk(S5_DEMO_DRIVE_REFRESH_MS);
@@ -303,22 +338,28 @@ static void s5_demo_drive_task(INT stacd, void *exinf)
         if (status.status == MOTION_STATUS_FAULT ||
             status.status == MOTION_STATUS_TIMEOUT)
         {
-            tm_printf((UB*)"[S5-B2-STATUS] status=%d fault=%d L_cps=%d R_cps=%d\n",
-                      (int)status.status, (int)status.fault,
-                      (int)status.left_speed_cps, (int)status.right_speed_cps);
+            tm_printf(
+                (UB *)"[S5-B2-STATUS] status=%d fault=%d L_cps=%d R_cps=%d\n",
+                (int)status.status,
+                (int)status.fault,
+                (int)status.left_speed_cps,
+                (int)status.right_speed_cps);
             s5_demo_drive_fault_stop("B2 controller/encoder fault or timeout");
             continue;
         }
-        command.type = MOTION_CMD_DRIVE;
-        command.direction = MOTION_DIR_FORWARD;
-        command.target_speed_cps = S5_DEMO_SPEED_CPS;
+        command.type              = MOTION_CMD_DRIVE;
+        command.direction         = MOTION_DIR_FORWARD;
+        command.target_speed_cps  = S5_DEMO_SPEED_CPS;
         command.safety_generation = b2_safety_stop_generation();
-        er = motion_send_command(&command);
+        er                        = motion_send_command(&command);
         if (er == E_OK)
         {
             if (!issued)
-                tm_printf((UB*)"[S5-B2] guarded DRIVE command accepted speed=%d cps; B2 owns PWM\n",
-                          (int)S5_DEMO_SPEED_CPS);
+            {
+                tm_printf((UB *)"[S5-B2] guarded DRIVE command accepted "
+                                "speed=%d cps; B2 owns PWM\n",
+                    (int)S5_DEMO_SPEED_CPS);
+            }
             issued = true;
             /* An accepted command only means queued, not that the motors
              * physically turned. Periodic feedback distinguishes sensor
@@ -326,9 +367,12 @@ static void s5_demo_drive_task(INT stacd, void *exinf)
             if ((uint32_t)(time.lo - last_status_log_ms) >= 1000u)
             {
                 last_status_log_ms = time.lo;
-                tm_printf((UB*)"[S5-B2-STATUS] status=%d fault=%d L_cps=%d R_cps=%d\n",
-                          (int)status.status, (int)status.fault,
-                          (int)status.left_speed_cps, (int)status.right_speed_cps);
+                tm_printf((UB *)"[S5-B2-STATUS] status=%d fault=%d L_cps=%d "
+                                "R_cps=%d\n",
+                    (int)status.status,
+                    (int)status.fault,
+                    (int)status.left_speed_cps,
+                    (int)status.right_speed_cps);
             }
         }
         else if (er != E_OBJ && er != E_TMOUT)
@@ -341,32 +385,46 @@ static void s5_demo_drive_task(INT stacd, void *exinf)
     }
 }
 #else
-static void s5_demo_clear_stop(void) { b2_request_stop(); }
-static void s5_demo_clear_publish(void) { }
+static void
+s5_demo_clear_stop (void)
+{
+    b2_request_stop();
+}
+
+static void
+s5_demo_clear_publish (void)
+{
+}
 #endif
 
 #if !S5_MOTION_BRIDGE_ENABLED
 /* Real sensor + servo. In optional forward-only demo mode, a B5 helper
  * submits guarded straight DRIVE commands to B2's public command API.
  * This does not implement autonomous bypass or B3 line recovery. */
-static void stationary_profile_mode(void)
+static void
+stationary_profile_mode (void)
 {
-    unsigned samples = 0u, close_hits = 0u, clear_hits = 0u;
-    unsigned moving_samples = 0u;
-    bool sensor_unavailable = false;
-    bool obstacle_latched = false;
-    bool scanned_this_obstacle = false;
-    bool driving = false;
+    unsigned           samples = 0u, close_hits = 0u, clear_hits = 0u;
+    unsigned           moving_samples        = 0u;
+    bool               sensor_unavailable    = false;
+    bool               obstacle_latched      = false;
+    bool               scanned_this_obstacle = false;
+    bool               driving               = false;
     S5GuardStopHistory guard_history;
-    bool startup_scan_pending = (S5_FORCE_STARTUP_SCAN != 0);
-    tm_printf((UB*)"[S5-FW] B5-GUARDED-DRIVE-2026-11-04-V3; bounded trigger + timed sensor recovery + echo safety\n");
-    tm_printf((UB*)"[S5] REAL ROBOT: clear -> forward; close -> STOP -> coarse/fine/profile\n");
-    tm_printf((UB*)"[S5] SENSOR=REAL SERVO=REAL MOTORS=%s LINE=UNAVAILABLE\n",
-              S5_DEMO_SENSOR_ONLY ? "DEMO STOP-ONLY" :
-              (ROBOT_ENABLE_DRIVE ? "GUARDED FORWARD/STOP" : "DISABLED"));
-    tm_printf((UB*)"[S5] STOP below %d cm; RESUME after %d clear samples >= %d cm\n",
-              (int)ROBOT_STOP_CM, (int)ROBOT_CLEAR_CONFIRM,
-              (int)ROBOT_RELEASE_CM);
+    bool               startup_scan_pending = (S5_FORCE_STARTUP_SCAN != 0);
+    tm_printf((UB *)"[S5-FW] B5-GUARDED-DRIVE-2026-11-04-V3; bounded trigger + "
+                    "timed sensor recovery + echo safety\n");
+    tm_printf((UB *)"[S5] REAL ROBOT: clear -> forward; close -> STOP -> "
+                    "coarse/fine/profile\n");
+    tm_printf((UB *)"[S5] SENSOR=REAL SERVO=REAL MOTORS=%s LINE=UNAVAILABLE\n",
+        S5_DEMO_SENSOR_ONLY
+            ? "DEMO STOP-ONLY"
+            : (ROBOT_ENABLE_DRIVE ? "GUARDED FORWARD/STOP" : "DISABLED"));
+    tm_printf(
+        (UB *)"[S5] STOP below %d cm; RESUME after %d clear samples >= %d cm\n",
+        (int)ROBOT_STOP_CM,
+        (int)ROBOT_CLEAR_CONFIRM,
+        (int)ROBOT_RELEASE_CM);
 #if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
     s5_demo_state_init();
 #endif
@@ -374,17 +432,22 @@ static void stationary_profile_mode(void)
     s5_guard_stop_history_init(&guard_history);
 #if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
     {
-        ID demo_tid = app_start_task((FP)s5_demo_drive_task,
-                                     S5_PRI_MAIN, TP_PRC2,
-                                     "s5_demo_drive_task");
+        ID demo_tid = app_start_task(
+            (FP)s5_demo_drive_task, S5_PRI_MAIN, TP_PRC2, "s5_demo_drive_task");
         if (demo_tid < E_OK)
         {
-            tm_printf((UB*)"[S5-B2-FAULT] cannot start guarded DRIVE task; STOP locked\n");
-            for (;;) { s5_demo_clear_stop(); tk_dly_tsk(1000); }
+            tm_printf((UB *)"[S5-B2-FAULT] cannot start guarded DRIVE task; "
+                            "STOP locked\n");
+            for (;;)
+            {
+                s5_demo_clear_stop();
+                tk_dly_tsk(1000);
+            }
         }
     }
 #endif
-    tm_printf((UB*)"[S5] GPIO TRIG=16 ECHO=17 SERVO=12; confirm 3.3V-safe ECHO\n");
+    tm_printf(
+        (UB *)"[S5] GPIO TRIG=16 ECHO=17 SERVO=12; confirm 3.3V-safe ECHO\n");
     /* On USB cold boots the servo and sensor may not yet be stable.
      * Keep both motors stopped while the supply settles, then throw
      * away a few first echoes. None of these readings authorizes drive. */
@@ -393,30 +456,35 @@ static void stationary_profile_mode(void)
     tk_dly_tsk(ROBOT_SENSOR_STARTUP_SETTLE_MS);
     {
         unsigned warmup;
-        for (warmup = 0u; warmup < ROBOT_SENSOR_WARMUP_PINGS; ++warmup) {
+        for (warmup = 0u; warmup < ROBOT_SENSOR_WARMUP_PINGS; ++warmup)
+        {
             float discard = 0.0f;
             (void)s5_ultrasonic_read_cm(&discard);
             tk_dly_tsk(S5_ECHO_GAP_MS);
         }
     }
-    tm_printf((UB*)"[S5] ready; waiting for confirmed clear path\n");
+    tm_printf((UB *)"[S5] ready; waiting for confirmed clear path\n");
 #if ROBOT_NO_TARGET_FORWARD
-    tm_printf((UB*)"[S5-POLICY] no target -> OPEN_SPACE_ASSUMED; not a measured distance; disconnected sensor may also allow drive\n");
+    tm_printf(
+        (UB *)"[S5-POLICY] no target -> OPEN_SPACE_ASSUMED; not a measured "
+              "distance; disconnected sensor may also allow drive\n");
 #endif
-    for (;;) {
+    for (;;)
+    {
         float cm = 0.0f;
-        bool valid;
-        bool scan_needed = false;
+        bool  valid;
+        bool  scan_needed = false;
         /* While moving, perform ONE bounded forward ping per tick, not a
          * blocking 5-ping consensus. A successful clear ping refreshes
          * B2's 1200-ms safety heartbeat. This prevents false watchdog
          * expiries caused by the old slow 5/10-ping sampling loop.
          * Any invalid, suppressed, close or uncertain ping still causes
          * an immediate STOP; it is never treated as a clear path. */
-        if (driving) {
+        if (driving)
+        {
 #if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
             uint32_t last_clear;
-            bool permitted;
+            bool     permitted;
             s5_demo_state_read(&last_clear, &permitted);
             (void)last_clear;
             /* The independent B2 refresh task may have revoked clearance
@@ -425,7 +493,7 @@ static void stationary_profile_mode(void)
             if (!permitted)
             {
                 s5_demo_clear_stop();
-                driving = false;
+                driving    = false;
                 clear_hits = 0u;
                 tk_dly_tsk(S5_FRONT_POLL_MS);
                 continue;
@@ -441,35 +509,44 @@ static void stationary_profile_mode(void)
             S5EchoReading guard = s5_ultrasonic_read_front();
 #if ROBOT_VERBOSE_SENSOR_LOG
             if ((moving_samples++ % 5u) == 0u)
-                tm_printf((UB*)"[S5-FRONT] status=%s pulse_us=%d cm_x100=%d state=FORWARD\n",
-                          s5_echo_status_name(guard.status),
-                          (int)guard.pulse_us, (int)(guard.cm * 100.0f));
+            {
+                tm_printf((UB *)"[S5-FRONT] status=%s pulse_us=%d cm_x100=%d "
+                                "state=FORWARD\n",
+                    s5_echo_status_name(guard.status),
+                    (int)guard.pulse_us,
+                    (int)(guard.cm * 100.0f));
+            }
 #else
             (void)moving_samples;
 #endif
             bool guard_valid = (guard.status == S5_ECHO_OK ||
-                                guard.status == S5_ECHO_OPEN_SPACE) &&
-                               !s5_echo_suppressed_cm(guard.cm) &&
-                               (s5_wire_cm(guard.cm,
-                                           S5_WIRE_DISTANCE_MAX_CM) !=
-                                COMM_CM_INVALID);
+                                   guard.status == S5_ECHO_OPEN_SPACE) &&
+                !s5_echo_suppressed_cm(guard.cm) &&
+                (s5_wire_cm(guard.cm, S5_WIRE_DISTANCE_MAX_CM) !=
+                    COMM_CM_INVALID);
             /* Restart needs RELEASE; while already moving, valid
              * distances above STOP keep the current drive interval. */
-            if (guard_valid && (guard.cm > ROBOT_STOP_CM)) {
-                comm_set_obstacle_dist(s5_wire_cm(guard.cm,
-                                                 S5_WIRE_DISTANCE_MAX_CM));
+            if (guard_valid && (guard.cm > ROBOT_STOP_CM))
+            {
+                comm_set_obstacle_dist(
+                    s5_wire_cm(guard.cm, S5_WIRE_DISTANCE_MAX_CM));
                 fault_clear(FAULT_NO_ECHO);
                 sensor_unavailable = false;
-                close_hits = 0u;
-                clear_hits = ROBOT_CLEAR_CONFIRM;
+                close_hits         = 0u;
+                clear_hits         = ROBOT_CLEAR_CONFIRM;
                 /* B2 grants clearance only after its STOP generation
                  * has been acknowledged. Refresh on each valid ping. */
                 b2_request_forward();
-                if (b2_safety_motion_allowed()) s5_demo_clear_publish();
-                if (!b2_safety_motion_allowed()) {
+                if (b2_safety_motion_allowed())
+                {
+                    s5_demo_clear_publish();
+                }
+                if (!b2_safety_motion_allowed())
+                {
                     s5_demo_clear_stop();
                     driving = false;
-                    tm_printf((UB*)"[S5-STOP] B2 motion clearance revoked; waiting for confirmed clear path\n");
+                    tm_printf((UB *)"[S5-STOP] B2 motion clearance revoked; "
+                                    "waiting for confirmed clear path\n");
                 }
                 tk_dly_tsk(S5_FRONT_POLL_MS);
                 continue;
@@ -477,36 +554,45 @@ static void stationary_profile_mode(void)
             /* A missing or close echo cannot prove the path is clear.
              * Do not continue moving based on an old 310-cm reading. */
             s5_demo_clear_stop();
-            driving = false;
+            driving    = false;
             clear_hits = 0u;
             close_hits = (guard_valid && guard.cm <= ROBOT_STOP_CM) ? 1u : 0u;
-            if (guard_valid) {
-                comm_set_obstacle_dist(s5_wire_cm(guard.cm,
-                                                 S5_WIRE_DISTANCE_MAX_CM));
+            if (guard_valid)
+            {
+                comm_set_obstacle_dist(
+                    s5_wire_cm(guard.cm, S5_WIRE_DISTANCE_MAX_CM));
                 fault_clear(FAULT_NO_ECHO);
                 sensor_unavailable = false;
-            } else {
+            }
+            else
+            {
                 comm_set_obstacle_dist(COMM_CM_INVALID);
                 fault_raise(FAULT_NO_ECHO);
-                if (!sensor_unavailable) {
-                    (void)comm_report_error(ERR_S5_NO_ECHO,
-                                            S5_FRONT_ANGLE_DETAIL);
+                if (!sensor_unavailable)
+                {
+                    (void)comm_report_error(
+                        ERR_S5_NO_ECHO, S5_FRONT_ANGLE_DETAIL);
                     sensor_unavailable = true;
                 }
             }
             {
                 SYSTIM stopped_at;
                 tk_get_tim(&stopped_at);
-                if (s5_guard_stop_history_record(&guard_history,
-                                                 stopped_at.lo)) {
-                    tm_printf((UB*)"[S5-HOLD] repeated unsafe/invalid readings: STOP for at least %d ms; require %d stable clear batches to re-arm\n",
-                              (int)S5_GUARD_COOLDOWN_MS,
-                              (int)S5_GUARD_REARM_CLEAR_BATCHES);
+                if (s5_guard_stop_history_record(&guard_history, stopped_at.lo))
+                {
+                    tm_printf(
+                        (UB *)"[S5-HOLD] repeated unsafe/invalid readings: "
+                              "STOP for at least %d ms; require %d stable "
+                              "clear batches to re-arm\n",
+                        (int)S5_GUARD_COOLDOWN_MS,
+                        (int)S5_GUARD_REARM_CLEAR_BATCHES);
                 }
             }
-            tm_printf((UB*)"[S5-GUARD] STOP status=%s pulse_us=%d cm_x100=%d; rechecking while stationary\n",
-                      s5_echo_status_name(guard.status),
-                      (int)guard.pulse_us, (int)(guard.cm * 100.0f));
+            tm_printf((UB *)"[S5-GUARD] STOP status=%s pulse_us=%d cm_x100=%d; "
+                            "rechecking while stationary\n",
+                s5_echo_status_name(guard.status),
+                (int)guard.pulse_us,
+                (int)(guard.cm * 100.0f));
             tk_dly_tsk(S5_ECHO_GAP_MS);
             continue;
         }
@@ -516,22 +602,30 @@ static void stationary_profile_mode(void)
         /* Defensive guard: a malformed successful measurement must
          * never clear NO_ECHO or release the motors. */
         valid = valid &&
-                (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) != COMM_CM_INVALID);
+            (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) != COMM_CM_INVALID);
         ++samples;
         if (!driving)
-            tm_printf((UB*)"[S5-CHECK] stable=%d cm_x100=%d clear=%d/%d close=%d/%d locked=%d\n",
-                      (int)valid, (int)(cm * 100.0f),
-                      (int)clear_hits, (int)ROBOT_CLEAR_CONFIRM,
-                      (int)close_hits, (int)S5_CONFIRM_HITS,
-                      (int)guard_history.locked);
+        {
+            tm_printf((UB *)"[S5-CHECK] stable=%d cm_x100=%d clear=%d/%d "
+                            "close=%d/%d locked=%d\n",
+                (int)valid,
+                (int)(cm * 100.0f),
+                (int)clear_hits,
+                (int)ROBOT_CLEAR_CONFIRM,
+                (int)close_hits,
+                (int)S5_CONFIRM_HITS,
+                (int)guard_history.locked);
+        }
         /* B1 telemetry (non-blocking): front distance in cm, and the
          * shared no-echo fault bit */
-        comm_set_obstacle_dist(valid ?
-                               s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
-                               COMM_CM_INVALID);
-        if (valid) {
+        comm_set_obstacle_dist(
+            valid ? s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) : COMM_CM_INVALID);
+        if (valid)
+        {
             fault_clear(FAULT_NO_ECHO);
-        } else {
+        }
+        else
+        {
             fault_raise(FAULT_NO_ECHO);
         }
         /* Recovery is never inferred from a timeout or a single echo.
@@ -541,60 +635,91 @@ static void stationary_profile_mode(void)
         {
             SYSTIM recovered_at;
             if (tk_get_tim(&recovered_at) == E_OK &&
-                s5_guard_stop_history_clear(&guard_history,
-                                             recovered_at.lo))
+                s5_guard_stop_history_clear(&guard_history, recovered_at.lo))
             {
-                tm_printf((UB*)"[S5-REARM] echo recovered: cooldown and %d clear batches passed; forward can resume\n",
-                          (int)S5_GUARD_REARM_CLEAR_BATCHES);
+                tm_printf((UB *)"[S5-REARM] echo recovered: cooldown and %d "
+                                "clear batches passed; forward can resume\n",
+                    (int)S5_GUARD_REARM_CLEAR_BATCHES);
             }
         }
         else
         {
             s5_guard_stop_history_unclear(&guard_history);
         }
-        if (!valid) {
+        if (!valid)
+        {
             close_hits = 0u;
             clear_hits = 0u;
             s5_demo_clear_stop();
-            if (driving) tm_printf((UB*)"[S5-STOP] invalid ultrasonic echo: motors disabled\n");
+            if (driving)
+            {
+                tm_printf((UB *)"[S5-STOP] invalid ultrasonic echo: motors "
+                                "disabled\n");
+            }
             driving = false;
             if (!sensor_unavailable)
             {
                 /* Send the event only on the transition to no-echo;
                  * repeated failures still keep the shared fault raised. */
-                (void)comm_report_error(ERR_S5_NO_ECHO,
-                                        S5_FRONT_ANGLE_DETAIL);
-                tm_printf((UB*)"[S5-STOP] no reliable distance; motors stopped until clear path confirmed\n");
+                (void)comm_report_error(ERR_S5_NO_ECHO, S5_FRONT_ANGLE_DETAIL);
+                tm_printf((UB *)"[S5-STOP] no reliable distance; motors "
+                                "stopped until clear path confirmed\n");
                 sensor_unavailable = true;
             }
-        } else {
+        }
+        else
+        {
             sensor_unavailable = false;
-            if (cm <= ROBOT_STOP_CM) {
-                /* One close sample must stop the wheels. Three are needed to scan. */
+            if (cm <= ROBOT_STOP_CM)
+            {
+                /* One close sample must stop the wheels. Three are needed to
+                 * scan. */
                 s5_demo_clear_stop();
-                if (driving) {
-                    tm_printf((UB*)"[S5-STOP] object at %d cm (< %d cm); PWM=0 requested\n",
-                              (int)cm, (int)ROBOT_STOP_CM);
+                if (driving)
+                {
+                    tm_printf((UB *)"[S5-STOP] object at %d cm (< %d cm); "
+                                    "PWM=0 requested\n",
+                        (int)cm,
+                        (int)ROBOT_STOP_CM);
                 }
-                driving = false;
+                driving    = false;
                 clear_hits = 0u;
-                if (close_hits < S5_CONFIRM_HITS) ++close_hits;
-                if (close_hits >= S5_CONFIRM_HITS) {
+                if (close_hits < S5_CONFIRM_HITS)
+                {
+                    ++close_hits;
+                }
+                if (close_hits >= S5_CONFIRM_HITS)
+                {
                     obstacle_latched = true;
-                    if (!scanned_this_obstacle) scan_needed = true;
+                    if (!scanned_this_obstacle)
+                    {
+                        scan_needed = true;
+                    }
                 }
 #if ROBOT_VERBOSE_SENSOR_LOG
-                tm_printf((UB*)"[S5-DETECT] sample=%d cm_x100=%d CLOSE=%d/%d state=STOP\n",
-                          (int)samples, (int)(cm * 100.0f),
-                          (int)close_hits, (int)S5_CONFIRM_HITS);
+                tm_printf((UB *)"[S5-DETECT] sample=%d cm_x100=%d CLOSE=%d/%d "
+                                "state=STOP\n",
+                    (int)samples,
+                    (int)(cm * 100.0f),
+                    (int)close_hits,
+                    (int)S5_CONFIRM_HITS);
 #endif
-            } else if (cm >= ROBOT_RELEASE_CM) {
+            }
+            else if (cm >= ROBOT_RELEASE_CM)
+            {
                 close_hits = 0u;
-                if (clear_hits < ROBOT_CLEAR_CONFIRM) ++clear_hits;
-                if (clear_hits >= ROBOT_CLEAR_CONFIRM) {
+                if (clear_hits < ROBOT_CLEAR_CONFIRM)
+                {
+                    ++clear_hits;
+                }
+                if (clear_hits >= ROBOT_CLEAR_CONFIRM)
+                {
                     if (obstacle_latched)
-                        tm_printf((UB*)"[S5-RECOVER] path clear again; obstacle latch released\n");
-                    obstacle_latched = false;
+                    {
+                        tm_printf((UB *)"[S5-RECOVER] path clear again; "
+                                        "obstacle latch released\n");
+                    }
+                    obstacle_latched      = false;
                     scanned_this_obstacle = false;
 #if S5_DEMO_SENSOR_ONLY
                     /* Sensor-only demo: never release B2 STOP. */
@@ -605,111 +730,155 @@ static void stationary_profile_mode(void)
 #if S5_DEMO_B2_FORWARD_COMMANDS && !S5_DEMO_SENSOR_ONLY
                         || s5_demo_fault_latched()
 #endif
-                        ) {
+                    )
+                    {
                         /* A burst of bad echoes requires a timed hold and
                          * sustained stationary verification, not a reboot. */
                         s5_demo_clear_stop();
                         driving = false;
-                    } else {
+                    }
+                    else
+                    {
                         b2_request_forward();
-                        if (b2_safety_motion_allowed()) {
+                        if (b2_safety_motion_allowed())
+                        {
                             s5_demo_clear_publish();
-                            tm_printf((UB*)"[S5-DRIVE] confirmed clear=%d cm; B2 permission granted\n",
-                                      (int)cm);
+                            tm_printf((UB *)"[S5-DRIVE] confirmed clear=%d cm; "
+                                            "B2 permission granted\n",
+                                (int)cm);
                             driving = true;
-                        } else {
+                        }
+                        else
+                        {
                             s5_demo_clear_stop();
                             driving = false;
                         }
                     }
 #endif
-                } else {
+                }
+                else
+                {
                     s5_demo_clear_stop();
                     driving = false;
                 }
 #if ROBOT_VERBOSE_SENSOR_LOG
                 if (clear_hits <= ROBOT_CLEAR_CONFIRM || samples % 10u == 0u)
-                    tm_printf((UB*)"[S5-CLEAR] sample=%d cm_x100=%d clear=%d/%d state=%s\n",
-                              (int)samples, (int)(cm * 100.0f),
-                              (int)clear_hits, (int)ROBOT_CLEAR_CONFIRM,
-                              driving ? "FORWARD_REQUESTED" : "WAITING");
+                {
+                    tm_printf((UB *)"[S5-CLEAR] sample=%d cm_x100=%d "
+                                    "clear=%d/%d state=%s\n",
+                        (int)samples,
+                        (int)(cm * 100.0f),
+                        (int)clear_hits,
+                        (int)ROBOT_CLEAR_CONFIRM,
+                        driving ? "FORWARD_REQUESTED" : "WAITING");
+                }
 #endif
-            } else {
+            }
+            else
+            {
                 /* 35..45cm hysteresis band is not confirmed safe. */
                 close_hits = 0u;
                 clear_hits = 0u;
                 s5_demo_clear_stop();
-                if (driving) tm_printf((UB*)"[S5-STOP] distance in uncertain band; PWM=0 requested\n");
+                if (driving)
+                {
+                    tm_printf((UB *)"[S5-STOP] distance in uncertain band; "
+                                    "PWM=0 requested\n");
+                }
                 driving = false;
 #if ROBOT_VERBOSE_SENSOR_LOG
-                tm_printf((UB*)"[S5-DETECT] sample=%d cm_x100=%d AMBIGUOUS state=STOP\n",
-                          (int)samples, (int)(cm * 100.0f));
+                tm_printf((UB *)"[S5-DETECT] sample=%d cm_x100=%d AMBIGUOUS "
+                                "state=STOP\n",
+                    (int)samples,
+                    (int)(cm * 100.0f));
 #endif
             }
         }
-        if (obstacle_latched) {
+        if (obstacle_latched)
+        {
             s5_demo_clear_stop();
             driving = false;
         }
         /* Scan only with PWM stopped and STOP acknowledged, including in
          * fixed-duty forward/STOP mode. Never drive from a side reading. */
-        if (scan_needed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST) {
-            S5Scan coarse = {0}, fine = {0};
+        if (scan_needed || startup_scan_pending || S5_CONTINUOUS_SWEEP_TEST)
+        {
+            S5Scan    coarse = {0}, fine = {0};
             S5Profile profile = {0};
-            S5Side side = S5_SIDE_NONE;
-            SYSTIM started, ended;
-            unsigned elapsed;
+            S5Side    side    = S5_SIDE_NONE;
+            SYSTIM    started, ended;
+            unsigned  elapsed;
             startup_scan_pending = false;
-            close_hits = 0u;
+            close_hits           = 0u;
             s5_demo_clear_stop();
             driving = false;
             tk_dly_tsk(ROBOT_STOP_SETTLE_MS);
-            if (!b2_motor_is_stopped()) {
+            if (!b2_motor_is_stopped())
+            {
                 (void)comm_report_error(ERR_S5_STOP_ACK, 0u);
-                tm_printf((UB*)"[S5-FAULT] motor PWM stop not acknowledged; scan aborted\n");
+                tm_printf((UB *)"[S5-FAULT] motor PWM stop not acknowledged; "
+                                "scan aborted\n");
                 tk_dly_tsk(S5_FRONT_POLL_MS);
                 continue;
             }
             scanned_this_obstacle = true;
-            clear_hits = 0u;
+            clear_hits            = 0u;
             tk_get_tim(&started);
-            tm_printf((UB*)"[S5-STOP] confirmed close obstacle; motor PWM=0 acknowledged\n");
-            tm_printf((UB*)"[S5-COARSE] sweep=70,80,90,100,110 (real servo)\n");
+            tm_printf((UB *)"[S5-STOP] confirmed close obstacle; motor PWM=0 "
+                            "acknowledged\n");
+            tm_printf(
+                (UB *)"[S5-COARSE] sweep=70,80,90,100,110 (real servo)\n");
             s5_coarse_scan(&coarse);
 #if ROBOT_VERBOSE_SENSOR_LOG
             print_scan("COARSE", &coarse);
 #endif
             side = s5_choose_side(&coarse);
-            if (coarse.nearest_index < 0) {
+            if (coarse.nearest_index < 0)
+            {
                 /* No profile can be inferred; still send an explicit
                  * invalid STOP event instead of silently omitting it. */
-                (void)comm_report_error(ERR_S5_NO_ECHO,
-                                        S5_FRONT_ANGLE_DETAIL);
-                tm_printf((UB*)"[S5-FAULT] no valid coarse readings; cannot plan bypass\n");
-            } else {
+                (void)comm_report_error(ERR_S5_NO_ECHO, S5_FRONT_ANGLE_DETAIL);
+                tm_printf((UB *)"[S5-FAULT] no valid coarse readings; cannot "
+                                "plan bypass\n");
+            }
+            else
+            {
                 uint16_t center = coarse.points[coarse.nearest_index].angle_deg;
-                tm_printf((UB*)"[S5-FINE] center_deg=%d sweep=+/-10 deg in 5 deg steps (safe mount)\n", (int)center);
+                tm_printf((UB *)"[S5-FINE] center_deg=%d sweep=+/-10 deg in 5 "
+                                "deg steps (safe mount)\n",
+                    (int)center);
                 s5_fine_scan(&fine, center);
 #if ROBOT_VERBOSE_SENSOR_LOG
                 print_scan("FINE", &fine);
 #endif
                 profile = s5_profile_from_scans(&coarse, &fine, side);
-                if (profile.valid) {
+                if (profile.valid)
+                {
                     side = s5_plan_bypass(&profile, &coarse);
-                    tm_printf((UB*)"[S5-SIZE] class=%d (1=small 2=large 3=oversized) width_cm_x100=%d\n",
-                              (int)profile.size, (int)(profile.estimated_width_cm * 100.0f));
-                } else {
+                    tm_printf((UB *)"[S5-SIZE] class=%d (1=small 2=large "
+                                    "3=oversized) width_cm_x100=%d\n",
+                        (int)profile.size,
+                        (int)(profile.estimated_width_cm * 100.0f));
+                }
+                else
+                {
                     side = S5_SIDE_NONE;
-                    tm_printf((UB*)"[S5-FAULT] width not bracketed by valid clear rays; no safe plan\n");
+                    tm_printf((UB *)"[S5-FAULT] width not bracketed by valid "
+                                    "clear rays; no safe plan\n");
                 }
                 print_profile(&profile);
                 /* One scan event is emitted below by s5_report_profile().
                  * That helper enforces B1's field ranges and STOP policy. */
-                tm_printf((UB*)"[S5-PLAN] direction=%s width_valid=%d action=%s\n",
-                          side == S5_SIDE_LEFT ? "LEFT" : side == S5_SIDE_RIGHT ? "RIGHT" : "NONE",
-                          (int)profile.valid,
-                          side == S5_SIDE_NONE ? "STOP/REASSESS" : "BYPASS_REQUEST_ONLY");
-                tm_printf((UB*)"[S5-RECOVER] physical bypass NOT enabled: no calibrated encoder/IR bridge\n");
+                tm_printf(
+                    (UB *)"[S5-PLAN] direction=%s width_valid=%d action=%s\n",
+                    side == S5_SIDE_LEFT        ? "LEFT"
+                        : side == S5_SIDE_RIGHT ? "RIGHT"
+                                                : "NONE",
+                    (int)profile.valid,
+                    side == S5_SIDE_NONE ? "STOP/REASSESS"
+                                         : "BYPASS_REQUEST_ONLY");
+                tm_printf((UB *)"[S5-RECOVER] physical bypass NOT enabled: no "
+                                "calibrated encoder/IR bridge\n");
             }
             if (!profile.valid || (side == S5_SIDE_NONE))
             {
@@ -720,8 +889,11 @@ static void stationary_profile_mode(void)
             s5_report_profile(&profile, side);
             tk_get_tim(&ended);
             elapsed = (unsigned)(ended.lo - started.lo);
-            tm_printf((UB*)"[S5-METRIC] scan_profile_ms=%d (physical bypass not timed)\n", (int)elapsed);
-            tm_printf((UB*)"[S5] scan complete; no repeat until 3 clear readings; motors remain stopped\n");
+            tm_printf((UB *)"[S5-METRIC] scan_profile_ms=%d (physical bypass "
+                            "not timed)\n",
+                (int)elapsed);
+            tm_printf((UB *)"[S5] scan complete; no repeat until 3 clear "
+                            "readings; motors remain stopped\n");
         }
         tk_dly_tsk(S5_FRONT_POLL_MS);
     }
@@ -730,72 +902,97 @@ static void stationary_profile_mode(void)
 #if S5_MOTION_BRIDGE_ENABLED
 /* Actual controller: synchronous scans are converted into ready events on
  * the next tick; motion/line events must come from real team bridge. */
-static bool begin_viewpoint(int degrees)
+static bool
+begin_viewpoint (int degrees)
 {
     S5EchoReading front = s5_ultrasonic_read_front();
     return (front.status == S5_ECHO_OK || front.status == S5_ECHO_OPEN_SPACE) &&
         front.cm > ROBOT_BYPASS_FRONT_TURN_CM && front.cm <= S5_MAX_RANGE_CM &&
         s5_navigation_probe_begin(degrees);
 }
-static void live_controller_mode(void)
+
+static void
+live_controller_mode (void)
 {
-    unsigned startup_hits = 0u;
-    uint32_t last_startup_log_ms = 0u;
+    unsigned     startup_hits        = 0u;
+    uint32_t     last_startup_log_ms = 0u;
     S5Controller c;
-    S5Scan coarse = {0}, fine = {0};
-    S5ScanPoint width_points[S5_WIDTH_SCAN_COUNT];
-    S5ScanPoint opposite_width_points[S5_WIDTH_SCAN_COUNT];
-    bool coarse_ready = false, fine_ready = false;
-    bool stop_requested = false;
-    bool sensor_unavailable = false;
-    unsigned front_failures = 0u;
-    uint32_t previous_poll_ms = 0u;
-    uint32_t last_log_ms = 0u;
-    bool look_pending = false;
-    bool look_attempted = false;
-    unsigned look_clear_hits = 0u;
-    float look_obstacle_cm = 0.0f;
-    S5Side look_first_side = S5_SIDE_LEFT;
-    enum { LOOK_BYPASS, LOOK_OPPOSITE, LOOK_HOME } look_phase = LOOK_BYPASS;
-    bool opposite_ready = false;
+    S5Scan       coarse = {0}, fine = {0};
+    S5ScanPoint  width_points[S5_WIDTH_SCAN_COUNT];
+    S5ScanPoint  opposite_width_points[S5_WIDTH_SCAN_COUNT];
+    bool         coarse_ready = false, fine_ready = false;
+    bool         stop_requested     = false;
+    bool         sensor_unavailable = false;
+    unsigned     front_failures     = 0u;
+    uint32_t     previous_poll_ms   = 0u;
+    uint32_t     last_log_ms        = 0u;
+    bool         look_pending       = false;
+    bool         look_attempted     = false;
+    unsigned     look_clear_hits    = 0u;
+    float        look_obstacle_cm   = 0.0f;
+    S5Side       look_first_side    = S5_SIDE_LEFT;
+
+    enum
+    {
+        LOOK_BYPASS,
+        LOOK_OPPOSITE,
+        LOOK_HOME
+    } look_phase = LOOK_BYPASS;
+
+    bool opposite_ready  = false;
     bool width_view_done = false;
-    if (!s5_bridge_ready()) emergency_halt("Buddy 2/3 motion bridge unavailable");
+    if (!s5_bridge_ready())
+    {
+        emergency_halt("Buddy 2/3 motion bridge unavailable");
+    }
     s5_controller_init(&c);
-    tm_printf((UB*)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
-    tm_printf((UB*)"[S5] B2 owns motors, B3 owns IR line, navigation arbitrates commands\n");
-    for (;;) {
-        S5Input in = {0};
-        S5Command cmd;
-        float cm = 0.0f;
-        SYSTIM cycle_start = {0}, cycle_end;
+    tm_printf((UB *)"[S5] LIVE CONTROLLER GP16=TRIG GP17=ECHO GP12=SERVO\n");
+    tm_printf((UB *)"[S5] B2 owns motors, B3 owns IR line, navigation "
+                    "arbitrates commands\n");
+    for (;;)
+    {
+        S5Input       in = {0};
+        S5Command     cmd;
+        float         cm          = 0.0f;
+        SYSTIM        cycle_start = {0}, cycle_end;
         S5EchoReading reading;
-        if (tk_get_tim(&cycle_start) != E_OK) emergency_halt("system clock unavailable");
-        if (previous_poll_ms && cycle_start.lo - previous_poll_ms > ROBOT_MOTOR_WATCHDOG_MS / 2u)
-            tm_printf((UB*)"[S5-POLL-GAP] ms=%d\n", (int)(cycle_start.lo - previous_poll_ms));
+        if (tk_get_tim(&cycle_start) != E_OK)
+        {
+            emergency_halt("system clock unavailable");
+        }
+        if (previous_poll_ms &&
+            cycle_start.lo - previous_poll_ms > ROBOT_MOTOR_WATCHDOG_MS / 2u)
+        {
+            tm_printf((UB *)"[S5-POLL-GAP] ms=%d\n",
+                (int)(cycle_start.lo - previous_poll_ms));
+        }
         previous_poll_ms = cycle_start.lo;
         /* Sensor always faces forward outside scans. Monitoring continues
          * during movement. Repeated invalid readings fail closed. */
         /* Apply the same configured no-target policy in every heading.
          * Stuck-high, malformed and incomplete pulses remain faults. */
-        reading = s5_ultrasonic_read_front();
-        cm = reading.cm;
+        reading        = s5_ultrasonic_read_front();
+        cm             = reading.cm;
         in.front_valid = reading.status == S5_ECHO_OK ||
-                         reading.status == S5_ECHO_OPEN_SPACE;
+            reading.status == S5_ECHO_OPEN_SPACE;
         in.front_valid = in.front_valid &&
-                         (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) !=
-                          COMM_CM_INVALID);
+            (s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) != COMM_CM_INVALID);
         in.front_cm = in.front_valid ? cm : 0.0f;
         s5_mission_front(in.front_valid, cm);
-        comm_set_obstacle_dist(reading.status == S5_ECHO_OPEN_SPACE ?
-                               COMM_FRONT_OPEN_SPACE_CM : in.front_valid ?
-                               s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM) :
-                               COMM_CM_INVALID);
-        if (cycle_start.lo - last_log_ms >= 1000u) {
+        comm_set_obstacle_dist(reading.status == S5_ECHO_OPEN_SPACE
+                ? COMM_FRONT_OPEN_SPACE_CM
+                : in.front_valid ? s5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM)
+                                 : COMM_CM_INVALID);
+        if (cycle_start.lo - last_log_ms >= 1000u)
+        {
             last_log_ms = cycle_start.lo;
-            tm_printf((UB*)"[S5-LIVE] state=%s echo=%s cm_x100=%d pulse_us=%d nav_error=%s\n",
-                      s5_state_name(c.state), s5_echo_status_name(reading.status),
-                      (int)(cm * 100.0f), (int)reading.pulse_us,
-                      s5_error_name(s5_navigation_error()));
+            tm_printf((UB *)"[S5-LIVE] state=%s echo=%s cm_x100=%d pulse_us=%d "
+                            "nav_error=%s\n",
+                s5_state_name(c.state),
+                s5_echo_status_name(reading.status),
+                (int)(cm * 100.0f),
+                (int)reading.pulse_us,
+                s5_error_name(s5_navigation_error()));
         }
         if (in.front_valid)
         {
@@ -807,20 +1004,29 @@ static void live_controller_mode(void)
         {
             bool hard_failure = reading.status == S5_ECHO_STUCK_HIGH ||
                 reading.status == S5_ECHO_NO_FALL ||
-                reading.status == S5_ECHO_OK || reading.status == S5_ECHO_OPEN_SPACE;
-            if (front_failures < S5_FRONT_INVALID_LIMIT) ++front_failures;
+                reading.status == S5_ECHO_OK ||
+                reading.status == S5_ECHO_OPEN_SPACE;
+            if (front_failures < S5_FRONT_INVALID_LIMIT)
+            {
+                ++front_failures;
+            }
             /* Match navigation's bounded glitch tolerance. A single short
              * noise pulse must not make the VC revoke otherwise fresh
              * clearance. Electrical failures and maneuver faults stop now. */
             if (hard_failure || c.state != S5_FOLLOW ||
-                front_failures >= S5_FRONT_INVALID_LIMIT) {
+                front_failures >= S5_FRONT_INVALID_LIMIT)
+            {
                 fault_raise(FAULT_NO_ECHO);
                 b2_request_stop();
             }
-            tm_printf((UB*)"[S5-FRONT-INVALID] echo=%s pulse_us=%d failures=%d hard=%d\n",
-                      s5_echo_status_name(reading.status), (int)reading.pulse_us,
-                      (int)front_failures, (int)hard_failure);
-            if (!sensor_unavailable && (hard_failure || front_failures >= S5_FRONT_INVALID_LIMIT))
+            tm_printf((UB *)"[S5-FRONT-INVALID] echo=%s pulse_us=%d "
+                            "failures=%d hard=%d\n",
+                s5_echo_status_name(reading.status),
+                (int)reading.pulse_us,
+                (int)front_failures,
+                (int)hard_failure);
+            if (!sensor_unavailable &&
+                (hard_failure || front_failures >= S5_FRONT_INVALID_LIMIT))
             {
                 (void)comm_report_error(ERR_S5_NO_ECHO, (UH)reading.status);
                 sensor_unavailable = true;
@@ -830,15 +1036,19 @@ static void live_controller_mode(void)
          * ultrasonic module has not produced usable startup echoes yet.
          * Keep polling while stopped; require consecutive valid samples.
          * Once armed, existing moving sensor-fault handling is unchanged. */
-        if (!s5_startup_ready(&startup_hits, in.front_valid)) {
+        if (!s5_startup_ready(&startup_hits, in.front_valid))
+        {
             s5_navigation_pause();
             s5_controller_init(&c);
             coarse_ready = fine_ready = stop_requested = false;
             s5_mission_publish(S5_MISSION_FOLLOW);
-            if (cycle_start.lo - last_startup_log_ms >= 1000u) {
+            if (cycle_start.lo - last_startup_log_ms >= 1000u)
+            {
                 last_startup_log_ms = cycle_start.lo;
-                tm_printf((UB*)"[S5-STARTUP-WAIT] echo=%s valid_hits=%d; motors stopped, retrying\n",
-                          s5_echo_status_name(reading.status), (int)startup_hits);
+                tm_printf((UB *)"[S5-STARTUP-WAIT] echo=%s valid_hits=%d; "
+                                "motors stopped, retrying\n",
+                    s5_echo_status_name(reading.status),
+                    (int)startup_hits);
             }
             tk_dly_tsk(S5_ECHO_GAP_MS);
             continue;
@@ -846,64 +1056,91 @@ static void live_controller_mode(void)
         /* STOP/PAUSE must revoke motion but keep sensing and telemetry
          * running. Previously the dashboard repeated the last distance
          * indefinitely after a mission stop, even after a sensor fault. */
-        if (!s5_mission_enabled()) {
+        if (!s5_mission_enabled())
+        {
             s5_navigation_pause();
             s5_controller_init(&c);
             coarse_ready = fine_ready = stop_requested = false;
-            look_pending = false;
-            look_phase = LOOK_BYPASS;
-            opposite_ready = false;
-            width_view_done = false;
-            look_attempted = false;
-            look_clear_hits = 0u;
-            s5_mission_publish(s5_bridge_ready() ? S5_MISSION_FOLLOW : S5_MISSION_FAULT);
+            look_pending                               = false;
+            look_phase                                 = LOOK_BYPASS;
+            opposite_ready                             = false;
+            width_view_done                            = false;
+            look_attempted                             = false;
+            look_clear_hits                            = 0u;
+            s5_mission_publish(
+                s5_bridge_ready() ? S5_MISSION_FOLLOW : S5_MISSION_FAULT);
             tk_dly_tsk(S5_ECHO_GAP_MS);
             continue;
         }
         s5_navigation_tick(in.front_valid, cm, c.state == S5_FOLLOW);
-        if (s5_navigation_error() != S5_ERR_NONE) {
+        if (s5_navigation_error() != S5_ERR_NONE)
+        {
             (void)comm_report_error(ERR_S5(s5_navigation_error()), 0u);
             emergency_halt(s5_error_name(s5_navigation_error()));
         }
         /* Use the encoder-confirmed viewpoint turn as the outward turn.
-         * Stay on that heading until live front readings clear forward travel. */
-        if (look_pending) {
-            if (!s5_navigation_probe_complete() || !s5_navigation_stopped()) {
+         * Stay on that heading until live front readings clear forward travel.
+         */
+        if (look_pending)
+        {
+            if (!s5_navigation_probe_complete() || !s5_navigation_stopped())
+            {
                 tk_dly_tsk(1);
                 continue;
             }
-            const int heading = look_first_side == S5_SIDE_LEFT ?
-                -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG;
-            if (look_phase == LOOK_OPPOSITE) {
+            const int heading = look_first_side == S5_SIDE_LEFT
+                ? -ROBOT_COURSE_BYPASS_TURN_DEG
+                : ROBOT_COURSE_BYPASS_TURN_DEG;
+            if (look_phase == LOOK_OPPOSITE)
+            {
                 s5_width_flank_scan(-heading, opposite_width_points);
-                if (!s5_mission_enabled()) continue;
+                if (!s5_mission_enabled())
+                {
+                    continue;
+                }
                 opposite_ready = true;
-                look_phase = LOOK_HOME;
+                look_phase     = LOOK_HOME;
                 if (!begin_viewpoint(heading))
+                {
                     emergency_halt("width viewpoint return rejected");
+                }
                 continue;
             }
-            if (look_phase == LOOK_HOME) {
+            if (look_phase == LOOK_HOME)
+            {
                 look_phase = LOOK_BYPASS;
                 if (!begin_viewpoint(heading))
+                {
                     emergency_halt("bypass viewpoint rejected");
+                }
                 continue;
             }
             if (!width_view_done && !c.profile.valid &&
-                c.last_coarse.points[0].angle_deg == ROBOT_WIDTH_SCAN_MIN_DEG) {
+                c.last_coarse.points[0].angle_deg == ROBOT_WIDTH_SCAN_MIN_DEG)
+            {
                 S5ScanPoint turned[S5_WIDTH_SCAN_COUNT];
                 s5_width_flank_scan(heading, turned);
-                if (!s5_mission_enabled()) continue;
+                if (!s5_mission_enabled())
+                {
+                    continue;
+                }
                 S5Profile measured = s5_estimate_width_from_views(width_points,
-                    opposite_ready ? opposite_width_points : NULL, turned, heading);
-                tm_printf((UB*)"[S5-WIDTH-RESULT] valid=%d envelope_cm_x100=%d face_cm_x100=%d left_deg=%d right_deg=%d\n",
-                    (int)measured.valid, (int)(measured.estimated_width_cm * 100.0f),
+                    opposite_ready ? opposite_width_points : NULL,
+                    turned,
+                    heading);
+                tm_printf(
+                    (UB *)"[S5-WIDTH-RESULT] valid=%d envelope_cm_x100=%d "
+                          "face_cm_x100=%d left_deg=%d right_deg=%d\n",
+                    (int)measured.valid,
+                    (int)(measured.estimated_width_cm * 100.0f),
                     (int)(measured.frontal_width_cm * 100.0f),
-                    (int)measured.left_boundary_deg, (int)measured.right_boundary_deg);
-                if (measured.valid) {
-                    measured.left_clearance_cm = c.profile.left_clearance_cm;
+                    (int)measured.left_boundary_deg,
+                    (int)measured.right_boundary_deg);
+                if (measured.valid)
+                {
+                    measured.left_clearance_cm  = c.profile.left_clearance_cm;
                     measured.right_clearance_cm = c.profile.right_clearance_cm;
-                    c.profile = measured;
+                    c.profile                   = measured;
                     print_profile(&c.profile);
                     s5_report_profile(&c.profile, S5_SIDE_NONE);
                 }
@@ -913,26 +1150,39 @@ static void live_controller_mode(void)
                 continue;
             }
             if (!in.front_valid ||
-                cm < ROBOT_COURSE_CLEAR_STEP_CM + ROBOT_BYPASS_MOVE_RELEASE_CM) {
+                cm < ROBOT_COURSE_CLEAR_STEP_CM + ROBOT_BYPASS_MOVE_RELEASE_CM)
+            {
                 look_clear_hits = 0u;
                 tk_dly_tsk(S5_ECHO_GAP_MS);
                 continue;
             }
-            if (look_clear_hits < ROBOT_CLEAR_CONFIRM) ++look_clear_hits;
-            if (look_clear_hits < ROBOT_CLEAR_CONFIRM) {
+            if (look_clear_hits < ROBOT_CLEAR_CONFIRM)
+            {
+                ++look_clear_hits;
+            }
+            if (look_clear_hits < ROBOT_CLEAR_CONFIRM)
+            {
                 tk_dly_tsk(S5_ECHO_GAP_MS);
                 continue;
             }
-            S5Profile candidate = s5_profile_from_probe(&c.profile, &c.last_coarse, NULL,
-                look_first_side, ROBOT_COURSE_BYPASS_TURN_DEG, look_obstacle_cm);
-            if (candidate.size == S5_SIZE_OVERSIZED || !s5_navigation_probe_bypass(&candidate))
-                emergency_halt("no bounded bypass route from confirmed heading");
-            c.profile = candidate;
-            c.side = look_first_side;
-            c.state = S5_AVOID;
-            c.error = S5_ERR_NONE;
+            S5Profile candidate = s5_profile_from_probe(&c.profile,
+                &c.last_coarse,
+                NULL,
+                look_first_side,
+                ROBOT_COURSE_BYPASS_TURN_DEG,
+                look_obstacle_cm);
+            if (candidate.size == S5_SIZE_OVERSIZED ||
+                !s5_navigation_probe_bypass(&candidate))
+            {
+                emergency_halt(
+                    "no bounded bypass route from confirmed heading");
+            }
+            c.profile        = candidate;
+            c.side           = look_first_side;
+            c.state          = S5_AVOID;
+            c.error          = S5_ERR_NONE;
             c.ticks_in_state = 0u;
-            look_pending = false;
+            look_pending     = false;
             s5_report_profile(&c.profile, c.side);
             s5_mission_publish(S5_MISSION_BUSY);
             continue;
@@ -940,169 +1190,247 @@ static void live_controller_mode(void)
         /* A close obstacle can stop the VC during line search or on a
          * ramp. Process it even before the tape has been acquired.
          * Navigation still checks fresh line data and bounds the rejoin. */
-        in.stopped = s5_navigation_stopped();
+        in.stopped         = s5_navigation_stopped();
         in.motion_complete = s5_bridge_motion_complete();
-        in.line_found = s5_bridge_line_found();
-        in.coarse_ready = coarse_ready;
-        in.fine_ready = fine_ready;
-        if (coarse_ready) {
+        in.line_found      = s5_bridge_line_found();
+        in.coarse_ready    = coarse_ready;
+        in.fine_ready      = fine_ready;
+        if (coarse_ready)
+        {
             in.coarse = coarse;
-            if (!ROBOT_OBSTACLE_TEST) in.width_points = width_points;
+            if (!ROBOT_OBSTACLE_TEST)
+            {
+                in.width_points = width_points;
+            }
         }
-        if (fine_ready) in.fine = fine;
+        if (fine_ready)
+        {
+            in.fine = fine;
+        }
         coarse_ready = fine_ready = false;
         if (c.state == S5_FINE && in.fine_ready)
-            tm_printf((UB*)"[S5-DECISION] front_cm_x100=%d left_cm_x100=%d right_cm_x100=%d opening_cm=%d min_turn_cm=%d\n",
-                      (int)(c.last_coarse.points[2].distance_cm * 100.0f),
-                      (int)(c.last_coarse.points[0].distance_cm * 100.0f),
-                      (int)(c.last_coarse.points[4].distance_cm * 100.0f),
-                      (int)ROBOT_BYPASS_SIDE_CLEAR_CM, (int)ROBOT_BYPASS_FRONT_TURN_CM);
+        {
+            tm_printf((UB *)"[S5-DECISION] front_cm_x100=%d left_cm_x100=%d "
+                            "right_cm_x100=%d opening_cm=%d min_turn_cm=%d\n",
+                (int)(c.last_coarse.points[2].distance_cm * 100.0f),
+                (int)(c.last_coarse.points[0].distance_cm * 100.0f),
+                (int)(c.last_coarse.points[4].distance_cm * 100.0f),
+                (int)ROBOT_BYPASS_SIDE_CLEAR_CM,
+                (int)ROBOT_BYPASS_FRONT_TURN_CM);
+        }
         cmd = s5_controller_step(&c, &in);
         /* Publish the scan outcome while stopped, clearing any previous
          * width when this sweep could not bracket the frontal obstacle. */
         if (in.width_points)
+        {
             s5_report_profile(&c.profile, S5_SIDE_NONE);
-        if (in.fine_ready) {
-            unsigned coarse_valid = 0u, fine_valid = 0u;
-            for (int i = 0; i < S5_SCAN_COUNT; ++i) {
-                if (c.last_coarse.points[i].valid) coarse_valid |= 1u << i;
-                if (in.fine.points[i].valid) fine_valid |= 1u << i;
-            }
-            tm_printf((UB*)"[S5-SCAN-RESULT] state=%s command=%s error=%s coarse_mask=%u fine_mask=%u front_x100=%d width_x100=%d side=%d\n",
-                      s5_state_name(c.state), s5_command_name(cmd), s5_error_name(c.error),
-                      coarse_valid, fine_valid,
-                      (int)(c.last_coarse.points[2].distance_cm * 100.0f),
-                      (int)(c.profile.estimated_width_cm * 100.0f), (int)c.side);
         }
-        if (!ROBOT_OBSTACLE_TEST && c.state == S5_WAIT_ROUTE && !look_attempted &&
-            c.error == S5_ERR_NO_CLEAR_ROUTE && in.front_valid &&
-            cm > ROBOT_BYPASS_FRONT_TURN_CM && s5_navigation_stopped()) {
+        if (in.fine_ready)
+        {
+            unsigned coarse_valid = 0u, fine_valid = 0u;
+            for (int i = 0; i < S5_SCAN_COUNT; ++i)
+            {
+                if (c.last_coarse.points[i].valid)
+                {
+                    coarse_valid |= 1u << i;
+                }
+                if (in.fine.points[i].valid)
+                {
+                    fine_valid |= 1u << i;
+                }
+            }
+            tm_printf((UB *)"[S5-SCAN-RESULT] state=%s command=%s error=%s "
+                            "coarse_mask=%u fine_mask=%u front_x100=%d "
+                            "width_x100=%d side=%d\n",
+                s5_state_name(c.state),
+                s5_command_name(cmd),
+                s5_error_name(c.error),
+                coarse_valid,
+                fine_valid,
+                (int)(c.last_coarse.points[2].distance_cm * 100.0f),
+                (int)(c.profile.estimated_width_cm * 100.0f),
+                (int)c.side);
+        }
+        if (!ROBOT_OBSTACLE_TEST && c.state == S5_WAIT_ROUTE &&
+            !look_attempted && c.error == S5_ERR_NO_CLEAR_ROUTE &&
+            in.front_valid && cm > ROBOT_BYPASS_FRONT_TURN_CM &&
+            s5_navigation_stopped())
+        {
             look_first_side = s5_probe_side(&c.last_coarse);
-            if (look_first_side != S5_SIDE_NONE) {
-                look_attempted = true;
-                look_clear_hits = 0u;
+            if (look_first_side != S5_SIDE_NONE)
+            {
+                look_attempted   = true;
+                look_clear_hits  = 0u;
                 look_obstacle_cm = cm;
-                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT ?
-                    -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG))
+                if (!begin_viewpoint(look_first_side == S5_SIDE_LEFT
+                            ? -ROBOT_COURSE_BYPASS_TURN_DEG
+                            : ROBOT_COURSE_BYPASS_TURN_DEG))
+                {
                     emergency_halt("first viewpoint rejected");
+                }
                 look_pending = true;
                 s5_mission_publish(S5_MISSION_BUSY);
                 continue;
             }
             if (c.ticks_in_state <= 1u)
-                tm_printf((UB*)"[S5-TURN-WAIT] side rays blocked or too close to call; waiting for a fresh scan\n");
-        }
-        s5_mission_publish(c.state == S5_FOLLOW ? S5_MISSION_FOLLOW : S5_MISSION_BUSY);
-        if (cmd != S5_CMD_NONE) {
-            tm_printf((UB*)"[S5] state=%s command=%s error=%s\n",
-                      s5_state_name(c.state), s5_command_name(cmd),
-                      s5_error_name(c.error));
-        }
-        switch (cmd) {
-        case S5_CMD_NONE: break;
-        case S5_CMD_SCAN_COARSE:
-            if (!s5_navigation_stopped()) emergency_halt("scan requires encoder-confirmed STOP");
-            look_attempted = false;
-            look_phase = LOOK_BYPASS;
-            opposite_ready = false;
-            width_view_done = false;
-            if (ROBOT_OBSTACLE_TEST) {
-                s5_coarse_scan(&coarse);
-                print_scan("COARSE", &coarse);
-            } else {
-                s5_width_scan(&coarse, width_points);
-                for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i)
-                    tm_printf((UB*)"[S5-WIDTH] angle=%d valid=%d cm_x100=%d\n",
-                              (int)width_points[i].angle_deg, (int)width_points[i].valid,
-                              (int)(width_points[i].distance_cm * 100.0f));
-            }
-            coarse_ready = true;
-            break;
-        case S5_CMD_SCAN_FINE:
-            if (!s5_navigation_stopped()) emergency_halt("scan requires encoder-confirmed STOP");
-            s5_fine_scan(&fine, c.fine_center_deg);
-            print_scan("FINE", &fine);
-            fine_ready = true;
-            break;
-        case S5_CMD_HALT:
-            if ((c.error == S5_ERR_NO_CLEAR_ROUTE) ||
-                (c.error == S5_ERR_FINE_SCAN) ||
-                (c.error == S5_ERR_INSUFFICIENT_CLEARANCE))
             {
-                s5_report_profile(&c.profile, S5_SIDE_NONE);
+                tm_printf((UB *)"[S5-TURN-WAIT] side rays blocked or too close "
+                                "to call; waiting for a fresh scan\n");
             }
-            if (c.error != S5_ERR_NONE)
-            {
-                (void)comm_report_error(ERR_S5(c.error), 0u);
-            }
-            emergency_halt(s5_error_name(c.error));
+        }
+        s5_mission_publish(
+            c.state == S5_FOLLOW ? S5_MISSION_FOLLOW : S5_MISSION_BUSY);
+        if (cmd != S5_CMD_NONE)
+        {
+            tm_printf((UB *)"[S5] state=%s command=%s error=%s\n",
+                s5_state_name(c.state),
+                s5_command_name(cmd),
+                s5_error_name(c.error));
+        }
+        switch (cmd)
+        {
+            case S5_CMD_NONE:
             break;
-        case S5_CMD_STOP:
-            if (!stop_requested) {
-                comm_clear_obstacle_width();
-                if (!s5_bridge_request(cmd, &c.profile)) {
-                    (void)comm_report_error(ERR_S5_STOP_ACK, 0u);
-                    emergency_halt("stop request rejected");
+            case S5_CMD_SCAN_COARSE:
+                if (!s5_navigation_stopped())
+                {
+                    emergency_halt("scan requires encoder-confirmed STOP");
                 }
-                stop_requested = true;
-            }
+                look_attempted  = false;
+                look_phase      = LOOK_BYPASS;
+                opposite_ready  = false;
+                width_view_done = false;
+                if (ROBOT_OBSTACLE_TEST)
+                {
+                    s5_coarse_scan(&coarse);
+                    print_scan("COARSE", &coarse);
+                }
+                else
+                {
+                    s5_width_scan(&coarse, width_points);
+                    for (int i = 0; i < S5_WIDTH_SCAN_COUNT; ++i)
+                    {
+                        tm_printf(
+                            (UB *)"[S5-WIDTH] angle=%d valid=%d cm_x100=%d\n",
+                            (int)width_points[i].angle_deg,
+                            (int)width_points[i].valid,
+                            (int)(width_points[i].distance_cm * 100.0f));
+                    }
+                }
+                coarse_ready = true;
             break;
-        case S5_CMD_GO_LEFT:
-        case S5_CMD_GO_RIGHT:
-            if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE &&
-                (!in.front_valid || cm <= ROBOT_BYPASS_FRONT_TURN_CM)) {
-                c.state = S5_WAIT_ROUTE;
-                c.error = S5_ERR_INSUFFICIENT_CLEARANCE;
-                c.ticks_in_state = 0u;
-                tm_printf((UB*)"[S5-TURN-WAIT] insufficient frontal clearance for the outward turn\n");
-                break;
-            }
-            tm_printf((UB*)"[S5-CHOICE] %s left_cm_x100=%d right_cm_x100=%d\n",
-                      cmd == S5_CMD_GO_LEFT ? "LEFT" : "RIGHT",
-                      (int)(c.profile.left_clearance_cm * 100.0f),
-                      (int)(c.profile.right_clearance_cm * 100.0f));
-            print_profile(&c.profile);
-            if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE) {
-                /* Verify the ranked side head-on before committing to a drive.
-                 * The completed viewpoint turn doubles as the outward turn. */
-                look_attempted = true;
-                look_clear_hits = 0u;
-                look_obstacle_cm = cm;
-                look_first_side = c.profile.bypass_side;
-                if (c.last_coarse.points[0].angle_deg == ROBOT_WIDTH_SCAN_MIN_DEG &&
-                    c.encounter_front_cm > 0.0f && look_obstacle_cm > c.encounter_front_cm)
-                    look_obstacle_cm = c.encounter_front_cm;
-                if (c.last_coarse.points[0].angle_deg != ROBOT_WIDTH_SCAN_MIN_DEG &&
-                    s5_probe_side(&c.last_coarse) == S5_SIDE_LEFT)
-                    look_first_side = S5_SIDE_LEFT;
-                const int heading = look_first_side == S5_SIDE_LEFT ?
-                    -ROBOT_COURSE_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG;
-                const float opposite_clearance = look_first_side == S5_SIDE_LEFT ?
-                    c.profile.right_clearance_cm : c.profile.left_clearance_cm;
-                if (!c.profile.valid && in.width_points &&
-                    opposite_clearance > ROBOT_BYPASS_FRONT_TURN_CM && begin_viewpoint(-heading))
-                    look_phase = LOOK_OPPOSITE;
-                else if (!begin_viewpoint(heading))
-                    emergency_halt("preferred viewpoint rejected");
-                look_pending = true;
-                break;
-            }
-            s5_report_profile(&c.profile,
-                              cmd == S5_CMD_GO_LEFT ? S5_SIDE_LEFT :
-                              S5_SIDE_RIGHT);
-            /* fall through */
-        default:
-            if (!s5_bridge_request(cmd, &c.profile)) {
-                (void)comm_report_error(ERR_S5_NO_CLEAR_ROUTE, (UH)cmd);
-                emergency_halt("motion or line command rejected");
-            }
-            if (cmd == S5_CMD_RESUME) {
-                /* Resume is a completed handoff, not a permanent DONE state. */
-                s5_controller_init(&c);
-                look_attempted = false;
-                stop_requested = false;
-                s5_mission_publish(S5_MISSION_FOLLOW);
-            }
+            case S5_CMD_SCAN_FINE:
+                if (!s5_navigation_stopped())
+                {
+                    emergency_halt("scan requires encoder-confirmed STOP");
+                }
+                s5_fine_scan(&fine, c.fine_center_deg);
+                print_scan("FINE", &fine);
+                fine_ready = true;
+            break;
+            case S5_CMD_HALT:
+                if ((c.error == S5_ERR_NO_CLEAR_ROUTE) ||
+                    (c.error == S5_ERR_FINE_SCAN) ||
+                    (c.error == S5_ERR_INSUFFICIENT_CLEARANCE))
+                {
+                    s5_report_profile(&c.profile, S5_SIDE_NONE);
+                }
+                if (c.error != S5_ERR_NONE)
+                {
+                    (void)comm_report_error(ERR_S5(c.error), 0u);
+                }
+                emergency_halt(s5_error_name(c.error));
+            break;
+            case S5_CMD_STOP:
+                if (!stop_requested)
+                {
+                    comm_clear_obstacle_width();
+                    if (!s5_bridge_request(cmd, &c.profile))
+                    {
+                        (void)comm_report_error(ERR_S5_STOP_ACK, 0u);
+                        emergency_halt("stop request rejected");
+                    }
+                    stop_requested = true;
+                }
+            break;
+            case S5_CMD_GO_LEFT:
+            case S5_CMD_GO_RIGHT:
+                if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE &&
+                    (!in.front_valid || cm <= ROBOT_BYPASS_FRONT_TURN_CM))
+                {
+                    c.state          = S5_WAIT_ROUTE;
+                    c.error          = S5_ERR_INSUFFICIENT_CLEARANCE;
+                    c.ticks_in_state = 0u;
+                    tm_printf((UB *)"[S5-TURN-WAIT] insufficient frontal "
+                                    "clearance for the outward turn\n");
+            break;
+                }
+                tm_printf(
+                    (UB *)"[S5-CHOICE] %s left_cm_x100=%d right_cm_x100=%d\n",
+                    cmd == S5_CMD_GO_LEFT ? "LEFT" : "RIGHT",
+                    (int)(c.profile.left_clearance_cm * 100.0f),
+                    (int)(c.profile.right_clearance_cm * 100.0f));
+                print_profile(&c.profile);
+                if (!ROBOT_OBSTACLE_TEST && !ROBOT_BYPASS_EXACT_SEQUENCE)
+                {
+                    /* Verify the ranked side head-on before committing to a
+                     * drive. The completed viewpoint turn doubles as the
+                     * outward turn. */
+                    look_attempted   = true;
+                    look_clear_hits  = 0u;
+                    look_obstacle_cm = cm;
+                    look_first_side  = c.profile.bypass_side;
+                    if (c.last_coarse.points[0].angle_deg ==
+                            ROBOT_WIDTH_SCAN_MIN_DEG &&
+                        c.encounter_front_cm > 0.0f &&
+                        look_obstacle_cm > c.encounter_front_cm)
+                    {
+                        look_obstacle_cm = c.encounter_front_cm;
+                    }
+                    if (c.last_coarse.points[0].angle_deg !=
+                            ROBOT_WIDTH_SCAN_MIN_DEG &&
+                        s5_probe_side(&c.last_coarse) == S5_SIDE_LEFT)
+                    {
+                        look_first_side = S5_SIDE_LEFT;
+                    }
+                    const int   heading = look_first_side == S5_SIDE_LEFT
+                          ? -ROBOT_COURSE_BYPASS_TURN_DEG
+                          : ROBOT_COURSE_BYPASS_TURN_DEG;
+                    const float opposite_clearance =
+                        look_first_side == S5_SIDE_LEFT
+                        ? c.profile.right_clearance_cm
+                        : c.profile.left_clearance_cm;
+                    if (!c.profile.valid && in.width_points &&
+                        opposite_clearance > ROBOT_BYPASS_FRONT_TURN_CM &&
+                        begin_viewpoint(-heading))
+                    {
+                        look_phase = LOOK_OPPOSITE;
+                    }
+                    else if (!begin_viewpoint(heading))
+                    {
+                        emergency_halt("preferred viewpoint rejected");
+                    }
+                    look_pending = true;
+            break;
+                }
+                s5_report_profile(&c.profile,
+                    cmd == S5_CMD_GO_LEFT ? S5_SIDE_LEFT : S5_SIDE_RIGHT);
+                /* fall through */
+            default:
+                if (!s5_bridge_request(cmd, &c.profile))
+                {
+                    (void)comm_report_error(ERR_S5_NO_CLEAR_ROUTE, (UH)cmd);
+                    emergency_halt("motion or line command rejected");
+                }
+                if (cmd == S5_CMD_RESUME)
+                {
+                    /* Resume is a completed handoff, not a permanent DONE
+                     * state. */
+                    s5_controller_init(&c);
+                    look_attempted = false;
+                    stop_requested = false;
+                    s5_mission_publish(S5_MISSION_FOLLOW);
+                }
             break;
         }
         /* 65 ms between trigger starts, rather than echo time PLUS 65 ms.
@@ -1110,89 +1438,136 @@ static void live_controller_mode(void)
          * watchdog. Scans run stationary and retain their longer pacing. */
         if (tk_get_tim(&cycle_end) == E_OK &&
             cycle_end.lo - cycle_start.lo < S5_ECHO_GAP_MS)
+        {
             tk_dly_tsk(S5_ECHO_GAP_MS - (cycle_end.lo - cycle_start.lo));
+        }
         else
+        {
             tk_dly_tsk(1);
+        }
     }
 }
 #endif /* S5_MOTION_BRIDGE_ENABLED */
 #endif /* hardware mode */
 
-EXPORT void s5_task(INT stacd, void *exinf)
+EXPORT void
+s5_task (INT stacd, void * exinf)
 {
-    (void)stacd; (void)exinf;
+    (void)stacd;
+    (void)exinf;
 #if ROBOT_WHEELS_UP_MOTOR_TEST
     /* Bench-only boot motor proof: do not start ultrasonic/servo routines
      * or flood USB logs while B2 drives raised wheels for a short test.
      * The B2 test always stops and does not run autonomously. */
-    tm_printf((UB*)"[S5] Bench motor boot test: sensor/servo tasks parked; wheels MUST be raised\n");
-    for (;;) tk_dly_tsk(1000);
+    tm_printf((UB *)"[S5] Bench motor boot test: sensor/servo tasks parked; "
+                    "wheels MUST be raised\n");
+    for (;;)
+    {
+        tk_dly_tsk(1000);
+    }
 #else
 #if S5_SIMULATION
     s5_pico_demo_run_forever();
 #elif S5_HARDWARE_ENABLED && S5_SERVO_ENABLED
-    tm_printf((UB*)"[FW-ID] %s %s B5-EDGE-SWEEP: autonomous=%d scan=%d..%d stop_cm=%d release_cm=%d straight_trim=%d\n",
-              __DATE__, __TIME__, (int)ROBOT_ENABLE_BYPASS,
-              (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MIN_DEG : ROBOT_WIDTH_SWEEP_MIN_DEG),
-              (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MAX_DEG : ROBOT_WIDTH_SWEEP_MAX_DEG),
-              (int)ROBOT_STOP_CM, (int)ROBOT_RELEASE_CM, (int)ROBOT_STRAIGHT_TRIM_PERMILLE);
-    tm_printf((UB*)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
-    tm_printf((UB*)"[S5-TEST] obstacle_test=%d bounded_reverse=%d reverse_cm=8 rear_space=operator_checked startup_clear_cm=%d\n",
-              (int)ROBOT_OBSTACLE_TEST, (int)ROBOT_TEST_BOUNDED_REVERSE, (int)ROBOT_STOP_CM);
-    tm_printf((UB*)"[S5-FW] rejoin_speed_cps=%d (return-to-line legs)\n",
-              (int)ROBOT_REJOIN_SPEED_CPS);
-    tm_printf((UB*)"[S5-FW] CLOSERETREAT-V47 encoder_distance=1 speed_cps=%d turn_deg=%d sensor_turn_guard_x100=%d opening_pivot_x100=%d\n",
-              (int)ROBOT_BYPASS_SPEED_CPS,
-              (int)(ROBOT_OBSTACLE_TEST || ROBOT_BYPASS_EXACT_SEQUENCE ?
-                    ROBOT_BYPASS_TURN_DEG : ROBOT_COURSE_BYPASS_TURN_DEG),
-              (int)(ROBOT_BYPASS_FRONT_TURN_CM * 100.0f),
-              (int)(ROBOT_BYPASS_SIDE_CLEAR_CM * 100.0f));
-    tm_printf((UB*)"[S5-GEOMETRY] sensor_offset_x100=%d uncertainty_x100=%d pivot_turn_guard_x100=%d\n",
-              (int)(ROBOT_SENSOR_FORWARD_OFFSET_CM * 100.0f),
-              (int)(ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM * 100.0f),
-              (int)(ROBOT_BYPASS_MIN_TURN_CM * 100.0f));
-    if (!s5_ultrasonic_init()) {
+    tm_printf((UB *)"[FW-ID] %s %s B5-EDGE-SWEEP: autonomous=%d scan=%d..%d "
+                    "stop_cm=%d release_cm=%d straight_trim=%d\n",
+        __DATE__,
+        __TIME__,
+        (int)ROBOT_ENABLE_BYPASS,
+        (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MIN_DEG
+                                  : ROBOT_WIDTH_SWEEP_MIN_DEG),
+        (int)(ROBOT_OBSTACLE_TEST ? ROBOT_SCAN_SAFE_MAX_DEG
+                                  : ROBOT_WIDTH_SWEEP_MAX_DEG),
+        (int)ROBOT_STOP_CM,
+        (int)ROBOT_RELEASE_CM,
+        (int)ROBOT_STRAIGHT_TRIM_PERMILLE);
+    tm_printf(
+        (UB *)"[S5-BOOT] Buddy 5 task running, hardware profile GP16/17/12\n");
+    tm_printf(
+        (UB *)"[S5-TEST] obstacle_test=%d bounded_reverse=%d reverse_cm=8 "
+              "rear_space=operator_checked startup_clear_cm=%d\n",
+        (int)ROBOT_OBSTACLE_TEST,
+        (int)ROBOT_TEST_BOUNDED_REVERSE,
+        (int)ROBOT_STOP_CM);
+    tm_printf((UB *)"[S5-FW] rejoin_speed_cps=%d (return-to-line legs)\n",
+        (int)ROBOT_REJOIN_SPEED_CPS);
+    tm_printf(
+        (UB *)"[S5-FW] CLOSERETREAT-V47 encoder_distance=1 speed_cps=%d "
+              "turn_deg=%d sensor_turn_guard_x100=%d opening_pivot_x100=%d\n",
+        (int)ROBOT_BYPASS_SPEED_CPS,
+        (int)(ROBOT_OBSTACLE_TEST || ROBOT_BYPASS_EXACT_SEQUENCE
+                ? ROBOT_BYPASS_TURN_DEG
+                : ROBOT_COURSE_BYPASS_TURN_DEG),
+        (int)(ROBOT_BYPASS_FRONT_TURN_CM * 100.0f),
+        (int)(ROBOT_BYPASS_SIDE_CLEAR_CM * 100.0f));
+    tm_printf((UB *)"[S5-GEOMETRY] sensor_offset_x100=%d uncertainty_x100=%d "
+                    "pivot_turn_guard_x100=%d\n",
+        (int)(ROBOT_SENSOR_FORWARD_OFFSET_CM * 100.0f),
+        (int)(ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM * 100.0f),
+        (int)(ROBOT_BYPASS_MIN_TURN_CM * 100.0f));
+    if (!s5_ultrasonic_init())
+    {
         s5_mission_publish(S5_MISSION_FAULT);
         b2_request_stop();
         (void)comm_report_error(ERR_S5_NO_ECHO, S5_FRONT_ANGLE_DETAIL);
-        tm_printf((UB*)"[S5-FAULT] ultrasonic initialization failed; motors stopped\n");
-        for (;;) tk_dly_tsk(1000);
+        tm_printf((UB *)"[S5-FAULT] ultrasonic initialization failed; motors "
+                        "stopped\n");
+        for (;;)
+        {
+            tk_dly_tsk(1000);
+        }
     }
-    tm_printf((UB*)"[S5-BOOT] ultrasonic pins initialized\n");
-    if (!s5_servo_init()) {
+    tm_printf((UB *)"[S5-BOOT] ultrasonic pins initialized\n");
+    if (!s5_servo_init())
+    {
         s5_mission_publish(S5_MISSION_FAULT);
         b2_request_stop();
         (void)comm_report_error(ERR_S5_FINE_SCAN, 0u);
-        tm_printf((UB*)"[S5-FAULT] servo initialization failed; motors stopped\n");
-        for (;;) tk_dly_tsk(1000);
+        tm_printf(
+            (UB *)"[S5-FAULT] servo initialization failed; motors stopped\n");
+        for (;;)
+        {
+            tk_dly_tsk(1000);
+        }
     }
-    tm_printf((UB*)"[S5-BOOT] servo PWM initialized at 50Hz\n");
+    tm_printf((UB *)"[S5-BOOT] servo PWM initialized at 50Hz\n");
     tk_dly_tsk(ROBOT_SENSOR_STARTUP_SETTLE_MS);
 #if S5_STARTUP_SERVO_TEST
     /* Exercise both directions within the normal scan limits before ranging. */
     const uint16_t startup_angles[] = {100u, 80u, 90u};
-    for (unsigned i = 0u; i < sizeof startup_angles / sizeof startup_angles[0]; ++i) {
-        if (!s5_servo_angle(startup_angles[i])) {
+    for (unsigned i = 0u; i < sizeof startup_angles / sizeof startup_angles[0];
+        ++i)
+    {
+        if (!s5_servo_angle(startup_angles[i]))
+        {
             s5_mission_publish(S5_MISSION_FAULT);
             b2_request_stop();
             (void)comm_report_error(ERR_S5_FINE_SCAN, 0u);
-            tm_printf((UB*)"[S5-FAULT] startup servo sweep command failed; motors stopped\n");
-            for (;;) tk_dly_tsk(1000);
+            tm_printf((UB *)"[S5-FAULT] startup servo sweep command failed; "
+                            "motors stopped\n");
+            for (;;)
+            {
+                tk_dly_tsk(1000);
+            }
         }
         tk_dly_tsk(S5_SERVO_SETTLE_MS);
     }
 #endif
-    tm_printf((UB*)"[S5-BOOT] straight-ahead servo command applied at %d us\n",
-              (int)s5_servo_pulse_us(90u));
+    tm_printf((UB *)"[S5-BOOT] straight-ahead servo command applied at %d us\n",
+        (int)s5_servo_pulse_us(90u));
 #if S5_MOTION_BRIDGE_ENABLED
     /* Warm-up never releases the initial B2 STOP latch. Startup echoes are
      * discarded; the controller then requires fresh clearance to drive. */
-    for (unsigned i = 0u; i < ROBOT_SENSOR_WARMUP_PINGS; ++i) {
+    for (unsigned i = 0u; i < ROBOT_SENSOR_WARMUP_PINGS; ++i)
+    {
         (void)s5_ultrasonic_read_detailed();
         tk_dly_tsk(S5_ECHO_GAP_MS);
     }
 #if ROBOT_BOX_BYPASS
-    if (0) live_controller_mode();
+    if (0)
+    {
+        live_controller_mode();
+    }
     s5_box_mode();
 #else
     live_controller_mode();
@@ -1201,8 +1576,14 @@ EXPORT void s5_task(INT stacd, void *exinf)
     stationary_profile_mode();
 #endif
 #else
-    tm_printf((UB*)"[S5] hardware/servo disabled\n");
-    for (;;) tk_dly_tsk(1000);
+    tm_printf((UB *)"[S5] hardware/servo disabled\n");
+    for (;;)
+    {
+        tk_dly_tsk(1000);
+    }
 #endif
 #endif /* ROBOT_WHEELS_UP_MOTOR_TEST */
 }
+
+/*** end of file ***/
+

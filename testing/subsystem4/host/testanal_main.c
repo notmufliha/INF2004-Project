@@ -14,9 +14,9 @@
 #define TEST_SHORT_NOISE 8U
 #define TEST_ROLL_SETTLED 6U
 
-static imu_analysis_t g_analysis;
+static imu_analysis_t        g_analysis;
 static imu_analysis_config_t g_config;
-static imu_data_t g_short_data;
+static imu_data_t            g_short_data;
 
 static void short_reset (void);
 static imu_event_t short_feed (float32_t pitch, uint32_t count);
@@ -45,13 +45,13 @@ main (void)
     /* Positive wheel movement across the signed 24-bit boundary is not
      * a reverse event and must preserve forward IMU analysis. */
     short_reset();
-    g_short_data.encoder_left = ENC_COUNT_MAX - 15;
+    g_short_data.encoder_left  = ENC_COUNT_MAX - 15;
     g_short_data.encoder_right = ENC_COUNT_MAX - 15;
     short_feed(0.0f, 1U);
-    g_short_data.encoder_left = ENC_COUNT_MIN;
+    g_short_data.encoder_left  = ENC_COUNT_MIN;
     g_short_data.encoder_right = ENC_COUNT_MIN;
     short_feed(0.0f, 1U);
-    assert((g_analysis.reset_reasons & IMU_ANALYSIS_RESET_REVERSE) == 0U);
+    assert(0U == (g_analysis.reset_reasons & IMU_ANALYSIS_RESET_REVERSE));
     test_validation_and_timing();
     test_progress_pause();
     test_movement_reasons();
@@ -79,7 +79,7 @@ test_general_motion (void)
     g_short_data.accel_x = 2.0f;
     assert(IMU_MOTION_ACCELERATING == hold_feed(0.0f, 10U).motion_state);
     g_short_data.b_turn_rate_valid = true;
-    g_short_data.turn_rate_dps = 45.0f;
+    g_short_data.turn_rate_dps     = 45.0f;
     assert(IMU_MOTION_TURNING == hold_feed(0.0f, 10U).motion_state);
     g_short_data.accel_x = 15.0f;
     assert(hold_feed(0.0f, 10U).b_sudden_impact);
@@ -127,16 +127,16 @@ short_reset (void)
     imu_analysis_default_config(&g_config);
     /* These regressions describe the two-sample entry rule; the flat-ground
      * guards are covered by test_flat_ground_rejection. */
-    g_config.roll_enter_ms = 0U;
-    g_config.roll_curve_ratio = 0.0f;
+    g_config.roll_enter_ms     = 0U;
+    g_config.roll_curve_ratio  = 0.0f;
     g_config.roll_peak_samples = 1U;
     assert(imu_analysis_init(&g_analysis, &g_config));
-    g_analysis.b_require_motion = true;
-    g_short_data = (imu_data_t){0};
-    g_short_data.b_valid = true;
-    g_short_data.accel_z = 9.81f;
+    g_analysis.b_require_motion   = true;
+    g_short_data                  = (imu_data_t){0};
+    g_short_data.b_valid          = true;
+    g_short_data.accel_z          = 9.81f;
     g_short_data.b_odometry_valid = true;
-    g_short_data.motion.b_valid = true;
+    g_short_data.motion.b_valid   = true;
     g_short_data.motion.b_forward = true;
 }
 
@@ -153,8 +153,8 @@ short_feed (float32_t pitch, uint32_t count)
         g_short_data.encoder_left += 10;
         g_short_data.encoder_right += 10;
         g_short_data.pitch_deg = pitch;
-        g_short_data.accel_x = -9.81f * sinf(pitch * 0.01745329252f);
-        g_short_data.accel_y = 9.81f * cosf(pitch * 0.01745329252f) *
+        g_short_data.accel_x   = -9.81f * sinf(pitch * 0.01745329252f);
+        g_short_data.accel_y   = 9.81f * cosf(pitch * 0.01745329252f) *
             sinf(g_short_data.roll_deg * 0.01745329252f);
         g_short_data.accel_z = 9.81f * cosf(pitch * 0.01745329252f) *
             cosf(g_short_data.roll_deg * 0.01745329252f);
@@ -172,7 +172,7 @@ hold_feed (float32_t pitch, uint32_t elapsed)
 
     g_short_data.timestamp_ms += elapsed;
     g_short_data.motion.timestamp_ms = g_short_data.timestamp_ms;
-    g_short_data.pitch_deg = pitch;
+    g_short_data.pitch_deg           = pitch;
     assert(imu_analysis_process(&g_analysis, &g_short_data, &event));
     return event;
 }
@@ -226,12 +226,15 @@ test_progress_pause (void)
 static void
 test_movement_reasons (void)
 {
-    const uint32_t reasons[] = {
-        IMU_ANALYSIS_RESET_ODOMETRY, IMU_ANALYSIS_RESET_MOTION,
-        IMU_ANALYSIS_RESET_STALE, IMU_ANALYSIS_RESET_B2_FAULT,
-        IMU_ANALYSIS_RESET_REVERSE, IMU_ANALYSIS_RESET_TURNING,
-        IMU_ANALYSIS_RESET_STOPPED, IMU_ANALYSIS_RESET_NOT_FORWARD};
-    const uint32_t cases = sizeof(reasons) / sizeof(reasons[0]);
+    const uint32_t reasons[] = {IMU_ANALYSIS_RESET_ODOMETRY,
+        IMU_ANALYSIS_RESET_MOTION,
+        IMU_ANALYSIS_RESET_STALE,
+        IMU_ANALYSIS_RESET_B2_FAULT,
+        IMU_ANALYSIS_RESET_REVERSE,
+        IMU_ANALYSIS_RESET_TURNING,
+        IMU_ANALYSIS_RESET_STOPPED,
+        IMU_ANALYSIS_RESET_NOT_FORWARD};
+    const uint32_t cases     = sizeof(reasons) / sizeof(reasons[0]);
 
     for (uint32_t index = 0U; index < cases; ++index)
     {
@@ -242,23 +245,29 @@ test_movement_reasons (void)
         g_short_data.motion.timestamp_ms = g_short_data.timestamp_ms;
         switch (index)
         {
-            case 0U: g_short_data.b_odometry_valid = false;
+            case 0U:
+                g_short_data.b_odometry_valid = false;
             break;
-            case 1U: g_short_data.motion.b_valid = false;
+            case 1U:
+                g_short_data.motion.b_valid = false;
             break;
             case 2U:
-                g_short_data.motion.timestamp_ms -=
-                    IMU_MOTION_MAX_AGE_MS + 1U;
+                g_short_data.motion.timestamp_ms -= IMU_MOTION_MAX_AGE_MS + 1U;
             break;
-            case 3U: g_short_data.motion.b_fault = true;
+            case 3U:
+                g_short_data.motion.b_fault = true;
             break;
-            case 4U: --g_short_data.encoder_left;
+            case 4U:
+                --g_short_data.encoder_left;
             break;
-            case 5U: g_short_data.motion.b_turning = true;
+            case 5U:
+                g_short_data.motion.b_turning = true;
             break;
-            case 6U: g_short_data.motion.b_stopped = true;
+            case 6U:
+                g_short_data.motion.b_stopped = true;
             break;
-            default: g_short_data.motion.b_forward = false;
+            default:
+                g_short_data.motion.b_forward = false;
             break;
         }
         imu_event_t event;
@@ -284,12 +293,12 @@ static void
 test_roll_crossings (void)
 {
     const float32_t sides[] = {1.0f, -1.0f};
-    const uint32_t cases = sizeof(sides) / sizeof(sides[0]);
+    const uint32_t  cases   = sizeof(sides) / sizeof(sides[0]);
 
     for (uint32_t index = 0U; index < cases; ++index)
     {
         short_reset();
-            roll_feed(0.0f, TEST_SHORT_BASELINE);
+        roll_feed(0.0f, TEST_SHORT_BASELINE);
         assert(!roll_feed(sides[index] * 6.0f, 1U).b_hump_detected);
         assert(roll_feed(sides[index] * 6.0f, 1U).b_hump_detected);
         assert(IMU_ROLL_ACTIVE == g_analysis.roll_state);
@@ -363,7 +372,7 @@ test_roll_guards (void)
 
     short_reset();
     g_analysis.config.hump_timeout_ms = 120U;
-    g_short_data.timestamp_ms = UINT32_MAX - 150U;
+    g_short_data.timestamp_ms         = UINT32_MAX - 150U;
     roll_feed(0.0f, TEST_SHORT_BASELINE);
     roll_feed(6.0f, IMU_ROLL_CONFIRM_SAMPLES);
     hold_feed(0.0f, 100U);
@@ -382,12 +391,11 @@ test_roll_pitch_independence (void)
     short_reset();
     roll_feed(0.0f, TEST_SHORT_BASELINE);
     assert(IMU_MOTION_CLIMBING_HUMP !=
-           short_feed(6.0f, IMU_ROLL_CONFIRM_SAMPLES).motion_state);
+        short_feed(6.0f, IMU_ROLL_CONFIRM_SAMPLES).motion_state);
     short_feed(0.0f, TEST_SHORT_SETTLE);
     assert(IMU_MOTION_DESCENDING_HUMP !=
-           short_feed(-6.0f, IMU_ROLL_CONFIRM_SAMPLES).motion_state);
-    assert(imu_test_support_near(-6.0f,
-                                short_feed(-6.0f, 1U).pitch_deg));
+        short_feed(-6.0f, IMU_ROLL_CONFIRM_SAMPLES).motion_state);
+    assert(imu_test_support_near(-6.0f, short_feed(-6.0f, 1U).pitch_deg));
     assert(!short_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
 
     roll_feed(6.0f, IMU_ROLL_CONFIRM_SAMPLES);
@@ -406,36 +414,35 @@ static void
 test_roll_motion_trends (void)
 {
     const float32_t sides[] = {1.0f, -1.0f};
-    const uint32_t cases = sizeof(sides) / sizeof(sides[0]);
+    const uint32_t  cases   = sizeof(sides) / sizeof(sides[0]);
 
     for (uint32_t index = 0U; index < cases; ++index)
     {
         const float32_t side = sides[index];
         short_reset();
-            roll_feed(0.0f, TEST_SHORT_BASELINE);
+        roll_feed(0.0f, TEST_SHORT_BASELINE);
         assert(IMU_MOTION_CLIMBING_HUMP ==
-               roll_feed(side * 6.0f, IMU_ROLL_CONFIRM_SAMPLES).motion_state);
+            roll_feed(side * 6.0f, IMU_ROLL_CONFIRM_SAMPLES).motion_state);
         assert(IMU_MOTION_CLIMBING_HUMP ==
-               roll_feed(side * 5.0f, 1U).motion_state);
+            roll_feed(side * 5.0f, 1U).motion_state);
         assert(IMU_MOTION_CLIMBING_HUMP ==
-               roll_feed(side * 6.0f, 1U).motion_state);
+            roll_feed(side * 6.0f, 1U).motion_state);
         assert(IMU_MOTION_CLIMBING_HUMP ==
-               roll_feed(side * 5.0f, 1U).motion_state);
+            roll_feed(side * 5.0f, 1U).motion_state);
         roll_feed(side * 7.0f, 1U);
         assert(IMU_MOTION_CLIMBING_HUMP ==
-               roll_feed(side * 8.0f, 1U).motion_state);
+            roll_feed(side * 8.0f, 1U).motion_state);
         assert(IMU_MOTION_HUMP_PEAK ==
-               roll_feed(side * 8.0f, TEST_SHORT_SETTLE).motion_state);
-        assert(IMU_MOTION_HUMP_PEAK ==
-               roll_feed(side * 7.0f, 1U).motion_state);
+            roll_feed(side * 8.0f, TEST_SHORT_SETTLE).motion_state);
+        assert(IMU_MOTION_HUMP_PEAK == roll_feed(side * 7.0f, 1U).motion_state);
         assert(IMU_MOTION_DESCENDING_HUMP ==
-               roll_feed(side * 6.0f, 1U).motion_state);
+            roll_feed(side * 6.0f, 1U).motion_state);
         assert(IMU_MOTION_DESCENDING_HUMP ==
-               roll_feed(side * 6.2f, 1U).motion_state);
+            roll_feed(side * 6.2f, 1U).motion_state);
         assert(IMU_MOTION_DESCENDING_HUMP ==
-               roll_feed(side * 5.9f, 1U).motion_state);
+            roll_feed(side * 5.9f, 1U).motion_state);
         assert(IMU_MOTION_DESCENDING_HUMP ==
-               roll_feed(side * 6.1f, 1U).motion_state);
+            roll_feed(side * 6.1f, 1U).motion_state);
         roll_feed(0.0f, 1U);
         assert(IMU_MOTION_DESCENDING_HUMP == roll_feed(0.0f, 1U).motion_state);
         assert(roll_feed(0.0f, 1U).b_hump_completed);
@@ -474,7 +481,7 @@ test_roll_height (void)
     assert((!event.b_height_valid) && (event.b_highest_hump_valid));
     roll_feed(20.0f, IMU_ROLL_CONFIRM_SAMPLES);
     g_short_data.motion.b_fault = true;
-    event = roll_feed(1.0f, 1U);
+    event                       = roll_feed(1.0f, 1U);
     assert((!event.b_hump_completed) && (!event.b_height_valid));
     assert(event.b_highest_hump_valid);
     short_reset();
@@ -520,15 +527,15 @@ test_flat_ground_rejection (void)
     }
 
     /* A steady curve: the outer wheel 2x the inner, roll held 6 degrees. */
-    g_short_data.motion.left_speed_cps = 600;
+    g_short_data.motion.left_speed_cps  = 600;
     g_short_data.motion.right_speed_cps = 300;
     assert(!roll_feed(6.0f, 10U).b_hump_detected);
     assert(!roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
 
     /* Driving straight, the same 6 degrees held over 80 ms is a hump. */
     g_short_data.motion.right_speed_cps = 600;
-    assert(!roll_feed(6.0f, 4U).b_hump_detected);   /* 0..60 ms */
-    assert(roll_feed(6.0f, 1U).b_hump_detected);    /* 80 ms    */
+    assert(!roll_feed(6.0f, 4U).b_hump_detected); /* 0..60 ms */
+    assert(roll_feed(6.0f, 1U).b_hump_detected);  /* 80 ms    */
     assert(roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
 
     /* Once on the hump, steering does not cancel it. */
@@ -541,7 +548,7 @@ test_flat_ground_rejection (void)
     config.roll_curve_ratio = 1.5f;
     assert(!imu_analysis_init(&g_analysis, &config));
     config.roll_curve_ratio = 0.3f;
-    config.roll_enter_ms = config.hump_timeout_ms;
+    config.roll_enter_ms    = config.hump_timeout_ms;
     assert(!imu_analysis_init(&g_analysis, &config));
     puts("PASS: flat-ground steering spikes and curves rejected; sustained "
          "straight excursion still detected");
@@ -557,16 +564,18 @@ test_height_jolt_rejection (void)
     imu_event_t           event;
 
     imu_analysis_default_config(&config);
-    for (uint32_t trial = 0U; trial < 2U; ++trial)
+    const uint32_t trial_count = 2U;
+
+    for (uint32_t trial = 0U; trial < trial_count; ++trial)
     {
         short_reset();
         config.roll_peak_samples = (0U == trial) ? 7U : 1U;
         assert(imu_analysis_init(&g_analysis, &config));
         g_analysis.b_require_motion = true;
-        roll_feed(0.3f, 6U);                      /* slightly tilted floor */
-        roll_feed(0.3f + 12.0f, 2U);              /* edge jolt  */
-        roll_feed(0.3f + hump_deg, 12U);          /* on top     */
-        roll_feed(0.3f + 2.0f, 1U);               /* edge jolt down */
+        roll_feed(0.3f, 6U);             /* slightly tilted floor */
+        roll_feed(0.3f + 12.0f, 2U);     /* edge jolt  */
+        roll_feed(0.3f + hump_deg, 12U); /* on top     */
+        roll_feed(0.3f + 2.0f, 1U);      /* edge jolt down */
         event = roll_feed(0.3f, TEST_SHORT_SETTLE);
         assert((event.b_hump_completed) && (event.b_height_valid));
         if (0U == trial)
@@ -575,7 +584,7 @@ test_height_jolt_rejection (void)
         }
         else
         {
-            assert(event.hump_peak_cm > 2.0f);    /* the old 17 mm error */
+            assert(event.hump_peak_cm > 2.0f); /* the old 17 mm error */
         }
     }
 
@@ -592,8 +601,8 @@ jerk_reset (const imu_analysis_config_t * p_config)
 {
     short_reset();
     assert(imu_analysis_init(&g_analysis, p_config));
-    g_analysis.b_require_motion = true;
-    g_short_data.motion.left_speed_cps = 600;
+    g_analysis.b_require_motion         = true;
+    g_short_data.motion.left_speed_cps  = 600;
     g_short_data.motion.right_speed_cps = 600;
     roll_feed(0.0f, TEST_SHORT_BASELINE + IMU_JERK_WINDOW);
 }
@@ -624,7 +633,7 @@ test_jolt_and_jerk_rejection (void)
     const float32_t       hump_deg = 5.2165f; /* asin(10 / 110) */
 
     imu_analysis_default_config(&config);
-    config.roll_enter_deg = 3.5f;
+    config.roll_enter_deg      = 3.5f;
     config.roll_steer_jerk_cps = 350U;
     config.roll_speed_jerk_cps = 500U;
 
@@ -644,7 +653,7 @@ test_jolt_and_jerk_rejection (void)
     /* Flat ground, both wheels lurch 600 -> 1200 counts/s while the roll
      * reads 5 degrees: a push, not a hump. */
     jerk_reset(&config);
-    g_short_data.motion.left_speed_cps = 1200;
+    g_short_data.motion.left_speed_cps  = 1200;
     g_short_data.motion.right_speed_cps = 1200;
     assert(!roll_feed(5.0f, 5U).b_hump_detected);
     assert(!roll_feed(0.0f, IMU_JERK_WINDOW).b_hump_completed);
@@ -658,16 +667,16 @@ test_jolt_and_jerk_rejection (void)
     /* Steady speeds again (history refilled): the same roll is a hump. */
     g_short_data.motion.right_speed_cps = 1200;
     roll_feed(0.0f, IMU_JERK_WINDOW);
-    assert(!roll_feed(hump_deg, 4U).b_hump_detected);  /* 0..60 ms */
-    assert(roll_feed(hump_deg, 1U).b_hump_detected);   /* 80 ms    */
+    assert(!roll_feed(hump_deg, 4U).b_hump_detected); /* 0..60 ms */
+    assert(roll_feed(hump_deg, 1U).b_hump_detected);  /* 80 ms    */
     assert(roll_feed(0.0f, TEST_SHORT_SETTLE).b_hump_completed);
 
     /* Control: without the jerk check the lurch reads as a hump. */
-    unchecked = config;
+    unchecked                     = config;
     unchecked.roll_steer_jerk_cps = 0U;
     unchecked.roll_speed_jerk_cps = 0U;
     jerk_reset(&unchecked);
-    g_short_data.motion.left_speed_cps = 1200;
+    g_short_data.motion.left_speed_cps  = 1200;
     g_short_data.motion.right_speed_cps = 1200;
     assert(roll_feed(5.0f, 5U).b_hump_detected);
     puts("PASS: hump kept through the edge jolt; steering and speed jerks on "

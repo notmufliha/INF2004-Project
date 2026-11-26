@@ -14,18 +14,20 @@
 #include "../subsystem3/subsystem3.h"
 
 /** @brief Generate a triangle-wave sample between 0 and 100. */
-EXPORT INT subsystem2_make_value(UW seq)
+EXPORT INT
+subsystem2_make_value (UW seq)
 {
     INT phase = (INT)(seq % 20);
     return ((phase < 10 ? phase : 20 - phase) * 10);
 }
 
-EXPORT void subsystem2_producer_task(INT stacd, void *p_exinf)
+EXPORT void
+subsystem2_producer_task (INT stacd, void * p_exinf)
 {
-    UW seq = 0;
-    subsystem2_sample_msg_t *p_msg = NULL;
-    SYSTIM now = {0};
-    ER err;
+    UW                        seq   = 0;
+    subsystem2_sample_msg_t * p_msg = NULL;
+    SYSTIM                    now   = {0};
+    ER                        err;
 
     (void)stacd;
     (void)p_exinf;
@@ -42,7 +44,7 @@ EXPORT void subsystem2_producer_task(INT stacd, void *p_exinf)
         if (err < E_OK)
         {
             CHECK(err, "tk_get_mpf");
-            tk_sig_sem(gh_sem_slots, 1);    /* give the slot back */
+            tk_sig_sem(gh_sem_slots, 1); /* give the slot back */
             tk_dly_tsk(S2_PERIOD_MS);
             continue;
         }
@@ -53,9 +55,9 @@ EXPORT void subsystem2_producer_task(INT stacd, void *p_exinf)
         p_msg->time_ms = now.lo;
         p_msg->value   = subsystem2_make_value(p_msg->seq);
 #if TK_SUPPORT_SMP
-        p_msg->prc     = tk_get_prc();    /* which core am I on? */
+        p_msg->prc = tk_get_prc(); /* which core am I on? */
 #else
-        p_msg->prc     = 1;
+        p_msg->prc = 1;
 #endif
 
         /* 4. Send the POINTER to subsystem 3.  From here on the block
@@ -66,3 +68,6 @@ EXPORT void subsystem2_producer_task(INT stacd, void *p_exinf)
         tk_dly_tsk(S2_PERIOD_MS);
     }
 }
+
+/*** end of file ***/
+

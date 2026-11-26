@@ -40,14 +40,14 @@ main (void)
     assert(IMU_MOCK_STATIONARY == imu_demo_scenario(8000U));
 
     for (uint32_t elapsed_ms = 0U; elapsed_ms < TEST_DURATION_MS;
-         elapsed_ms += TEST_PERIOD_MS)
+        elapsed_ms += TEST_PERIOD_MS)
     {
         imu_mock_set_scenario(imu_demo_scenario(elapsed_ms));
         data.b_valid      = imu_mock_read(&data);
         data.timestamp_ms = elapsed_ms;
 
-        bool b_usable = imu_processing_process(&processing, &data, elapsed_ms,
-                                               &processed, &health);
+        bool b_usable = imu_processing_process(
+            &processing, &data, elapsed_ms, &processed, &health);
 
         faults += health.b_fault_started ? 1U : 0U;
         recoveries += health.b_recovered ? 1U : 0U;
@@ -59,7 +59,7 @@ main (void)
                 b_climbing || (IMU_MOTION_CLIMBING_HUMP == event.motion_state);
             b_peak = b_peak || (IMU_MOTION_HUMP_PEAK == event.motion_state);
             b_descending = b_descending ||
-                           (IMU_MOTION_DESCENDING_HUMP == event.motion_state);
+                (IMU_MOTION_DESCENDING_HUMP == event.motion_state);
             completions += event.b_hump_completed ? 1U : 0U;
             impacts += event.b_sudden_impact ? 1U : 0U;
             assert(event.b_height_valid == event.b_hump_completed);

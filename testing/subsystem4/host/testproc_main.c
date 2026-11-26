@@ -44,9 +44,9 @@ main (void)
 static void
 test_robot_timing (void)
 {
-    imu_analysis_t analysis;
+    imu_analysis_t        analysis;
     imu_analysis_config_t config;
-    imu_event_t event;
+    imu_event_t           event;
     reset();
     g_config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
     assert(imu_processing_init(&g_state, &g_config));
@@ -58,17 +58,17 @@ test_robot_timing (void)
     for (uint32_t index = 0U; index < TEST_ROBOT_GAPS; ++index)
     {
         g_raw.timestamp_ms += 110U; /* Latest COM6 scheduling gap. */
-        assert(imu_processing_process(&g_state, &g_raw, g_raw.timestamp_ms,
-                                       &g_out, &g_health));
+        assert(imu_processing_process(
+            &g_state, &g_raw, g_raw.timestamp_ms, &g_out, &g_health));
         assert(!g_health.b_fault_active);
         assert((imu_analysis_process(&analysis, &g_out, &event)) &&
-               (event.b_valid));
+            (event.b_valid));
     }
     g_raw.timestamp_ms += ROBOT_IMU_MAX_GAP_MS + 1U;
-    assert(!imu_processing_process(&g_state, NULL, g_raw.timestamp_ms,
-                                   &g_out, &g_health));
+    assert(!imu_processing_process(
+        &g_state, NULL, g_raw.timestamp_ms, &g_out, &g_health));
     assert((g_health.b_fault_started) && (g_health.b_fault_active) &&
-           (!g_out.b_valid));
+        (!g_out.b_valid));
     for (uint32_t index = 1U; index < g_config.recovery_samples; ++index)
     {
         assert(!step());
@@ -92,9 +92,9 @@ test_filter (void)
     g_raw.accel_x       = 15.0f;
     assert(step());
     assert((imu_test_support_near(g_out.pitch_deg, 3.0f)) &&
-           (imu_test_support_near(g_out.roll_deg, -3.0f)));
+        (imu_test_support_near(g_out.roll_deg, -3.0f)));
     assert((imu_test_support_near(g_out.turn_rate_dps, 10.0f)) &&
-           (imu_test_support_near(g_out.accel_x, 15.0f)));
+        (imu_test_support_near(g_out.accel_x, 15.0f)));
 
     imu_analysis_t        analysis;
     imu_analysis_config_t analysis_config;
@@ -103,7 +103,7 @@ test_filter (void)
     imu_analysis_default_config(&analysis_config);
     assert(imu_analysis_init(&analysis, &analysis_config));
     assert((imu_analysis_process(&analysis, &g_out, &event)) &&
-           (event.b_sudden_impact));
+        (event.b_sudden_impact));
     puts("PASS: smoothing preserves an immediate impact spike");
 
     reset();
@@ -124,10 +124,10 @@ test_faults (void)
     g_raw.b_valid = false;
     assert((!step()) && (!g_health.b_fault_active) && (!g_out.b_valid));
     assert((!step()) && (!g_health.b_fault_active));
-    assert((!step()) && (g_health.b_fault_started) &&
-           (g_health.b_fault_active));
-    assert((!step()) && (!g_health.b_fault_started) &&
-           (g_health.b_fault_active));
+    assert(
+        (!step()) && (g_health.b_fault_started) && (g_health.b_fault_active));
+    assert(
+        (!step()) && (!g_health.b_fault_started) && (g_health.b_fault_active));
     g_raw.b_valid = true;
 
     for (uint32_t index = 0U; index < TEST_RECOVERY_PENDING; ++index)
@@ -145,8 +145,8 @@ test_faults (void)
     reset();
     assert(step());
     g_raw.timestamp_ms += 101U;
-    assert((!step()) && (g_health.b_fault_started) &&
-           (g_health.b_fault_active));
+    assert(
+        (!step()) && (g_health.b_fault_started) && (g_health.b_fault_active));
     assert(!step());
     g_raw.b_valid = false;
     assert(!step()); /* Interrupt recovery. */
@@ -158,11 +158,11 @@ test_faults (void)
     }
 
     assert((step()) && (g_health.b_recovered));
-    assert(!imu_processing_process(&g_state, NULL, g_raw.timestamp_ms + 10U,
-                                   &g_out, &g_health));
+    assert(!imu_processing_process(
+        &g_state, NULL, g_raw.timestamp_ms + 10U, &g_out, &g_health));
     assert(!g_out.b_valid);
-    assert(!imu_processing_process(&g_state, &g_raw, g_raw.timestamp_ms, &g_out,
-                                   &g_health));
+    assert(!imu_processing_process(
+        &g_state, &g_raw, g_raw.timestamp_ms, &g_out, &g_health));
     assert(g_health.b_fault_started); /* Duplicate timestamp. */
     puts("PASS: missing data, gaps, duplicate timestamps and interrupted "
          "recovery");
@@ -207,8 +207,8 @@ static bool
 step (void)
 {
     g_raw.timestamp_ms += 10U;
-    return imu_processing_process(&g_state, &g_raw, g_raw.timestamp_ms, &g_out,
-                                  &g_health);
+    return imu_processing_process(
+        &g_state, &g_raw, g_raw.timestamp_ms, &g_out, &g_health);
 }
 
 /** @brief Equal elapsed time has equal response despite arrival intervals. */

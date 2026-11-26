@@ -36,16 +36,16 @@ typedef struct
 
 static bool gb_started;
 
-static ER accept_event (s4_motion_test_state_t * p_state,
-                        const imu_event_t *      p_event);
+static ER accept_event (
+    s4_motion_test_state_t * p_state, const imu_event_t * p_event);
 
 static ER read_clock (uint32_t * p_now);
 static ER observe_events (s4_motion_test_state_t * p_state, uint32_t now);
 static ER read_status (motion_status_snapshot_t * p_status, uint32_t now);
 static ER wait_clear (s4_motion_test_state_t * p_state);
 static ER follow_motion (s4_motion_test_state_t * p_state, uint32_t command_id);
-static void report_height (s4_motion_test_state_t * p_state,
-                           const imu_event_t *      p_event);
+static void report_height (
+    s4_motion_test_state_t * p_state, const imu_event_t * p_event);
 static void print_diagnostics (void);
 #endif
 
@@ -65,8 +65,9 @@ s4_motion_test_run (void)
     gb_started = true;
     tm_printf((UB *)"[B4-TEST] Armed: forward %u cm at %d counts/s; "
                     "starts after %u ms. Clear route; B5 guards front only.\n",
-              S4_MOTION_TEST_DISTANCE_CM, S4_MOTION_TEST_SPEED_CPS,
-              S4_MOTION_TEST_BOOT_MS);
+        S4_MOTION_TEST_DISTANCE_CM,
+        S4_MOTION_TEST_SPEED_CPS,
+        S4_MOTION_TEST_BOOT_MS);
 
     ER error = tk_dly_tsk(S4_MOTION_TEST_BOOT_MS);
 
@@ -88,8 +89,9 @@ s4_motion_test_run (void)
     if (E_OK == error)
     {
         error = motion_move_cm((float32_t)S4_MOTION_TEST_DISTANCE_CM,
-                               S4_MOTION_TEST_SPEED_CPS, MOTION_DIR_FORWARD,
-                               &command_id);
+            S4_MOTION_TEST_SPEED_CPS,
+            MOTION_DIR_FORWARD,
+            &command_id);
     }
 
     if (E_OK == error)
@@ -102,8 +104,10 @@ s4_motion_test_run (void)
     print_diagnostics();
     tm_printf((UB *)"[B4-TEST] %s error=%d humps=%u valid_heights=%u; "
                     "STOP requested. Reboot to repeat.\n",
-              (E_OK == error) ? "MOTION PASS" : "ABORTED", error, state.humps,
-              state.heights);
+        (E_OK == error) ? "MOTION PASS" : "ABORTED",
+        error,
+        state.humps,
+        state.heights);
     return error;
 #else
     return E_OBJ;
@@ -246,16 +250,18 @@ follow_motion (s4_motion_test_state_t * p_state, uint32_t command_id)
         if (E_OK == result_error)
         {
             tm_printf((UB *)"[B4-TEST] B2 result=%d fault=%d stopped=%d\n",
-                      result.status, result.fault, result.physically_stopped);
+                result.status,
+                result.fault,
+                result.physically_stopped);
             return ((MOTION_STATUS_COMPLETED == result.status) &&
-                    (result.physically_stopped))
-                       ? E_OK
-                       : E_OBJ;
+                       (result.physically_stopped))
+                ? E_OK
+                : E_OBJ;
         }
 
         if ((E_OBJ != result_error) || (!b2_safety_motion_allowed()) ||
             ((MOTION_STATUS_RUNNING == status.status) &&
-             (command_id != status.command_id)))
+                (command_id != status.command_id)))
         {
             tm_printf((UB *)"[B4-TEST] Abort: B5 permission lost, "
                             "command replaced or result read failed\n");
@@ -301,9 +307,9 @@ observe_events (s4_motion_test_state_t * p_state, uint32_t now)
     }
 
     return ((p_state->b_seen) &&
-            ((now - p_state->last_event_ms) <= S4_TEST_FRESH_MS))
-               ? E_OK
-               : E_TMOUT;
+               ((now - p_state->last_event_ms) <= S4_TEST_FRESH_MS))
+        ? E_OK
+        : E_TMOUT;
 }
 
 /** @brief Reject hazards before updating the last accepted observation. */
@@ -336,8 +342,8 @@ report_height (s4_motion_test_state_t * p_state, const imu_event_t * p_event)
         {
             ++p_state->heights;
             tm_printf((UB *)"[B4-TEST] Hump estimate=%d mm highest=%d mm\n",
-                      imu_numeric_to_int(p_event->hump_peak_cm * 10.0f),
-                      imu_numeric_to_int(p_event->highest_hump_cm * 10.0f));
+                imu_numeric_to_int(p_event->hump_peak_cm * 10.0f),
+                imu_numeric_to_int(p_event->highest_hump_cm * 10.0f));
         }
         else
         {

@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+import re
 
 root = Path(__file__).resolve().parents[2]
 src = root / 'app_program/subsystem5/s5_measure.c'
@@ -133,8 +134,14 @@ code = code.replace('DRIVER_HEADER', str(root / 'app_program/subsystem5/drv_ultr
 code = code.replace('MEASURE_SOURCE', str(src))
 
 # Ensure the running path no longer calls the multi-ping blocking routine.
-start = task.index('        if (driving) {', task.index('static void stationary_profile_mode'))
-end = task.index('        valid = s5_measure_front_cm(&cm);', start)
+profile = re.search(r'static\s+void\s+stationary_profile_mode\s*\(', task)
+assert profile, 'stationary profile entry missing'
+moving = re.search(r'\bif\s*\(driving\)\s*\{', task[profile.start():])
+assert moving, 'moving guard branch missing'
+start = profile.start() + moving.start()
+stopped = re.search(r'\bvalid\s*=\s*s5_measure_front_cm\(&cm\);', task[start:])
+assert stopped, 'stopped measurement branch missing'
+end = start + stopped.start()
 running = task[start:end]
 assert 's5_ultrasonic_read_front()' in running
 assert 'b2_request_forward();' in running

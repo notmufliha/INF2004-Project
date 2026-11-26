@@ -9,10 +9,13 @@
 /* A successful read callback fills all count bytes before returning true.
  * Callbacks execute synchronously in the single sampling-task owner.
  */
-typedef bool (*gy511_read_fn_t)(void * p_context, uint8_t address, uint8_t reg,
-                                uint8_t * p_data, uint32_t count);
-typedef bool (*gy511_write_fn_t)(void * p_context, uint8_t address, uint8_t reg,
-                                 uint8_t value);
+typedef bool (*gy511_read_fn_t)(void * p_context,
+    uint8_t                            address,
+    uint8_t                            reg,
+    uint8_t *                          p_data,
+    uint32_t                           count);
+typedef bool (*gy511_write_fn_t)(
+    void * p_context, uint8_t address, uint8_t reg, uint8_t value);
 
 typedef struct
 {
@@ -33,9 +36,11 @@ typedef struct
 } gy511_config_t;
 
 typedef bool (*gy511_clock_fn_t)(void * p_context, uint32_t * p_time_ms);
-typedef void (*gy511_pair_fn_t)(void * p_context, imu_data_t * p_data,
-                                uint32_t begin_ms, uint32_t end_ms,
-                                bool b_time_valid);
+typedef void (*gy511_pair_fn_t)(void * p_context,
+    imu_data_t *                       p_data,
+    uint32_t                           begin_ms,
+    uint32_t                           end_ms,
+    bool                               b_time_valid);
 
 /* Pair immediately after the acceleration burst, before math/magnetic reads. */
 typedef struct
@@ -70,18 +75,19 @@ typedef enum
 void gy511_default_config (gy511_config_t * p_config);
 /* Checks magnetic H43 ID, configures and verifies both register banks.
  * The DLHC accelerometer has no documented WHO_AM_I register. */
-bool           gy511_init (gy511_t * p_sensor, const gy511_bus_t * p_bus,
-                           const gy511_config_t * p_config);
-gy511_result_t gy511_read (gy511_t * p_sensor, uint32_t timestamp_ms,
-                           imu_data_t * p_data);
+bool gy511_init (gy511_t * p_sensor,
+    const gy511_bus_t *    p_bus,
+    const gy511_config_t * p_config);
+gy511_result_t gy511_read (
+    gy511_t * p_sensor, uint32_t timestamp_ms, imu_data_t * p_data);
 bool gy511_set_capture (gy511_t * p_sensor, const gy511_capture_t * p_capture);
 /* Enabled policy requires fresh, non-running standstill for one second.
  * Suppressed frames mark magnetic/heading/turn-rate data unavailable.
  */
 bool gy511_set_magnetic_idle_only (gy511_t * p_sensor, bool b_enabled);
 /* Level, still startup average in robot axes; preserves 1g on Z. */
-bool gy511_set_level_calibration (gy511_t *       p_sensor,
-                                  const float32_t p_mean[3]);
+bool gy511_set_level_calibration (
+    gy511_t * p_sensor, const float32_t p_mean[3]);
 
 #endif
 

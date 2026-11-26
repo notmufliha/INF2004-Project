@@ -24,7 +24,7 @@ s1_link_wifi_action (int32_t link_status, uint32_t elapsed_ms)
         action = S1_LINK_WIFI_WAIT;
     }
     else if ((S1_LINK_STATUS_JOIN == link_status) ||
-             (S1_LINK_STATUS_NOIP == link_status))
+        (S1_LINK_STATUS_NOIP == link_status))
     {
         /* Still making progress: only intervene once it is stuck. */
         if (elapsed_ms >= S1_LINK_STUCK_MS)

@@ -13,28 +13,32 @@
 
 #include "../app.h"
 
-#define S3_PRI_CONSUMER        16
-#define S3_BATCH_SIZE          5
+#define S3_PRI_CONSUMER 16
+#define S3_BATCH_SIZE 5
 
-typedef struct {
-	UW received;
-	INT min;
-	INT max;
-	W sum;
+typedef struct
+{
+    UW  received;
+    INT min;
+    INT max;
+    W   sum;
 } APP_STATS;
 
 /* IF-01: S2 sends subsystem2_sample_msg_t pointers to the S3-owned mailbox. */
 IMPORT ID mbx_samples;
 
 /* IF-04: consumers must hold mtx_stats while reading or updating app_stats. */
-IMPORT ID mtx_stats;
+IMPORT ID        mtx_stats;
 IMPORT APP_STATS app_stats;
 
-IMPORT ER subsystem3_init(void);
-IMPORT ER subsystem3_start(void);
-IMPORT void consumer_task(INT stacd, void *exinf);
+IMPORT ER subsystem3_init (void);
+IMPORT ER subsystem3_start (void);
+IMPORT void consumer_task (INT stacd, void * exinf);
 
 /* Pure helper used by the consumer and unit tests. */
-IMPORT void s3_update_stats(APP_STATS *stats, INT value);
+IMPORT void s3_update_stats (APP_STATS * stats, INT value);
 
 #endif /* SUBSYSTEM3_H */
+
+/*** end of file ***/
+

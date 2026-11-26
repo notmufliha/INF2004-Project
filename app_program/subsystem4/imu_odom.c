@@ -8,9 +8,9 @@
 
 /* The kernel counter ABI must match the exact-width queue representation. */
 typedef uint8_t imu_odom_counter_check_t[((sizeof(INT) == sizeof(int32_t)) &&
-                                          (sizeof(UW) == sizeof(uint32_t)))
-                                             ? 1
-                                             : -1];
+                                             (sizeof(UW) == sizeof(uint32_t)))
+        ? 1
+        : -1];
 
 typedef struct
 {
@@ -21,11 +21,12 @@ typedef struct
 } imu_odom_clocks_t;
 
 static uint16_t elapsed_ms (uint32_t start, uint32_t end);
-static void     reset_metadata (imu_data_t * p_data);
-static void     capture_counts (imu_data_t * p_data);
-static void     record_clocks (imu_data_t *              p_data,
-                               const imu_odom_clocks_t * p_clocks,
-                               const SYSTIM * p_now, ER final_error);
+static void reset_metadata (imu_data_t * p_data);
+static void capture_counts (imu_data_t * p_data);
+static void record_clocks (imu_data_t * p_data,
+    const imu_odom_clocks_t *           p_clocks,
+    const SYSTIM *                      p_now,
+    ER                                  final_error);
 
 /** @brief Compatibility capture for an already validated acquisition frame. */
 void
@@ -50,8 +51,8 @@ imu_odom_capture (imu_data_t * p_data)
 /** @brief Pair bytes with encoder counts before angle or magnetic processing.
  */
 void
-imu_odom_pair (imu_data_t * p_data, uint32_t begin_ms, uint32_t end_ms,
-               bool b_time_valid)
+imu_odom_pair (
+    imu_data_t * p_data, uint32_t begin_ms, uint32_t end_ms, bool b_time_valid)
 {
     if (NULL == p_data)
     {
@@ -82,8 +83,8 @@ reset_metadata (imu_data_t * p_data)
     p_data->b_odometry_valid = false;
     p_data->motion           = (imu_motion_t){0};
     p_data->odometry_reasons = 0U;
-    p_data->odometry_time_valid &= IMU_READ_TIME_ACCEL | IMU_READ_TIME_MAG |
-                                  IMU_READ_MAG_DEFERRED;
+    p_data->odometry_time_valid &=
+        IMU_READ_TIME_ACCEL | IMU_READ_TIME_MAG | IMU_READ_MAG_DEFERRED;
     p_data->odometry_age_ms     = 0U;
     p_data->odometry_encoder_ms = 0U;
     p_data->odometry_context_ms = 0U;
@@ -138,8 +139,8 @@ capture_counts (imu_data_t * p_data)
     p_data->encoder_right        = (int32_t)right_count;
     p_data->encoder_left_errors  = (uint32_t)left_after;
     p_data->encoder_right_errors = (uint32_t)right_after;
-    p_data->b_odometry_valid =
-        (left_before == left_after) && (right_before == right_after) &&
+    p_data->b_odometry_valid     = (left_before == left_after) &&
+        (right_before == right_after) &&
         (now.lo - p_data->timestamp_ms <= S4_IMU_PERIOD_MS);
     p_data->timestamp_ms = now.lo;
 }
@@ -156,8 +157,10 @@ elapsed_ms (uint32_t start, uint32_t end)
 
 /** @brief Distinguish full acquisition age from encoder/context overhead. */
 static void
-record_clocks (imu_data_t * p_data, const imu_odom_clocks_t * p_clocks,
-               const SYSTIM * p_now, ER final_error)
+record_clocks (imu_data_t *   p_data,
+    const imu_odom_clocks_t * p_clocks,
+    const SYSTIM *            p_now,
+    ER                        final_error)
 {
     if ((E_OK != p_clocks->start_error) || (E_OK != p_clocks->encoder_error))
     {

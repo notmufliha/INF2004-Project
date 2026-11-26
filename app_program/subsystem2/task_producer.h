@@ -6,7 +6,10 @@
 
 #include "../app.h"
 
-void subsystem2_producer_task(INT stacd, void *p_exinf);
-INT subsystem2_make_value(UW seq);
+void subsystem2_producer_task (INT stacd, void * p_exinf);
+INT subsystem2_make_value (UW seq);
 
 #endif /* TASK_PRODUCER_H */
+
+/*** end of file ***/
+

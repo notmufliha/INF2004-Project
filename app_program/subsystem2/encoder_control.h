@@ -8,22 +8,22 @@
 #include "../app.h"
 #include "encoder_numeric.h"
 
-ER encoder_init(void);
+ER encoder_init (void);
 
 /* Signed 24-bit rolling counts, sign-extended to the platform INT.
  * Use encoder_count_delta for displacement across rollover. */
-void encoder_get_counts(INT *p_left, INT *p_right);
+void encoder_get_counts (INT * p_left, INT * p_right);
 /* Cumulative impossible A/B transitions; read atomically as a pair. */
-void encoder_get_invalid_counts(UW *left, UW *right);
+void encoder_get_invalid_counts (UW * left, UW * right);
 /* Wheel geometry and encoder resolution. */
-#define ENC_WHEEL_DIAMETER_CM     6.5f
+#define ENC_WHEEL_DIAMETER_CM 6.5f
 
 /*
  * Distance between the centres of the left and right wheels.
  * Preliminary measurement: 9.7 cm.
  * Calibrate using actual 90-degree turns.
  */
-#define ENC_WHEEL_TRACK_CM       9.7f
+#define ENC_WHEEL_TRACK_CM 9.7f
 
 /* Provisional turn-only correction: initial scale = 90/70.
  * Left scale 1.3932155 produced a reported approximately 100 degrees.
@@ -33,23 +33,23 @@ void encoder_get_invalid_counts(UW *left, UW *right);
  * New scale = old scale * requested angle / measured angle.
  * Never tune these values from a cancelled, timed-out or faulted turn.
  */
-#define ENC_TURN_LEFT_SCALE      1.1285046f
-#define ENC_TURN_RIGHT_SCALE     1.2342857f /* Slight reduction: old 48-degree travel instead of 50. */
+#define ENC_TURN_LEFT_SCALE 1.1285046f
+#define ENC_TURN_RIGHT_SCALE                                                   \
+    1.2342857f /* Slight reduction: old 48-degree travel instead of 50. */
 
 /* Preliminary encoder calibration values. */
-#define ENC_LEFT_COUNTS_PER_REV  2499
+#define ENC_LEFT_COUNTS_PER_REV 2499
 #define ENC_RIGHT_COUNTS_PER_REV 2341
 
 /* Signed travel from a starting count, valid within half a counter cycle.
  * Long-running consumers must accumulate sampled encoder_count_delta. */
-void encoder_get_distance_cm(
-    INT left_start,
-    INT right_start,
-    float *p_left_cm,
-    float *p_right_cm
-);
+void encoder_get_distance_cm (
+    INT left_start, INT right_start, float * p_left_cm, float * p_right_cm);
 
-void encoder_test_task(INT stacd, void *p_exinf);
+void encoder_test_task (INT stacd, void * p_exinf);
 
-void encoder_speed_task(INT stacd, void *p_exinf);
+void encoder_speed_task (INT stacd, void * p_exinf);
 #endif
+
+/*** end of file ***/
+

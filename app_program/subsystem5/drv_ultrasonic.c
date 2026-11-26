@@ -27,20 +27,26 @@
 #endif
 
 #define S5_ECHO_PWM_SLICE_BASE PWM_CH0_BASE
-#define S5_ECHO_CSR     (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_CSR)
-#define S5_ECHO_DIV     (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_DIV)
-#define S5_ECHO_CTR     (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_CTR)
-#define S5_ECHO_TOP     (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_TOP)
+#define S5_ECHO_CSR (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_CSR)
+#define S5_ECHO_DIV (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_DIV)
+#define S5_ECHO_CTR (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_CTR)
+#define S5_ECHO_TOP (S5_ECHO_PWM_SLICE_BASE + PWM_CHx_TOP)
 #define S5_ECHO_PWM_B_HIGH_MODE (1u << 4u)
 #define S5_ECHO_TIMEOUT_US 45000u
 #define S5_ECHO_LATE_FALL_US 15000u
 #define S5_MIN_TRIGGER_GAP_US 65000u
 static uint32_t last_trigger_us;
-static bool have_trigger;
+static bool     have_trigger;
 
 /* RP2040 1MHz timer, used only to bound polling; not to measure pulse. */
-static uint32_t now_us(void) { return (uint32_t)in_w(TIMER_TIMERAWL); }
-static bool expired(uint32_t start, uint32_t duration_us)
+static uint32_t
+now_us (void)
+{
+    return (uint32_t)in_w(TIMER_TIMERAWL);
+}
+
+static bool
+expired (uint32_t start, uint32_t duration_us)
 {
     return (uint32_t)(now_us() - start) >= duration_us;
 }
@@ -48,44 +54,60 @@ static bool expired(uint32_t start, uint32_t duration_us)
 /* PWM captures the echo while this task sleeps. Yield during millisecond
  * waits so the higher-priority safety task does not monopolize the CPU.
  * Never call this during the bounded 12-us trigger pulse. */
-static void yield_echo_wait(uint32_t *last_yield_us)
+static void
+yield_echo_wait (uint32_t * last_yield_us)
 {
-    if ((uint32_t)(now_us() - *last_yield_us) >= 1000u) {
+    if ((uint32_t)(now_us() - *last_yield_us) >= 1000u)
+    {
         tk_dly_tsk(1u);
         *last_yield_us = now_us();
     }
 }
 
-float s5_echo_us_to_cm(uint32_t echo_us)
+float
+s5_echo_us_to_cm (uint32_t echo_us)
 {
     return ((float)echo_us * 0.0343f) / 2.0f;
 }
 
-const char *s5_echo_status_name(S5EchoStatus status)
+const char *
+s5_echo_status_name (S5EchoStatus status)
 {
-    switch (status) {
-    case S5_ECHO_OK: return "OK";
-    case S5_ECHO_STUCK_HIGH: return "ECHO_STUCK_HIGH";
-    case S5_ECHO_NO_RISE: return "ECHO_NO_RISE";
-    case S5_ECHO_NO_FALL: return "ECHO_NO_FALL";
-    case S5_ECHO_TOO_SHORT: return "ECHO_GLITCH";
-    case S5_ECHO_OUT_OF_RANGE: return "OUT_OF_RANGE";
-    case S5_ECHO_OPEN_SPACE: return "OPEN_SPACE_ASSUMED";
-    default: return "UNKNOWN";
+    switch (status)
+    {
+        case S5_ECHO_OK:
+            return "OK";
+        case S5_ECHO_STUCK_HIGH:
+            return "ECHO_STUCK_HIGH";
+        case S5_ECHO_NO_RISE:
+            return "ECHO_NO_RISE";
+        case S5_ECHO_NO_FALL:
+            return "ECHO_NO_FALL";
+        case S5_ECHO_TOO_SHORT:
+            return "ECHO_GLITCH";
+        case S5_ECHO_OUT_OF_RANGE:
+            return "OUT_OF_RANGE";
+        case S5_ECHO_OPEN_SPACE:
+            return "OPEN_SPACE_ASSUMED";
+        default:
+            return "UNKNOWN";
     }
 }
 
-bool s5_ultrasonic_init(void)
+bool
+s5_ultrasonic_init (void)
 {
     have_trigger = false;
-    tm_printf((UB*)"[S5-CLOCK] timer_tick_cycles=%d expected=12 (1 MHz)\n",
-              (int)(in_w(0x4005802cU) & 0x1ffU));
+    tm_printf((UB *)"[S5-CLOCK] timer_tick_cycles=%d expected=12 (1 MHz)\n",
+        (int)(in_w(0x4005802cU) & 0x1ffU));
     /* The sensor must work independently of motor initialization order. */
     clr_w(0x4000c000u, 1u << 14u); /* RESETS_RESET: PWM */
     uint32_t reset_started = now_us();
-    while (!(in_w(0x4000c008u) & (1u << 14u))) {
-        if (expired(reset_started, 1000u)) {
-            tm_printf((UB*)"[S5-INIT] ERROR: PWM peripheral held in reset\n");
+    while (!(in_w(0x4000c008u) & (1u << 14u)))
+    {
+        if (expired(reset_started, 1000u))
+        {
+            tm_printf((UB *)"[S5-INIT] ERROR: PWM peripheral held in reset\n");
             return false;
         }
     }
@@ -110,31 +132,40 @@ bool s5_ultrasonic_init(void)
     out_w(S5_ECHO_TOP, 0xffffu);
     out_w(S5_ECHO_CTR, 0u);
     out_w(S5_ECHO_CSR, S5_ECHO_PWM_B_HIGH_MODE | PWM_CH_CSR_EN);
-    tm_printf((UB*)"[S5-INIT] TRIG=GP%d ECHO=GP%d echo_level=%d PWM_CSR=%d DIV=%d TOP=%d (expected 17/2000/65535)\n",
-              (int)S5_TRIG_PIN, (int)S5_ECHO_PIN,
-              (int)gpio_get_val(S5_ECHO_PIN), (int)in_w(S5_ECHO_CSR),
-              (int)in_w(S5_ECHO_DIV), (int)in_w(S5_ECHO_TOP));
+    tm_printf((UB *)"[S5-INIT] TRIG=GP%d ECHO=GP%d echo_level=%d PWM_CSR=%d "
+                    "DIV=%d TOP=%d (expected 17/2000/65535)\n",
+        (int)S5_TRIG_PIN,
+        (int)S5_ECHO_PIN,
+        (int)gpio_get_val(S5_ECHO_PIN),
+        (int)in_w(S5_ECHO_CSR),
+        (int)in_w(S5_ECHO_DIV),
+        (int)in_w(S5_ECHO_TOP));
     return true;
 }
 
-S5EchoReading s5_ultrasonic_read_detailed(void)
+S5EchoReading
+s5_ultrasonic_read_detailed (void)
 {
-    S5EchoReading r = { S5_ECHO_NO_RISE, 0u, 0.0f };
-    uint32_t start, count;
-    UINT trigger_irq;
-    bool saw_high = false;
-    uint32_t last_yield_us = now_us();
+    S5EchoReading r = {S5_ECHO_NO_RISE, 0u, 0.0f};
+    uint32_t      start, count;
+    UINT          trigger_irq;
+    bool          saw_high      = false;
+    uint32_t      last_yield_us = now_us();
 
     /* Enforce spacing at the hardware boundary, including warmup, scans,
      * retries and a restarted mission. Caller delays alone do not cover
      * every transition and can retrigger during a no-target timeout. */
     while (have_trigger && !expired(last_trigger_us, S5_MIN_TRIGGER_GAP_US))
+    {
         yield_echo_wait(&last_yield_us);
+    }
 
     /* A stuck-high pin is not a valid echo. */
     start = now_us();
-    while (gpio_get_val(S5_ECHO_PIN)) {
-        if (expired(start, S5_ECHO_TIMEOUT_US)) {
+    while (gpio_get_val(S5_ECHO_PIN))
+    {
+        if (expired(start, S5_ECHO_TIMEOUT_US))
+        {
             r.status = S5_ECHO_STUCK_HIGH;
             return r;
         }
@@ -148,16 +179,20 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
     out_w(S5_ECHO_CSR, S5_ECHO_PWM_B_HIGH_MODE | PWM_CH_CSR_EN);
     gpio_set_val(S5_TRIG_PIN, 0u);
     start = now_us();
-    while (!expired(start, 3u)) { }
+    while (!expired(start, 3u))
+    {
+    }
     /* Keep the 12-us trigger bounded: a scheduler/USB/WiFi interrupt
      * must not stretch it into a millisecond pulse. Echo waits below
      * remain preemptible; hardware PWM captures their duration. */
     DI(trigger_irq);
     gpio_set_val(S5_TRIG_PIN, 1u);
     last_trigger_us = now_us();
-    have_trigger = true;
-    start = now_us();
-    while (!expired(start, 12u)) { }
+    have_trigger    = true;
+    start           = now_us();
+    while (!expired(start, 12u))
+    {
+    }
     gpio_set_val(S5_TRIG_PIN, 0u);
     EI(trigger_irq);
 
@@ -165,13 +200,16 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
      * counter is already nonzero, the pulse has begun or completed even
      * if the software never observed the high edge. */
     start = now_us();
-    while (!saw_high) {
+    while (!saw_high)
+    {
         count = in_w(S5_ECHO_CTR) & 0xffffu;
-        if (gpio_get_val(S5_ECHO_PIN) || count != 0u) {
+        if (gpio_get_val(S5_ECHO_PIN) || count != 0u)
+        {
             saw_high = true;
             break;
         }
-        if (expired(start, S5_ECHO_TIMEOUT_US)) {
+        if (expired(start, S5_ECHO_TIMEOUT_US))
+        {
             r.status = S5_ECHO_NO_RISE;
             return r;
         }
@@ -181,17 +219,21 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
     /* Counter keeps running only while ECHO is high.  Interrupts and task
      * switches cannot stretch the captured width. */
     start = now_us();
-    while (gpio_get_val(S5_ECHO_PIN)) {
-        if (expired(start, S5_ECHO_TIMEOUT_US)) {
+    while (gpio_get_val(S5_ECHO_PIN))
+    {
+        if (expired(start, S5_ECHO_TIMEOUT_US))
+        {
             /* Do not immediately report NO_FALL at 45ms. Allow a late
              * no-target pulse to finish, without retriggering while HIGH.
              * Total high wait stays below the 65.536ms PWM counter wrap
              * and far below the independent 350ms motor watchdog. */
             uint32_t recovery_start = now_us();
-            while (gpio_get_val(S5_ECHO_PIN)) {
-                if (expired(recovery_start, S5_ECHO_LATE_FALL_US)) {
+            while (gpio_get_val(S5_ECHO_PIN))
+            {
+                if (expired(recovery_start, S5_ECHO_LATE_FALL_US))
+                {
                     r.pulse_us = in_w(S5_ECHO_CTR) & 0xffffu;
-                    r.status = S5_ECHO_NO_FALL;
+                    r.status   = S5_ECHO_NO_FALL;
                     return r;
                 }
                 yield_echo_wait(&last_yield_us);
@@ -199,8 +241,9 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
             /* GPIO did fall: classify the completed hardware pulse below.
              * Open-space policy accepts a completed OUT_OF_RANGE pulse. */
 #if ROBOT_VERBOSE_SENSOR_LOG
-            tm_printf((UB*)"[S5-ECHO-RECOVER] late falling edge captured; pulse_us=%d\n",
-                      (int)(in_w(S5_ECHO_CTR) & 0xffffu));
+            tm_printf((UB *)"[S5-ECHO-RECOVER] late falling edge captured; "
+                            "pulse_us=%d\n",
+                (int)(in_w(S5_ECHO_CTR) & 0xffffu));
 #endif
             break;
         }
@@ -208,22 +251,30 @@ S5EchoReading s5_ultrasonic_read_detailed(void)
     }
 
     r.pulse_us = in_w(S5_ECHO_CTR) & 0xffffu;
-    r.cm = s5_echo_us_to_cm(r.pulse_us);
+    r.cm       = s5_echo_us_to_cm(r.pulse_us);
     if (r.pulse_us < 100u)
     {
         r.status = S5_ECHO_TOO_SHORT;
     }
-    else if (r.cm > 400.0f) r.status = S5_ECHO_OUT_OF_RANGE;
-    else r.status = S5_ECHO_OK;
+    else if (r.cm > 400.0f)
+    {
+        r.status = S5_ECHO_OUT_OF_RANGE;
+    }
+    else
+    {
+        r.status = S5_ECHO_OK;
+    }
     return r;
 }
 
-S5EchoReading s5_ultrasonic_read_front(void)
+S5EchoReading
+s5_ultrasonic_read_front (void)
 {
     S5EchoReading r = s5_ultrasonic_read_detailed();
 #if ROBOT_NO_TARGET_FORWARD || ROBOT_COMPLETED_FAR_ECHO
     if ((ROBOT_NO_TARGET_FORWARD && r.status == S5_ECHO_NO_RISE) ||
-        r.status == S5_ECHO_OUT_OF_RANGE) {
+        r.status == S5_ECHO_OUT_OF_RANGE)
+    {
         r.status = S5_ECHO_OPEN_SPACE;
         /* Control-only sentinel, explicitly labelled as assumed in logs.
          * Scan policy may use this as an assumed-clear boundary ray. */
@@ -233,7 +284,8 @@ S5EchoReading s5_ultrasonic_read_front(void)
     return r;
 }
 
-bool s5_ultrasonic_read_cm(float *out_cm)
+bool
+s5_ultrasonic_read_cm (float * out_cm)
 {
     S5EchoReading r;
     if (!out_cm)
@@ -241,7 +293,7 @@ bool s5_ultrasonic_read_cm(float *out_cm)
         return false;
     }
     *out_cm = 0.0f;
-    r = s5_ultrasonic_read_detailed();
+    r       = s5_ultrasonic_read_detailed();
     if (r.status != S5_ECHO_OK)
     {
         return false;
@@ -249,3 +301,6 @@ bool s5_ultrasonic_read_cm(float *out_cm)
     *out_cm = r.cm;
     return true;
 }
+
+/*** end of file ***/
+

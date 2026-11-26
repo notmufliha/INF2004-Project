@@ -28,8 +28,8 @@
 /* Event-flag handle; name kept for the team, B2 waits on it (DEV-1). */
 extern ID flg_faults;
 
-void    fault_raise (uint32_t bits);
-void    fault_clear (uint32_t bits);
+void fault_raise (uint32_t bits);
+void fault_clear (uint32_t bits);
 uint8_t fault_get (void); /* current mask, 0 if not created yet */
 
 #endif /* FAULT_H */

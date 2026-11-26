@@ -9,22 +9,23 @@
 #include <tk/smp.h>
 #endif
 
-static motion_stored_command_t g_pending_command;
-static bool gb_command_pending;
-static ID gh_command_sem;
-static uint32_t g_next_command_id = 1u;
+static motion_stored_command_t  g_pending_command;
+static bool                     gb_command_pending;
+static ID                       gh_command_sem;
+static uint32_t                 g_next_command_id = 1u;
 static motion_status_snapshot_t g_motion_status;
 static motion_status_snapshot_t g_results[MOTION_RESULT_HISTORY];
-static UINT g_result_next;
-static bool gb_status_ready;
+static UINT                     g_result_next;
+static bool                     gb_status_ready;
 /* Command whose FAULT/TIMEOUT the operator acknowledged (START). */
 static uint32_t g_acked_fault_id;
-static bool gb_acked_fault_valid;
+static bool     gb_acked_fault_valid;
 #if TK_SUPPORT_SMP
 static T_SPLOCK g_status_lock;
 #endif
 
-static void motion_lock(UINT *status)
+static void
+motion_lock (UINT * status)
 {
 #if TK_SUPPORT_SMP
     (void)ISpinLock(&g_status_lock, status);
@@ -33,7 +34,8 @@ static void motion_lock(UINT *status)
 #endif
 }
 
-static void motion_unlock(UINT status)
+static void
+motion_unlock (UINT status)
 {
 #if TK_SUPPORT_SMP
     (void)ISpinUnlock(&g_status_lock, status);
@@ -42,15 +44,17 @@ static void motion_unlock(UINT status)
 #endif
 }
 
-static bool motion_terminal(motion_status_t status)
+static bool
+motion_terminal (motion_status_t status)
 {
     return status == MOTION_STATUS_COMPLETED ||
-        status == MOTION_STATUS_CANCELLED ||
-        status == MOTION_STATUS_TIMEOUT || status == MOTION_STATUS_FAULT;
+        status == MOTION_STATUS_CANCELLED || status == MOTION_STATUS_TIMEOUT ||
+        status == MOTION_STATUS_FAULT;
 }
 
 /* Caller holds the status lock. The first terminal result is immutable. */
-static void motion_retain(const motion_status_snapshot_t *snapshot)
+static void
+motion_retain (const motion_status_snapshot_t * snapshot)
 {
     UINT index;
     if (!motion_terminal(snapshot->status) || snapshot->command_id == 0u)
@@ -65,18 +69,19 @@ static void motion_retain(const motion_status_snapshot_t *snapshot)
         }
     }
     g_results[g_result_next] = *snapshot;
-    g_result_next = (g_result_next + 1u) % MOTION_RESULT_HISTORY;
+    g_result_next            = (g_result_next + 1u) % MOTION_RESULT_HISTORY;
 }
 
-static bool motion_valid(const motion_command_t *command)
+static bool
+motion_valid (const motion_command_t * command)
 {
     INT steering;
     if (command->type == MOTION_CMD_STOP)
     {
         return true;
     }
-    if (command->type != MOTION_CMD_DRIVE &&
-        command->type != MOTION_CMD_MOVE && command->type != MOTION_CMD_TURN)
+    if (command->type != MOTION_CMD_DRIVE && command->type != MOTION_CMD_MOVE &&
+        command->type != MOTION_CMD_TURN)
     {
         return false;
     }
@@ -84,13 +89,12 @@ static bool motion_valid(const motion_command_t *command)
     {
         return false;
     }
-    if (command->steering_permille < -1000 ||
-        command->steering_permille > 1000)
+    if (command->steering_permille < -1000 || command->steering_permille > 1000)
     {
         return false;
     }
-    steering = command->steering_permille < 0 ?
-        -command->steering_permille : command->steering_permille;
+    steering = command->steering_permille < 0 ? -command->steering_permille
+                                              : command->steering_permille;
     if ((int64_t)command->target_speed_cps * (1000 + steering) > 5000000)
     {
         return false;
@@ -99,33 +103,38 @@ static bool motion_valid(const motion_command_t *command)
     {
         return false;
     }
-    if (command->run_ms != 0u && (command->type != MOTION_CMD_MOVE ||
-        command->run_ms < 100u || command->run_ms > 60000u)) return false;
+    if (command->run_ms != 0u &&
+        (command->type != MOTION_CMD_MOVE || command->run_ms < 100u ||
+            command->run_ms > 60000u))
+    {
+        return false;
+    }
     if (command->timeout_ms != 0u &&
         (command->timeout_ms < 100u || command->timeout_ms > 60000u ||
-         command->type == MOTION_CMD_DRIVE))
+            command->type == MOTION_CMD_DRIVE))
     {
         return false;
     }
     if (command->type == MOTION_CMD_TURN)
     {
         return (command->turn_direction == MOTION_TURN_LEFT ||
-                command->turn_direction == MOTION_TURN_RIGHT) &&
+                   command->turn_direction == MOTION_TURN_RIGHT) &&
             command->target_angle_deg > 0 && command->target_angle_deg <= 360;
     }
     return (command->direction == MOTION_DIR_FORWARD ||
-            command->direction == MOTION_DIR_REVERSE) &&
+               command->direction == MOTION_DIR_REVERSE) &&
         (command->type != MOTION_CMD_MOVE ||
-         command->target_distance_counts > 0);
+            command->target_distance_counts > 0);
 }
 
-ER motion_command_init(void)
+ER
+motion_command_init (void)
 {
     T_CSEM sem = {0};
-    UINT index;
-    sem.sematr = TA_TFIFO;
-    sem.isemcnt = 1;
-    sem.maxsem = 1;
+    UINT   index;
+    sem.sematr     = TA_TFIFO;
+    sem.isemcnt    = 1;
+    sem.maxsem     = 1;
     gh_command_sem = tk_cre_sem(&sem);
     if (gh_command_sem < E_OK)
     {
@@ -135,9 +144,9 @@ ER motion_command_init(void)
     (void)InitSpinLock(&g_status_lock);
 #endif
     gb_command_pending = false;
-    g_next_command_id = 1u;
-    g_result_next = 0u;
-    g_motion_status = (motion_status_snapshot_t){0};
+    g_next_command_id  = 1u;
+    g_result_next      = 0u;
+    g_motion_status    = (motion_status_snapshot_t){0};
     for (index = 0u; index < MOTION_RESULT_HISTORY; index++)
     {
         g_results[index] = (motion_status_snapshot_t){0};
@@ -147,27 +156,28 @@ ER motion_command_init(void)
 }
 
 /* STOP also records cancellation for an unconsumed command. */
-static void motion_cancel_pending(void)
+static void
+motion_cancel_pending (void)
 {
     motion_status_snapshot_t snapshot;
-    UINT status;
+    UINT                     status;
     motion_lock(&status);
-    snapshot = g_motion_status;
-    snapshot.command_id = g_pending_command.command_id;
-    snapshot.command_type = g_pending_command.type;
-    snapshot.direction = g_pending_command.direction;
-    snapshot.turn_direction = g_pending_command.turn_direction;
-    snapshot.left_distance_mm = 0.0f;
+    snapshot                   = g_motion_status;
+    snapshot.command_id        = g_pending_command.command_id;
+    snapshot.command_type      = g_pending_command.type;
+    snapshot.direction         = g_pending_command.direction;
+    snapshot.turn_direction    = g_pending_command.turn_direction;
+    snapshot.left_distance_mm  = 0.0f;
     snapshot.right_distance_mm = 0.0f;
-    snapshot.status = MOTION_STATUS_CANCELLED;
-    snapshot.fault = MOTION_FAULT_NONE;
+    snapshot.status            = MOTION_STATUS_CANCELLED;
+    snapshot.fault             = MOTION_FAULT_NONE;
     motion_retain(&snapshot);
     motion_unlock(status);
 }
 
-
-ER motion_send_command_with_id(const motion_command_t *command,
-    uint32_t *command_id)
+ER
+motion_send_command_with_id (
+    const motion_command_t * command, uint32_t * command_id)
 {
     ER error;
     if (command_id == NULL)
@@ -202,7 +212,7 @@ ER motion_send_command_with_id(const motion_command_t *command,
     }
     else if (gb_command_pending &&
         (command->type != MOTION_CMD_STOP ||
-         g_pending_command.type == MOTION_CMD_STOP))
+            g_pending_command.type == MOTION_CMD_STOP))
     {
         error = E_OBJ;
     }
@@ -212,26 +222,28 @@ ER motion_send_command_with_id(const motion_command_t *command,
         {
             motion_cancel_pending();
         }
-        g_pending_command = motion_pack_command(command);
+        g_pending_command            = motion_pack_command(command);
         g_pending_command.command_id = g_next_command_id++;
         if (g_next_command_id == 0u)
         {
             g_next_command_id = 1u;
         }
-        *command_id = g_pending_command.command_id;
+        *command_id        = g_pending_command.command_id;
         gb_command_pending = true;
     }
     (void)tk_sig_sem(gh_command_sem, 1);
     return error;
 }
 
-ER motion_send_command(const motion_command_t *command)
+ER
+motion_send_command (const motion_command_t * command)
 {
     uint32_t id;
     return motion_send_command_with_id(command, &id);
 }
 
-ER motion_speed_from_percent(INT percent, INT *speed_cps)
+ER
+motion_speed_from_percent (INT percent, INT * speed_cps)
 {
     if (speed_cps == NULL)
     {
@@ -246,17 +258,25 @@ ER motion_speed_from_percent(INT percent, INT *speed_cps)
     return E_OK;
 }
 
-ER motion_move_cm(float distance_cm, INT speed_cps,
-    motion_direction_t direction, uint32_t *command_id)
+ER
+motion_move_cm (float  distance_cm,
+    INT                speed_cps,
+    motion_direction_t direction,
+    uint32_t *         command_id)
 {
-    return motion_move_limited_cm(distance_cm, speed_cps, direction, 0u, command_id);
+    return motion_move_limited_cm(
+        distance_cm, speed_cps, direction, 0u, command_id);
 }
 
-ER motion_move_limited_cm(float distance_cm, INT speed_cps,
-    motion_direction_t direction, uint32_t run_ms, uint32_t *command_id)
+ER
+motion_move_limited_cm (float distance_cm,
+    INT                       speed_cps,
+    motion_direction_t        direction,
+    uint32_t                  run_ms,
+    uint32_t *                command_id)
 {
     motion_command_t command = {0};
-    float counts = distance_cm * ENC_LEFT_COUNTS_PER_REV /
+    float            counts  = distance_cm * ENC_LEFT_COUNTS_PER_REV /
         (3.14159265f * ENC_WHEEL_DIAMETER_CM);
     if (command_id == NULL)
     {
@@ -268,28 +288,32 @@ ER motion_move_limited_cm(float distance_cm, INT speed_cps,
     {
         return E_PAR;
     }
-    command.type = MOTION_CMD_MOVE;
-    command.direction = direction;
-    command.target_speed_cps = speed_cps;
+    command.type                   = MOTION_CMD_MOVE;
+    command.direction              = direction;
+    command.target_speed_cps       = speed_cps;
     command.target_distance_counts = (INT)(counts + 0.5f);
-    command.run_ms = run_ms;
-    command.safety_generation = b2_safety_stop_generation();
+    command.run_ms                 = run_ms;
+    command.safety_generation      = b2_safety_stop_generation();
     return motion_send_command_with_id(&command, command_id);
 }
 
-ER motion_turn_degrees(INT angle, INT speed_cps,
-    motion_turn_direction_t direction, uint32_t *command_id)
+ER
+motion_turn_degrees (INT    angle,
+    INT                     speed_cps,
+    motion_turn_direction_t direction,
+    uint32_t *              command_id)
 {
-    motion_command_t command = {0};
-    command.type = MOTION_CMD_TURN;
-    command.turn_direction = direction;
-    command.target_angle_deg = angle;
-    command.target_speed_cps = speed_cps;
+    motion_command_t command  = {0};
+    command.type              = MOTION_CMD_TURN;
+    command.turn_direction    = direction;
+    command.target_angle_deg  = angle;
+    command.target_speed_cps  = speed_cps;
     command.safety_generation = b2_safety_stop_generation();
     return motion_send_command_with_id(&command, command_id);
 }
 
-ER motion_receive_command(motion_command_t *command)
+ER
+motion_receive_command (motion_command_t * command)
 {
     ER error;
     if (command == NULL)
@@ -312,24 +336,26 @@ ER motion_receive_command(motion_command_t *command)
     else
     {
         /* Deliver stale commands too, so the controller reports their IDs. */
-        command->type = g_pending_command.type;
-        command->direction = g_pending_command.direction;
-        command->turn_direction = g_pending_command.turn_direction;
-        command->target_speed_cps = g_pending_command.target_speed_cps;
-        command->target_angle_deg = g_pending_command.target_angle_deg;
+        command->type              = g_pending_command.type;
+        command->direction         = g_pending_command.direction;
+        command->turn_direction    = g_pending_command.turn_direction;
+        command->target_speed_cps  = g_pending_command.target_speed_cps;
+        command->target_angle_deg  = g_pending_command.target_angle_deg;
         command->steering_permille = g_pending_command.steering_permille;
-        command->timeout_ms = g_pending_command.timeout_ms;
-        command->run_ms = g_pending_command.run_ms;
-        command->target_distance_counts = g_pending_command.target_distance_counts;
-        command->command_id = g_pending_command.command_id;
+        command->timeout_ms        = g_pending_command.timeout_ms;
+        command->run_ms            = g_pending_command.run_ms;
+        command->target_distance_counts =
+            g_pending_command.target_distance_counts;
+        command->command_id        = g_pending_command.command_id;
         command->safety_generation = g_pending_command.safety_generation;
-        gb_command_pending = false;
+        gb_command_pending         = false;
     }
     (void)tk_sig_sem(gh_command_sem, 1);
     return error;
 }
 
-ER motion_get_status(motion_status_snapshot_t *snapshot)
+ER
+motion_get_status (motion_status_snapshot_t * snapshot)
 {
     UINT status;
     if (snapshot == NULL)
@@ -346,11 +372,12 @@ ER motion_get_status(motion_status_snapshot_t *snapshot)
     return E_OK;
 }
 
-ER motion_get_result(uint32_t id, motion_status_snapshot_t *snapshot)
+ER
+motion_get_result (uint32_t id, motion_status_snapshot_t * snapshot)
 {
     UINT status;
     UINT index;
-    ER result = E_OBJ;
+    ER   result = E_OBJ;
     if (snapshot == NULL || id == 0u)
     {
         return E_PAR;
@@ -365,7 +392,7 @@ ER motion_get_result(uint32_t id, motion_status_snapshot_t *snapshot)
         if (g_results[index].command_id == id)
         {
             *snapshot = g_results[index];
-            result = E_OK;
+            result    = E_OK;
             break;
         }
     }
@@ -373,7 +400,8 @@ ER motion_get_result(uint32_t id, motion_status_snapshot_t *snapshot)
     return result;
 }
 
-ER motion_update_status(const motion_status_snapshot_t *snapshot)
+ER
+motion_update_status (const motion_status_snapshot_t * snapshot)
 {
     UINT status;
     if (snapshot == NULL)
@@ -391,13 +419,15 @@ ER motion_update_status(const motion_status_snapshot_t *snapshot)
     return E_OK;
 }
 
-static bool motion_terminal_fault(const motion_status_snapshot_t *snapshot)
+static bool
+motion_terminal_fault (const motion_status_snapshot_t * snapshot)
 {
     return snapshot->status == MOTION_STATUS_FAULT ||
         snapshot->status == MOTION_STATUS_TIMEOUT;
 }
 
-void motion_acknowledge_fault(void)
+void
+motion_acknowledge_fault (void)
 {
     UINT status;
     if (!gb_status_ready)
@@ -407,13 +437,14 @@ void motion_acknowledge_fault(void)
     motion_lock(&status);
     if (motion_terminal_fault(&g_motion_status))
     {
-        g_acked_fault_id = g_motion_status.command_id;
+        g_acked_fault_id     = g_motion_status.command_id;
         gb_acked_fault_valid = true;
     }
     motion_unlock(status);
 }
 
-bool motion_fault_active(const motion_status_snapshot_t *snapshot)
+bool
+motion_fault_active (const motion_status_snapshot_t * snapshot)
 {
     UINT status;
     bool acknowledged;
@@ -426,8 +457,11 @@ bool motion_fault_active(const motion_status_snapshot_t *snapshot)
         return true;
     }
     motion_lock(&status);
-    acknowledged = gb_acked_fault_valid &&
-        g_acked_fault_id == snapshot->command_id;
+    acknowledged =
+        gb_acked_fault_valid && g_acked_fault_id == snapshot->command_id;
     motion_unlock(status);
     return !acknowledged;
 }
+
+/*** end of file ***/
+

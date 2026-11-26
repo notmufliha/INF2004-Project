@@ -50,7 +50,8 @@ assert 's5_wire_cm(cm, S5_WIRE_DISTANCE_MAX_CM)' in source
 assert source.count('(UH)(cm + 0.5f)') == 1  # rounding occurs only in validated helper
 # The header and B5 enum must keep their existing wire numbers.
 logic = (ROOT / 'app_program/subsystem5/s5_logic.h').read_text()
-enum = re.search(r'typedef enum \{\s*(S5_ERR_NONE.*?)\} S5Error;', logic, re.S)
+enum = re.search(r'typedef\s+enum\s*\{\s*(S5_ERR_NONE.*?)\}\s*S5Error;',
+                 logic, re.S)
 assert enum is not None
 names = [x.strip() for x in enum.group(1).split(',')]
 assert len(names) == 10 and names[0] == 'S5_ERR_NONE'

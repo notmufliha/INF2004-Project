@@ -24,7 +24,7 @@ imu_mock_init (void)
 {
     g_current_scenario  = IMU_MOCK_STATIONARY;
     g_mock_timestamp_ms = 0U;
-    g_mock_counts = 0;
+    g_mock_counts       = 0;
 }
 
 /** @brief Select the next synthetic motion or fault scenario. */
@@ -59,9 +59,9 @@ imu_mock_read (imu_data_t * p_data)
     /* Explicit synthetic travel is confined to this mock driver. */
     p_data->b_odometry_valid = true;
     p_data->encoder_left = p_data->encoder_right = g_mock_counts;
-    p_data->motion.b_valid = true;
-    p_data->motion.b_forward = true;
-    p_data->motion.timestamp_ms = g_mock_timestamp_ms;
+    p_data->motion.b_valid                       = true;
+    p_data->motion.b_forward                     = true;
+    p_data->motion.timestamp_ms                  = g_mock_timestamp_ms;
     p_data->b_turn_rate_valid =
         true; /* Mock explicitly supplies a synthetic rate. */
     p_data->b_magnetic_valid     = false;
@@ -76,10 +76,10 @@ imu_mock_read (imu_data_t * p_data)
 
     if (fabsf(p_data->roll_deg) > 0.0f)
     {
-        p_data->accel_y = IMU_GRAVITY_MS2 *
-            sinf(p_data->roll_deg * 0.01745329252f);
-        p_data->accel_z = IMU_GRAVITY_MS2 *
-            cosf(p_data->roll_deg * 0.01745329252f);
+        p_data->accel_y =
+            IMU_GRAVITY_MS2 * sinf(p_data->roll_deg * 0.01745329252f);
+        p_data->accel_z =
+            IMU_GRAVITY_MS2 * cosf(p_data->roll_deg * 0.01745329252f);
     }
     if ((p_data->motion.b_forward) && (g_mock_counts < INT32_MAX))
     {
@@ -109,7 +109,7 @@ apply_scenario (imu_data_t * p_data)
 
         case IMU_MOCK_TURNING:
             /* Robot turning at 45 degrees/second. */
-            p_data->turn_rate_dps = 45.0f;
+            p_data->turn_rate_dps    = 45.0f;
             p_data->motion.b_forward = false;
             p_data->motion.b_turning = true;
         break;
@@ -152,7 +152,6 @@ apply_scenario (imu_data_t * p_data)
             p_data->b_valid = false;
         break;
     }
-
 }
 
 /*** end of file ***/

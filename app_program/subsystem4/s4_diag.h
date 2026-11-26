@@ -50,11 +50,12 @@ typedef struct
  * Begin lazily creates a FastLock before publishing collection readiness.
  * No lock is held while printing. End copies and freezes the report.
  */
-ER   s4_diag_begin (void);
-void s4_diag_record (const imu_data_t * p_raw, const imu_data_t * p_filtered,
-                     const imu_analysis_t * p_analysis,
-                     const imu_event_t *    p_event);
-ER   s4_diag_end (s4_diag_report_t * p_report);
+ER s4_diag_begin (void);
+void s4_diag_record (const imu_data_t * p_raw,
+    const imu_data_t *                  p_filtered,
+    const imu_analysis_t *              p_analysis,
+    const imu_event_t *                 p_event);
+ER s4_diag_end (s4_diag_report_t * p_report);
 void s4_diag_print (const s4_diag_report_t * p_report);
 
 #endif

@@ -5,31 +5,40 @@
 
 #include "comm_names.h"
 
-static const char * const g_link_names[COMM_STATE_COUNT] =
-{
-    "INITIALISING", "CONNECTING_WIFI", "CONNECTING_MQTT", "CONNECTED",
-    "RECONNECTING", "OFFLINE", "DISABLED"
-};
+static const char * const g_link_names[COMM_STATE_COUNT] = {"INITIALISING",
+    "CONNECTING_WIFI",
+    "CONNECTING_MQTT",
+    "CONNECTED",
+    "RECONNECTING",
+    "OFFLINE",
+    "DISABLED"};
 
-static const char * const g_nav_names[NAV_COUNT] =
-{
-    "NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN",
-    "STOP", "SLOW", "NORMAL", "SPIN", "FINISH"
-};
+static const char * const g_nav_names[NAV_COUNT] = {"NONE",
+    "LEFT",
+    "RIGHT",
+    "STRAIGHT",
+    "UTURN",
+    "STOP",
+    "SLOW",
+    "NORMAL",
+    "SPIN",
+    "FINISH"};
 
-static const char * const g_avoid_names[AVOID_COUNT] =
-{
-    "NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"
-};
+static const char * const g_avoid_names[AVOID_COUNT] = {
+    "NONE", "STOP", "CONTINUE", "LEFT", "RIGHT", "REVERSE"};
 
-static const char * const g_remote_names[RCMD_COUNT] =
-{
-    "NONE", "START", "STOP", "ESTOP", "PAUSE", "RESUME",
-    "MODE", "SPEED", "RESET_PEAK"
-};
+static const char * const g_remote_names[RCMD_COUNT] = {"NONE",
+    "START",
+    "STOP",
+    "ESTOP",
+    "PAUSE",
+    "RESUME",
+    "MODE",
+    "SPEED",
+    "RESET_PEAK"};
 
-static const char * name_of (const char * const * pp_table, uint32_t index,
-                             uint32_t count);
+static const char * name_of (
+    const char * const * pp_table, uint32_t index, uint32_t count);
 
 /** @brief Name of a link state, e.g. "CONNECTED". */
 const char *

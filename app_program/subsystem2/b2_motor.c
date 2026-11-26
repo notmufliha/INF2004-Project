@@ -24,9 +24,10 @@
 #endif
 #define B2_SAFETY_HEARTBEAT_MS ROBOT_MOTOR_WATCHDOG_MS
 
-static uint32_t g_stop_generation = 1u;
+static uint32_t g_stop_generation         = 1u;
 static uint32_t g_acknowledged_generation = 0u;
-static uint32_t g_clear_heartbeat_ms = 0u;
+static uint32_t g_clear_heartbeat_ms      = 0u;
+
 /* All runtime reads/writes hold g_safety_lock (or disable interrupts). */
 static struct
 {
@@ -34,29 +35,30 @@ static struct
     bool stopped : 1;
     bool stop_latched : 1;
 } g_safety = {false, true, true};
+
 /*
  * STOP remains latched until a fresh clear-path report
  * arrives after Buddy 2 acknowledges the STOP.
  */
-
 
 #if TK_SUPPORT_SMP
 
 static T_SPLOCK g_safety_lock = 0;
 #endif
 
-static void safety_lock_enter(UINT *p_interrupt_status);
-static void safety_lock_leave(UINT interrupt_status);
-static uint32_t b2_now_ms(void);
+static void safety_lock_enter (UINT * p_interrupt_status);
+static void safety_lock_leave (UINT interrupt_status);
+static uint32_t b2_now_ms (void);
 
-ER b2_safety_init(void)
+ER
+b2_safety_init (void)
 {
-    g_stop_generation = 1u;
+    g_stop_generation         = 1u;
     g_acknowledged_generation = 0u;
-    g_clear_heartbeat_ms = 0u;
-    g_safety.clear_valid = false;
-    g_safety.stopped = true;
-    g_safety.stop_latched = true;
+    g_clear_heartbeat_ms      = 0u;
+    g_safety.clear_valid      = false;
+    g_safety.stopped          = true;
+    g_safety.stop_latched     = true;
 #if TK_SUPPORT_SMP
     g_safety_lock = 0;
 #endif
@@ -66,7 +68,8 @@ ER b2_safety_init(void)
 }
 
 /** @brief Latch STOP and immediately disable PWM under the safety lock. */
-void b2_request_stop(void)
+void
+b2_request_stop (void)
 {
     UINT interrupt_status;
 
@@ -82,7 +85,7 @@ void b2_request_stop(void)
     {
         g_stop_generation++;
     }
-    g_safety.clear_valid = false;
+    g_safety.clear_valid  = false;
     g_safety.stop_latched = true;
     /*
      * Disable motor PWM immediately while holding
@@ -98,9 +101,10 @@ void b2_request_stop(void)
 }
 
 /** @brief Record clearance only after the current STOP is acknowledged. */
-void b2_request_forward(void)
+void
+b2_request_forward (void)
 {
-    UINT interrupt_status;
+    UINT     interrupt_status;
     uint32_t now = b2_now_ms();
 
     safety_lock_enter(&interrupt_status);
@@ -111,14 +115,15 @@ void b2_request_forward(void)
     if (g_stop_generation == g_acknowledged_generation &&
         (!ROBOT_MODE || !ROBOT_ENABLE_BYPASS || s5_mission_enabled()))
     {
-        g_clear_heartbeat_ms = now;
-        g_safety.clear_valid = true;
+        g_clear_heartbeat_ms  = now;
+        g_safety.clear_valid  = true;
         g_safety.stop_latched = false;
     }
     safety_lock_leave(interrupt_status);
 }
 
-bool b2_safety_stop_requested(void)
+bool
+b2_safety_stop_requested (void)
 {
     UINT interrupt_status;
     bool b_pending;
@@ -130,9 +135,10 @@ bool b2_safety_stop_requested(void)
     return (b_pending);
 }
 
-uint32_t b2_safety_stop_generation(void)
+uint32_t
+b2_safety_stop_generation (void)
 {
-    UINT interrupt_status;
+    UINT     interrupt_status;
     uint32_t generation;
 
     safety_lock_enter(&interrupt_status);
@@ -142,22 +148,24 @@ uint32_t b2_safety_stop_generation(void)
     return (generation);
 }
 
-bool b2_safety_motion_allowed(void)
+bool
+b2_safety_motion_allowed (void)
 {
-    UINT interrupt_status;
+    UINT     interrupt_status;
     uint32_t last;
-    bool b_allowed;
+    bool     b_allowed;
     uint32_t now = b2_now_ms();
 #if !ROBOT_ENABLE_DRIVE
     return (false);
 #endif
 
     safety_lock_enter(&interrupt_status);
-    b_allowed =
-        (g_stop_generation == g_acknowledged_generation) &&
-        (!g_safety.stop_latched) &&
-        (g_safety.clear_valid);
-    if (ROBOT_MODE && ROBOT_ENABLE_BYPASS && !s5_mission_enabled()) b_allowed = false;
+    b_allowed = (g_stop_generation == g_acknowledged_generation) &&
+        (!g_safety.stop_latched) && (g_safety.clear_valid);
+    if (ROBOT_MODE && ROBOT_ENABLE_BYPASS && !s5_mission_enabled())
+    {
+        b_allowed = false;
+    }
     last = g_clear_heartbeat_ms;
 
     safety_lock_leave(interrupt_status);
@@ -165,12 +173,12 @@ bool b2_safety_motion_allowed(void)
     {
         return (false);
     }
-    return (uint32_t)(now - last) <=
-        B2_SAFETY_HEARTBEAT_MS;
+    return (uint32_t)(now - last) <= B2_SAFETY_HEARTBEAT_MS;
 }
 
 /** @brief Disable PWM without acknowledging a safety STOP generation. */
-void b2_safety_force_stop(void)
+void
+b2_safety_force_stop (void)
 {
     UINT interrupt_status;
 
@@ -182,7 +190,8 @@ void b2_safety_force_stop(void)
 }
 
 /** @brief Disable PWM and acknowledge the current STOP generation. */
-void b2_safety_acknowledge_stop(void)
+void
+b2_safety_acknowledge_stop (void)
 {
     UINT interrupt_status;
     /*
@@ -190,39 +199,37 @@ void b2_safety_acknowledge_stop(void)
      */
     safety_lock_enter(&interrupt_status);
     motor_stop();
-    g_safety.stopped = true;
+    g_safety.stopped          = true;
     g_acknowledged_generation = g_stop_generation;
 
     safety_lock_leave(interrupt_status);
 }
 
-void b2_safety_apply_pwm(
-    int left_percent,
-    int right_percent,
-    uint32_t command_safety_generation
-)
+void
+b2_safety_apply_pwm (
+    int left_percent, int right_percent, uint32_t command_safety_generation)
 {
-    UINT interrupt_status;
+    UINT     interrupt_status;
     uint32_t now = b2_now_ms();
-    bool b_allowed;
+    bool     b_allowed;
 
     safety_lock_enter(&interrupt_status);
-    b_allowed =
-        (command_safety_generation == g_stop_generation) &&
+    b_allowed = (command_safety_generation == g_stop_generation) &&
         (g_stop_generation == g_acknowledged_generation) &&
-        (!g_safety.stop_latched) &&
-        (g_safety.clear_valid) &&
-        ((uint32_t)(now - g_clear_heartbeat_ms) <=
-            B2_SAFETY_HEARTBEAT_MS);
+        (!g_safety.stop_latched) && (g_safety.clear_valid) &&
+        ((uint32_t)(now - g_clear_heartbeat_ms) <= B2_SAFETY_HEARTBEAT_MS);
 #if !ROBOT_ENABLE_DRIVE
     b_allowed = false;
 #endif
-    if (ROBOT_MODE && ROBOT_ENABLE_BYPASS && !s5_mission_enabled()) b_allowed = false;
+    if (ROBOT_MODE && ROBOT_ENABLE_BYPASS && !s5_mission_enabled())
+    {
+        b_allowed = false;
+    }
 
     if (!b_allowed)
     {
         motor_stop();
-        g_safety.stopped = true;
+        g_safety.stopped          = true;
         g_acknowledged_generation = g_stop_generation;
     }
     else
@@ -234,29 +241,31 @@ void b2_safety_apply_pwm(
     safety_lock_leave(interrupt_status);
 }
 
-bool b2_motor_is_stopped(void)
+bool
+b2_motor_is_stopped (void)
 {
     UINT interrupt_status;
     bool b_result;
 
     safety_lock_enter(&interrupt_status);
     b_result =
-        (g_safety.stopped) &&
-        (g_stop_generation == g_acknowledged_generation);
+        (g_safety.stopped) && (g_stop_generation == g_acknowledged_generation);
 
     safety_lock_leave(interrupt_status);
     return (b_result);
 }
 
 /** @brief Legacy task entry; do not start in the integrated application. */
-void b2_motor_task(INT stacd, void *p_exinf)
+void
+b2_motor_task (INT stacd, void * p_exinf)
 {
     (void)stacd;
     (void)p_exinf;
     tm_printf((UB *)"[B2] Legacy motor task disabled\n");
 }
 
-static void safety_lock_enter(UINT *p_interrupt_status)
+static void
+safety_lock_enter (UINT * p_interrupt_status)
 {
 #if TK_SUPPORT_SMP
     (void)ISpinLock(&g_safety_lock, p_interrupt_status);
@@ -265,7 +274,8 @@ static void safety_lock_enter(UINT *p_interrupt_status)
 #endif
 }
 
-static void safety_lock_leave(UINT interrupt_status)
+static void
+safety_lock_leave (UINT interrupt_status)
 {
 #if TK_SUPPORT_SMP
     (void)ISpinUnlock(&g_safety_lock, interrupt_status);
@@ -274,7 +284,8 @@ static void safety_lock_leave(UINT interrupt_status)
 #endif
 }
 
-static uint32_t b2_now_ms(void)
+static uint32_t
+b2_now_ms (void)
 {
     SYSTIM now;
 
@@ -284,3 +295,6 @@ static uint32_t b2_now_ms(void)
     }
     return ((uint32_t)now.lo);
 }
+
+/*** end of file ***/
+

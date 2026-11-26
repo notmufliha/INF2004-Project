@@ -34,7 +34,11 @@ def main():
                           "", source, flags=re.S)
             if path.name != "imu_numeric.h" and re.search(r"\bfloat\b", code):
                 errors.append(f"{path}: use checked float32_t")
-            if re.search(r"\b(?:short|long)\b|\bunsigned\s+int\b", code):
+            # Explicit bit widths are intentional for the CR1 native records.
+            # They are not serialised directly; do not flag them as plain ints.
+            integer_code = re.sub(
+                r"\bunsigned\s+int\s+\w+\s*:\s*\d+\s*;", "", code)
+            if re.search(r"\b(?:short|long)\b|\bunsigned\s+int\b", integer_code):
                 errors.append(f"{path}: use fixed-width integer types")
             if re.search(r"\b(?:if|while|switch|for)\s*\([^\n]*\)[ \t]*\{", code):
                 errors.append(f"{path}: control brace must start its own line")

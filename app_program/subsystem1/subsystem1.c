@@ -38,15 +38,13 @@ subsystem1_init (void)
     ER result = E_OK;
 
     gh_s1_event_mbf = make_mbf(EVENT_QUEUE_LEN *
-                               ((uint32_t)sizeof(comm_pack_event_t) +
-                                MBF_MSG_OVERHEAD),
-                               (uint32_t)sizeof(comm_pack_event_t));
+            ((uint32_t)sizeof(comm_pack_event_t) + MBF_MSG_OVERHEAD),
+        (uint32_t)sizeof(comm_pack_event_t));
     gh_s1_tx_mbf    = make_mbf(TX_BUF_SIZE, TX_RECORD_MAX);
     gh_s1_rx_mbf    = make_mbf(RX_BUF_SIZE, RX_RECORD_MAX);
     mbf_remote_cmd  = make_mbf(REMOTE_CMD_QUEUE_LEN *
-                               ((uint32_t)sizeof(comm_remote_cmd_t) +
-                                MBF_MSG_OVERHEAD),
-                               (uint32_t)sizeof(comm_remote_cmd_t));
+            ((uint32_t)sizeof(comm_remote_cmd_t) + MBF_MSG_OVERHEAD),
+        (uint32_t)sizeof(comm_remote_cmd_t));
 
     if (gh_s1_event_mbf < E_OK)
     {
@@ -80,10 +78,9 @@ subsystem1_start (void)
 
     /* Entry points are cast to the kernel's generic FP type; the kernel
      * calls them with (INT stacd, void *exinf), matching their type. */
-    gh_s1_comm_task = app_start_task((FP)s1_comm_task, S1_PRI_COMM, 0U,
-                                     "comm_task");
-    tid_led         = app_start_task((FP)s1_led_task, S1_PRI_LED, 0U,
-                                     "led_task");
+    gh_s1_comm_task =
+        app_start_task((FP)s1_comm_task, S1_PRI_COMM, 0U, "comm_task");
+    tid_led = app_start_task((FP)s1_led_task, S1_PRI_LED, 0U, "led_task");
 
     if (gh_s1_comm_task < E_OK)
     {
@@ -154,7 +151,7 @@ make_sync_objects (void)
     cfault.iflgptn = 0U;
     flg_faults     = tk_cre_flg(&cfault);
 
-    ccyc.cycatr   = TA_HLNG;
+    ccyc.cycatr = TA_HLNG;
     /* The kernel calls the handler as void (*)(void *exinf). */
     ccyc.cychdr   = (FP)s1_led_cyclic_isr;
     ccyc.cyctim   = S1_TICK_MS;

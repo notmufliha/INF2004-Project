@@ -8,6 +8,7 @@
 
 static imu_live_t g_live;
 
+/** @brief Save a valid raw sample atomically for the lift-stop consumer. */
 void
 imu_live_store (const imu_data_t * p_data)
 {
@@ -27,6 +28,7 @@ imu_live_store (const imu_data_t * p_data)
     EI(irq);
 }
 
+/** @brief Copy the latest sample while excluding its acquisition writer. */
 void
 imu_live_get (imu_live_t * p_out)
 {
@@ -40,4 +42,6 @@ imu_live_get (imu_live_t * p_out)
     *p_out = g_live;
     EI(irq);
 }
+
 /*** end of file ***/
+

@@ -37,14 +37,15 @@
 #define B3_IO_PROC0_INTS3 (*(volatile uint32_t *)(B3_IO_BANK_BASE + 0x12CU))
 #define B3_BARCODE_EDGE_BITS (0x0CU << ((B3_BARCODE_PIN % 8U) * 4U))
 
-typedef struct {
-	uint32_t timestamp_us;
-	uint8_t level;
+typedef struct
+{
+    uint32_t timestamp_us;
+    uint8_t  level;
 } B3_EDGE;
 
-static B3_STATE g_b3_state;
-static uint32_t g_line_sample_ms;
-static bool g_line_sample_valid;
+static B3_STATE         g_b3_state;
+static uint32_t         g_line_sample_ms;
+static bool             g_line_sample_valid;
 static volatile B3_EDGE g_edge_queue[B3_EDGE_QUEUE_LENGTH];
 static volatile uint8_t g_edge_head;
 static volatile uint8_t g_edge_tail;
@@ -52,7 +53,7 @@ static volatile uint8_t g_edge_pending;
 static volatile uint8_t g_edge_overflow;
 /* Time of the latest GP28 edge, for "barcode in progress". */
 static volatile uint32_t g_last_edge_us;
-static volatile uint8_t g_edge_seen;
+static volatile uint8_t  g_edge_seen;
 /* Rejected barcode scans so far (the controller re-reads on a change). */
 static volatile uint16_t g_barcode_rejects;
 
@@ -62,176 +63,193 @@ static volatile uint16_t g_barcode_rejects;
  * Turns, STOP, SPIN and FINISH run at the next crossing; SLOW and NORMAL
  * at once.  The dashboard shows every letter and action (wire v2). */
 static const uint8_t b3_routes[26] = {
-	B3_NAV_STRAIGHT, /* A (course) */
-	B3_NAV_LEFT,     /* B */
-	B3_NAV_RIGHT,    /* C */
-	B3_NAV_UTURN,    /* D */
-	B3_NAV_STOP,     /* E */
-	B3_NAV_SLOW,     /* F */
-	B3_NAV_NORMAL,   /* G */
-	B3_NAV_SPIN,     /* H */
-	B3_NAV_FINISH,   /* I */
-	B3_NAV_LEFT,     /* J */
-	B3_NAV_RIGHT,    /* K */
-	B3_NAV_STRAIGHT, /* L */
-	B3_NAV_RIGHT,    /* M */
-	B3_NAV_STRAIGHT, /* N */
-	B3_NAV_LEFT,     /* O */
-	B3_NAV_UTURN,    /* P */
-	B3_NAV_SPIN,     /* Q */
-	B3_NAV_FINISH,   /* R */
-	B3_NAV_LEFT,     /* S */
-	B3_NAV_RIGHT,    /* T */
-	B3_NAV_STRAIGHT, /* U */
-	B3_NAV_UTURN,    /* V */
-	B3_NAV_STOP,     /* W */
-	B3_NAV_SLOW,     /* X */
-	B3_NAV_NORMAL,   /* Y */
-	B3_NAV_RIGHT,    /* Z (course) */
+    B3_NAV_STRAIGHT, /* A (course) */
+    B3_NAV_LEFT,     /* B */
+    B3_NAV_RIGHT,    /* C */
+    B3_NAV_UTURN,    /* D */
+    B3_NAV_STOP,     /* E */
+    B3_NAV_SLOW,     /* F */
+    B3_NAV_NORMAL,   /* G */
+    B3_NAV_SPIN,     /* H */
+    B3_NAV_FINISH,   /* I */
+    B3_NAV_LEFT,     /* J */
+    B3_NAV_RIGHT,    /* K */
+    B3_NAV_STRAIGHT, /* L */
+    B3_NAV_RIGHT,    /* M */
+    B3_NAV_STRAIGHT, /* N */
+    B3_NAV_LEFT,     /* O */
+    B3_NAV_UTURN,    /* P */
+    B3_NAV_SPIN,     /* Q */
+    B3_NAV_FINISH,   /* R */
+    B3_NAV_LEFT,     /* S */
+    B3_NAV_RIGHT,    /* T */
+    B3_NAV_STRAIGHT, /* U */
+    B3_NAV_UTURN,    /* V */
+    B3_NAV_STOP,     /* W */
+    B3_NAV_SLOW,     /* X */
+    B3_NAV_NORMAL,   /* Y */
+    B3_NAV_RIGHT,    /* Z (course) */
 };
-static ID g_adc_device;
+static ID      g_adc_device;
 static uint8_t g_b3_started;
 
 EXPORT ID mbf_nav_cmd;
 EXPORT ID mtx_b3_state;
 
-static void b3_gpio_irq_handler(UINT intno);
-static ER b3_read_adc(uint8_t channel, uint16_t *value);
-static ER b3_read_line_pair(uint16_t *left, uint16_t *centre);
+static void b3_gpio_irq_handler (UINT intno);
+static ER b3_read_adc (uint8_t channel, uint16_t * value);
+static ER b3_read_line_pair (uint16_t * left, uint16_t * centre);
 static volatile uint16_t g_raw_left, g_raw_centre;
-static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
-                              uint8_t flags, uint32_t sample_ms, bool timed);
-static void b3_set_barcode_state(uint8_t barcode, uint8_t nav);
-static bool b3_pop_edge(B3_EDGE *edge);
-static uint8_t b3_take_overflow(void);
-static void b3_process_edge(const B3_EDGE *edge,
-			    B3_CODE39_DECODER *decoder);
-static void b3_publish_barcode(uint8_t barcode, uint8_t nav);
-static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder);
-static void b3_log_reject(const B3_CODE39_DECODER *decoder);
-static void b3_delay(uint32_t delay_ms);
-static void b3_line_wait(uint32_t started_ms, bool timed);
+static void b3_set_line_state (uint16_t left,
+    uint16_t                            centre,
+    uint8_t                             right,
+    uint8_t                             flags,
+    uint32_t                            sample_ms,
+    bool                                timed);
+static void b3_set_barcode_state (uint8_t barcode, uint8_t nav);
+static bool b3_pop_edge (B3_EDGE * edge);
+static uint8_t b3_take_overflow (void);
+static void b3_process_edge (const B3_EDGE * edge, B3_CODE39_DECODER * decoder);
+static void b3_publish_barcode (uint8_t barcode, uint8_t nav);
+static void b3_handle_symbol (char symbol, const B3_CODE39_DECODER * decoder);
+static void b3_log_reject (const B3_CODE39_DECODER * decoder);
+static void b3_delay (uint32_t delay_ms);
+static void b3_line_wait (uint32_t started_ms, bool timed);
 
 /**
  * @brief Create the ADC handle, navigation queue, and state mutex.
  * @return E_OK on success or the first μT-Kernel error.
  */
-EXPORT ER b3_init(void)
+EXPORT ER
+b3_init (void)
 {
-	T_CMBF cmbf = {0};
-	T_CMTX cmtx = {0};
-	ER error;
+    T_CMBF cmbf = {0};
+    T_CMTX cmtx = {0};
+    ER     error;
 
-	if (mbf_nav_cmd > 0 || mtx_b3_state > 0) {
-		return E_OBJ;
-	}
+    if (mbf_nav_cmd > 0 || mtx_b3_state > 0)
+    {
+        return E_OBJ;
+    }
 
-	g_adc_device = tk_opn_dev((CONST UB *)"adca", TD_READ);
-	if (g_adc_device < E_OK) {
-		return (ER)g_adc_device;
-	}
+    g_adc_device = tk_opn_dev((CONST UB *)"adca", TD_READ);
+    if (g_adc_device < E_OK)
+    {
+        return (ER)g_adc_device;
+    }
 
-	cmbf.mbfatr = TA_TFIFO;
-	cmbf.bufsz = (SZ)(B3_NAV_QUEUE_LENGTH *
-			  (sizeof(uint8_t) + B3_MBF_MSG_OVERHEAD));
-	cmbf.maxmsz = (INT)sizeof(uint8_t);
-	mbf_nav_cmd = tk_cre_mbf(&cmbf);
-	if (mbf_nav_cmd < E_OK) {
-		error = tk_cls_dev(g_adc_device, 0);
-		if (error < E_OK) {
-			CHECK(error, "B3 ADC close after queue error");
-		}
-		g_adc_device = 0;
-		return (ER)mbf_nav_cmd;
-	}
+    cmbf.mbfatr = TA_TFIFO;
+    cmbf.bufsz =
+        (SZ)(B3_NAV_QUEUE_LENGTH * (sizeof(uint8_t) + B3_MBF_MSG_OVERHEAD));
+    cmbf.maxmsz = (INT)sizeof(uint8_t);
+    mbf_nav_cmd = tk_cre_mbf(&cmbf);
+    if (mbf_nav_cmd < E_OK)
+    {
+        error = tk_cls_dev(g_adc_device, 0);
+        if (error < E_OK)
+        {
+            CHECK(error, "B3 ADC close after queue error");
+        }
+        g_adc_device = 0;
+        return (ER)mbf_nav_cmd;
+    }
 
-	cmtx.mtxatr = TA_INHERIT;
-	mtx_b3_state = tk_cre_mtx(&cmtx);
-	if (mtx_b3_state < E_OK) {
-		error = (ER)mtx_b3_state;
-		{
-			ER cleanup_error = tk_del_mbf(mbf_nav_cmd);
+    cmtx.mtxatr  = TA_INHERIT;
+    mtx_b3_state = tk_cre_mtx(&cmtx);
+    if (mtx_b3_state < E_OK)
+    {
+        error = (ER)mtx_b3_state;
+        {
+            ER cleanup_error = tk_del_mbf(mbf_nav_cmd);
 
-			if (cleanup_error < E_OK) {
-				CHECK(cleanup_error, "B3 queue cleanup");
-			}
-			cleanup_error = tk_cls_dev(g_adc_device, 0);
-			if (cleanup_error < E_OK) {
-				CHECK(cleanup_error, "B3 ADC cleanup");
-			}
-		}
-		mbf_nav_cmd = 0;
-		g_adc_device = 0;
-		return error;
-	}
+            if (cleanup_error < E_OK)
+            {
+                CHECK(cleanup_error, "B3 queue cleanup");
+            }
+            cleanup_error = tk_cls_dev(g_adc_device, 0);
+            if (cleanup_error < E_OK)
+            {
+                CHECK(cleanup_error, "B3 ADC cleanup");
+            }
+        }
+        mbf_nav_cmd  = 0;
+        g_adc_device = 0;
+        return error;
+    }
 
-	g_b3_state.ir_left = 0U;
-	g_b3_state.ir_centre = 0U;
-	g_b3_state.ir_right = 0U;
-	g_b3_state.line_flags = B3_LINE_F_LOST;
-	g_b3_state.last_barcode = B3_BARCODE_NONE;
-	g_b3_state.last_nav_command = B3_NAV_NONE;
-	g_edge_head = 0U;
-	g_edge_tail = 0U;
-	g_edge_pending = 0U;
-	g_edge_overflow = 0U;
-	g_b3_started = 0U;
-	g_line_sample_valid = false;
+    g_b3_state.ir_left          = 0U;
+    g_b3_state.ir_centre        = 0U;
+    g_b3_state.ir_right         = 0U;
+    g_b3_state.line_flags       = B3_LINE_F_LOST;
+    g_b3_state.last_barcode     = B3_BARCODE_NONE;
+    g_b3_state.last_nav_command = B3_NAV_NONE;
+    g_edge_head                 = 0U;
+    g_edge_tail                 = 0U;
+    g_edge_pending              = 0U;
+    g_edge_overflow             = 0U;
+    g_b3_started                = 0U;
+    g_line_sample_valid         = false;
 
-	return E_OK;
+    return E_OK;
 }
 
 /**
  * @brief Configure GP28 and start the line-sampling and barcode tasks.
  * @return E_OK on success or an initialization/task-start error.
  */
-EXPORT ER b3_start(void)
+EXPORT ER
+b3_start (void)
 {
-	ER error;
-	ID task_id;
-	const uint32_t pin_mask = (uint32_t)1U << B3_BARCODE_PIN;
+    ER             error;
+    ID             task_id;
+    const uint32_t pin_mask = (uint32_t)1U << B3_BARCODE_PIN;
 
-	if ((mbf_nav_cmd <= 0) || (mtx_b3_state <= 0) ||
-	    (g_adc_device < E_OK)) {
-		return E_OBJ;
-	}
-	if (g_b3_started != 0U) {
-		return E_OBJ;
-	}
+    if ((mbf_nav_cmd <= 0) || (mtx_b3_state <= 0) || (g_adc_device < E_OK))
+    {
+        return E_OBJ;
+    }
+    if (g_b3_started != 0U)
+    {
+        return E_OBJ;
+    }
 #if TK_SUPPORT_SMP
-	/* Single-core builds (SMP=0) have no tk_get_prc(): only core 0 runs. */
-	if (tk_get_prc() != 1) {
-		return E_CTX;
-	}
+    /* Single-core builds (SMP=0) have no tk_get_prc(): only core 0 runs. */
+    if (tk_get_prc() != 1)
+    {
+        return E_CTX;
+    }
 #endif
 
-	error = gpio_set_pin(B3_BARCODE_PIN, GPIO_MODE_IN);
-	if (error != E_OK) {
-		return error;
-	}
+    error = gpio_set_pin(B3_BARCODE_PIN, GPIO_MODE_IN);
+    if (error != E_OK)
+    {
+        return error;
+    }
 
-	B3_IO_PROC0_INTE3 &= ~B3_BARCODE_EDGE_BITS;
-	B3_IO_INTR3 = B3_BARCODE_EDGE_BITS;
-	error = app_gpio_irq_register((UW)pin_mask, b3_gpio_irq_handler);
-	if (error != E_OK) {
-		return error;
-	}
-	B3_IO_PROC0_INTE3 |= B3_BARCODE_EDGE_BITS;
+    B3_IO_PROC0_INTE3 &= ~B3_BARCODE_EDGE_BITS;
+    B3_IO_INTR3 = B3_BARCODE_EDGE_BITS;
+    error       = app_gpio_irq_register((UW)pin_mask, b3_gpio_irq_handler);
+    if (error != E_OK)
+    {
+        return error;
+    }
+    B3_IO_PROC0_INTE3 |= B3_BARCODE_EDGE_BITS;
 
-	b3_buzzer_init();
-	task_id = app_start_task(b3_barcode_task, 17, TP_PRC1,
-				 "b3_barcode_task");
-	if (task_id < E_OK) {
-		return (ER)task_id;
-	}
+    b3_buzzer_init();
+    task_id = app_start_task(b3_barcode_task, 17, TP_PRC1, "b3_barcode_task");
+    if (task_id < E_OK)
+    {
+        return (ER)task_id;
+    }
 
-	task_id = app_start_task(b3_line_task, 16, TP_PRC1, "b3_line_task");
-	if (task_id < E_OK) {
-		return (ER)task_id;
-	}
+    task_id = app_start_task(b3_line_task, 16, TP_PRC1, "b3_line_task");
+    if (task_id < E_OK)
+    {
+        return (ER)task_id;
+    }
 
-	g_b3_started = 1U;
-	return E_OK;
+    g_b3_started = 1U;
+    return E_OK;
 }
 
 /**
@@ -239,44 +257,62 @@ EXPORT ER b3_start(void)
  * @param state Destination for the snapshot.
  * @return E_OK on success, E_PAR for a null pointer, otherwise a kernel error.
  */
-EXPORT ER b3_get_state(B3_STATE *state)
-{
-	ER error;
-
-	if (state == NULL) {
-		return E_PAR;
-	}
-
-	error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
-	if (error != E_OK) {
-		return error;
-	}
-
-	*state = g_b3_state;
-	error = tk_unl_mtx(mtx_b3_state);
-	return error;
-}
-
-EXPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms)
+EXPORT ER
+b3_get_state (B3_STATE * state)
 {
     ER error;
-    if (state == NULL || sample_ms == NULL) return E_PAR;
-    if (mtx_b3_state <= 0) return E_OBJ;
+
+    if (state == NULL)
+    {
+        return E_PAR;
+    }
+
     error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
-    if (error != E_OK) return error;
+    if (error != E_OK)
+    {
+        return error;
+    }
+
     *state = g_b3_state;
+    error  = tk_unl_mtx(mtx_b3_state);
+    return error;
+}
+
+EXPORT ER
+b3_get_timed_state (B3_STATE * state, uint32_t * sample_ms)
+{
+    ER error;
+    if (state == NULL || sample_ms == NULL)
+    {
+        return E_PAR;
+    }
+    if (mtx_b3_state <= 0)
+    {
+        return E_OBJ;
+    }
+    error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
+    if (error != E_OK)
+    {
+        return error;
+    }
+    *state     = g_b3_state;
     *sample_ms = g_line_sample_ms;
-    error = g_line_sample_valid ? E_OK : E_OBJ;
+    error      = g_line_sample_valid ? E_OK : E_OBJ;
     {
         ER unlock_error = tk_unl_mtx(mtx_b3_state);
-        if (unlock_error != E_OK) return unlock_error;
+        if (unlock_error != E_OK)
+        {
+            return unlock_error;
+        }
     }
     return error;
 }
 
-static void b3_invalidate_line(void)
+static void
+b3_invalidate_line (void)
 {
-    if (tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS) == E_OK) {
+    if (tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS) == E_OK)
+    {
         g_line_sample_valid = false;
         (void)tk_unl_mtx(mtx_b3_state);
     }
@@ -290,30 +326,36 @@ static void b3_invalidate_line(void)
 /* Fixed measured endpoints prevent boot noise from learning a false range.
  * Raw ADC telemetry remains unchanged; each channel has its own range.
  */
-static uint16_t b3_track_normalise(uint16_t raw, uint16_t white, uint16_t black)
+static uint16_t
+b3_track_normalise (uint16_t raw, uint16_t white, uint16_t black)
 {
-    if (raw < B3_LINE_RAW_LOST_BELOW) return 0U;
+    if (raw < B3_LINE_RAW_LOST_BELOW)
+    {
+        return 0U;
+    }
     return b3_line_cal_scale(raw, white, black);
 }
 
 /* Learn this sensor's floor and tape readings (see B3_LINE_LEARN_RANGE).
  * Readings far darker than tape (car lifted) are not learned. */
-static void b3_track_learn(B3_LINE_CAL *cal, uint16_t raw, uint16_t white,
-                           uint16_t black)
+static void
+b3_track_learn (B3_LINE_CAL * cal, uint16_t raw, uint16_t white, uint16_t black)
 {
     /* Reject samples far beyond the calibrated tape range (e.g. lifted). */
-    if (raw <= black + 2U * (black - white) + 100U) {
+    if (raw <= black + 2U * (black - white) + 100U)
+    {
         (void)b3_line_cal_update(cal, raw);
     }
 }
 
 /* Endpoints for one sensor: the learned range once it has seen both the
  * floor and the tape, else the fixed measured ones. */
-static void b3_track_range(const B3_LINE_CAL *cal, uint16_t *white,
-                           uint16_t *black)
+static void
+b3_track_range (const B3_LINE_CAL * cal, uint16_t * white, uint16_t * black)
 {
 #if B3_LINE_LEARN_RANGE
-    if (b3_line_cal_ready(cal)) {
+    if (b3_line_cal_ready(cal))
+    {
         *white = cal->white;
         *black = cal->black;
     }
@@ -324,117 +366,146 @@ static void b3_track_range(const B3_LINE_CAL *cal, uint16_t *white,
 #endif
 }
 
-EXPORT void b3_line_task(INT stacd, void *exinf)
+EXPORT void
+b3_line_task (INT stacd, void * exinf)
 {
-	uint16_t left;
-	uint16_t centre;
-	uint16_t left_norm;
-	uint16_t centre_norm;
-	uint8_t right;
-	uint8_t flags;
-	ER error;
-	uint16_t left_white, left_black, centre_white, centre_black;
-	uint16_t reported_left = 0U, reported_centre = 0U;
-	uint32_t report_ms = 0U;
-	B3_LINE_CAL left_cal;
-	B3_LINE_CAL centre_cal;
-	bool calibration_reported = false;
-    unsigned diagnostic_samples = 0U;
+    uint16_t    left;
+    uint16_t    centre;
+    uint16_t    left_norm;
+    uint16_t    centre_norm;
+    uint8_t     right;
+    uint8_t     flags;
+    ER          error;
+    uint16_t    left_white, left_black, centre_white, centre_black;
+    uint16_t    reported_left = 0U, reported_centre = 0U;
+    uint32_t    report_ms = 0U;
+    B3_LINE_CAL left_cal;
+    B3_LINE_CAL centre_cal;
+    bool        calibration_reported = false;
+    unsigned    diagnostic_samples   = 0U;
 #if B3_LINE_FLOOR_TRACK
-	static const B3_FLOOR_CFG left_floor_cfg = B3_LINE_GP26_FLOOR_CFG;
-	static const B3_FLOOR_CFG centre_floor_cfg = B3_LINE_GP27_FLOOR_CFG;
-	B3_FLOOR left_floor;
-	B3_FLOOR centre_floor;
+    static const B3_FLOOR_CFG left_floor_cfg   = B3_LINE_GP26_FLOOR_CFG;
+    static const B3_FLOOR_CFG centre_floor_cfg = B3_LINE_GP27_FLOOR_CFG;
+    B3_FLOOR                  left_floor;
+    B3_FLOOR                  centre_floor;
 #endif
 
-	(void)stacd;
-	(void)exinf;
-	b3_line_cal_init(&left_cal);
-	b3_line_cal_init(&centre_cal);
+    (void)stacd;
+    (void)exinf;
+    b3_line_cal_init(&left_cal);
+    b3_line_cal_init(&centre_cal);
 #if B3_LINE_FLOOR_TRACK
-	b3_floor_init(&left_floor);
-	b3_floor_init(&centre_floor);
+    b3_floor_init(&left_floor);
+    b3_floor_init(&centre_floor);
 #endif
 
-	for (;;) {
-		SYSTIM cycle_start = {0};
-		bool timed = tk_get_tim(&cycle_start) == E_OK;
-		error = b3_read_line_pair(&left, &centre);
-		if (error != E_OK) {
-			CHECK(error, "B3 paired GP26/GP27 ADC read");
+    for (;;)
+    {
+        SYSTIM cycle_start = {0};
+        bool   timed       = tk_get_tim(&cycle_start) == E_OK;
+        error              = b3_read_line_pair(&left, &centre);
+        if (error != E_OK)
+        {
+            CHECK(error, "B3 paired GP26/GP27 ADC read");
             b3_invalidate_line();
-			b3_line_wait(cycle_start.lo, timed);
-			continue;
-		}
+            b3_line_wait(cycle_start.lo, timed);
+            continue;
+        }
 
-		right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-		run_log_raw(left, centre);
-		g_raw_left = left;
-		g_raw_centre = centre;
-		/* Learn each sensor's range; fixed endpoints until it is known. */
-        b3_track_learn(&left_cal, left, B3_LINE_GP26_WHITE,
-                       B3_LINE_GP26_BLACK);
-        b3_track_learn(&centre_cal, centre, B3_LINE_GP27_WHITE,
-                       B3_LINE_GP27_BLACK);
-        left_white = B3_LINE_GP26_WHITE;
-        left_black = B3_LINE_GP26_BLACK;
+        right = (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
+        run_log_raw(left, centre);
+        g_raw_left   = left;
+        g_raw_centre = centre;
+        /* Learn each sensor's range; fixed endpoints until it is known. */
+        b3_track_learn(&left_cal, left, B3_LINE_GP26_WHITE, B3_LINE_GP26_BLACK);
+        b3_track_learn(
+            &centre_cal, centre, B3_LINE_GP27_WHITE, B3_LINE_GP27_BLACK);
+        left_white   = B3_LINE_GP26_WHITE;
+        left_black   = B3_LINE_GP26_BLACK;
         centre_white = B3_LINE_GP27_WHITE;
         centre_black = B3_LINE_GP27_BLACK;
         b3_track_range(&left_cal, &left_white, &left_black);
         b3_track_range(&centre_cal, &centre_white, &centre_black);
 #if B3_LINE_FLOOR_TRACK
-        b3_floor_update(&left_floor, &left_floor_cfg, left,
-                        (uint16_t)B3_LINE_UPDATE_MS, &left_white, &left_black);
-        b3_floor_update(&centre_floor, &centre_floor_cfg, centre,
-                        (uint16_t)B3_LINE_UPDATE_MS, &centre_white,
-                        &centre_black);
+        b3_floor_update(&left_floor,
+            &left_floor_cfg,
+            left,
+            (uint16_t)B3_LINE_UPDATE_MS,
+            &left_white,
+            &left_black);
+        b3_floor_update(&centre_floor,
+            &centre_floor_cfg,
+            centre,
+            (uint16_t)B3_LINE_UPDATE_MS,
+            &centre_white,
+            &centre_black);
 #endif
-        left_norm = b3_track_normalise(left, left_white, left_black);
+        left_norm   = b3_track_normalise(left, left_white, left_black);
         centre_norm = b3_track_normalise(centre, centre_white, centre_black);
-		flags = 0U;
-		if (B3_LINE_LEFT_ACTIVE(left_norm) ||
-		    B3_LINE_CENTRE_ACTIVE(centre_norm)) {
-			flags |= B3_LINE_F_DETECTED;
-		} else {
-			flags |= B3_LINE_F_LOST;
-		}
-		if (B3_LINE_IS_JUNCTION(left_norm, centre_norm)) {
-			flags |= B3_LINE_F_JUNCTION;
-		}
-
-		/* Controller gets normalised values; dashboard gets raw ADC. */
-		b3_set_line_state(left_norm, centre_norm, right, flags,
-                          cycle_start.lo, timed);
-		comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
-        if (++diagnostic_samples >= 50U) {
-            diagnostic_samples = 0U;
-            tm_printf((UB *)"[LINE-RAW] GP26=%d GP27=%d norm26=%d norm27=%d low_is_black=%d\n",
-                      (int)left, (int)centre, (int)left_norm,
-                      (int)centre_norm, (int)B3_LINE_RAW_LOW_IS_BLACK);
+        flags       = 0U;
+        if (B3_LINE_LEFT_ACTIVE(left_norm) ||
+            B3_LINE_CENTRE_ACTIVE(centre_norm))
+        {
+            flags |= B3_LINE_F_DETECTED;
         }
-		if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
-		    b3_line_cal_ready(&centre_cal)) {
-			calibration_reported = true;
-			tm_printf((UB *)"[B3-CAL] observed GP26 min=%d max=%d; GP27 min=%d max=%d; tracking uses %s\n",
-				  (int)left_cal.white, (int)left_cal.black,
-				  (int)centre_cal.white, (int)centre_cal.black,
-				  B3_LINE_LEARN_RANGE ? "these learned ranges" :
-				  "fixed thresholds");
-		}
-		/* Range in use, whenever it changes (at most once a second). */
-		if (report_ms < 3000U) report_ms += B3_LINE_UPDATE_MS;
-		if (report_ms >= 3000U &&
-		    (reported_left != (uint16_t)(left_black - left_white) ||
-		     reported_centre != (uint16_t)(centre_black - centre_white))) {
-			report_ms = 0U;
-			reported_left = (uint16_t)(left_black - left_white);
-			reported_centre = (uint16_t)(centre_black - centre_white);
-			tm_printf((UB *)"[B3-RANGE] GP26 white=%d black=%d; GP27 white=%d black=%d\n",
-				  (int)left_white, (int)left_black,
-				  (int)centre_white, (int)centre_black);
-		}
-		b3_line_wait(cycle_start.lo, timed);
-	}
+        else
+        {
+            flags |= B3_LINE_F_LOST;
+        }
+        if (B3_LINE_IS_JUNCTION(left_norm, centre_norm))
+        {
+            flags |= B3_LINE_F_JUNCTION;
+        }
+
+        /* Controller gets normalised values; dashboard gets raw ADC. */
+        b3_set_line_state(
+            left_norm, centre_norm, right, flags, cycle_start.lo, timed);
+        comm_set_line((UH)left, (UH)centre, (UB)right, (UB)flags);
+        if (++diagnostic_samples >= 50U)
+        {
+            diagnostic_samples = 0U;
+            tm_printf((UB *)"[LINE-RAW] GP26=%d GP27=%d norm26=%d norm27=%d "
+                            "low_is_black=%d\n",
+                (int)left,
+                (int)centre,
+                (int)left_norm,
+                (int)centre_norm,
+                (int)B3_LINE_RAW_LOW_IS_BLACK);
+        }
+        if (!calibration_reported && b3_line_cal_ready(&left_cal) &&
+            b3_line_cal_ready(&centre_cal))
+        {
+            calibration_reported = true;
+            tm_printf((UB *)"[B3-CAL] observed GP26 min=%d max=%d; GP27 min=%d "
+                            "max=%d; tracking uses %s\n",
+                (int)left_cal.white,
+                (int)left_cal.black,
+                (int)centre_cal.white,
+                (int)centre_cal.black,
+                B3_LINE_LEARN_RANGE ? "these learned ranges"
+                                    : "fixed thresholds");
+        }
+        /* Range in use, whenever it changes (at most once a second). */
+        if (report_ms < 3000U)
+        {
+            report_ms += B3_LINE_UPDATE_MS;
+        }
+        if (report_ms >= 3000U &&
+            (reported_left != (uint16_t)(left_black - left_white) ||
+                reported_centre != (uint16_t)(centre_black - centre_white)))
+        {
+            report_ms       = 0U;
+            reported_left   = (uint16_t)(left_black - left_white);
+            reported_centre = (uint16_t)(centre_black - centre_white);
+            tm_printf((UB *)"[B3-RANGE] GP26 white=%d black=%d; GP27 white=%d "
+                            "black=%d\n",
+                (int)left_white,
+                (int)left_black,
+                (int)centre_white,
+                (int)centre_black);
+        }
+        b3_line_wait(cycle_start.lo, timed);
+    }
 }
 
 /**
@@ -442,315 +513,384 @@ EXPORT void b3_line_task(INT stacd, void *exinf)
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
-EXPORT void b3_barcode_task(INT stacd, void *exinf)
+EXPORT void
+b3_barcode_task (INT stacd, void * exinf)
 {
-	B3_EDGE edge;
-	/* Static: the scan buffer (~470 bytes) does not fit beside tm_printf
-	 * on the 2 KB task stack. */
-	static B3_CODE39_DECODER decoder;
+    B3_EDGE edge;
+    /* Static: the scan buffer (~470 bytes) does not fit beside tm_printf
+     * on the 2 KB task stack. */
+    static B3_CODE39_DECODER decoder;
 
-	(void)stacd;
-	(void)exinf;
-	b3_code39_reset(&decoder);
+    (void)stacd;
+    (void)exinf;
+    b3_code39_reset(&decoder);
 
-	for (;;) {
-		char symbol;
+    for (;;)
+    {
+        char symbol;
 
-		if (g_edge_pending != 0U) {
-			if (b3_take_overflow() != 0U) {
-				b3_code39_reset(&decoder);
-				tm_printf((UB *)"[B3] GP28 edge queue overflow; barcode discarded\n");
-			}
-			while (b3_pop_edge(&edge)) {
-				b3_process_edge(&edge, &decoder);
-			}
-		}
-		/* Confirm the final element once it has outlasted the chatter
-		 * filter, so the last bar decodes without another edge. */
-		if (b3_code39_poll(&decoder, B3_TIMER_RAWL, &symbol)) {
-			b3_handle_symbol(symbol, &decoder);
-		}
-		b3_log_reject(&decoder);
-		b3_buzzer_poll(B3_TIMER_RAWL);
-		b3_delay(B3_BARCODE_TASK_POLL_MS);
-	}
+        if (g_edge_pending != 0U)
+        {
+            if (b3_take_overflow() != 0U)
+            {
+                b3_code39_reset(&decoder);
+                tm_printf(
+                    (UB *)"[B3] GP28 edge queue overflow; barcode discarded\n");
+            }
+            while (b3_pop_edge(&edge))
+            {
+                b3_process_edge(&edge, &decoder);
+            }
+        }
+        /* Confirm the final element once it has outlasted the chatter
+         * filter, so the last bar decodes without another edge. */
+        if (b3_code39_poll(&decoder, B3_TIMER_RAWL, &symbol))
+        {
+            b3_handle_symbol(symbol, &decoder);
+        }
+        b3_log_reject(&decoder);
+        b3_buzzer_poll(B3_TIMER_RAWL);
+        b3_delay(B3_BARCODE_TASK_POLL_MS);
+    }
 }
 
 /* Alternate the channels so both averages cover the same time window.
  * Grouping eight conversions per channel gave the physical left sensor
- * an extra eight-conversion delay on moving curves. Publish only a full pair. */
-static ER b3_read_line_pair(uint16_t *left, uint16_t *centre)
+ * an extra eight-conversion delay on moving curves. Publish only a full pair.
+ */
+static ER
+b3_read_line_pair (uint16_t * left, uint16_t * centre)
 {
     uint32_t sum_left = 0u, sum_centre = 0u;
-    for (unsigned i = 0u; i < B3_ADC_OVERSAMPLE; ++i) {
+    for (unsigned i = 0u; i < B3_ADC_OVERSAMPLE; ++i)
+    {
         uint16_t l, c;
-        ER error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &l);
-        if (error != E_OK) return error;
+        ER       error = b3_read_adc(B3_ADC_LEFT_CHANNEL, &l);
+        if (error != E_OK)
+        {
+            return error;
+        }
         error = b3_read_adc(B3_ADC_CENTRE_CHANNEL, &c);
-        if (error != E_OK) return error;
+        if (error != E_OK)
+        {
+            return error;
+        }
         sum_left += l;
         sum_centre += c;
     }
-    *left = (uint16_t)(sum_left / B3_ADC_OVERSAMPLE);
+    *left   = (uint16_t)(sum_left / B3_ADC_OVERSAMPLE);
     *centre = (uint16_t)(sum_centre / B3_ADC_OVERSAMPLE);
     return E_OK;
 }
 
-static ER b3_read_adc(uint8_t channel, uint16_t *value)
+static ER
+b3_read_adc (uint8_t channel, uint16_t * value)
 {
-	uint32_t adc_word = 0U;
-	SZ actual_size = 0;
-	ER result;
+    uint32_t adc_word    = 0U;
+    SZ       actual_size = 0;
+    ER       result;
 
-	if (value == NULL) {
-		return E_PAR;
-	}
+    if (value == NULL)
+    {
+        return E_PAR;
+    }
 
-	result = tk_srea_dev(g_adc_device, (W)channel, &adc_word, 1U,
-                         &actual_size);
-	if (result != E_OK) {
-		return result;
-	}
-	if (actual_size != 1 || adc_word > 4095U) {
-		return E_IO;
-	}
-	*value = (uint16_t)adc_word;
-	return E_OK;
+    result = tk_srea_dev(g_adc_device, (W)channel, &adc_word, 1U, &actual_size);
+    if (result != E_OK)
+    {
+        return result;
+    }
+    if (actual_size != 1 || adc_word > 4095U)
+    {
+        return E_IO;
+    }
+    *value = (uint16_t)adc_word;
+    return E_OK;
 }
 
-static void b3_set_line_state(uint16_t left, uint16_t centre, uint8_t right,
-                              uint8_t flags, uint32_t sample_ms, bool timed)
+static void
+b3_set_line_state (uint16_t left,
+    uint16_t                centre,
+    uint8_t                 right,
+    uint8_t                 flags,
+    uint32_t                sample_ms,
+    bool                    timed)
 {
-	ER error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
+    ER error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
 
-	if (error != E_OK) {
-		CHECK(error, "B3 state lock");
-		return;
-	}
+    if (error != E_OK)
+    {
+        CHECK(error, "B3 state lock");
+        return;
+    }
 
-	g_b3_state.ir_left = left & 0x0FFFU;
-	g_b3_state.ir_centre = centre & 0x0FFFU;
-	g_b3_state.ir_right = (right != 0U) ? 1U : 0U;
-	g_b3_state.line_flags = flags & 0x07U;
+    g_b3_state.ir_left    = left & 0x0FFFU;
+    g_b3_state.ir_centre  = centre & 0x0FFFU;
+    g_b3_state.ir_right   = (right != 0U) ? 1U : 0U;
+    g_b3_state.line_flags = flags & 0x07U;
     /* Age includes ADC acquisition and publication waits, not just the
      * time since this mutex was acquired. */
     g_line_sample_valid = timed;
-    if (timed) g_line_sample_ms = sample_ms;
-	error = tk_unl_mtx(mtx_b3_state);
-	if (error != E_OK) {
-		CHECK(error, "B3 state unlock");
-	}
+    if (timed)
+    {
+        g_line_sample_ms = sample_ms;
+    }
+    error = tk_unl_mtx(mtx_b3_state);
+    if (error != E_OK)
+    {
+        CHECK(error, "B3 state unlock");
+    }
 }
 
-static void b3_set_barcode_state(uint8_t barcode, uint8_t nav)
+static void
+b3_set_barcode_state (uint8_t barcode, uint8_t nav)
 {
-	ER error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
+    ER error = tk_loc_mtx(mtx_b3_state, B3_STATE_LOCK_TIMEOUT_MS);
 
-	if (error != E_OK) {
-		CHECK(error, "B3 state lock");
-		return;
-	}
+    if (error != E_OK)
+    {
+        CHECK(error, "B3 state lock");
+        return;
+    }
 
-	g_b3_state.last_barcode = barcode & 0x1FU;
-	g_b3_state.last_nav_command = nav & 0x0FU;
-	error = tk_unl_mtx(mtx_b3_state);
-	if (error != E_OK) {
-		CHECK(error, "B3 state unlock");
-	}
+    g_b3_state.last_barcode     = barcode & 0x1FU;
+    g_b3_state.last_nav_command = nav & 0x0FU;
+    error                       = tk_unl_mtx(mtx_b3_state);
+    if (error != E_OK)
+    {
+        CHECK(error, "B3 state unlock");
+    }
 }
 
-static void b3_gpio_irq_handler(UINT intno)
+static void
+b3_gpio_irq_handler (UINT intno)
 {
-	uint32_t pending_edges = B3_IO_PROC0_INTS3 & B3_BARCODE_EDGE_BITS;
-	uint8_t next_head;
+    uint32_t pending_edges = B3_IO_PROC0_INTS3 & B3_BARCODE_EDGE_BITS;
+    uint8_t  next_head;
 
-	(void)intno;
-	if (pending_edges == 0U) {
-		return;
-	}
+    (void)intno;
+    if (pending_edges == 0U)
+    {
+        return;
+    }
 
-	/* Both rise and fall pending means the pin bounced since the last
-	 * interrupt.  Record only the level it settled at: the decoder ignores
-	 * a repeated level, so the bounce merges into the surrounding bar or
-	 * space instead of discarding the whole barcode. */
-	next_head = (uint8_t)((g_edge_head + 1U) &
-			      (B3_EDGE_QUEUE_LENGTH - 1U));
-	if (next_head == g_edge_tail) {
-		g_edge_overflow = 1U;
-	} else {
-		g_edge_queue[g_edge_head].timestamp_us = B3_TIMER_RAWL;
-		g_last_edge_us = g_edge_queue[g_edge_head].timestamp_us;
-		g_edge_seen = 1U;
-		g_edge_queue[g_edge_head].level = (uint8_t)
-			((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
-		g_edge_head = next_head;
-	}
+    /* Both rise and fall pending means the pin bounced since the last
+     * interrupt.  Record only the level it settled at: the decoder ignores
+     * a repeated level, so the bounce merges into the surrounding bar or
+     * space instead of discarding the whole barcode. */
+    next_head = (uint8_t)((g_edge_head + 1U) & (B3_EDGE_QUEUE_LENGTH - 1U));
+    if (next_head == g_edge_tail)
+    {
+        g_edge_overflow = 1U;
+    }
+    else
+    {
+        g_edge_queue[g_edge_head].timestamp_us = B3_TIMER_RAWL;
+        g_last_edge_us = g_edge_queue[g_edge_head].timestamp_us;
+        g_edge_seen    = 1U;
+        g_edge_queue[g_edge_head].level =
+            (uint8_t)((B3_SIO_GPIO_IN >> B3_BARCODE_PIN) & 1U);
+        g_edge_head = next_head;
+    }
 
-	g_edge_pending = 1U;
-	B3_IO_INTR3 = pending_edges;
+    g_edge_pending = 1U;
+    B3_IO_INTR3    = pending_edges;
 }
 
-static bool b3_pop_edge(B3_EDGE *edge)
+static bool
+b3_pop_edge (B3_EDGE * edge)
 {
-	UINT interrupt_status;
-	bool available = false;
+    UINT interrupt_status;
+    bool available = false;
 
-	DI(interrupt_status);
-	if (g_edge_tail != g_edge_head) {
-		edge->timestamp_us =
-			g_edge_queue[g_edge_tail].timestamp_us;
-		edge->level = g_edge_queue[g_edge_tail].level;
-		g_edge_tail = (uint8_t)((g_edge_tail + 1U) &
-					(B3_EDGE_QUEUE_LENGTH - 1U));
-		available = true;
-	} else {
-		g_edge_pending = 0U;
-	}
-	EI(interrupt_status);
-	return available;
+    DI(interrupt_status);
+    if (g_edge_tail != g_edge_head)
+    {
+        edge->timestamp_us = g_edge_queue[g_edge_tail].timestamp_us;
+        edge->level        = g_edge_queue[g_edge_tail].level;
+        g_edge_tail =
+            (uint8_t)((g_edge_tail + 1U) & (B3_EDGE_QUEUE_LENGTH - 1U));
+        available = true;
+    }
+    else
+    {
+        g_edge_pending = 0U;
+    }
+    EI(interrupt_status);
+    return available;
 }
 
-static uint8_t b3_take_overflow(void)
+static uint8_t
+b3_take_overflow (void)
 {
-	UINT interrupt_status;
-	uint8_t overflow;
+    UINT    interrupt_status;
+    uint8_t overflow;
 
-	DI(interrupt_status);
-	overflow = g_edge_overflow;
-	g_edge_overflow = 0U;
-	EI(interrupt_status);
-	return overflow;
+    DI(interrupt_status);
+    overflow        = g_edge_overflow;
+    g_edge_overflow = 0U;
+    EI(interrupt_status);
+    return overflow;
 }
 
-static void b3_process_edge(const B3_EDGE *edge,
-			    B3_CODE39_DECODER *decoder)
+static void
+b3_process_edge (const B3_EDGE * edge, B3_CODE39_DECODER * decoder)
 {
-	char symbol;
+    char symbol;
 
-	if (b3_code39_feed(decoder, edge->level, edge->timestamp_us, &symbol)) {
-		b3_handle_symbol(symbol, decoder);
-	}
+    if (b3_code39_feed(decoder, edge->level, edge->timestamp_us, &symbol))
+    {
+        b3_handle_symbol(symbol, decoder);
+    }
 }
 
-static void b3_handle_symbol(char symbol, const B3_CODE39_DECODER *decoder)
+static void
+b3_handle_symbol (char symbol, const B3_CODE39_DECODER * decoder)
 {
-	static const char *const nav_names[B3_NAV_COUNT] = {
-		"NONE", "LEFT", "RIGHT", "STRAIGHT", "UTURN",
-		"STOP 3 s", "SLOW", "NORMAL speed", "SPIN 360", "FINISH"
-	};
-	uint8_t nav;
-	bool now;
+    static const char * const nav_names[B3_NAV_COUNT] = {"NONE",
+        "LEFT",
+        "RIGHT",
+        "STRAIGHT",
+        "UTURN",
+        "STOP 3 s",
+        "SLOW",
+        "NORMAL speed",
+        "SPIN 360",
+        "FINISH"};
+    uint8_t                   nav;
+    bool                      now;
 
-	if (symbol < 'A' || symbol > 'Z') {
-		tm_printf((UB *)"[B3] barcode *%c* read %s; not a letter, ignored\n",
-			  symbol, decoder->last_reversed != 0U ?
-			  "(reversed)" : "(forward)");
-		return;
-	}
-	nav = b3_routes[symbol - 'A'];
-	/* Deliver the action before console/beep work can delay the decoder.
+    if (symbol < 'A' || symbol > 'Z')
+    {
+        tm_printf((UB *)"[B3] barcode *%c* read %s; not a letter, ignored\n",
+            symbol,
+            decoder->last_reversed != 0U ? "(reversed)" : "(forward)");
+        return;
+    }
+    nav = b3_routes[symbol - 'A'];
+    /* Deliver the action before console/beep work can delay the decoder.
      * The controller needs this event to release its straight read pass. */
-	b3_publish_barcode(B3_BARCODE_CODE(symbol), nav);
-	b3_buzzer_beep(B3_BEEP_READ, B3_TIMER_RAWL);
-	run_log_event(0U, RUN_EV_BARCODE_READ, (uint16_t)symbol);
-	now = nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL;
-	tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s %s\n",
-		  symbol, decoder->last_reversed != 0U ?
-		  "(reversed)" : "(forward)",
-		  decoder->last_partial != 0U ?
-		  " (partial: one '*' lost)" : "",
-		  nav_names[nav], now ? "now" : "at next junction");
+    b3_publish_barcode(B3_BARCODE_CODE(symbol), nav);
+    b3_buzzer_beep(B3_BEEP_READ, B3_TIMER_RAWL);
+    run_log_event(0U, RUN_EV_BARCODE_READ, (uint16_t)symbol);
+    now = nav == B3_NAV_SLOW || nav == B3_NAV_NORMAL;
+    tm_printf((UB *)"[B3] barcode *%c* read %s%s -> %s %s\n",
+        symbol,
+        decoder->last_reversed != 0U ? "(reversed)" : "(forward)",
+        decoder->last_partial != 0U ? " (partial: one '*' lost)" : "",
+        nav_names[nav],
+        now ? "now" : "at next junction");
 }
 
-static void b3_log_reject(const B3_CODE39_DECODER *decoder)
+static void
+b3_log_reject (const B3_CODE39_DECODER * decoder)
 {
-	static const char *const reasons[] = {
-		"none",
-		"bars not clearly wide/narrow (dirty strip, speed change or sensor threshold)",
-		"not a Code 39 character",
-		"gap between characters wrong",
-		"scan ended right after '*' (payload not crossed)",
-		"bars seen but no '*' (sensor off the strip, or speed changed)"
-	};
-	static uint16_t logged = 0U;
+    static const char * const reasons[] = {"none",
+        "bars not clearly wide/narrow (dirty strip, speed change or sensor "
+        "threshold)",
+        "not a Code 39 character",
+        "gap between characters wrong",
+        "scan ended right after '*' (payload not crossed)",
+        "bars seen but no '*' (sensor off the strip, or speed changed)"};
+    static uint16_t           logged    = 0U;
 
-	if (decoder->reject_count != logged) {
-		logged = decoder->reject_count;
-		g_barcode_rejects++;
-		b3_buzzer_beep(B3_BEEP_REJECT, B3_TIMER_RAWL);
-		run_log_event(0U, RUN_EV_BARCODE_REJECT,
-			      (uint16_t)decoder->last_reject);
-		tm_printf((UB *)"[B3] barcode scan rejected: %s (payload '%c', %d elements)\n",
-			  decoder->last_reject < 6U ?
-			  reasons[decoder->last_reject] : "?",
-			  decoder->last_reject_char != '\0' ?
-			  decoder->last_reject_char : '?',
-			  (int)decoder->reject_elements);
-		/* Widths in ms, in crossing order (bar, space, bar, ...): send
-		 * these lines when tuning B3_CODE39_* thresholds. */
-		tm_printf((UB *)"[B3-WIDTHS]");
-		for (uint8_t i = 0U; i < decoder->reject_elements; ++i) {
-			tm_printf((UB *)" %d", (int)(decoder->reject_widths_us[i] / 1000U));
-		}
-		tm_printf((UB *)"\n");
-	}
+    if (decoder->reject_count != logged)
+    {
+        logged = decoder->reject_count;
+        g_barcode_rejects++;
+        b3_buzzer_beep(B3_BEEP_REJECT, B3_TIMER_RAWL);
+        run_log_event(
+            0U, RUN_EV_BARCODE_REJECT, (uint16_t)decoder->last_reject);
+        tm_printf((UB *)"[B3] barcode scan rejected: %s (payload '%c', %d "
+                        "elements)\n",
+            decoder->last_reject < 6U ? reasons[decoder->last_reject] : "?",
+            decoder->last_reject_char != '\0' ? decoder->last_reject_char : '?',
+            (int)decoder->reject_elements);
+        /* Widths in ms, in crossing order (bar, space, bar, ...): send
+         * these lines when tuning B3_CODE39_* thresholds. */
+        tm_printf((UB *)"[B3-WIDTHS]");
+        for (uint8_t i = 0U; i < decoder->reject_elements; ++i)
+        {
+            tm_printf((UB *)" %d", (int)(decoder->reject_widths_us[i] / 1000U));
+        }
+        tm_printf((UB *)"\n");
+    }
 }
 
-EXPORT uint16_t b3_barcode_rejects(void)
+EXPORT uint16_t
+b3_barcode_rejects (void)
 {
-	return g_barcode_rejects;
+    return g_barcode_rejects;
 }
 
 /* Latest raw ADC readings (lift-stop: no floor under the sensors). */
-EXPORT void b3_line_raw(uint16_t *gp26, uint16_t *gp27)
+EXPORT void
+b3_line_raw (uint16_t * gp26, uint16_t * gp27)
 {
-	if (gp26 != NULL) *gp26 = g_raw_left;
-	if (gp27 != NULL) *gp27 = g_raw_centre;
+    if (gp26 != NULL)
+    {
+        *gp26 = g_raw_left;
+    }
+    if (gp27 != NULL)
+    {
+        *gp27 = g_raw_centre;
+    }
 }
 
-EXPORT bool b3_barcode_active(void)
+EXPORT bool
+b3_barcode_active (void)
 {
-	return g_edge_seen != 0U &&
-		(uint32_t)(B3_TIMER_RAWL - g_last_edge_us) < B3_BARCODE_ACTIVE_US;
+    return g_edge_seen != 0U &&
+        (uint32_t)(B3_TIMER_RAWL - g_last_edge_us) < B3_BARCODE_ACTIVE_US;
 }
 
-static void b3_publish_barcode(uint8_t barcode, uint8_t nav)
+static void
+b3_publish_barcode (uint8_t barcode, uint8_t nav)
 {
-	uint8_t command = nav;
-	UB barcode_character = (UB)('A' + barcode - 1U);
-	ER error;
+    uint8_t command           = nav;
+    UB      barcode_character = (UB)('A' + barcode - 1U);
+    ER      error;
 
-	b3_set_barcode_state(barcode, nav);
-	error = tk_snd_mbf(mbf_nav_cmd, &command, (INT)sizeof(command), TMO_POL);
-	if (error != E_OK) {
-		CHECK(error, "B3 navigation queue send");
-	}
+    b3_set_barcode_state(barcode, nav);
+    error = tk_snd_mbf(mbf_nav_cmd, &command, (INT)sizeof(command), TMO_POL);
+    if (error != E_OK)
+    {
+        CHECK(error, "B3 navigation queue send");
+    }
 
-	error = comm_report_barcode(barcode_character, (NAV_CMD)nav);
-	if (error != E_OK) {
-		CHECK(error, "B3 barcode telemetry report");
-	}
+    error = comm_report_barcode(barcode_character, (NAV_CMD)nav);
+    if (error != E_OK)
+    {
+        CHECK(error, "B3 barcode telemetry report");
+    }
 }
 
-static void b3_delay(uint32_t delay_ms)
+static void
+b3_delay (uint32_t delay_ms)
 {
-	ER error = tk_dly_tsk((RELTIM)delay_ms);
+    ER error = tk_dly_tsk((RELTIM)delay_ms);
 
-	if (error < E_OK) {
-		CHECK(error, "B3 task delay");
-	}
+    if (error < E_OK)
+    {
+        CHECK(error, "B3 task delay");
+    }
 }
 
 /* Keep a 20 ms start-to-start cadence instead of work time plus 20 ms.
  * An overrun still yields so lower-priority tasks can make progress. */
-static void b3_line_wait(uint32_t started_ms, bool timed)
+static void
+b3_line_wait (uint32_t started_ms, bool timed)
 {
-    SYSTIM now;
+    SYSTIM   now;
     uint32_t wait_ms = B3_LINE_UPDATE_MS;
-    if (timed && tk_get_tim(&now) == E_OK) {
+    if (timed && tk_get_tim(&now) == E_OK)
+    {
         uint32_t elapsed = now.lo - started_ms;
-        wait_ms = elapsed < B3_LINE_UPDATE_MS ? B3_LINE_UPDATE_MS - elapsed : 1u;
+        wait_ms =
+            elapsed < B3_LINE_UPDATE_MS ? B3_LINE_UPDATE_MS - elapsed : 1u;
     }
     b3_delay(wait_ms);
 }
+
+/*** end of file ***/
 

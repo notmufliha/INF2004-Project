@@ -20,7 +20,7 @@ typedef uint8_t
 #endif
 
 int32_t imu_numeric_to_int (float32_t value);
-bool    imu_numeric_is_finite (float32_t value);
+bool imu_numeric_is_finite (float32_t value);
 
 #endif
 

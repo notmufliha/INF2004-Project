@@ -17,37 +17,35 @@
 #include "s1_private.h"
 #include "s1_comm.h"
 
-#define TIME_DS_MASK   0xFFFFFU /* 20-bit event time stamp, 0.1 s */
-#define MS_PER_DS      100U
-#define DIST_INVALID   0x1FFU   /* 9-bit field all ones           */
-#define WIDTH_INVALID  0x7FU    /* 7-bit field all ones           */
-#define BARCODE_MASK   0x1FU
-#define NAV_MASK       0x0FU
-#define ACTION_MASK    0x07U
-#define ROBOT_MASK     0x0FU
-#define MOTION_MASK    0x07U
-#define HUMP_MASK      0x7FU
-#define DIST_MASK      0x1FFU
-#define WIDTH_MASK     0x7FU
-#define IR_MASK        0xFFFU
-#define SPEED_MASK     0x3FFFU  /* 14 bits */
-#define PITCH_MASK     0x3FFU   /* 10 bits */
-#define ERR_MASK       0xFFU
+#define TIME_DS_MASK 0xFFFFFU /* 20-bit event time stamp, 0.1 s */
+#define MS_PER_DS 100U
+#define DIST_INVALID 0x1FFU /* 9-bit field all ones           */
+#define WIDTH_INVALID 0x7FU /* 7-bit field all ones           */
+#define BARCODE_MASK 0x1FU
+#define NAV_MASK 0x0FU
+#define ACTION_MASK 0x07U
+#define ROBOT_MASK 0x0FU
+#define MOTION_MASK 0x07U
+#define HUMP_MASK 0x7FU
+#define DIST_MASK 0x1FFU
+#define WIDTH_MASK 0x7FU
+#define IR_MASK 0xFFFU
+#define SPEED_MASK 0x3FFFU /* 14 bits */
+#define PITCH_MASK 0x3FFU  /* 10 bits */
+#define ERR_MASK 0xFFU
 
-comm_telemetry_t     g_s1_telem = {
-    .obs_dist_cm = DIST_INVALID,
-    .obs_width_cm = WIDTH_INVALID,
-    .obs_left_cm = DIST_INVALID,
-    .obs_right_cm = DIST_INVALID
-};
-comm_stats_t         g_s1_stats;
-volatile uint8_t     g_s1_link_state = (uint8_t)COMM_INITIALISING;
+comm_telemetry_t g_s1_telem = {.obs_dist_cm = DIST_INVALID,
+    .obs_width_cm                           = WIDTH_INVALID,
+    .obs_left_cm                            = DIST_INVALID,
+    .obs_right_cm                           = DIST_INVALID};
+comm_stats_t     g_s1_stats;
+volatile uint8_t g_s1_link_state = (uint8_t)COMM_INITIALISING;
 
-static bool     telem_lock (void);
-static void     telem_unlock (void);
+static bool telem_lock (void);
+static void telem_unlock (void);
 static uint32_t dist_field (uint16_t dist_cm);
 static uint32_t width_field (uint16_t width_cm);
-static ER       post_event (comm_pack_event_t * p_event);
+static ER post_event (comm_pack_event_t * p_event);
 
 /** @brief Set the robot state shown in telemetry (VC). */
 void
@@ -67,15 +65,13 @@ comm_set_robot_state (comm_robot_state_t state)
  * decoder unwraps it anyway.
  */
 void
-comm_set_motion (int32_t speed_l_cps, int32_t speed_r_cps, int32_t enc_l,
-                 int32_t enc_r)
+comm_set_motion (
+    int32_t speed_l_cps, int32_t speed_r_cps, int32_t enc_l, int32_t enc_r)
 {
-    uint32_t left  = comm_pack_twos(comm_pack_sat_s(speed_l_cps,
-                                                    COMM_SPEED_MAX),
-                                    COMM_SPEED_BITS);
-    uint32_t right = comm_pack_twos(comm_pack_sat_s(speed_r_cps,
-                                                    COMM_SPEED_MAX),
-                                    COMM_SPEED_BITS);
+    uint32_t left = comm_pack_twos(
+        comm_pack_sat_s(speed_l_cps, COMM_SPEED_MAX), COMM_SPEED_BITS);
+    uint32_t right = comm_pack_twos(
+        comm_pack_sat_s(speed_r_cps, COMM_SPEED_MAX), COMM_SPEED_BITS);
     /* Totals wrap by design: modulo 2^24 via two's complement. */
     uint32_t total_l = (uint32_t)enc_l & COMM_ENC_MASK;
     uint32_t total_r = (uint32_t)enc_r & COMM_ENC_MASK;
@@ -92,8 +88,8 @@ comm_set_motion (int32_t speed_l_cps, int32_t speed_r_cps, int32_t enc_l,
 
 /** @brief Line sensors: raw ADC 0..4095, right sensor digital (B3). */
 void
-comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
-               uint8_t flags)
+comm_set_line (
+    uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right, uint8_t flags)
 {
     uint32_t left   = comm_pack_sat_u(ir_left, COMM_IR_MAX);
     uint32_t centre = comm_pack_sat_u(ir_centre, COMM_IR_MAX);
@@ -112,16 +108,17 @@ comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
 void
 comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg, int16_t roll_ddeg)
 {
-    uint32_t pitch = comm_pack_twos(comm_pack_sat_s(pitch_ddeg,
-                                                    COMM_PITCH_MAX),
-                                    COMM_PITCH_BITS);
+    uint32_t pitch = comm_pack_twos(
+        comm_pack_sat_s(pitch_ddeg, COMM_PITCH_MAX), COMM_PITCH_BITS);
 
     if ((motion_state < COMM_MOTION_COUNT) && (telem_lock()))
     {
         g_s1_telem.motion     = (UINT)motion_state & MOTION_MASK;
         g_s1_telem.pitch_ddeg = pitch & PITCH_MASK;
-        g_s1_telem.roll_ddeg = comm_pack_twos(
-            comm_pack_sat_s(roll_ddeg, COMM_ROLL_MAX), COMM_ROLL_BITS) & 0xFFFU;
+        g_s1_telem.roll_ddeg =
+            comm_pack_twos(
+                comm_pack_sat_s(roll_ddeg, COMM_ROLL_MAX), COMM_ROLL_BITS) &
+            0xFFFU;
         telem_unlock();
     }
 }
@@ -173,7 +170,7 @@ comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav)
         (letter <= (uint8_t)COMM_BARCODE_LAST) &&
         ((uint32_t)nav < (uint32_t)NAV_COUNT))
     {
-        code = ((uint32_t)letter - (uint32_t)COMM_BARCODE_FIRST) + 1U;
+        code        = ((uint32_t)letter - (uint32_t)COMM_BARCODE_FIRST) + 1U;
         event.type  = EVT_BARCODE;
         event.val_a = code & BARCODE_MASK;
         event.val_e = (UINT)nav & NAV_MASK;
@@ -242,6 +239,7 @@ comm_reset_hump_peak (void)
     }
 }
 
+/** @brief Clear the previous obstacle width before the next measurement. */
 void
 comm_clear_obstacle_width (void)
 {
@@ -254,8 +252,11 @@ comm_clear_obstacle_width (void)
 
 /** @brief Report an obstacle and the avoidance decision, in cm (B5). */
 ER
-comm_report_obstacle (uint16_t dist_cm, uint16_t width_cm, uint16_t left_cm,
-                      uint16_t right_cm, comm_avoid_action_t action)
+comm_report_obstacle (uint16_t dist_cm,
+    uint16_t                   width_cm,
+    uint16_t                   left_cm,
+    uint16_t                   right_cm,
+    comm_avoid_action_t        action)
 {
     comm_pack_event_t event  = {0};
     ER                result = E_PAR;
@@ -381,8 +382,8 @@ post_event (comm_pack_event_t * p_event)
 
     p_event->time_ds = (s1_comm_now_ms() / MS_PER_DS) & TIME_DS_MASK;
     /* sizeof(comm_pack_event_t) is 8: fits the kernel's INT. */
-    result = tk_snd_mbf(gh_s1_event_mbf, p_event, (INT)sizeof(*p_event),
-                        TMO_POL);
+    result =
+        tk_snd_mbf(gh_s1_event_mbf, p_event, (INT)sizeof(*p_event), TMO_POL);
 
     if (E_OK == result)
     {
@@ -402,3 +403,4 @@ post_event (comm_pack_event_t * p_event)
 }
 
 /*** end of file ***/
+

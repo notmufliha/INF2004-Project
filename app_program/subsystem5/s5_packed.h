@@ -25,16 +25,20 @@ typedef struct
 typedef struct
 {
     uint16_t obstacle_distance_cm;
-    uint8_t obstacle_width_cm;
+    uint8_t  obstacle_width_cm;
     uint16_t left_clearance_cm;
     uint16_t right_clearance_cm;
-    uint8_t servo_angle_deg;
+    uint8_t  servo_angle_deg;
 } S5DecodedProfile;
 
 /* Returns false when a source field was invalid; still encodes a well-defined
  * sentinel for every invalid field. The payload is always initialized. */
-bool s5_pack_profile(const S5Profile *profile, S5PackedProfile *message);
+bool s5_pack_profile (const S5Profile * profile, S5PackedProfile * message);
 /* Rejects reserved codes, corrupt padding and invalid/sentinel fields. */
-bool s5_unpack_profile(const S5PackedProfile *message, S5DecodedProfile *profile);
+bool s5_unpack_profile (
+    const S5PackedProfile * message, S5DecodedProfile * profile);
 
 #endif /* S5_PACKED_H */
+
+/*** end of file ***/
+

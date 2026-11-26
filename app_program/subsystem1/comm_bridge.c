@@ -10,8 +10,8 @@
 #include "comm_bridge.h"
 #include "s1_private.h"
 
-#define TOPIC_MASK  0x03U /* tx record header: topic in bits 0..1 */
-#define RETAIN_BIT  0x04U /* tx record header: retain in bit 2    */
+#define TOPIC_MASK 0x03U /* tx record header: topic in bits 0..1 */
+#define RETAIN_BIT 0x04U /* tx record header: retain in bit 2    */
 
 volatile uint8_t g_s1_mqtt_state = (uint8_t)COMM_MQTT_IDLE;
 
@@ -24,8 +24,10 @@ static volatile uint16_t g_rx_dropped = 0U;
  * Called by the comm task only (its record buffer is not re-entrant).
  */
 bool
-comm_bridge_tx_enqueue (comm_bridge_topic_t topic, bool b_retain,
-                        const uint8_t * p_payload, uint32_t len)
+comm_bridge_tx_enqueue (comm_bridge_topic_t topic,
+    bool                                    b_retain,
+    const uint8_t *                         p_payload,
+    uint32_t                                len)
 {
     static uint8_t record[TX_RECORD_MAX];
     uint32_t       index;
@@ -35,15 +37,16 @@ comm_bridge_tx_enqueue (comm_bridge_topic_t topic, bool b_retain,
     {
         /* Topic is 0..3 and the flag one bit, so the header fits. */
         record[0] = (uint8_t)(((uint32_t)topic & TOPIC_MASK) |
-                              (b_retain ? RETAIN_BIT : 0U));
+            (b_retain ? RETAIN_BIT : 0U));
         for (index = 0U; index < len; index++)
         {
             record[TX_RECORD_HDR + index] = p_payload[index];
         }
 
         /* At most TX_RECORD_MAX (33) bytes: fits the kernel's INT. */
-        b_queued = (E_OK == tk_snd_mbf(gh_s1_tx_mbf, record,
-                                       (INT)(TX_RECORD_HDR + len), TMO_POL));
+        b_queued = (E_OK ==
+            tk_snd_mbf(
+                gh_s1_tx_mbf, record, (INT)(TX_RECORD_HDR + len), TMO_POL));
     }
 
     if (b_queued)
@@ -60,8 +63,10 @@ comm_bridge_tx_enqueue (comm_bridge_topic_t topic, bool b_retain,
 
 /** @brief WiFi task: take the next queued frame (see comm_bridge.h). */
 int32_t
-comm_bridge_tx_pop (uint8_t * p_topic_id, uint8_t * p_retain,
-                    uint8_t * p_payload, uint16_t payload_max)
+comm_bridge_tx_pop (uint8_t * p_topic_id,
+    uint8_t *                 p_retain,
+    uint8_t *                 p_payload,
+    uint16_t                  payload_max)
 {
     static uint8_t record[TX_RECORD_MAX]; /* WiFi task only */
     int32_t        length   = -1;

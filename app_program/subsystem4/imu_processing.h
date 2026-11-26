@@ -34,8 +34,8 @@ typedef struct
 } imu_processing_t;
 
 void imu_processing_default_config (imu_processing_config_t * p_config);
-bool imu_processing_init (imu_processing_t *              p_state,
-                          const imu_processing_config_t * p_config);
+bool imu_processing_init (
+    imu_processing_t * p_state, const imu_processing_config_t * p_config);
 /* Feed each acquisition attempt; NULL represents a missing reading.
  * now_ms uses the same monotonic clock as reading timestamps. On failure the
  * output is invalid and contains no stale measurements. Acceleration passes
@@ -43,9 +43,10 @@ bool imu_processing_init (imu_processing_t *              p_state,
  * Faults suppress output until enough consecutive valid recovery readings.
  */
 bool imu_processing_process (imu_processing_t * p_state,
-                             const imu_data_t * p_input, uint32_t now_ms,
-                             imu_data_t *              p_output,
-                             imu_processing_health_t * p_health);
+    const imu_data_t *                          p_input,
+    uint32_t                                    now_ms,
+    imu_data_t *                                p_output,
+    imu_processing_health_t *                   p_health);
 
 #endif
 

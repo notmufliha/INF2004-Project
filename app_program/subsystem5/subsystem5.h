@@ -72,5 +72,8 @@
 #define S5_SERVO_SETTLE_MS ROBOT_SCAN_SERVO_SETTLE_MS
 #define S5_ECHO_GAP_MS 65u
 
-IMPORT void s5_task(INT stacd, void *exinf);
+IMPORT void s5_task (INT stacd, void * exinf);
 #endif
+
+/*** end of file ***/
+

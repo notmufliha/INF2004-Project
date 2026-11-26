@@ -6,17 +6,18 @@
 #include <stdbool.h>
 #include "motor_control.h"
 #include "../robot_config.h"
-#define MOTOR_L_A_PIN   ROBOT_MOTOR_L_REV_PIN      // Left motor PWM output A
-#define MOTOR_L_B_PIN   ROBOT_MOTOR_L_FWD_PIN      // Left motor PWM output B
-#define MOTOR_R_A_PIN   ROBOT_MOTOR_R_FWD_PIN     // Right motor PWM output A
-#define MOTOR_R_B_PIN   ROBOT_MOTOR_R_REV_PIN     // Right motor PWM output B
-#define MOTOR_PWM_WRAP  ROBOT_PWM_TOP
+#define MOTOR_L_A_PIN ROBOT_MOTOR_L_REV_PIN // Left motor PWM output A
+#define MOTOR_L_B_PIN ROBOT_MOTOR_L_FWD_PIN // Left motor PWM output B
+#define MOTOR_R_A_PIN ROBOT_MOTOR_R_FWD_PIN // Right motor PWM output A
+#define MOTOR_R_B_PIN ROBOT_MOTOR_R_REV_PIN // Right motor PWM output B
+#define MOTOR_PWM_WRAP ROBOT_PWM_TOP
 #define MOTOR_TEST_DUTY 50
 /* RP2040 peripheral reset control. */
-#define RESETS_RESET_REG  (*(volatile UW *)0x4000C000U)
-#define RESETS_DONE_REG   (*(volatile UW *)0x4000C008U)
-#define PWM_RESET_MASK    (1U << 14)
+#define RESETS_RESET_REG (*(volatile UW *)0x4000C000U)
+#define RESETS_DONE_REG (*(volatile UW *)0x4000C008U)
+#define PWM_RESET_MASK (1U << 14)
 #define PWM_RESET_TIMEOUT 1000000U
+
 /* Indicates whether motor PWM initialisation succeeded. */
 
 static struct
@@ -24,10 +25,11 @@ static struct
     bool ready : 1;
 } g_motor;
 
-static ER motor_init_fail(ER error);
+static ER motor_init_fail (ER error);
 
 /** @brief Set both motor PWM compare values to zero. */
-void motor_stop(void)
+void
+motor_stop (void)
 {
     pwm_set_cc(MOTOR_L_A_PIN, 0U);
     pwm_set_cc(MOTOR_L_B_PIN, 0U);
@@ -36,9 +38,10 @@ void motor_stop(void)
 }
 
 /** @brief Initialize both motor PWM slices and their GPIO pins. */
-ER motor_init(void)
+ER
+motor_init (void)
 {
-    UW timeout = PWM_RESET_TIMEOUT;
+    UW timeout    = PWM_RESET_TIMEOUT;
     g_motor.ready = false;
     /* Release the PWM peripheral from reset. */
     RESETS_RESET_REG &= ~PWM_RESET_MASK;
@@ -96,7 +99,8 @@ ER motor_init(void)
 }
 
 /** @brief Apply signed left motor duty: positive GP9, negative GP8. */
-void motor_left_set(int speed_percent)
+void
+motor_left_set (int speed_percent)
 {
     UW duty;
 
@@ -141,7 +145,8 @@ void motor_left_set(int speed_percent)
 }
 
 /** @brief Apply signed right motor duty: positive GP10, negative GP11. */
-void motor_right_set(int speed_percent)
+void
+motor_right_set (int speed_percent)
 {
     UW duty;
 
@@ -185,7 +190,8 @@ void motor_right_set(int speed_percent)
 }
 
 /** @brief Disable motor PWM after an initialization failure. */
-static ER motor_init_fail(ER error)
+static ER
+motor_init_fail (ER error)
 {
     g_motor.ready = false;
     /* Clear motor PWM compare values. */
@@ -195,3 +201,6 @@ static ER motor_init_fail(ER error)
     (void)pwm_set_enabled(MOTOR_R_A_PIN, false);
     return (error);
 }
+
+/*** end of file ***/
+

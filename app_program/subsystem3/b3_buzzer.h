@@ -18,16 +18,20 @@
 #endif
 #define B3_BUZZER_PIN (22U)
 
-typedef enum {
-	B3_BEEP_READ = 0,   /* one 150 ms high beep */
-	B3_BEEP_REJECT,     /* two 80 ms low beeps  */
-	B3_BEEP_JUNCTION    /* three 50 ms high beeps */
+typedef enum
+{
+    B3_BEEP_READ = 0, /* one 150 ms high beep */
+    B3_BEEP_REJECT,   /* two 80 ms low beeps  */
+    B3_BEEP_JUNCTION  /* three 50 ms high beeps */
 } B3_BEEP;
 
-void b3_buzzer_init(void);
-void b3_buzzer_beep(B3_BEEP pattern, uint32_t now_us);
-void b3_buzzer_poll(uint32_t now_us);
+void b3_buzzer_init (void);
+void b3_buzzer_beep (B3_BEEP pattern, uint32_t now_us);
+void b3_buzzer_poll (uint32_t now_us);
 /* From another task (the controller): the barcode task plays it. */
-void b3_buzzer_request(B3_BEEP pattern);
+void b3_buzzer_request (B3_BEEP pattern);
 
 #endif /* B3_BUZZER_H */
+
+/*** end of file ***/
+

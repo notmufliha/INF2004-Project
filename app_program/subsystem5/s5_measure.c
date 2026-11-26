@@ -4,7 +4,8 @@
 #include "drv_ultrasonic.h"
 #include "../robot_config.h"
 
-bool s5_echo_suppressed_cm(float cm)
+bool
+s5_echo_suppressed_cm (float cm)
 {
     if (!(cm > ROBOT_IGNORE_ECHO_AT_OR_BELOW_CM))
     {
@@ -12,9 +13,9 @@ bool s5_echo_suppressed_cm(float cm)
     }
 #if ROBOT_SUPPRESS_REPEATING_ECHO_BANDS
     if (((cm >= ROBOT_FALSE_ECHO_NEAR_MIN_CM) &&
-         (cm <= ROBOT_FALSE_ECHO_NEAR_MAX_CM)) ||
+            (cm <= ROBOT_FALSE_ECHO_NEAR_MAX_CM)) ||
         ((cm >= ROBOT_FALSE_ECHO_FAR_MIN_CM) &&
-         (cm <= ROBOT_FALSE_ECHO_FAR_MAX_CM)))
+            (cm <= ROBOT_FALSE_ECHO_FAR_MAX_CM)))
     {
         return true;
     }
@@ -22,14 +23,16 @@ bool s5_echo_suppressed_cm(float cm)
     return false;
 }
 
-static float abs_difference(float first, float second)
+static float
+abs_difference (float first, float second)
 {
     return (first > second) ? (first - second) : (second - first);
 }
 
-static bool agreeing(float first, float second)
+static bool
+agreeing (float first, float second)
 {
-    float average = (first + second) * 0.5f;
+    float average   = (first + second) * 0.5f;
     float tolerance = average * ROBOT_ECHO_AGREEMENT_FRACTION;
 
     if (tolerance < ROBOT_ECHO_AGREEMENT_MIN_CM)
@@ -43,18 +46,22 @@ static bool agreeing(float first, float second)
 /* Three pairwise-agreeing readings are needed within the separated batch.
  * Scans and front consensus use five pings, tolerating two missed returns.
  * Do not use a median of invalid or inconsistent measurements as clearance. */
-static bool measure_one_batch(float *out_cm, bool forward, bool probe, bool stop_on_close,
-                             uint8_t samples)
+static bool
+measure_one_batch (float * out_cm,
+    bool                   forward,
+    bool                   probe,
+    bool                   stop_on_close,
+    uint8_t                samples)
 {
-    float values[ROBOT_ECHO_SAMPLES];
-    uint8_t count = 0u;
-    uint8_t i;
-    uint8_t j;
-    uint8_t k;
-    bool found = false;
-    float best_spread = 401.0f;
-    float best_cm = 0.0f;
-    bool close_echo = false;
+    float       values[ROBOT_ECHO_SAMPLES];
+    uint8_t     count = 0u;
+    uint8_t     i;
+    uint8_t     j;
+    uint8_t     k;
+    bool        found       = false;
+    float       best_spread = 401.0f;
+    float       best_cm     = 0.0f;
+    bool        close_echo  = false;
     const float close_cm = probe ? ROBOT_BYPASS_MOVE_RELEASE_CM : ROBOT_STOP_CM;
 
     if (out_cm == NULL)
@@ -65,31 +72,40 @@ static bool measure_one_batch(float *out_cm, bool forward, bool probe, bool stop
     *out_cm = 0.0f;
     for (i = 0u; i < samples; ++i)
     {
-        S5EchoReading reading = forward ? s5_ultrasonic_read_front() :
-                                         s5_ultrasonic_read_detailed();
-        if (probe && ROBOT_COMPLETED_FAR_ECHO && reading.status == S5_ECHO_OUT_OF_RANGE) {
+        S5EchoReading reading = forward ? s5_ultrasonic_read_front()
+                                        : s5_ultrasonic_read_detailed();
+        if (probe && ROBOT_COMPLETED_FAR_ECHO &&
+            reading.status == S5_ECHO_OUT_OF_RANGE)
+        {
             reading.status = S5_ECHO_OPEN_SPACE;
-            reading.cm = 400.0f;
+            reading.cm     = 400.0f;
         }
         if (reading.status == S5_ECHO_OK && reading.cm > 0.0f &&
-            reading.cm <= close_cm) close_echo = true;
+            reading.cm <= close_cm)
+        {
+            close_echo = true;
+        }
 #if ROBOT_VERBOSE_SENSOR_LOG
-        tm_printf((UB*)"[S5-ECHO] ping=%d/%d status=%s pulse_us=%d cm_x100=%d suppressed=%d\n",
-                  (int)(i + 1u), (int)samples,
-                  s5_echo_status_name(reading.status), (int)reading.pulse_us,
-                  (int)(reading.cm * 100.0f),
-                  (int)s5_echo_suppressed_cm(reading.cm));
+        tm_printf((UB *)"[S5-ECHO] ping=%d/%d status=%s pulse_us=%d cm_x100=%d "
+                        "suppressed=%d\n",
+            (int)(i + 1u),
+            (int)samples,
+            s5_echo_status_name(reading.status),
+            (int)reading.pulse_us,
+            (int)(reading.cm * 100.0f),
+            (int)s5_echo_suppressed_cm(reading.cm));
 #endif
 
         /* A real close reading overrides the no-target assumption, even
          * if other pings in this batch miss the obstacle. */
         if (stop_on_close && reading.status == S5_ECHO_OK &&
-            reading.cm > 0.0f && reading.cm <= ROBOT_STOP_CM) {
+            reading.cm > 0.0f && reading.cm <= ROBOT_STOP_CM)
+        {
             *out_cm = reading.cm;
             return true;
         }
         if ((reading.status == S5_ECHO_OK ||
-             ((forward || probe) && reading.status == S5_ECHO_OPEN_SPACE)) &&
+                ((forward || probe) && reading.status == S5_ECHO_OPEN_SPACE)) &&
             !s5_echo_suppressed_cm(reading.cm))
         {
             values[count] = reading.cm;
@@ -98,17 +114,19 @@ static bool measure_one_batch(float *out_cm, bool forward, bool probe, bool stop
 
         if ((uint8_t)(i + 1u) < samples)
         {
-            tk_dly_tsk((reading.status == S5_ECHO_OK) ?
-                       S5_ECHO_GAP_MS : ROBOT_ECHO_GAP_AFTER_FAILURE_MS);
+            tk_dly_tsk((reading.status == S5_ECHO_OK)
+                    ? S5_ECHO_GAP_MS
+                    : ROBOT_ECHO_GAP_AFTER_FAILURE_MS);
         }
     }
 
     if (count < ROBOT_ECHO_REQUIRED_AGREEING)
     {
 #if ROBOT_VERBOSE_SENSOR_LOG
-        tm_printf((UB*)"[S5-BATCH] invalid: usable=%d/%d; need=%d\n",
-                  (int)count, (int)ROBOT_ECHO_SAMPLES,
-                  (int)ROBOT_ECHO_REQUIRED_AGREEING);
+        tm_printf((UB *)"[S5-BATCH] invalid: usable=%d/%d; need=%d\n",
+            (int)count,
+            (int)ROBOT_ECHO_SAMPLES,
+            (int)ROBOT_ECHO_REQUIRED_AGREEING);
 #endif
         return false;
     }
@@ -147,7 +165,7 @@ static bool measure_one_batch(float *out_cm, bool forward, bool probe, bool stop
                     spread = maximum - minimum;
                     if (!found || (spread < best_spread))
                     {
-                        found = true;
+                        found       = true;
                         best_spread = spread;
                         best_cm = (values[i] + values[j] + values[k]) / 3.0f;
                     }
@@ -159,7 +177,7 @@ static bool measure_one_batch(float *out_cm, bool forward, bool probe, bool stop
     if (!found || (close_echo && best_cm > close_cm))
     {
 #if ROBOT_VERBOSE_SENSOR_LOG
-        tm_printf((UB*)"[S5-BATCH] invalid: usable echoes disagree\n");
+        tm_printf((UB *)"[S5-BATCH] invalid: usable echoes disagree\n");
 #endif
         return false;
     }
@@ -168,7 +186,9 @@ static bool measure_one_batch(float *out_cm, bool forward, bool probe, bool stop
     return true;
 }
 
-static bool measure_stable(float *out_cm, bool forward, bool stop_on_close, uint8_t samples)
+static bool
+measure_stable (
+    float * out_cm, bool forward, bool stop_on_close, uint8_t samples)
 {
     uint8_t attempt;
 
@@ -194,14 +214,36 @@ static bool measure_stable(float *out_cm, bool forward, bool stop_on_close, uint
     return false;
 }
 
-bool s5_measure_stable_cm(float *out_cm) { return measure_stable(out_cm, false, false, ROBOT_ECHO_SAMPLES); }
-bool s5_measure_front_cm(float *out_cm) { return measure_stable(out_cm, true, true, ROBOT_ECHO_SAMPLES); }
-bool s5_measure_scan_cm(float *out_cm) { return measure_stable(out_cm, ROBOT_NO_TARGET_SCAN != 0, false, ROBOT_ECHO_SAMPLES); }
-bool s5_measure_probe_cm(float *out_cm)
+bool
+s5_measure_stable_cm (float * out_cm)
 {
-    if (out_cm == NULL) return false;
+    return measure_stable(out_cm, false, false, ROBOT_ECHO_SAMPLES);
+}
+
+bool
+s5_measure_front_cm (float * out_cm)
+{
+    return measure_stable(out_cm, true, true, ROBOT_ECHO_SAMPLES);
+}
+
+bool
+s5_measure_scan_cm (float * out_cm)
+{
+    return measure_stable(
+        out_cm, ROBOT_NO_TARGET_SCAN != 0, false, ROBOT_ECHO_SAMPLES);
+}
+
+bool
+s5_measure_probe_cm (float * out_cm)
+{
+    if (out_cm == NULL)
+    {
+        return false;
+    }
     if (measure_one_batch(out_cm, false, true, false, ROBOT_ECHO_SAMPLES))
+    {
         return true;
+    }
 
     /* Retry an inconclusive stationary ray using actual echoes only.
      * A second batch of apparent open space cannot erase a close return. */
@@ -213,21 +255,22 @@ bool s5_measure_probe_cm(float *out_cm)
  * motors immediately. A cluster of such events imposes a timed hold,
  * but unlike V2 it can recover without a reboot after the sensor proves
  * it is healthy again with consecutive multi-echo clear batches. */
-void s5_guard_stop_history_init(S5GuardStopHistory *history)
+void
+s5_guard_stop_history_init (S5GuardStopHistory * history)
 {
     if (history != NULL)
     {
         history->window_start_ms = 0u;
-        history->hold_start_ms = 0u;
-        history->last_clear_ms = 0u;
-        history->stop_count = 0u;
-        history->clear_batches = 0u;
-        history->locked = false;
+        history->hold_start_ms   = 0u;
+        history->last_clear_ms   = 0u;
+        history->stop_count      = 0u;
+        history->clear_batches   = 0u;
+        history->locked          = false;
     }
 }
 
-bool s5_guard_stop_history_record(S5GuardStopHistory *history,
-                                  uint32_t now_ms)
+bool
+s5_guard_stop_history_record (S5GuardStopHistory * history, uint32_t now_ms)
 {
     if (history == NULL)
     {
@@ -240,10 +283,10 @@ bool s5_guard_stop_history_record(S5GuardStopHistory *history,
     }
     if ((history->stop_count == 0u) ||
         ((uint32_t)(now_ms - history->window_start_ms) >
-         S5_GUARD_STOP_WINDOW_MS))
+            S5_GUARD_STOP_WINDOW_MS))
     {
         history->window_start_ms = now_ms;
-        history->stop_count = 1u;
+        history->stop_count      = 1u;
     }
     else if (history->stop_count < S5_GUARD_STOP_LIMIT)
     {
@@ -251,14 +294,15 @@ bool s5_guard_stop_history_record(S5GuardStopHistory *history,
     }
     if (history->stop_count >= S5_GUARD_STOP_LIMIT)
     {
-        history->locked = true;
+        history->locked        = true;
         history->hold_start_ms = now_ms;
         history->clear_batches = 0u;
     }
     return history->locked;
 }
 
-void s5_guard_stop_history_unclear(S5GuardStopHistory *history)
+void
+s5_guard_stop_history_unclear (S5GuardStopHistory * history)
 {
     if (history != NULL)
     {
@@ -266,16 +310,15 @@ void s5_guard_stop_history_unclear(S5GuardStopHistory *history)
     }
 }
 
-bool s5_guard_stop_history_clear(S5GuardStopHistory *history,
-                                 uint32_t now_ms)
+bool
+s5_guard_stop_history_clear (S5GuardStopHistory * history, uint32_t now_ms)
 {
     if (history == NULL || !history->locked)
     {
         return false;
     }
     if (history->clear_batches != 0u &&
-        (uint32_t)(now_ms - history->last_clear_ms) >
-            S5_GUARD_REARM_MAX_GAP_MS)
+        (uint32_t)(now_ms - history->last_clear_ms) > S5_GUARD_REARM_MAX_GAP_MS)
     {
         history->clear_batches = 0u;
     }
@@ -284,8 +327,7 @@ bool s5_guard_stop_history_clear(S5GuardStopHistory *history,
     {
         ++history->clear_batches;
     }
-    if ((uint32_t)(now_ms - history->hold_start_ms) <
-            S5_GUARD_COOLDOWN_MS ||
+    if ((uint32_t)(now_ms - history->hold_start_ms) < S5_GUARD_COOLDOWN_MS ||
         history->clear_batches < S5_GUARD_REARM_CLEAR_BATCHES)
     {
         return false;
@@ -295,3 +337,6 @@ bool s5_guard_stop_history_clear(S5GuardStopHistory *history,
     s5_guard_stop_history_init(history);
     return true;
 }
+
+/*** end of file ***/
+

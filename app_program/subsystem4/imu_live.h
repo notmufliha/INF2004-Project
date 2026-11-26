@@ -7,7 +7,7 @@
 
 typedef struct
 {
-    float32_t accel_x;  /* m/s^2 */
+    float32_t accel_x; /* m/s^2 */
     float32_t accel_y;
     float32_t accel_z;
     float32_t pitch_deg;
@@ -21,3 +21,4 @@ void imu_live_store (const imu_data_t * p_data);
 void imu_live_get (imu_live_t * p_out);
 #endif
 /*** end of file ***/
+

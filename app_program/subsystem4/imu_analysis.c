@@ -17,28 +17,33 @@ static void reset_sequence (imu_analysis_t * p_analysis, uint32_t reason);
 static void reset_roll (imu_analysis_t * p_analysis);
 static void expire_roll (imu_analysis_t * p_analysis, uint32_t now_ms);
 static void update_roll_motion (imu_analysis_t * p_analysis, float32_t roll);
-static void track_roll_height (imu_analysis_t * p_analysis, bool b_jerk,
-                               const imu_data_t * p_data, bool b_level);
-static float32_t push_roll_window (imu_analysis_t * p_analysis,
-                                   float32_t excursion);
-static void complete_height (imu_analysis_t * p_analysis,
-                             imu_event_t * p_event);
+static void track_roll_height (imu_analysis_t * p_analysis,
+    bool                                        b_jerk,
+    const imu_data_t *                          p_data,
+    bool                                        b_level);
+static float32_t push_roll_window (
+    imu_analysis_t * p_analysis, float32_t excursion);
+static void complete_height (
+    imu_analysis_t * p_analysis, imu_event_t * p_event);
 static bool jerking (imu_analysis_t * p_analysis, const imu_data_t * p_data);
-static bool curving (const imu_analysis_t * p_analysis,
-                     const imu_data_t * p_data);
-static void update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
-                         imu_event_t * p_event);
+static bool curving (
+    const imu_analysis_t * p_analysis, const imu_data_t * p_data);
+static void update_roll (imu_analysis_t * p_analysis,
+    const imu_data_t *                    p_data,
+    imu_event_t *                         p_event);
 static void analyse_terrain (imu_analysis_t * p_analysis,
-                             const imu_data_t * p_data, imu_event_t * p_event);
+    const imu_data_t *                        p_data,
+    imu_event_t *                             p_event);
 static bool stopped_context (const imu_data_t * p_data);
-static bool forward_travel (imu_analysis_t * p_analysis,
-                            const imu_data_t * p_data);
-static uint32_t movement_reason (const imu_analysis_t * p_analysis,
-                                 const imu_data_t * p_data);
+static bool forward_travel (
+    imu_analysis_t * p_analysis, const imu_data_t * p_data);
+static uint32_t movement_reason (
+    const imu_analysis_t * p_analysis, const imu_data_t * p_data);
 
 static void classify_motion (const imu_analysis_t * p_analysis,
-                             const imu_data_t * p_data, imu_event_t * p_event,
-                             float32_t magnitude);
+    const imu_data_t *                              p_data,
+    imu_event_t *                                   p_event,
+    float32_t                                       magnitude);
 
 /** @brief Supply provisional motion and terrain thresholds. */
 void
@@ -46,17 +51,29 @@ imu_analysis_default_config (imu_analysis_config_t * p_config)
 {
     if (p_config != NULL)
     {
-        *p_config = (imu_analysis_config_t){8.0f, 1.0f, 15.0f, 6.0f,
-                                            3U, 100U, 10000U,
-                                            4.0f, 2.0f, 0.5f, 110.0f,
-                                            80U, 0.3f, 7U, 0U, 0U};
+        *p_config = (imu_analysis_config_t){8.0f,
+            1.0f,
+            15.0f,
+            6.0f,
+            3U,
+            100U,
+            10000U,
+            4.0f,
+            2.0f,
+            0.5f,
+            110.0f,
+            80U,
+            0.3f,
+            7U,
+            0U,
+            0U};
     }
 }
 
 /** @brief Validate thresholds and reset the terrain context. */
 bool
-imu_analysis_init (imu_analysis_t *              p_analysis,
-                   const imu_analysis_config_t * p_config)
+imu_analysis_init (
+    imu_analysis_t * p_analysis, const imu_analysis_config_t * p_config)
 {
     if ((NULL == p_analysis) || (NULL == p_config) ||
         (!isfinite(p_config->tilt_deg)) ||
@@ -78,8 +95,8 @@ imu_analysis_init (imu_analysis_t *              p_analysis,
         (p_config->roll_trend_deg > p_config->roll_enter_deg) ||
         (p_config->roll_level_deg < 0.0f) ||
         (p_config->roll_enter_deg <= p_config->roll_level_deg) ||
-        (p_config->roll_enter_deg >= 90.0f) ||
-        (p_config->tilt_deg <= 0.0f) || (p_config->acceleration_ms2 <= 0.0f) ||
+        (p_config->roll_enter_deg >= 90.0f) || (p_config->tilt_deg <= 0.0f) ||
+        (p_config->acceleration_ms2 <= 0.0f) ||
         (p_config->turn_rate_dps <= 0.0f) ||
         (p_config->impact_ms2 <= p_config->acceleration_ms2) ||
         (0U == p_config->confirmation_samples) ||
@@ -90,16 +107,17 @@ imu_analysis_init (imu_analysis_t *              p_analysis,
         return false;
     }
 
-    *p_analysis        = (imu_analysis_t){0};
-    p_analysis->config = *p_config;
+    *p_analysis                  = (imu_analysis_t){0};
+    p_analysis->config           = *p_config;
     p_analysis->b_require_motion = true;
     return true;
 }
 
 /** @brief Validate a reading and publish motion and terrain status. */
 bool
-imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
-                      imu_event_t * p_event)
+imu_analysis_process (imu_analysis_t * p_analysis,
+    const imu_data_t *                 p_data,
+    imu_event_t *                      p_event)
 {
     uint32_t  elapsed;
     float32_t magnitude;
@@ -125,7 +143,7 @@ imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
         {
             reset_sequence(p_analysis, IMU_ANALYSIS_RESET_INVALID);
             p_analysis->b_has_timestamp = false;
-            p_analysis->b_have_counts = false;
+            p_analysis->b_have_counts   = false;
         }
 
         return false;
@@ -149,7 +167,7 @@ imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
         {
             reset_sequence(p_analysis, IMU_ANALYSIS_RESET_TIMING);
             p_analysis->b_has_timestamp = false;
-            p_analysis->b_have_counts = false;
+            p_analysis->b_have_counts   = false;
             return false;
         }
     }
@@ -165,7 +183,7 @@ imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
     p_event->b_heading_valid      = p_data->b_heading_valid;
     p_event->b_heading_calibrated = p_data->b_heading_calibrated;
     p_event->b_valid              = true;
-    p_event->highest_hump_cm = p_analysis->highest_hump_cm;
+    p_event->highest_hump_cm      = p_analysis->highest_hump_cm;
     p_event->b_highest_hump_valid = p_analysis->b_highest_hump_valid;
     p_event->b_tilt_detected =
         (fabsf(p_data->pitch_deg) >= p_analysis->config.tilt_deg) ||
@@ -185,14 +203,13 @@ imu_analysis_process (imu_analysis_t * p_analysis, const imu_data_t * p_data,
          * still reported), and the impact itself is still flagged. */
         p_analysis->reset_reasons |= IMU_ANALYSIS_RESET_IMPACT;
         expire_roll(p_analysis, p_data->timestamp_ms);
-        p_event->b_hump_detected =
-            IMU_ROLL_ACTIVE == p_analysis->roll_state;
-        p_event->motion_state = IMU_MOTION_SUDDEN_IMPACT;
+        p_event->b_hump_detected = IMU_ROLL_ACTIVE == p_analysis->roll_state;
+        p_event->motion_state    = IMU_MOTION_SUDDEN_IMPACT;
         return true;
     }
 
     analyse_terrain(p_analysis, p_data, p_event);
-    p_event->highest_hump_cm = p_analysis->highest_hump_cm;
+    p_event->highest_hump_cm      = p_analysis->highest_hump_cm;
     p_event->b_highest_hump_valid = p_analysis->b_highest_hump_valid;
     classify_motion(p_analysis, p_data, p_event, magnitude);
     return true;
@@ -207,34 +224,35 @@ forward_travel (imu_analysis_t * p_analysis, const imu_data_t * p_data)
     if (0U != reason)
     {
         reset_sequence(p_analysis, reason);
-        p_analysis->b_have_counts = false;
+        p_analysis->b_have_counts   = false;
         p_analysis->b_have_progress = false;
         return false;
     }
 
     if (!p_analysis->b_have_counts)
     {
-        p_analysis->left_count = p_data->encoder_left;
-        p_analysis->right_count = p_data->encoder_right;
+        p_analysis->left_count       = p_data->encoder_left;
+        p_analysis->right_count      = p_data->encoder_right;
         p_analysis->last_progress_ms = p_data->timestamp_ms;
-        p_analysis->b_have_counts = true;
-        p_analysis->b_have_progress = false;
+        p_analysis->b_have_counts    = true;
+        p_analysis->b_have_progress  = false;
         return false;
     }
 
-    const bool b_travel =
-        ((encoder_count_delta(p_data->encoder_left, p_analysis->left_count) > 0) ||
-         (encoder_count_delta(p_data->encoder_right, p_analysis->right_count) > 0));
+    const bool b_travel = ((encoder_count_delta(p_data->encoder_left,
+                                p_analysis->left_count) > 0) ||
+        (encoder_count_delta(p_data->encoder_right, p_analysis->right_count) >
+            0));
 
-    p_analysis->left_count = p_data->encoder_left;
+    p_analysis->left_count  = p_data->encoder_left;
     p_analysis->right_count = p_data->encoder_right;
     if (b_travel)
     {
         p_analysis->last_progress_ms = p_data->timestamp_ms;
-        p_analysis->b_have_progress = true;
+        p_analysis->b_have_progress  = true;
     }
     else if (p_data->timestamp_ms - p_analysis->last_progress_ms >=
-             IMU_ANALYSIS_NO_PROGRESS_MS)
+        IMU_ANALYSIS_NO_PROGRESS_MS)
     {
         reset_sequence(p_analysis, IMU_ANALYSIS_RESET_NO_PROGRESS);
         p_analysis->b_have_progress = false;
@@ -249,8 +267,7 @@ forward_travel (imu_analysis_t * p_analysis, const imu_data_t * p_data)
 
 /** @brief Name the first failed B4 interpretation of paired B2 feedback. */
 static uint32_t
-movement_reason (const imu_analysis_t * p_analysis,
-                 const imu_data_t * p_data)
+movement_reason (const imu_analysis_t * p_analysis, const imu_data_t * p_data)
 {
     if (!p_data->b_odometry_valid)
     {
@@ -271,8 +288,10 @@ movement_reason (const imu_analysis_t * p_analysis,
     }
     if ((p_data->motion.b_reverse) ||
         ((p_analysis->b_have_counts) &&
-         ((encoder_count_delta(p_data->encoder_left, p_analysis->left_count) < 0) ||
-          (encoder_count_delta(p_data->encoder_right, p_analysis->right_count) < 0))))
+            ((encoder_count_delta(
+                  p_data->encoder_left, p_analysis->left_count) < 0) ||
+                (encoder_count_delta(
+                     p_data->encoder_right, p_analysis->right_count) < 0))))
     {
         return IMU_ANALYSIS_RESET_REVERSE;
     }
@@ -303,19 +322,19 @@ reset_sequence (imu_analysis_t * p_analysis, uint32_t reason)
 static void
 reset_roll (imu_analysis_t * p_analysis)
 {
-    p_analysis->roll_state = IMU_ROLL_UNARMED;
-    p_analysis->roll_count = 0U;
-    p_analysis->roll_start_ms = 0U;
-    p_analysis->b_roll_positive = false;
-    p_analysis->roll_terrain = IMU_TERRAIN_LEVEL;
-    p_analysis->roll_anchor_deg = 0.0f;
-    p_analysis->roll_direction = 0;
-    p_analysis->roll_trend_count = 0U;
+    p_analysis->roll_state        = IMU_ROLL_UNARMED;
+    p_analysis->roll_count        = 0U;
+    p_analysis->roll_start_ms     = 0U;
+    p_analysis->b_roll_positive   = false;
+    p_analysis->roll_terrain      = IMU_TERRAIN_LEVEL;
+    p_analysis->roll_anchor_deg   = 0.0f;
+    p_analysis->roll_direction    = 0;
+    p_analysis->roll_trend_count  = 0U;
     p_analysis->roll_stable_count = 0U;
     p_analysis->roll_baseline_deg = 0.0f;
-    p_analysis->roll_peak_deg = 0.0f;
+    p_analysis->roll_peak_deg     = 0.0f;
     p_analysis->roll_window_count = 0U;
-    p_analysis->roll_window_next = 0U;
+    p_analysis->roll_window_next  = 0U;
 }
 
 /** @brief Bound an active roll episode even while encoder progress pauses. */
@@ -324,7 +343,7 @@ expire_roll (imu_analysis_t * p_analysis, uint32_t now_ms)
 {
     if ((IMU_ROLL_ACTIVE == p_analysis->roll_state) &&
         (now_ms - p_analysis->roll_start_ms >=
-         p_analysis->config.hump_timeout_ms))
+            p_analysis->config.hump_timeout_ms))
     {
         p_analysis->reset_reasons |= IMU_ANALYSIS_RESET_TIMEOUT;
         reset_roll(p_analysis);
@@ -339,17 +358,17 @@ update_roll_motion (imu_analysis_t * p_analysis, float32_t roll)
 
     if (fabsf(delta) >= p_analysis->config.roll_trend_deg)
     {
-        const int8_t direction = delta > 0.0f ? 1 : -1;
-        p_analysis->roll_trend_count =
-            direction == p_analysis->roll_direction
-                ? p_analysis->roll_trend_count + 1U : 1U;
-        p_analysis->roll_direction = direction;
-        p_analysis->roll_anchor_deg = roll;
+        const int8_t direction        = delta > 0.0f ? 1 : -1;
+        p_analysis->roll_trend_count  = direction == p_analysis->roll_direction
+             ? p_analysis->roll_trend_count + 1U
+             : 1U;
+        p_analysis->roll_direction    = direction;
+        p_analysis->roll_anchor_deg   = roll;
         p_analysis->roll_stable_count = 0U;
         if (p_analysis->roll_trend_count >= IMU_ROLL_CONFIRM_SAMPLES)
         {
-            p_analysis->roll_terrain = direction > 0
-                ? IMU_TERRAIN_CLIMBING : IMU_TERRAIN_DESCENDING;
+            p_analysis->roll_terrain =
+                direction > 0 ? IMU_TERRAIN_CLIMBING : IMU_TERRAIN_DESCENDING;
             p_analysis->roll_trend_count = IMU_ROLL_CONFIRM_SAMPLES;
         }
     }
@@ -365,8 +384,9 @@ update_roll_motion (imu_analysis_t * p_analysis, float32_t roll)
         {
             p_analysis->roll_terrain =
                 IMU_TERRAIN_CLIMBING == p_analysis->roll_terrain
-                    ? IMU_TERRAIN_PEAK : p_analysis->roll_terrain;
-            p_analysis->roll_direction = 0;
+                ? IMU_TERRAIN_PEAK
+                : p_analysis->roll_terrain;
+            p_analysis->roll_direction   = 0;
             p_analysis->roll_trend_count = 0U;
         }
     }
@@ -383,8 +403,10 @@ update_roll_motion (imu_analysis_t * p_analysis, float32_t roll)
 
 /** @brief Track baseline and excursion independently of detector decisions. */
 static void
-track_roll_height (imu_analysis_t * p_analysis, bool b_jerk,
-                   const imu_data_t * p_data, bool b_level)
+track_roll_height (imu_analysis_t * p_analysis,
+    bool                            b_jerk,
+    const imu_data_t *              p_data,
+    bool                            b_level)
 {
     if (b_jerk)
     {
@@ -413,34 +435,31 @@ track_roll_height (imu_analysis_t * p_analysis, bool b_jerk,
         {
             p_analysis->roll_baseline_deg = 0.0f;
             p_analysis->roll_window_count = 0U;
-            p_analysis->roll_window_next = 0U;
+            p_analysis->roll_window_next  = 0U;
+        }
+        return;
+    }
+
+    const float32_t excursion = fabsf(raw_roll - p_analysis->roll_baseline_deg);
+    const float32_t estimate  = push_roll_window(p_analysis, excursion);
+
+    if ((IMU_ROLL_READY == p_analysis->roll_state) &&
+        ((0U == p_analysis->roll_count) ||
+            ((p_data->roll_deg >= 0.0f) != p_analysis->b_roll_positive)))
+    {
+        p_analysis->roll_peak_deg = estimate;
+        if ((b_level) && (0U == p_analysis->roll_count))
+        {
+            /* Level driving between humps: follow slow attitude drift
+             * so the next height is measured from the current floor. */
+            p_analysis->roll_baseline_deg +=
+                (raw_roll - p_analysis->roll_baseline_deg) /
+                IMU_ROLL_BASELINE_FOLLOW;
         }
     }
     else
     {
-        const float32_t excursion =
-            fabsf(raw_roll - p_analysis->roll_baseline_deg);
-        const float32_t estimate = push_roll_window(p_analysis, excursion);
-
-        if ((IMU_ROLL_READY == p_analysis->roll_state) &&
-            ((0U == p_analysis->roll_count) ||
-             ((p_data->roll_deg >= 0.0f) != p_analysis->b_roll_positive)))
-        {
-            p_analysis->roll_peak_deg = estimate;
-            if ((b_level) && (0U == p_analysis->roll_count))
-            {
-                /* Level driving between humps: follow slow attitude drift
-                 * so the next height is measured from the current floor. */
-                p_analysis->roll_baseline_deg +=
-                    (raw_roll - p_analysis->roll_baseline_deg) /
-                    IMU_ROLL_BASELINE_FOLLOW;
-            }
-        }
-        else
-        {
-            p_analysis->roll_peak_deg =
-                fmaxf(p_analysis->roll_peak_deg, estimate);
-        }
+        p_analysis->roll_peak_deg = fmaxf(p_analysis->roll_peak_deg, estimate);
     }
 }
 
@@ -466,7 +485,7 @@ push_roll_window (imu_analysis_t * p_analysis, float32_t excursion)
     for (uint32_t index = 0U; index < count; ++index)
     {
         const float32_t value = p_analysis->roll_window[index];
-        uint32_t        slot = index;
+        uint32_t        slot  = index;
 
         while ((slot > 0U) && (sorted[slot - 1U] > value))
         {
@@ -491,8 +510,7 @@ complete_height (imu_analysis_t * p_analysis, imu_event_t * p_event)
 {
     if (p_analysis->roll_peak_deg <= 90.0f)
     {
-        p_event->hump_peak_cm =
-            (p_analysis->config.wheel_track_mm / 10.0f) *
+        p_event->hump_peak_cm = (p_analysis->config.wheel_track_mm / 10.0f) *
             sinf(p_analysis->roll_peak_deg * IMU_DEGREES_TO_RADIANS);
         p_event->b_height_valid = true;
         p_analysis->highest_hump_cm =
@@ -507,27 +525,25 @@ complete_height (imu_analysis_t * p_analysis, imu_event_t * p_event)
 static bool
 jerking (imu_analysis_t * p_analysis, const imu_data_t * p_data)
 {
-    const int32_t left   = p_data->motion.left_speed_cps;
-    const int32_t right  = p_data->motion.right_speed_cps;
-    const uint32_t slot  = p_analysis->jerk_next;
+    const int32_t  left   = p_data->motion.left_speed_cps;
+    const int32_t  right  = p_data->motion.right_speed_cps;
+    const uint32_t slot   = p_analysis->jerk_next;
     bool           b_jerk = false;
 
     if (p_analysis->jerk_count >= IMU_JERK_WINDOW)
     {
         /* The oldest reading is in the slot about to be overwritten. */
-        const int32_t old_left  = p_analysis->jerk_left[slot];
-        const int32_t old_right = p_analysis->jerk_right[slot];
-        const int32_t steer = (right - left) - (old_right - old_left);
-        const int32_t speed = ((left + right) - (old_left + old_right)) / 2;
-        const uint32_t steer_change =
-            (uint32_t)((steer < 0) ? -steer : steer);
-        const uint32_t speed_change =
-            (uint32_t)((speed < 0) ? -speed : speed);
+        const int32_t  old_left  = p_analysis->jerk_left[slot];
+        const int32_t  old_right = p_analysis->jerk_right[slot];
+        const int32_t  steer     = (right - left) - (old_right - old_left);
+        const int32_t  speed = ((left + right) - (old_left + old_right)) / 2;
+        const uint32_t steer_change = (uint32_t)((steer < 0) ? -steer : steer);
+        const uint32_t speed_change = (uint32_t)((speed < 0) ? -speed : speed);
 
         b_jerk = ((0U != p_analysis->config.roll_steer_jerk_cps) &&
-                  (steer_change > p_analysis->config.roll_steer_jerk_cps)) ||
-                 ((0U != p_analysis->config.roll_speed_jerk_cps) &&
-                  (speed_change > p_analysis->config.roll_speed_jerk_cps));
+                     (steer_change > p_analysis->config.roll_steer_jerk_cps)) ||
+            ((0U != p_analysis->config.roll_speed_jerk_cps) &&
+                (speed_change > p_analysis->config.roll_speed_jerk_cps));
     }
     else
     {
@@ -545,23 +561,24 @@ jerking (imu_analysis_t * p_analysis, const imu_data_t * p_data)
 static bool
 curving (const imu_analysis_t * p_analysis, const imu_data_t * p_data)
 {
-    const int32_t left = p_data->motion.left_speed_cps;
+    const int32_t left  = p_data->motion.left_speed_cps;
     const int32_t right = p_data->motion.right_speed_cps;
-    const int32_t fast = left > right ? left : right;
-    const int32_t diff = left > right ? left - right : right - left;
+    const int32_t fast  = left > right ? left : right;
+    const int32_t diff  = left > right ? left - right : right - left;
 
     return (p_analysis->config.roll_curve_ratio > 0.0f) && (fast > 0) &&
-           ((float32_t)diff >
+        ((float32_t)diff >
             p_analysis->config.roll_curve_ratio * (float32_t)fast);
 }
 
 /** @brief Confirm either-side roll excursions with a stable return to level. */
 static void
-update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
-             imu_event_t * p_event)
+update_roll (imu_analysis_t * p_analysis,
+    const imu_data_t *        p_data,
+    imu_event_t *             p_event)
 {
-    const float32_t roll = fabsf(p_data->roll_deg);
-    const bool b_level = roll <= p_analysis->config.roll_level_deg;
+    const float32_t roll    = fabsf(p_data->roll_deg);
+    const bool      b_level = roll <= p_analysis->config.roll_level_deg;
 
     if (!p_analysis->b_require_motion)
     {
@@ -575,8 +592,7 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
     switch (p_analysis->roll_state)
     {
         case IMU_ROLL_UNARMED:
-            p_analysis->roll_count = b_level
-                ? p_analysis->roll_count + 1U : 0U;
+            p_analysis->roll_count = b_level ? p_analysis->roll_count + 1U : 0U;
             if (p_analysis->roll_count >=
                 p_analysis->config.confirmation_samples)
             {
@@ -591,8 +607,9 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                 const bool b_positive = p_data->roll_deg >= 0.0f;
                 p_analysis->roll_count =
                     ((0U != p_analysis->roll_count) &&
-                     (b_positive == p_analysis->b_roll_positive))
-                        ? p_analysis->roll_count + 1U : 1U;
+                        (b_positive == p_analysis->b_roll_positive))
+                    ? p_analysis->roll_count + 1U
+                    : 1U;
                 p_analysis->b_roll_positive = b_positive;
                 if (1U == p_analysis->roll_count)
                 {
@@ -600,7 +617,7 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                 }
             }
             else if ((roll >= p_analysis->config.roll_enter_deg) &&
-                     (!curving(p_analysis, p_data)))
+                (!curving(p_analysis, p_data)))
             {
                 /* Jerk: the roll may be a sideways push. Skip the sample,
                  * neither counting it nor cancelling the candidate. */
@@ -613,15 +630,15 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
              * wheel on a hump stays tilted while it climbs. */
             if ((p_analysis->roll_count >= IMU_ROLL_CONFIRM_SAMPLES) &&
                 (p_data->timestamp_ms - p_analysis->roll_start_ms >=
-                 p_analysis->config.roll_enter_ms))
+                    p_analysis->config.roll_enter_ms))
             {
-                p_analysis->roll_state = IMU_ROLL_ACTIVE;
-                p_analysis->roll_start_ms = p_data->timestamp_ms;
-                p_analysis->roll_count = 0U;
-                p_analysis->roll_terrain = IMU_TERRAIN_CLIMBING;
-                p_analysis->roll_anchor_deg = roll;
-                p_analysis->roll_direction = 0;
-                p_analysis->roll_trend_count = 0U;
+                p_analysis->roll_state        = IMU_ROLL_ACTIVE;
+                p_analysis->roll_start_ms     = p_data->timestamp_ms;
+                p_analysis->roll_count        = 0U;
+                p_analysis->roll_terrain      = IMU_TERRAIN_CLIMBING;
+                p_analysis->roll_anchor_deg   = roll;
+                p_analysis->roll_direction    = 0;
+                p_analysis->roll_trend_count  = 0U;
                 p_analysis->roll_stable_count = 0U;
             }
         break;
@@ -633,14 +650,13 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
                 reset_roll(p_analysis);
                 return;
             }
-            p_analysis->roll_count = b_level
-                ? p_analysis->roll_count + 1U : 0U;
+            p_analysis->roll_count = b_level ? p_analysis->roll_count + 1U : 0U;
             update_roll_motion(p_analysis, roll);
             if (p_analysis->roll_count >=
                 p_analysis->config.confirmation_samples)
             {
-                p_analysis->roll_state = IMU_ROLL_READY;
-                p_analysis->roll_count = 0U;
+                p_analysis->roll_state    = IMU_ROLL_READY;
+                p_analysis->roll_count    = 0U;
                 p_event->b_hump_completed = true;
                 complete_height(p_analysis, p_event);
                 p_analysis->roll_terrain = IMU_TERRAIN_LEVEL;
@@ -654,25 +670,27 @@ update_roll (imu_analysis_t * p_analysis, const imu_data_t * p_data,
 
 /** @brief Advance only the roll crossing when forward travel is usable. */
 static void
-analyse_terrain (imu_analysis_t * p_analysis, const imu_data_t * p_data,
-                 imu_event_t * p_event)
+analyse_terrain (imu_analysis_t * p_analysis,
+    const imu_data_t *            p_data,
+    imu_event_t *                 p_event)
 {
-    const bool b_advance = (p_analysis->b_require_motion) &&
-                           (forward_travel(p_analysis, p_data));
+    const bool b_advance =
+        (p_analysis->b_require_motion) && (forward_travel(p_analysis, p_data));
     expire_roll(p_analysis, p_data->timestamp_ms);
     if (b_advance)
     {
         update_roll(p_analysis, p_data, p_event);
     }
-    p_event->b_hump_detected =
-        (IMU_ROLL_ACTIVE == p_analysis->roll_state) ||
+    p_event->b_hump_detected = (IMU_ROLL_ACTIVE == p_analysis->roll_state) ||
         (p_event->b_hump_completed);
 }
 
 /** @brief Choose the motion state from terrain and dynamic thresholds. */
 static void
-classify_motion (const imu_analysis_t * p_analysis, const imu_data_t * p_data,
-                 imu_event_t * p_event, float32_t magnitude)
+classify_motion (const imu_analysis_t * p_analysis,
+    const imu_data_t *                  p_data,
+    imu_event_t *                       p_event,
+    float32_t                           magnitude)
 {
     switch (p_analysis->roll_terrain)
     {
@@ -689,14 +707,14 @@ classify_motion (const imu_analysis_t * p_analysis, const imu_data_t * p_data,
 
             if ((p_data->b_turn_rate_valid) &&
                 (fabsf(p_data->turn_rate_dps) >=
-                 p_analysis->config.turn_rate_dps))
+                    p_analysis->config.turn_rate_dps))
             {
                 p_event->motion_state = IMU_MOTION_TURNING;
             }
             else if ((fabsf(magnitude - IMU_GRAVITY_MS2) >=
-                      p_analysis->config.acceleration_ms2) ||
-                     (((!p_event->b_tilt_detected) &&
-                       (hypotf(p_data->accel_x, p_data->accel_y) >=
+                         p_analysis->config.acceleration_ms2) ||
+                (((!p_event->b_tilt_detected) &&
+                    (hypotf(p_data->accel_x, p_data->accel_y) >=
                         p_analysis->config.acceleration_ms2))))
             {
                 p_event->motion_state = IMU_MOTION_ACCELERATING;
@@ -704,8 +722,8 @@ classify_motion (const imu_analysis_t * p_analysis, const imu_data_t * p_data,
             else
             {
                 p_event->motion_state = stopped_context(p_data)
-                                            ? IMU_MOTION_STATIONARY
-                                            : IMU_MOTION_UNKNOWN;
+                    ? IMU_MOTION_STATIONARY
+                    : IMU_MOTION_UNKNOWN;
             }
         break;
     }
@@ -717,9 +735,9 @@ static bool
 stopped_context (const imu_data_t * p_data)
 {
     return (p_data->motion.b_valid) && (p_data->motion.b_stopped) &&
-           (!p_data->motion.b_fault) && (!p_data->motion.b_turning) &&
-           (!p_data->motion.b_reverse) &&
-           ((p_data->timestamp_ms - p_data->motion.timestamp_ms) <=
+        (!p_data->motion.b_fault) && (!p_data->motion.b_turning) &&
+        (!p_data->motion.b_reverse) &&
+        ((p_data->timestamp_ms - p_data->motion.timestamp_ms) <=
             IMU_MOTION_MAX_AGE_MS);
 }
 

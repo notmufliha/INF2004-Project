@@ -84,8 +84,11 @@ task_monitor_task (INT stacd, void * p_exinf)
               TWF_ORW wakes on either bit; TWF_BITCLR preserves IMU readiness.
               The extra timeout is just a safety net. */
         tk_sta_alm(gh_monitor_alarm, S4_ALARM_MS);
-        error_code = tk_wai_flg(gh_events, FLG_ALARM | FLG_BATCH,
-                                TWF_ORW | TWF_BITCLR, &flgptn, S4_ALARM_MS * 2);
+        error_code = tk_wai_flg(gh_events,
+            FLG_ALARM | FLG_BATCH,
+            TWF_ORW | TWF_BITCLR,
+            &flgptn,
+            S4_ALARM_MS * 2);
         tk_stp_alm(gh_monitor_alarm); /* cancel it if a batch came first. */
 
         if (E_TMOUT == error_code)
@@ -101,7 +104,7 @@ task_monitor_task (INT stacd, void * p_exinf)
             if ((flgptn & FLG_ALARM) != 0U)
             {
                 tm_printf((UB *)"monitor: alarm -- no batch for %d ms\n",
-                          S4_ALARM_MS);
+                    S4_ALARM_MS);
             }
 
             /* 2. Drain the message buffer without waiting (TMO_POL).
@@ -187,8 +190,13 @@ report_monitor_stats (void)
 
     tm_printf((UB *)"monitor: t=%u ms  samples=%u  min=%d max=%d avg=%d"
                     "  free slots=%d  free blocks=%d\n",
-              now.lo, snap.received, snap.min, snap.max, average, rsem.semcnt,
-              rmpf.frbcnt);
+        now.lo,
+        snap.received,
+        snap.min,
+        snap.max,
+        average,
+        rsem.semcnt,
+        rmpf.frbcnt);
 }
 
 /** @brief Periodically pause or resume the demonstration LED task. */
@@ -225,8 +233,9 @@ update_monitor_led (UW * p_reports, bool * pb_led_paused)
         }
 
         tm_printf((UB *)"monitor: LED task %s, state=%s, pri=%d\n",
-                  (*pb_led_paused) ? "paused" : "resumed",
-                  state_name(rtsk.tskstat), rtsk.tskpri);
+            (*pb_led_paused) ? "paused" : "resumed",
+            state_name(rtsk.tskstat),
+            rtsk.tskpri);
     }
 }
 

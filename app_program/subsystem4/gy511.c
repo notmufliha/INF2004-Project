@@ -17,32 +17,40 @@
 #define RAD_TO_DEG 57.295779513f
 
 static int32_t axis_index (int32_t axis);
-static bool    magnetic_allowed (gy511_t * p_sensor, const imu_data_t * p_data);
+static bool magnetic_allowed (gy511_t * p_sensor, const imu_data_t * p_data);
 
 static int32_t signed_word (uint8_t high, uint8_t low);
 
 static float32_t mapped (const float32_t p_values[3], int32_t axis);
 
-static gy511_result_t read_acceleration (gy511_t *    p_sensor,
-                                         uint32_t     timestamp_ms,
-                                         imu_data_t * p_data,
-                                         float32_t *  p_norm);
+static gy511_result_t read_acceleration (gy511_t * p_sensor,
+    uint32_t                                       timestamp_ms,
+    imu_data_t *                                   p_data,
+    float32_t *                                    p_norm);
 
-static void calculate_heading (gy511_t * p_sensor, imu_data_t * p_data,
-                               float32_t norm, const float32_t p_field[3],
-                               uint32_t timestamp_ms);
+static void calculate_heading (gy511_t * p_sensor,
+    imu_data_t *                         p_data,
+    float32_t                            norm,
+    const float32_t                      p_field[3],
+    uint32_t                             timestamp_ms);
 
-static void read_magnetic_field (gy511_t * p_sensor, imu_data_t * p_data,
-                                 float32_t norm, uint32_t timestamp_ms);
-static gy511_result_t acceleration_bytes (gy511_t *    p_sensor,
-                                          imu_data_t * p_data,
-                                          uint8_t      p_bytes[6]);
-static bool           magnetic_bytes (gy511_t * p_sensor, imu_data_t * p_data,
-                                      uint8_t p_bytes[6], uint32_t * p_time_ms);
-static bool           read_clock (gy511_t * p_sensor, uint32_t * p_time_ms);
-static void           read_duration (gy511_t * p_sensor, imu_data_t * p_data,
-                                     uint32_t begin_ms, uint32_t end_ms,
-                                     bool b_time_valid, bool b_acceleration);
+static void read_magnetic_field (gy511_t * p_sensor,
+    imu_data_t *                           p_data,
+    float32_t                              norm,
+    uint32_t                               timestamp_ms);
+static gy511_result_t acceleration_bytes (
+    gy511_t * p_sensor, imu_data_t * p_data, uint8_t p_bytes[6]);
+static bool magnetic_bytes (gy511_t * p_sensor,
+    imu_data_t *                      p_data,
+    uint8_t                           p_bytes[6],
+    uint32_t *                        p_time_ms);
+static bool read_clock (gy511_t * p_sensor, uint32_t * p_time_ms);
+static void read_duration (gy511_t * p_sensor,
+    imu_data_t *                     p_data,
+    uint32_t                         begin_ms,
+    uint32_t                         end_ms,
+    bool                             b_time_valid,
+    bool                             b_acceleration);
 
 /** @brief Supply the default robot-axis map and calibration values. */
 void
@@ -57,8 +65,9 @@ gy511_default_config (gy511_config_t * p_config)
 
 /** @brief Validate the configuration and verify the sensor registers. */
 bool
-gy511_init (gy511_t * p_sensor, const gy511_bus_t * p_bus,
-            const gy511_config_t * p_config)
+gy511_init (gy511_t *      p_sensor,
+    const gy511_bus_t *    p_bus,
+    const gy511_config_t * p_config)
 {
     uint8_t sensor_identity[3];
     uint8_t value;
@@ -100,8 +109,8 @@ gy511_init (gy511_t * p_sensor, const gy511_bus_t * p_bus,
     p_sensor->bus    = *p_bus;
     p_sensor->config = *p_config;
 
-    if ((!p_bus->p_read(p_bus->p_context, MAG_ADDR, 0x0AU, sensor_identity,
-                        3U)) ||
+    if ((!p_bus->p_read(
+            p_bus->p_context, MAG_ADDR, 0x0AU, sensor_identity, 3U)) ||
         (sensor_identity[0] != 0x48U) || (sensor_identity[1] != 0x34U) ||
         (sensor_identity[2] != 0x33U))
     {
@@ -110,17 +119,19 @@ gy511_init (gy511_t * p_sensor, const gy511_bus_t * p_bus,
 
     /* 100 Hz XYZ enabled, normal mode; BDU + high-resolution +/-4g.
      * 12-bit left-justified data, sensitivity 2 mg/LSB. */
-    const uint8_t address[] = {ACC_ADDR, ACC_ADDR, MAG_ADDR, MAG_ADDR,
-                               MAG_ADDR};
+    const uint8_t address[] = {
+        ACC_ADDR, ACC_ADDR, MAG_ADDR, MAG_ADDR, MAG_ADDR};
     const uint8_t reg[]     = {0x20U, 0x23U, 0x00U, 0x01U, 0x02U};
     const uint8_t setting[] = {0x57U, 0x98U, 0x18U, 0x20U, 0x00U};
 
     for (size_t index = 0U; index < sizeof(reg); ++index)
     {
-        if ((!p_bus->p_write(p_bus->p_context, address[index], reg[index],
-                             setting[index])) ||
-            (!p_bus->p_read(p_bus->p_context, address[index], reg[index],
-                            &value, 1U)) ||
+        if ((!p_bus->p_write(p_bus->p_context,
+                address[index],
+                reg[index],
+                setting[index])) ||
+            (!p_bus->p_read(
+                p_bus->p_context, address[index], reg[index], &value, 1U)) ||
             (value != setting[index]))
         {
             return false;
@@ -234,8 +245,10 @@ mapped (const float32_t p_values[3], int32_t axis)
 
 /** @brief Decode unclipped acceleration and estimate finite tilt. */
 static gy511_result_t
-read_acceleration (gy511_t * p_sensor, uint32_t timestamp_ms,
-                   imu_data_t * p_data, float32_t * p_norm)
+read_acceleration (gy511_t * p_sensor,
+    uint32_t                 timestamp_ms,
+    imu_data_t *             p_data,
+    float32_t *              p_norm)
 {
     uint8_t   bytes[6];
     float32_t accel[3];
@@ -278,7 +291,7 @@ read_acceleration (gy511_t * p_sensor, uint32_t timestamp_ms,
     for (int32_t index = 0; index < GY511_AXIS_COUNT; ++index)
     {
         robot[index] = mapped(accel, p_sensor->config.axis[index]) -
-                       p_sensor->config.accel_offset_ms2[index];
+            p_sensor->config.accel_offset_ms2[index];
     }
 
     p_data->accel_x = robot[0];
@@ -303,8 +316,11 @@ read_acceleration (gy511_t * p_sensor, uint32_t timestamp_ms,
 
 /** @brief Estimate tilt-compensated heading and optional turn rate. */
 static void
-calculate_heading (gy511_t * p_sensor, imu_data_t * p_data, float32_t norm,
-                   const float32_t p_field[3], uint32_t timestamp_ms)
+calculate_heading (gy511_t * p_sensor,
+    imu_data_t *             p_data,
+    float32_t                norm,
+    const float32_t          p_field[3],
+    uint32_t                 timestamp_ms)
 {
     /* Tilt compensation only near 1g; acceleration makes the tilt estimate
      * unreliable. */
@@ -317,8 +333,8 @@ calculate_heading (gy511_t * p_sensor, imu_data_t * p_data, float32_t norm,
     float32_t pitch        = p_data->pitch_deg / RAD_TO_DEG;
     float32_t roll         = p_data->roll_deg / RAD_TO_DEG;
     float32_t horizontal_x = (p_field[0] * cosf(pitch)) +
-                             (p_field[1] * sinf(roll) * sinf(pitch)) +
-                             (p_field[2] * cosf(roll) * sinf(pitch));
+        (p_field[1] * sinf(roll) * sinf(pitch)) +
+        (p_field[2] * cosf(roll) * sinf(pitch));
     float32_t horizontal_y =
         (p_field[1] * cosf(roll)) - (p_field[2] * sinf(roll));
     const float32_t horizontal_norm = hypotf(horizontal_x, horizontal_y);
@@ -376,8 +392,10 @@ calculate_heading (gy511_t * p_sensor, imu_data_t * p_data, float32_t norm,
 
 /** @brief Decode fresh magnetic values and apply calibration. */
 static void
-read_magnetic_field (gy511_t * p_sensor, imu_data_t * p_data, float32_t norm,
-                     uint32_t timestamp_ms)
+read_magnetic_field (gy511_t * p_sensor,
+    imu_data_t *               p_data,
+    float32_t                  norm,
+    uint32_t                   timestamp_ms)
 {
     uint8_t   bytes[6];
     float32_t mag[3];
@@ -409,8 +427,8 @@ read_magnetic_field (gy511_t * p_sensor, imu_data_t * p_data, float32_t norm,
     for (int32_t index = 0; index < GY511_AXIS_COUNT; ++index)
     {
         field[index] = (mapped(mag, p_sensor->config.axis[index]) -
-                        p_sensor->config.mag_offset_ut[index]) *
-                       p_sensor->config.mag_scale[index];
+                           p_sensor->config.mag_offset_ut[index]) *
+            p_sensor->config.mag_scale[index];
 
         if (!isfinite(field[index]))
         {
@@ -438,8 +456,8 @@ acceleration_bytes (gy511_t * p_sensor, imu_data_t * p_data, uint8_t p_bytes[6])
     bool          b_before = read_clock(p_sensor, &before);
 
     /* DS7202: SUB(7) auto-increments; 0x27 status precedes XYZ 0x28..0x2D. */
-    bool b_read  = p_bus->p_read(p_bus->p_context, ACC_ADDR, 0xA7U, packet,
-                                 GY511_ACCEL_BYTES + 1U);
+    bool b_read = p_bus->p_read(
+        p_bus->p_context, ACC_ADDR, 0xA7U, packet, GY511_ACCEL_BYTES + 1U);
     bool b_after = read_clock(p_sensor, &after);
 
     read_duration(p_sensor, p_data, before, after, b_before && b_after, true);
@@ -471,8 +489,8 @@ acceleration_bytes (gy511_t * p_sensor, imu_data_t * p_data, uint8_t p_bytes[6])
 
     if (NULL != p_sensor->capture.p_pair)
     {
-        p_sensor->capture.p_pair(p_sensor->capture.p_context, p_data, before,
-                                 after, b_time_valid);
+        p_sensor->capture.p_pair(
+            p_sensor->capture.p_context, p_data, before, after, b_time_valid);
     }
 
     /* A failed read-duration probe must remain visible after pairing reset. */
@@ -496,11 +514,10 @@ magnetic_allowed (gy511_t * p_sensor, const imu_data_t * p_data)
 
     const imu_motion_t * p_motion = &p_data->motion;
     const bool b_idle = (p_motion->b_valid) && (p_motion->b_stopped) &&
-                        (!p_motion->b_running) && (!p_motion->b_fault) &&
-                        (0 == p_motion->left_speed_cps) &&
-                        (0 == p_motion->right_speed_cps) &&
-                        ((p_data->timestamp_ms - p_motion->timestamp_ms) <=
-                         IMU_MOTION_MAX_AGE_MS);
+        (!p_motion->b_running) && (!p_motion->b_fault) &&
+        (0 == p_motion->left_speed_cps) && (0 == p_motion->right_speed_cps) &&
+        ((p_data->timestamp_ms - p_motion->timestamp_ms) <=
+            IMU_MOTION_MAX_AGE_MS);
 
     if (!b_idle)
     {
@@ -512,7 +529,7 @@ magnetic_allowed (gy511_t * p_sensor, const imu_data_t * p_data)
         p_sensor->idle_since_ms = p_data->timestamp_ms;
     }
     else if ((p_data->timestamp_ms - p_sensor->idle_since_ms) >=
-             GY511_IDLE_SETTLE_MS)
+        GY511_IDLE_SETTLE_MS)
     {
         return true;
     }
@@ -527,8 +544,10 @@ magnetic_allowed (gy511_t * p_sensor, const imu_data_t * p_data)
 
 /** @brief Measure optional magnetic I2C work separately from acceleration. */
 static bool
-magnetic_bytes (gy511_t * p_sensor, imu_data_t * p_data, uint8_t p_bytes[6],
-                uint32_t * p_time_ms)
+magnetic_bytes (gy511_t * p_sensor,
+    imu_data_t *          p_data,
+    uint8_t               p_bytes[6],
+    uint32_t *            p_time_ms)
 {
     uint8_t       status   = 0U;
     uint32_t      before   = 0U;
@@ -556,14 +575,18 @@ static bool
 read_clock (gy511_t * p_sensor, uint32_t * p_time_ms)
 {
     return (NULL != p_sensor->capture.p_clock) &&
-           (p_sensor->capture.p_clock(p_sensor->capture.p_context, p_time_ms));
+        (p_sensor->capture.p_clock(p_sensor->capture.p_context, p_time_ms));
 }
 
 /** @brief Store bounded read timings without manufacturing an unknown duration.
  */
 static void
-read_duration (gy511_t * p_sensor, imu_data_t * p_data, uint32_t begin_ms,
-               uint32_t end_ms, bool b_time_valid, bool b_acceleration)
+read_duration (gy511_t * p_sensor,
+    imu_data_t *         p_data,
+    uint32_t             begin_ms,
+    uint32_t             end_ms,
+    bool                 b_time_valid,
+    bool                 b_acceleration)
 {
     if (NULL == p_sensor->capture.p_clock)
     {

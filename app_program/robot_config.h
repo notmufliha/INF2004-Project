@@ -135,7 +135,8 @@
 #define ROBOT_BYPASS_REVERSE_CM 8.0f
 /* Reverse wheel balance starts from the forward calibration. Tune separately
  * from measured reverse runs if gearbox/load asymmetry differs by direction.
- * Positive requests more left-wheel travel; negative more right-wheel travel. */
+ * Positive requests more left-wheel travel; negative more right-wheel travel.
+ */
 #ifndef ROBOT_REVERSE_TRIM_PERMILLE
 #define ROBOT_REVERSE_TRIM_PERMILLE ROBOT_STRAIGHT_TRIM_PERMILLE
 #endif
@@ -146,7 +147,8 @@
 #define ROBOT_BYPASS_MIDDLE_MAX_CM 22.0f
 #define ROBOT_BYPASS_DIAGONAL_DISTANCE_SCALE 0.80f
 /* User-requested bounded retreat for floor tests; no rear sensor fitted.
- * Operator must keep rear space clear. Normal operation requires rear sensing. */
+ * Operator must keep rear space clear. Normal operation requires rear sensing.
+ */
 #ifndef ROBOT_TEST_BOUNDED_REVERSE
 #define ROBOT_TEST_BOUNDED_REVERSE ROBOT_OBSTACLE_TEST
 #endif
@@ -195,7 +197,8 @@
 #endif
 
 /* Visible ultrasonic silhouette only; centimetres. Measure chassis before
- * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse. */
+ * enabling a navigation bridge. Width beyond MAX is STOP, never blind reverse.
+ */
 #define ROBOT_SCAN_SAFE_MIN_DEG 70u
 #define ROBOT_SCAN_SAFE_MAX_DEG 110u
 #define ROBOT_WIDTH_SCAN_MIN_DEG 45u
@@ -227,9 +230,13 @@
 #endif
 /* Live front echo is measured from the sensor, not the axle/pivot. */
 #define ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM 1.0f
-#define ROBOT_SENSOR_TURN_OFFSET_CM ((ROBOT_SENSOR_FORWARD_OFFSET_CM > ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM) ? \
-    ROBOT_SENSOR_FORWARD_OFFSET_CM - ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM : 0.0f)
-#define ROBOT_BYPASS_FRONT_TURN_CM (ROBOT_BYPASS_MIN_TURN_CM - ROBOT_SENSOR_TURN_OFFSET_CM)
+#define ROBOT_SENSOR_TURN_OFFSET_CM                                            \
+    ((ROBOT_SENSOR_FORWARD_OFFSET_CM > ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM)     \
+            ? ROBOT_SENSOR_FORWARD_OFFSET_CM -                                 \
+                ROBOT_SENSOR_OFFSET_UNCERTAINTY_CM                             \
+            : 0.0f)
+#define ROBOT_BYPASS_FRONT_TURN_CM                                             \
+    (ROBOT_BYPASS_MIN_TURN_CM - ROBOT_SENSOR_TURN_OFFSET_CM)
 #define ROBOT_OBSTACLE_MARGIN_CM 8.0f
 
 /* Pin pairs for M1 and M2 on Maker Pi Pico Base.
@@ -242,13 +249,14 @@
 #define ROBOT_MOTOR_R_FWD_PIN 10u
 #define ROBOT_MOTOR_R_REV_PIN 11u
 #define ROBOT_PWM_TOP 999u
-#define ROBOT_FORWARD_PWM 500u /* 50% initial floor drive; calibrate for load and supply */
+#define ROBOT_FORWARD_PWM                                                      \
+    500u /* 50% initial floor drive; calibrate for load and supply */
 #define ROBOT_MOTOR_WATCHDOG_MS 350u
 #define ROBOT_MOTOR_PERIOD_MS 20u
 #define ROBOT_BOOT_DELAY_MS 2000u
 
-/* Optional wheels-UP BOOT motor verification: set 1, rebuild and flash ONLY when
- * both wheels are lifted. Runs L then R then both, and then stops forever.
+/* Optional wheels-UP BOOT motor verification: set 1, rebuild and flash ONLY
+ * when both wheels are lifted. Runs L then R then both, and then stops forever.
  * This test intentionally bypasses the ultrasonic safety gate, so NEVER
  * use with wheels on the floor. Restore to 0 before driving on the floor.
  */
@@ -316,7 +324,8 @@
 #define ROBOT_RELEASE_CM 55.0f
 #define ROBOT_SCAN_OBJECT_CM 60.0f
 /* After scanning and turning into an opening, advance in bounded steps.
- * These are bypass-only thresholds; normal forward approach still stops at 50. */
+ * These are bypass-only thresholds; normal forward approach still stops at 50.
+ */
 #if ROBOT_BYPASS_EXACT_SEQUENCE
 /* Exact route: half-length 10 + obstacle margin 8 + stopping reserve 2.
  * The prior 30/35 cm recovery gates parked the car at a valid 27 cm echo. */
@@ -342,10 +351,15 @@
 #define ROBOT_FRONT_GLITCH_GRACE_MS 150u
 #define ROBOT_STOP_SETTLE_MS 250u
 
-#if ROBOT_ENABLE_BYPASS && (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || !ROBOT_MODE)
-#error "B5 autonomous mode needs ROBOT_MODE=1 and exclusive motor ownership: disable motor tests."
+#if ROBOT_ENABLE_BYPASS &&                                                     \
+    (ROBOT_MOTION_TEST || ROBOT_WHEELS_UP_MOTOR_TEST || !ROBOT_MODE)
+#error "B5 autonomous mode needs ROBOT_MODE=1; disable motor tests."
 #endif
-#if ROBOT_SCAN_SAFE_MIN_DEG > 70u || ROBOT_SCAN_SAFE_MAX_DEG < 110u || ROBOT_SCAN_SAFE_MAX_DEG > 180u
+#if ROBOT_SCAN_SAFE_MIN_DEG > 70u || ROBOT_SCAN_SAFE_MAX_DEG < 110u ||         \
+    ROBOT_SCAN_SAFE_MAX_DEG > 180u
 #error "Servo limits must contain the five-ray 70..110 degree coarse scan."
 #endif
 #endif
+
+/*** end of file ***/
+

@@ -17,10 +17,12 @@
 
 #if APP_TEST
 static void discard_events (void);
-static bool event_matches (const imu_event_t * p_event, bool b_wait_hump,
-                           bool b_wait_recovery, bool * pb_fault_seen);
-static bool wait_event (uint32_t timeout_ms, bool b_wait_hump,
-                        bool b_wait_recovery);
+static bool event_matches (const imu_event_t * p_event,
+    bool                                       b_wait_hump,
+    bool                                       b_wait_recovery,
+    bool *                                     pb_fault_seen);
+static bool wait_event (
+    uint32_t timeout_ms, bool b_wait_hump, bool b_wait_recovery);
 
 /** @brief Check message formats and end-to-end B4 task communication. */
 void
@@ -31,35 +33,41 @@ s4_test_run (void)
     TEST_INIT();
 #if !ROBOT_MODE
     TEST_CHECK("S4-U01",
-               (E_OK == tk_ref_mbf(gh_summary, &buffer)) &&
-                   (S4_SUMMARY_MAX == buffer.maxmsz),
-               "message buffer max line = S4_SUMMARY_MAX");
+        (E_OK == tk_ref_mbf(gh_summary, &buffer)) &&
+            (S4_SUMMARY_MAX == buffer.maxmsz),
+        "message buffer max line = S4_SUMMARY_MAX");
 
     UW before = task_monitor_line_count();
 
     tk_dly_tsk(3500);
-    TEST_CHECK("INT-02", task_monitor_line_count() >= before + 2U,
-               "summary lines flow from subsystem 3 to subsystem 4");
+    TEST_CHECK("INT-02",
+        task_monitor_line_count() >= before + 2U,
+        "summary lines flow from subsystem 3 to subsystem 4");
 #else
-    TEST_CHECK("S4-U17", E_OK == subsystem4_wait_ready(100),
-               "real robot startup observes accepted IMU readings");
-    TEST_CHECK("S4-U18", (0 == gh_summary) && (0 == gh_monitor_alarm),
-               "real robot has no teaching monitor objects");
+    TEST_CHECK("S4-U17",
+        E_OK == subsystem4_wait_ready(100),
+        "real robot startup observes accepted IMU readings");
+    TEST_CHECK("S4-U18",
+        (0 == gh_summary) && (0 == gh_monitor_alarm),
+        "real robot has no teaching monitor objects");
 #endif
     /* Fixed reading size is less than INT_MAX in the verified kernel ABI. */
     TEST_CHECK("S4-U10",
-               (E_OK == tk_ref_mbf(gh_imu_data_buffer, &buffer)) &&
-                   ((INT)sizeof(imu_data_t) == buffer.maxmsz),
-               "IMU message buffer carries a complete reading");
+        (E_OK == tk_ref_mbf(gh_imu_data_buffer, &buffer)) &&
+            ((INT)sizeof(imu_data_t) == buffer.maxmsz),
+        "IMU message buffer carries a complete reading");
     discard_events();
 #if S4_IMU_USE_MOCK
-    TEST_CHECK("S4-U11", wait_event(TEST_MOCK_WAIT_MS, true, false),
-               "mock readings flow through RTOS tasks to a fresh hump report");
-    TEST_CHECK("S4-U14", wait_event(TEST_MOCK_WAIT_MS, false, true),
-               "demo outage reports sensor fault followed by valid recovery");
+    TEST_CHECK("S4-U11",
+        wait_event(TEST_MOCK_WAIT_MS, true, false),
+        "mock readings flow through RTOS tasks to a fresh hump report");
+    TEST_CHECK("S4-U14",
+        wait_event(TEST_MOCK_WAIT_MS, false, true),
+        "demo outage reports sensor fault followed by valid recovery");
 #else
-    TEST_CHECK("S4-U16", wait_event(TEST_SENSOR_WAIT_MS, false, false),
-               "real GY-511 readings arrive after level calibration");
+    TEST_CHECK("S4-U16",
+        wait_event(TEST_SENSOR_WAIT_MS, false, false),
+        "real GY-511 readings arrive after level calibration");
 #endif
     TEST_SUMMARY("subsystem4");
 #if S4_MOTION_TEST_ACTIVE
@@ -84,8 +92,10 @@ discard_events (void)
 
 /** @brief Match a measurement or a fault followed by recovery. */
 static bool
-event_matches (const imu_event_t * p_event, bool b_wait_hump,
-               bool b_wait_recovery, bool * pb_fault_seen)
+event_matches (const imu_event_t * p_event,
+    bool                           b_wait_hump,
+    bool                           b_wait_recovery,
+    bool *                         pb_fault_seen)
 {
     if (b_wait_recovery)
     {
@@ -95,13 +105,13 @@ event_matches (const imu_event_t * p_event, bool b_wait_hump,
         }
 
         return (*pb_fault_seen) && (p_event->b_sensor_recovered) &&
-               (p_event->b_valid);
+            (p_event->b_valid);
     }
 
     if (b_wait_hump)
     {
         return (p_event->b_valid) && (p_event->b_hump_completed) &&
-               (p_event->b_height_valid);
+            (p_event->b_height_valid);
     }
 
     return (p_event->b_valid) && (!p_event->b_sensor_fault);
@@ -127,8 +137,8 @@ wait_event (uint32_t timeout_ms, bool b_wait_hump, bool b_wait_recovery)
 
         /* The fixed event size is below INT_MAX in the kernel ABI. */
         if (((INT)sizeof(event) == length) &&
-            (event_matches(&event, b_wait_hump, b_wait_recovery,
-                           &b_fault_seen)))
+            (event_matches(
+                &event, b_wait_hump, b_wait_recovery, &b_fault_seen)))
         {
             return true;
         }

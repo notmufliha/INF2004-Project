@@ -2,7 +2,10 @@
 #define S5_DRV_SERVO_H
 #include <stdint.h>
 #include <stdbool.h>
-uint16_t s5_servo_pulse_us(uint16_t angle_deg);
-bool s5_servo_init(void);
-bool s5_servo_angle(uint16_t angle_deg);
+uint16_t s5_servo_pulse_us (uint16_t angle_deg);
+bool s5_servo_init (void);
+bool s5_servo_angle (uint16_t angle_deg);
 #endif
+
+/*** end of file ***/
+

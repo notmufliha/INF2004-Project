@@ -1,11 +1,35 @@
 BasedOnStyle: LLVM
-IndentWidth: 4
-TabWidth: 4
-UseTab: Never
+Language: Cpp
 ColumnLimit: 80
+IndentWidth: 4
+UseTab: Never
 BreakBeforeBraces: Allman
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: None
-PointerAlignment: Right
+AllowShortCaseLabelsOnASingleLine: false
+AlwaysBreakAfterReturnType: AllDefinitions
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterFunctionDeclarationName: true
+  AfterFunctionDefinitionName: true
+PointerAlignment: Middle
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AlignFunctionDeclarations: false
+  AlignFunctionPointers: false
+AlignConsecutiveAssignments: Consecutive
 SortIncludes: Never
+SeparateDefinitionBlocks: Always
+BreakStringLiterals: true
+IndentCaseLabels: true
+IndentCaseBlocks: true
+
+InsertBraces: true
+ReflowComments: Always
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+BinPackParameters: false
+BinPackArguments: false

@@ -6,11 +6,13 @@
 #include <stddef.h>
 
 static uint32_t quality_edges (imu_notice_tracker_t * p_tracker,
-                               const imu_event_t * p_event, bool b_usable);
+    const imu_event_t *                               p_event,
+    bool                                              b_usable);
 static uint32_t measurement_edges (imu_notice_tracker_t * p_tracker,
-                                   const imu_event_t * p_event, bool b_usable);
-static uint32_t tilt_impact_edges (imu_notice_tracker_t * p_tracker,
-                                   const imu_event_t *    p_event);
+    const imu_event_t *                                   p_event,
+    bool                                                  b_usable);
+static uint32_t tilt_impact_edges (
+    imu_notice_tracker_t * p_tracker, const imu_event_t * p_event);
 
 /** @brief Reset the single producer before its task begins publishing. */
 void
@@ -38,7 +40,7 @@ imu_notice_track (imu_notice_tracker_t * p_tracker, const imu_event_t * p_event)
 
     if ((!p_tracker->b_seen) ||
         ((p_event->timestamp_ms - p_tracker->emission_ms) >=
-         IMU_NOTICE_PERIOD_MS))
+            IMU_NOTICE_PERIOD_MS))
     {
         events |= IMU_NOTICE_STATE;
     }
@@ -60,8 +62,7 @@ imu_notice_track (imu_notice_tracker_t * p_tracker, const imu_event_t * p_event)
         p_tracker->pending.last_sequence     = p_tracker->sequence;
         p_tracker->pending.last_timestamp_ms = p_event->timestamp_ms;
         p_tracker->pending.events =
-            (p_tracker->pending.events | (unsigned int)events) &
-            IMU_NOTICE_EVENT_MASK;
+            (p_tracker->pending.events | events) & IMU_NOTICE_EVENT_MASK;
         p_tracker->emission_ms = p_event->timestamp_ms;
     }
 }
@@ -69,8 +70,8 @@ imu_notice_track (imu_notice_tracker_t * p_tracker, const imu_event_t * p_event)
 /** @brief Copy a pending notice without consuming it before a successful send.
  */
 bool
-imu_notice_peek (const imu_notice_tracker_t * p_tracker,
-                 imu_notice_t *               p_notice)
+imu_notice_peek (
+    const imu_notice_tracker_t * p_tracker, imu_notice_t * p_notice)
 {
     if (NULL == p_notice)
     {
@@ -116,8 +117,9 @@ imu_notice_failed (imu_notice_tracker_t * p_tracker)
 
 /** @brief Distinguish unknown data, a latched IMU fault and valid recovery. */
 static uint32_t
-quality_edges (imu_notice_tracker_t * p_tracker, const imu_event_t * p_event,
-               bool b_usable)
+quality_edges (imu_notice_tracker_t * p_tracker,
+    const imu_event_t *               p_event,
+    bool                              b_usable)
 {
     uint32_t events = 0U;
 
@@ -131,8 +133,9 @@ quality_edges (imu_notice_tracker_t * p_tracker, const imu_event_t * p_event,
         events |= IMU_NOTICE_FAULT;
     }
 
-    if (b_usable && ((p_tracker->b_fault) || ((p_event->b_sensor_recovered) &&
-                                              (!p_tracker->b_recovered))))
+    if (b_usable &&
+        ((p_tracker->b_fault) ||
+            ((p_event->b_sensor_recovered) && (!p_tracker->b_recovered))))
     {
         events |= IMU_NOTICE_RECOVERED;
     }
@@ -148,7 +151,8 @@ quality_edges (imu_notice_tracker_t * p_tracker, const imu_event_t * p_event,
  */
 static uint32_t
 measurement_edges (imu_notice_tracker_t * p_tracker,
-                   const imu_event_t * p_event, bool b_usable)
+    const imu_event_t *                   p_event,
+    bool                                  b_usable)
 {
     uint32_t   events = 0U;
     const bool b_completed =
@@ -189,8 +193,8 @@ measurement_edges (imu_notice_tracker_t * p_tracker,
 /** @brief Emit tilt changes and one impact edge until a valid sample rearms it.
  */
 static uint32_t
-tilt_impact_edges (imu_notice_tracker_t * p_tracker,
-                   const imu_event_t *    p_event)
+tilt_impact_edges (
+    imu_notice_tracker_t * p_tracker, const imu_event_t * p_event)
 {
     uint32_t events = 0U;
 

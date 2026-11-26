@@ -1,4 +1,6 @@
 # Keep the B4 coding-standard line endings stable on Windows checkouts.
+app_program/**/*.[ch] text eol=lf
+app_program/*.[ch] text eol=lf
 app_program/subsystem4/*.[ch] text eol=lf
 testing/subsystem4/host/*.[ch] text eol=lf
 testing/subsystem4/startup/*.[ch] text eol=lf

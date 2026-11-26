@@ -39,9 +39,8 @@ s1_led_task (INT stacd, void * p_exinf)
         (void)tk_can_wup(TSK_SELF); /* drop wake-ups that piled up    */
 
         /* g_s1_link_state only ever holds comm_link_state_t values. */
-        (void)gpio_set_val(S1_LED_PIN,
-                           s1_led_level((comm_link_state_t)g_s1_link_state,
-                                        tick));
+        (void)gpio_set_val(
+            S1_LED_PIN, s1_led_level((comm_link_state_t)g_s1_link_state, tick));
         tick++;
     }
 }

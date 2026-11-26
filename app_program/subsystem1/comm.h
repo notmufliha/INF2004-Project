@@ -58,11 +58,11 @@ typedef enum
     NAV_RIGHT,
     NAV_STRAIGHT,
     NAV_UTURN,
-    NAV_WAIT,     /* stop 3 s at the crossing, then go straight   */
-    NAV_SLOW,     /* follow at half speed from now on             */
-    NAV_NORMAL,   /* back to the normal following speed           */
-    NAV_SPIN,     /* spin 360 degrees at the crossing, go straight */
-    NAV_FINISH,   /* stop at the crossing and end the run         */
+    NAV_WAIT,   /* stop 3 s at the crossing, then go straight   */
+    NAV_SLOW,   /* follow at half speed from now on             */
+    NAV_NORMAL, /* back to the normal following speed           */
+    NAV_SPIN,   /* spin 360 degrees at the crossing, go straight */
+    NAV_FINISH, /* stop at the crossing and end the run         */
     NAV_COUNT
 } comm_nav_cmd_t;
 
@@ -117,37 +117,37 @@ typedef enum
 } comm_run_mode_t;
 
 /* Barcode letter code: A..Z are 1..26, 0 = none yet (5 bits, wire v2). */
-#define COMM_BARCODE_FIRST  'A'
-#define COMM_BARCODE_LAST   'Z'
+#define COMM_BARCODE_FIRST 'A'
+#define COMM_BARCODE_LAST 'Z'
 
 /* IMU motion state: B4's imu_motion_state_t, 0..7 (3 bits). */
-#define COMM_MOTION_COUNT   8U
+#define COMM_MOTION_COUNT 8U
 
 /* Line-sensor flags for comm_set_line() (B3); OR them (3 bits). */
-#define LINE_F_DETECTED     0x01U
-#define LINE_F_LOST         0x02U
-#define LINE_F_JUNCTION     0x04U
-#define LINE_F_ALL          0x07U
+#define LINE_F_DETECTED 0x01U
+#define LINE_F_LOST 0x02U
+#define LINE_F_JUNCTION 0x04U
+#define LINE_F_ALL 0x07U
 
 /* Field limits, bits on the wire in brackets.  B2 checks that
  * COMM_SPEED_MAX is defined to detect this binary interface. */
-#define COMM_SPEED_MAX      8191   /* [14 signed] counts/s; B2 max 5000 */
-#define COMM_IR_MAX         4095U  /* [12] raw ADC                       */
-#define COMM_PITCH_MAX      511    /* [10 signed] 0.1 deg (+-51.1 deg)   */
-#define COMM_HUMP_MAX_MM    126U   /* [7]  0.1 cm = 1 mm resolution      */
-#define COMM_DIST_MAX_CM    510U   /* [9]  distances, clearances, 1 cm   */
-#define COMM_WIDTH_MAX_CM   126U   /* [7]  obstacle width, 1 cm          */
-#define COMM_CM_INVALID     0xFFFFU /* "no echo / not measured"          */
+#define COMM_SPEED_MAX 8191     /* [14 signed] counts/s; B2 max 5000 */
+#define COMM_IR_MAX 4095U       /* [12] raw ADC                       */
+#define COMM_PITCH_MAX 511      /* [10 signed] 0.1 deg (+-51.1 deg)   */
+#define COMM_HUMP_MAX_MM 126U   /* [7]  0.1 cm = 1 mm resolution      */
+#define COMM_DIST_MAX_CM 510U   /* [9]  distances, clearances, 1 cm   */
+#define COMM_WIDTH_MAX_CM 126U  /* [7]  obstacle width, 1 cm          */
+#define COMM_CM_INVALID 0xFFFFU /* "no echo / not measured"          */
 /* Front telemetry only: B5 ranges end at 400 cm. Keep assumed open space
  * distinct from an actual range without increasing the 9-bit payload. */
 #define COMM_FRONT_OPEN_SPACE_CM 510U
 
 /* Widths of the fields that hold signed values (two's complement). */
-#define COMM_SPEED_BITS     14U
-#define COMM_PITCH_BITS     10U
-#define COMM_ROLL_BITS      12U
-#define COMM_ROLL_MAX       1800  /* 0.1 deg, up to +/-180 deg */
-#define COMM_ENC_MASK       0xFFFFFFU /* encoder totals keep 24 bits     */
+#define COMM_SPEED_BITS 14U
+#define COMM_PITCH_BITS 10U
+#define COMM_ROLL_BITS 12U
+#define COMM_ROLL_MAX 1800      /* 0.1 deg, up to +/-180 deg */
+#define COMM_ENC_MASK 0xFFFFFFU /* encoder totals keep 24 bits     */
 
 /* ---------------------------------------------------------------------
  * I1.3 IF-S1-CMD: remote commands, subsystem 1 -> Vehicle Controller.
@@ -162,9 +162,9 @@ typedef enum
 /** @brief One remote command, 4 bytes, copied whole through the kernel. */
 typedef struct
 {
-    UINT type  : 4;  /* comm_remote_cmd_type_t                  */
-    UINT arg   : 7;  /* meaning depends on type (see above)     */
-    UINT seq   : 8;  /* sender's sequence number, echoed in ack */
+    UINT type : 4; /* comm_remote_cmd_type_t                  */
+    UINT arg : 7;  /* meaning depends on type (see above)     */
+    UINT seq : 8;  /* sender's sequence number, echoed in ack */
     UINT spare : 13;
 } comm_remote_cmd_t;
 
@@ -185,37 +185,37 @@ extern ID mbf_remote_cmd; /* I1.3; name kept for the team (DEV-1) */
 /** @brief Latest value of every telemetry field. */
 typedef struct
 {
-    UINT robot_state  : 4;  /* comm_robot_state_t              */
-    UINT line_flags   : 3;  /* LINE_F_xxx                      */
-    UINT ir_right     : 1;  /* digital 0/1                     */
-    UINT ir_left      : 12; /* raw ADC 0..4095                 */
-    UINT ir_centre    : 12;
+    UINT robot_state : 4; /* comm_robot_state_t              */
+    UINT line_flags : 3;  /* LINE_F_xxx                      */
+    UINT ir_right : 1;    /* digital 0/1                     */
+    UINT ir_left : 12;    /* raw ADC 0..4095                 */
+    UINT ir_centre : 12;
 
-    UINT speed_left   : 14; /* counts/s, two's complement      */
-    UINT speed_right  : 14;
-    UINT motion       : 3;  /* imu_motion_state_t (B4)         */
-    UINT hump_valid   : 1;  /* hump heights are measured       */
+    UINT speed_left : 14; /* counts/s, two's complement      */
+    UINT speed_right : 14;
+    UINT motion : 3;     /* imu_motion_state_t (B4)         */
+    UINT hump_valid : 1; /* hump heights are measured       */
 
-    UINT enc_left     : 24; /* low 24 bits of B2's total count */
-    UINT barcode      : 5;  /* 0 none, 1..26 = A..Z            */
-    UINT spare1       : 3;
+    UINT enc_left : 24; /* low 24 bits of B2's total count */
+    UINT barcode : 5;   /* 0 none, 1..26 = A..Z            */
+    UINT spare1 : 3;
 
-    UINT enc_right    : 24;
-    UINT hump_last_mm : 7;  /* height of the most recent hump  */
-    UINT imu_lifted   : 1;  /* B4 lift-stop: car picked up     */
+    UINT enc_right : 24;
+    UINT hump_last_mm : 7; /* height of the most recent hump  */
+    UINT imu_lifted : 1;   /* B4 lift-stop: car picked up     */
 
-    UINT pitch_ddeg   : 10; /* 0.1 deg, two's complement      */
-    UINT hump_peak_mm : 7;  /* highest hump this run           */
-    UINT obs_width_cm : 7;  /* 127 = not measured              */
-    UINT nav          : 4;  /* comm_nav_cmd_t of last barcode  */
-    UINT spare3       : 4;
+    UINT pitch_ddeg : 10;  /* 0.1 deg, two's complement      */
+    UINT hump_peak_mm : 7; /* highest hump this run           */
+    UINT obs_width_cm : 7; /* 127 = not measured              */
+    UINT nav : 4;          /* comm_nav_cmd_t of last barcode  */
+    UINT spare3 : 4;
 
-    UINT obs_dist_cm  : 9;  /* 511 = no echo / not measured    */
-    UINT obs_left_cm  : 9;  /* left clearance                  */
-    UINT obs_right_cm : 9;  /* right clearance                 */
-    UINT spare4       : 5;
+    UINT obs_dist_cm : 9;  /* 511 = no echo / not measured    */
+    UINT obs_left_cm : 9;  /* left clearance                  */
+    UINT obs_right_cm : 9; /* right clearance                 */
+    UINT spare4 : 5;
 
-    UINT roll_ddeg    : 12; /* 0.1 deg, two's complement */
+    UINT roll_ddeg : 12; /* 0.1 deg, two's complement */
 } comm_telemetry_t;
 
 /** @brief Link counters: 16 bits, wrapping; the laptop uses differences
@@ -235,10 +235,10 @@ typedef struct
 /* I1.1 setters: any task, non-blocking.  A setter whose mutex wait
  * times out skips that one update (the next call catches up). */
 void comm_set_robot_state (comm_robot_state_t state);
-void comm_set_motion (int32_t speed_l_cps, int32_t speed_r_cps,
-                      int32_t enc_l, int32_t enc_r);
-void comm_set_line (uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right,
-                    uint8_t flags);
+void comm_set_motion (
+    int32_t speed_l_cps, int32_t speed_r_cps, int32_t enc_l, int32_t enc_r);
+void comm_set_line (
+    uint16_t ir_left, uint16_t ir_centre, uint8_t ir_right, uint8_t flags);
 void comm_set_imu (uint8_t motion_state, int16_t pitch_ddeg, int16_t roll_ddeg);
 /* B4 lift-stop flag: true while B4 reports the car picked up. */
 void comm_set_lifted (bool b_lifted);
@@ -248,19 +248,22 @@ void comm_get_telemetry (comm_telemetry_t * p_out);
 
 /* I1.2 events: E_OK, E_PAR (bad argument) or E_TMOUT (queue full: the
  * event is dropped and counted).  They never wait for the network. */
-ER   comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav);
-ER   comm_report_hump (bool b_valid, int16_t height_mm, int16_t peak_mm);
+ER comm_report_barcode (uint8_t letter, comm_nav_cmd_t nav);
+ER comm_report_hump (bool b_valid, int16_t height_mm, int16_t peak_mm);
 void comm_reset_hump_peak (void);
-ER   comm_report_obstacle (uint16_t dist_cm, uint16_t width_cm,
-                           uint16_t left_cm, uint16_t right_cm,
-                           comm_avoid_action_t action);
-ER   comm_report_error (uint8_t err_code, uint8_t detail);
+ER comm_report_obstacle (uint16_t dist_cm,
+    uint16_t                      width_cm,
+    uint16_t                      left_cm,
+    uint16_t                      right_cm,
+    comm_avoid_action_t           action);
+ER comm_report_error (uint8_t err_code, uint8_t detail);
 
 /* I1.4 link status, readable by anyone. */
 comm_link_state_t comm_get_state (void);
-bool              comm_is_connected (void);
-void              comm_get_stats (comm_stats_t * p_out);
+bool comm_is_connected (void);
+void comm_get_stats (comm_stats_t * p_out);
 
 #endif /* COMM_H */
 
 /*** end of file ***/
+

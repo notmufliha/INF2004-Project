@@ -1,0 +1,27 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261126133512
+Username: yixuan\CodexSandboxOffline
+RunAs User: yixuan\CodexSandboxOffline
+Configuration Name: 
+Machine: YIXUAN (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File tools/test_robot.ps1 -LogPath testing/barr_audit/before_host.txt
+Process ID: 40956
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Source base: b9a1ec6d8bbb90ea230ccf647f1967696bfa612f; includes current working tree changes
+
+
+
+
+**********************
+Windows PowerShell transcript end
+End time: 20261126133524
+**********************

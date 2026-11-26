@@ -9,14 +9,15 @@ static float32_t smooth_angle (float32_t old, float32_t next, float32_t alpha);
 
 static bool reading_is_valid (const imu_data_t * p_input, uint32_t now_ms);
 
-static bool check_timing (imu_processing_t * p_state, uint32_t now_ms,
-                          bool * pb_valid);
+static bool check_timing (
+    imu_processing_t * p_state, uint32_t now_ms, bool * pb_valid);
 
-static void record_failure (imu_processing_t *        p_state,
-                            imu_processing_health_t * p_health);
+static void record_failure (
+    imu_processing_t * p_state, imu_processing_health_t * p_health);
 
 static bool filter_reading (imu_processing_t * p_state,
-                            const imu_data_t * p_input, imu_data_t * p_output);
+    const imu_data_t *                         p_input,
+    imu_data_t *                               p_output);
 
 /** @brief Supply filter, fault and recovery defaults. */
 void
@@ -30,8 +31,8 @@ imu_processing_default_config (imu_processing_config_t * p_config)
 
 /** @brief Validate configuration and reset filter history. */
 bool
-imu_processing_init (imu_processing_t *              p_state,
-                     const imu_processing_config_t * p_config)
+imu_processing_init (
+    imu_processing_t * p_state, const imu_processing_config_t * p_config)
 {
     if ((NULL == p_state) || (NULL == p_config) ||
         (!isfinite(p_config->smoothing_alpha)) ||
@@ -51,9 +52,11 @@ imu_processing_init (imu_processing_t *              p_state,
 
 /** @brief Validate timing, track health and filter a fresh reading. */
 bool
-imu_processing_process (imu_processing_t * p_state, const imu_data_t * p_input,
-                        uint32_t now_ms, imu_data_t * p_output,
-                        imu_processing_health_t * p_health)
+imu_processing_process (imu_processing_t * p_state,
+    const imu_data_t *                     p_input,
+    uint32_t                               now_ms,
+    imu_data_t *                           p_output,
+    imu_processing_health_t *              p_health)
 {
     if (p_output != NULL)
     {
@@ -159,12 +162,12 @@ static bool
 reading_is_valid (const imu_data_t * p_input, uint32_t now_ms)
 {
     return (p_input != NULL) && (p_input->b_valid) &&
-           (p_input->timestamp_ms == now_ms) && (isfinite(p_input->accel_x)) &&
-           (isfinite(p_input->accel_y)) && (isfinite(p_input->accel_z)) &&
-           (isfinite(p_input->pitch_deg)) && (isfinite(p_input->roll_deg)) &&
-           (isfinite(p_input->turn_rate_dps)) &&
-           (fabsf(p_input->pitch_deg) <= 180.0f) &&
-           (fabsf(p_input->roll_deg) <= 180.0f);
+        (p_input->timestamp_ms == now_ms) && (isfinite(p_input->accel_x)) &&
+        (isfinite(p_input->accel_y)) && (isfinite(p_input->accel_z)) &&
+        (isfinite(p_input->pitch_deg)) && (isfinite(p_input->roll_deg)) &&
+        (isfinite(p_input->turn_rate_dps)) &&
+        (fabsf(p_input->pitch_deg) <= 180.0f) &&
+        (fabsf(p_input->roll_deg) <= 180.0f);
 }
 
 /** @brief Detect duplicate, backward or missing-reading intervals. */
@@ -226,8 +229,9 @@ record_failure (imu_processing_t * p_state, imu_processing_health_t * p_health)
 
 /** @brief Smooth finite angles and rate while retaining acceleration. */
 static bool
-filter_reading (imu_processing_t * p_state, const imu_data_t * p_input,
-                imu_data_t * p_output)
+filter_reading (imu_processing_t * p_state,
+    const imu_data_t *             p_input,
+    imu_data_t *                   p_output)
 {
     *p_output = *p_input;
     if (p_state->b_seeded)
@@ -237,23 +241,20 @@ filter_reading (imu_processing_t * p_state, const imu_data_t * p_input,
          */
         const uint32_t elapsed =
             p_input->timestamp_ms - p_state->previous.timestamp_ms;
-        const float32_t alpha =
-            1.0f - powf(1.0f - p_state->config.smoothing_alpha,
-                        (float32_t)elapsed / 10.0f);
+        const float32_t alpha = 1.0f -
+            powf(1.0f - p_state->config.smoothing_alpha,
+                (float32_t)elapsed / 10.0f);
 
-        p_output->pitch_deg =
-            smooth_angle(p_state->previous.pitch_deg, p_input->pitch_deg,
-                         alpha);
+        p_output->pitch_deg = smooth_angle(
+            p_state->previous.pitch_deg, p_input->pitch_deg, alpha);
         p_output->roll_deg =
-            smooth_angle(p_state->previous.roll_deg, p_input->roll_deg,
-                         alpha);
+            smooth_angle(p_state->previous.roll_deg, p_input->roll_deg, alpha);
         /* Convex combination avoids overflow in (next - old). */
         if ((p_input->b_turn_rate_valid) &&
             (p_state->previous.b_turn_rate_valid))
         {
             p_output->turn_rate_dps =
-                (1.0f - alpha) *
-                    p_state->previous.turn_rate_dps +
+                (1.0f - alpha) * p_state->previous.turn_rate_dps +
                 alpha * p_input->turn_rate_dps;
         }
     }

@@ -47,15 +47,15 @@ typedef struct
     bool              b_have_sample;
     uint32_t          settle_count; /* samples averaged into baseline    */
     uint32_t          last_ms;
-    float32_t         baseline_ms2; /* learned |a| on the floor          */
-    float32_t         speed_mps;    /* leaky upward speed                */
-    float32_t         rise_m;       /* leaky upward rise                 */
+    float32_t         baseline_ms2;     /* learned |a| on the floor          */
+    float32_t         speed_mps;        /* leaky upward speed                */
+    float32_t         rise_m;           /* leaky upward rise                 */
     float32_t         recent_speed_mps; /* fading peak of speed_mps      */
-    bool              b_rising;     /* both thresholds met now           */
-    uint32_t          rising_ms;    /* ...since this sample              */
+    bool              b_rising;         /* both thresholds met now           */
+    uint32_t          rising_ms;        /* ...since this sample              */
     bool              b_lifted;
-    bool              b_was_lifted; /* b_lifted before the last step     */
-    uint32_t          lifted_ms;    /* when the lift was detected        */
+    bool              b_was_lifted;   /* b_lifted before the last step     */
+    uint32_t          lifted_ms;      /* when the lift was detected        */
     float32_t         peak_speed_mps; /* at detection, for the log       */
     float32_t         peak_rise_m;
 } imu_lift_t;

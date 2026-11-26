@@ -44,17 +44,17 @@ typedef enum
 } comm_bridge_topic_t;
 
 /* Same order as comm_bridge_topic_t */
-#define COMM_TOPIC_SUFFIXES   { "telemetry", "event", "status", "cmd/ack" }
+#define COMM_TOPIC_SUFFIXES {"telemetry", "event", "status", "cmd/ack"}
 #define COMM_TOPIC_CMD_SUFFIX "cmd" /* the one topic we subscribe to */
 
-#define COMM_TOPIC_MAX   64U /* bytes incl. NUL, full topic name   */
+#define COMM_TOPIC_MAX 64U   /* bytes incl. NUL, full topic name   */
 #define COMM_PAYLOAD_MAX 32U /* bytes, one frame (telemetry: 29)   */
-#define COMM_CMD_MAX     3U  /* bytes, one received command        */
+#define COMM_CMD_MAX 3U      /* bytes, one received command        */
 
 /* Online / Last-Will message: 1 byte, the first byte of the status
  * frame (wire version 2 in bits 7..5, online flag in bit 4).  Never
  * 0x00: lwIP takes the will message's length with strlen(). */
-#define COMM_STATUS_ONLINE  "\x50"
+#define COMM_STATUS_ONLINE "\x50"
 #define COMM_STATUS_OFFLINE "\x40"
 
 /** @brief MQTT connection state, as reported by mqtt_utk.c. */
@@ -71,8 +71,10 @@ typedef enum
 /* Take the next queued outgoing frame.  Returns its length
  * (0..payload_max) or -1 if nothing is queued; *p_topic_id is a
  * comm_bridge_topic_t, *p_retain 1 = broker keeps it as last value. */
-int32_t comm_bridge_tx_pop (uint8_t * p_topic_id, uint8_t * p_retain,
-                            uint8_t * p_payload, uint16_t payload_max);
+int32_t comm_bridge_tx_pop (uint8_t * p_topic_id,
+    uint8_t *                         p_retain,
+    uint8_t *                         p_payload,
+    uint16_t                          payload_max);
 
 /* One complete message arrived on <prefix>/cmd. */
 void comm_bridge_rx_command (const uint8_t * p_data, uint16_t len);
@@ -82,8 +84,10 @@ void comm_bridge_mqtt_state (int32_t state);
 
 /* Used by subsystem 1's comm task only, never by mqtt_utk.c: put one
  * frame in the outgoing queue without blocking.  false = dropped. */
-bool comm_bridge_tx_enqueue (comm_bridge_topic_t topic, bool b_retain,
-                             const uint8_t * p_payload, uint32_t len);
+bool comm_bridge_tx_enqueue (comm_bridge_topic_t topic,
+    bool                                         b_retain,
+    const uint8_t *                              p_payload,
+    uint32_t                                     len);
 
 /* Commands lost because the receive queue was full (wrapping count). */
 uint16_t comm_bridge_rx_dropped (void);

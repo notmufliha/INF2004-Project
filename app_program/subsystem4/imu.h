@@ -71,36 +71,37 @@ typedef struct
      * measurements. The real pairing window starts before the acceleration
      * burst; timestamp_ms retains burst completion, not final encoder time.
      */
-    uint16_t odometry_age_ms;
-    uint16_t odometry_encoder_ms;
-    uint16_t odometry_context_ms;
-    uint16_t acceleration_read_ms;
-    uint16_t magnetic_read_ms;
+    uint16_t     odometry_age_ms;
+    uint16_t     odometry_encoder_ms;
+    uint16_t     odometry_context_ms;
+    uint16_t     acceleration_read_ms;
+    uint16_t     magnetic_read_ms;
     unsigned int odometry_reasons : 6;
     unsigned int odometry_time_valid : 6;
-    bool b_valid : 1;
-    bool b_turn_rate_valid : 1;
-    bool b_magnetic_valid : 1;
-    bool b_heading_valid : 1;
-    bool b_heading_calibrated : 1;
-    bool b_odometry_valid : 1;
+    bool         b_valid : 1;
+    bool         b_turn_rate_valid : 1;
+    bool         b_magnetic_valid : 1;
+    bool         b_heading_valid : 1;
+    bool         b_heading_calibrated : 1;
+    bool         b_odometry_valid : 1;
 } imu_data_t;
 
 /* Motion and terrain analysis results. */
 typedef struct
 {
-    float32_t          pitch_deg;
-    float32_t          roll_deg;
-    float32_t          turn_rate_dps;
+    float32_t pitch_deg;
+    float32_t roll_deg;
+    float32_t turn_rate_dps;
     float32_t heading_deg;
 
     /* Estimated hump height in centimetres. */
-    float32_t hump_peak_cm;
-    float32_t highest_hump_cm;
-    uint32_t  timestamp_ms;
+    float32_t          hump_peak_cm;
+    float32_t          highest_hump_cm;
+    uint32_t           timestamp_ms;
     imu_motion_state_t motion_state : 3;
-    bool b_hump_detected : 1;
-    bool b_hump_completed : 1; /* One-reading pulse after a complete traversal. */
+    bool               b_hump_detected : 1;
+    bool               b_hump_completed
+        : 1; /* One-reading pulse after a complete traversal. */
     bool b_tilt_detected : 1;
     bool b_valid : 1;
     bool b_height_valid : 1;

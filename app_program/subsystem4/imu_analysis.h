@@ -31,7 +31,7 @@ typedef struct
      * the last roll_peak_samples unfiltered accelerometer rolls (the top and
      * bottom third dropped), so the jolt as a wheel hits the hump edge does
      * not count as roll.  1 = single-sample peak.  1..IMU_ROLL_PEAK_MAX. */
-    uint32_t  roll_peak_samples;
+    uint32_t roll_peak_samples;
     /* Jerk rejection.  The GY-511 has no gyroscope, so a level car pushed
      * sideways reads as tilted: a steering jerk (wheel speed difference
      * changing) or a speed jerk (mean wheel speed changing) can look like a
@@ -39,8 +39,8 @@ typedef struct
      * readings, the difference changed by more than roll_steer_jerk_cps or
      * the mean by more than roll_speed_jerk_cps are skipped: they neither
      * count toward a hump nor enter the height estimate.  0 = no check. */
-    uint32_t  roll_steer_jerk_cps;
-    uint32_t  roll_speed_jerk_cps;
+    uint32_t roll_steer_jerk_cps;
+    uint32_t roll_speed_jerk_cps;
 } imu_analysis_config_t;
 
 #define IMU_ROLL_PEAK_MAX 9U
@@ -113,8 +113,8 @@ typedef struct
 } imu_analysis_t;
 
 void imu_analysis_default_config (imu_analysis_config_t * p_config);
-bool imu_analysis_init (imu_analysis_t *              p_analysis,
-                        const imu_analysis_config_t * p_config);
+bool imu_analysis_init (
+    imu_analysis_t * p_analysis, const imu_analysis_config_t * p_config);
 /* Returns a valid snapshot for each accepted reading, not just transitions.
  * Inputs use robot axes (X forward, Y sideways, Z up), m/s^2 and degrees.
  * Acceleration includes gravity. Pitch is positive when the nose rises.
@@ -128,8 +128,9 @@ bool imu_analysis_init (imu_analysis_t *              p_analysis,
  * Brief no-pulse intervals hold the state without advancing confirmation;
  * 200ms without progress and invalid movement context cancel the episode.
  */
-bool imu_analysis_process (imu_analysis_t *   p_analysis,
-                           const imu_data_t * p_data, imu_event_t * p_event);
+bool imu_analysis_process (imu_analysis_t * p_analysis,
+    const imu_data_t *                      p_data,
+    imu_event_t *                           p_event);
 
 #endif
 

@@ -16,7 +16,8 @@
 #define B2_TEST_CLEAR_WAIT_MS 30000u
 #define B2_TEST_RESULT_WAIT_MS 65000u
 
-static uint32_t b2_test_now(void)
+static uint32_t
+b2_test_now (void)
 {
     SYSTIM time;
     if (tk_get_tim(&time) != E_OK)
@@ -27,17 +28,18 @@ static uint32_t b2_test_now(void)
     return time.lo;
 }
 
-static motion_command_t b2_test_command(UINT test)
+static motion_command_t
+b2_test_command (UINT test)
 {
-    motion_command_t command = {0};
-    command.target_speed_cps = ROBOT_MOTION_TEST_SPEED_CPS;
+    motion_command_t command  = {0};
+    command.target_speed_cps  = ROBOT_MOTION_TEST_SPEED_CPS;
     command.safety_generation = b2_safety_stop_generation();
     command.direction = test == 2u ? MOTION_DIR_REVERSE : MOTION_DIR_FORWARD;
     if (test <= 2u)
     {
-        command.type = MOTION_CMD_MOVE;
-        command.target_distance_counts = (INT)(10.0f *
-            ENC_LEFT_COUNTS_PER_REV / (3.14159265f * ENC_WHEEL_DIAMETER_CM));
+        command.type                   = MOTION_CMD_MOVE;
+        command.target_distance_counts = (INT)(10.0f * ENC_LEFT_COUNTS_PER_REV /
+            (3.14159265f * ENC_WHEEL_DIAMETER_CM));
     }
     else if (test == 3u)
     {
@@ -46,27 +48,30 @@ static motion_command_t b2_test_command(UINT test)
     else
     {
         command.type = MOTION_CMD_TURN;
-        command.turn_direction = test == 4u ?
-            MOTION_TURN_LEFT : MOTION_TURN_RIGHT;
+        command.turn_direction =
+            test == 4u ? MOTION_TURN_LEFT : MOTION_TURN_RIGHT;
         command.target_angle_deg = 90;
     }
     return command;
 }
 
-static bool b2_test_wait_clear(void)
+static bool
+b2_test_wait_clear (void)
 {
     uint32_t started = b2_test_now();
     uint32_t printed = started - 1000u;
     while ((uint32_t)(b2_test_now() - started) < B2_TEST_CLEAR_WAIT_MS)
     {
-        motion_status_snapshot_t status = {0};
-        bool allowed = b2_safety_motion_allowed();
-        ER error = motion_get_status(&status);
+        motion_status_snapshot_t status  = {0};
+        bool                     allowed = b2_safety_motion_allowed();
+        ER                       error   = motion_get_status(&status);
         if (error == E_OK && status.status == MOTION_STATUS_FAULT)
         {
-            tm_printf((UB *)"[B2-TEST] controller FAULT=%d; "
-                "max_interval=%u ms. Restart after resolving fault.\n",
-                status.fault, (UINT)status.maximum_interval_ms);
+            tm_printf(
+                (UB *)"[B2-TEST] controller FAULT=%d; "
+                      "max_interval=%u ms. Restart after resolving fault.\n",
+                status.fault,
+                (UINT)status.maximum_interval_ms);
             return false;
         }
         if (allowed && error == E_OK && status.physically_stopped)
@@ -77,16 +82,20 @@ static bool b2_test_wait_clear(void)
         {
             printed = b2_test_now();
             tm_printf((UB *)"[B2-TEST] BLOCKED: B5_permission=%d "
-                "standstill=%d status_read=%d state=%d fault=%d\n",
-                allowed, status.physically_stopped, error,
-                status.status, status.fault);
+                            "standstill=%d status_read=%d state=%d fault=%d\n",
+                allowed,
+                status.physically_stopped,
+                error,
+                status.status,
+                status.fault);
         }
         tk_dly_tsk(B2_TEST_PERIOD_MS);
     }
     return false;
 }
 
-static bool b2_test_wait_result(uint32_t id)
+static bool
+b2_test_wait_result (uint32_t id)
 {
     uint32_t started = b2_test_now();
     uint32_t printed = started;
@@ -96,9 +105,13 @@ static bool b2_test_wait_result(uint32_t id)
         if (motion_get_result(id, &status) == E_OK)
         {
             tm_printf((UB *)"[B2-TEST] id=%u result=%d fault=%d "
-                "L_mm=%d R_mm=%d stopped=%d\n", (UINT)id,
-                status.status, status.fault, (INT)status.left_distance_mm,
-                (INT)status.right_distance_mm, status.physically_stopped);
+                            "L_mm=%d R_mm=%d stopped=%d\n",
+                (UINT)id,
+                status.status,
+                status.fault,
+                (INT)status.left_distance_mm,
+                (INT)status.right_distance_mm,
+                status.physically_stopped);
             return status.status == MOTION_STATUS_COMPLETED &&
                 status.physically_stopped;
         }
@@ -107,9 +120,12 @@ static bool b2_test_wait_result(uint32_t id)
         {
             printed = b2_test_now();
             tm_printf((UB *)"[B2-TEST] waiting id=%u active=%u "
-                "state=%d L_cps=%d R_cps=%d\n", (UINT)id,
-                (UINT)status.command_id, status.status,
-                status.left_speed_cps, status.right_speed_cps);
+                            "state=%d L_cps=%d R_cps=%d\n",
+                (UINT)id,
+                (UINT)status.command_id,
+                status.status,
+                status.left_speed_cps,
+                status.right_speed_cps);
         }
         tk_dly_tsk(B2_TEST_PERIOD_MS);
     }
@@ -117,7 +133,8 @@ static bool b2_test_wait_result(uint32_t id)
 }
 
 /* Refresh only the DRIVE test; any loss of clearance aborts without restart. */
-static bool b2_test_drive(motion_command_t command, uint32_t id)
+static bool
+b2_test_drive (motion_command_t command, uint32_t id)
 {
     uint32_t started = b2_test_now();
     while ((uint32_t)(b2_test_now() - started) < 1000u)
@@ -138,7 +155,7 @@ static bool b2_test_drive(motion_command_t command, uint32_t id)
             return false;
         }
     }
-    command = (motion_command_t){0};
+    command      = (motion_command_t){0};
     command.type = MOTION_CMD_STOP;
     if (motion_send_command_with_id(&command, &id) != E_OK)
     {
@@ -147,12 +164,12 @@ static bool b2_test_drive(motion_command_t command, uint32_t id)
     return b2_test_wait_result(id);
 }
 
-static bool b2_test_run(UINT test)
+static bool
+b2_test_run (UINT test)
 {
     motion_command_t command;
-    uint32_t id;
-    tm_printf((UB *)"[B2-TEST] test=%u waiting for fresh B5 clearance\n",
-        test);
+    uint32_t         id;
+    tm_printf((UB *)"[B2-TEST] test=%u waiting for fresh B5 clearance\n", test);
     if (!b2_test_wait_clear())
     {
         tm_printf((UB *)"[B2-TEST] no clearance/standstill within 30s\n");
@@ -165,21 +182,25 @@ static bool b2_test_run(UINT test)
         return false;
     }
     tm_printf((UB *)"[B2-TEST] START test=%u id=%u speed=%d cps\n",
-        test, (UINT)id, command.target_speed_cps);
+        test,
+        (UINT)id,
+        command.target_speed_cps);
     return test == 3u ? b2_test_drive(command, id) : b2_test_wait_result(id);
 }
 
-static void b2_motion_test_task(INT stacd, void *exinf)
+static void
+b2_motion_test_task (INT stacd, void * exinf)
 {
     UINT first = ROBOT_MOTION_TEST == 6 ? 1u : ROBOT_MOTION_TEST;
-    UINT last = ROBOT_MOTION_TEST == 6 ? 5u : ROBOT_MOTION_TEST;
+    UINT last  = ROBOT_MOTION_TEST == 6 ? 5u : ROBOT_MOTION_TEST;
     UINT test;
     bool passed = true;
     (void)stacd;
     (void)exinf;
     tm_printf((UB *)"[B2-TEST] Armed mode=%d; starts after %u ms. "
-        "Clear front/rear/sides; B5 guards front only.\n",
-        ROBOT_MOTION_TEST, (UINT)ROBOT_MOTION_TEST_BOOT_MS);
+                    "Clear front/rear/sides; B5 guards front only.\n",
+        ROBOT_MOTION_TEST,
+        (UINT)ROBOT_MOTION_TEST_BOOT_MS);
     tk_dly_tsk(ROBOT_MOTION_TEST_BOOT_MS);
     for (test = first; test <= last; test++)
     {
@@ -201,13 +222,17 @@ static void b2_motion_test_task(INT stacd, void *exinf)
 }
 #endif
 
-ER b2_motion_test_start(void)
+ER
+b2_motion_test_start (void)
 {
 #if ROBOT_MOTION_TEST
-    ID task = app_start_task((FP)b2_motion_test_task, 13,
-        TP_PRC2, "b2_motion_test_task");
+    ID task = app_start_task(
+        (FP)b2_motion_test_task, 13, TP_PRC2, "b2_motion_test_task");
     return task < E_OK ? task : E_OK;
 #else
     return E_OK;
 #endif
 }
+
+/*** end of file ***/
+

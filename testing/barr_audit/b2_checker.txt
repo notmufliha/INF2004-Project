@@ -1,0 +1,80 @@
+Exit code: 1
+b2_motor.c:160: line exceeds 80 columns
+b2_motor.c:220: line exceeds 80 columns
+b2_motor.c:160: missing control block braces
+b2_motor.c:220: missing control block braces
+encoder_control.c:13: line exceeds 80 columns
+encoder_control.h:37: line exceeds 80 columns
+encoder_numeric.h:30: line exceeds 80 columns
+motion_command.c:252: line exceeds 80 columns
+motion_command.c:323: line exceeds 80 columns
+motion_command.c:102: missing control block braces
+motion_self_test.c:119: line exceeds 80 columns
+pid_control.c:268: line exceeds 80 columns
+pid_control.c:384: line exceeds 80 columns
+pid_control.c:471: line exceeds 80 columns
+pid_control.c:480: line exceeds 80 columns
+pid_control.c:499: line exceeds 80 columns
+pid_control.c:501: line exceeds 80 columns
+pid_control.c:503: line exceeds 80 columns
+pid_control.c:564: line exceeds 80 columns
+pid_control.c:694: line exceeds 80 columns
+pid_control.c:698: line exceeds 80 columns
+pid_control.c:703: line exceeds 80 columns
+pid_control.c:704: line exceeds 80 columns
+pid_control.c:705: line exceeds 80 columns
+pid_control.c:706: line exceeds 80 columns
+pid_control.c:714: line exceeds 80 columns
+pid_control.c:717: line exceeds 80 columns
+pid_control.c:721: line exceeds 80 columns
+pid_control.c:725: line exceeds 80 columns
+pid_control.c:726: line exceeds 80 columns
+pid_control.c:727: line exceeds 80 columns
+pid_control.c:732: line exceeds 80 columns
+pid_control.c:733: line exceeds 80 columns
+pid_control.c:758: line exceeds 80 columns
+pid_control.c:759: line exceeds 80 columns
+pid_control.c:762: line exceeds 80 columns
+pid_control.c:763: line exceeds 80 columns
+pid_control.c:856: line exceeds 80 columns
+pid_control.c:857: line exceeds 80 columns
+pid_control.c:858: line exceeds 80 columns
+pid_control.c:888: line exceeds 80 columns
+pid_control.c:383: brace must start on the next line
+pid_control.c:451: missing control block braces
+pid_control.c:475: brace must start on the next line
+pid_control.c:498: brace must start on the next line
+pid_control.c:500: missing control block braces
+pid_control.c:501: missing control block braces
+pid_control.c:503: missing control block braces
+pid_control.c:702: brace must start on the next line
+pid_control.c:703: missing control block braces
+pid_control.c:705: missing control block braces
+pid_control.c:711: brace must start on the next line
+pid_control.c:713: missing control block braces
+pid_control.c:716: missing control block braces
+pid_control.c:720: brace must start on the next line
+pid_control.c:728: missing control block braces
+pid_control.c:729: missing control block braces
+pid_control.c:730: missing control block braces
+pid_control.c:731: missing control block braces
+pid_control.c:732: missing control block braces
+pid_control.c:733: missing control block braces
+pid_control.c:756: brace must start on the next line
+pid_control.c:757: brace must start on the next line
+pid_control.c:758: missing control block braces
+pid_control.c:759: missing control block braces
+pid_control.c:761: brace must start on the next line
+pid_control.c:762: missing control block braces
+pid_control.c:763: missing control block braces
+pid_control.c:770: brace must start on the next line
+pid_control.c:773: brace must start on the next line
+pid_control.c:775: missing control block braces
+pid_control.c:777: brace must start on the next line
+pid_control.c:779: missing control block braces
+pid_control.c:855: brace must start on the next line
+pid_control.c:857: missing control block braces
+pid_control.c:858: missing control block braces
+pid_control.h:40: missing control block braces
+pid_control.h:44: missing control block braces
+task_producer.c:8: line exceeds 80 columns

@@ -30,7 +30,8 @@
 static ID gh_cyc_pid = 0;
 
 /* Network/telemetry locks never run in the 10 ms motor loop. */
-static void b2_telemetry_task(INT stacd, void *exinf)
+static void
+b2_telemetry_task (INT stacd, void * exinf)
 {
     motion_status_snapshot_t snapshot;
     (void)stacd;
@@ -44,6 +45,7 @@ static void b2_telemetry_task(INT stacd, void *exinf)
         tk_dly_tsk(100);
     }
 }
+
 /* Original subsystem resources. */
 
 #if ROBOT_WHEELS_UP_MOTOR_TEST
@@ -57,7 +59,8 @@ static void b2_telemetry_task(INT stacd, void *exinf)
  * This test bypasses normal obstacle-clearance authorization.
  * Never use it with wheels touching the floor.
  */
-static void b2_wheels_up_test_task(INT stacd, void *exinf)
+static void
+b2_wheels_up_test_task (INT stacd, void * exinf)
 {
     (void)stacd;
     (void)exinf;
@@ -101,12 +104,13 @@ EXPORT ID gh_sem_slots;
 EXPORT ID gh_mpf_samples;
 
 /** @brief Initialize resources, motors, encoders, commands and PI timing. */
-EXPORT ER subsystem2_init(void)
+EXPORT ER
+subsystem2_init (void)
 {
     T_CSEM csem = {0};
     T_CMPF cmpf = {0};
     T_CCYC ccyc = {0};
-    ER err;
+    ER     err;
     err = b2_integration_init();
     if (err != E_OK)
     {
@@ -123,9 +127,9 @@ EXPORT ER subsystem2_init(void)
         return (gh_sem_slots);
     }
     /* Original fixed-size memory pool. */
-    cmpf.mpfatr = TA_TFIFO | TA_RNG3;
-    cmpf.mpfcnt = S2_POOL_COUNT;
-    cmpf.blfsz  = sizeof(subsystem2_sample_msg_t);
+    cmpf.mpfatr    = TA_TFIFO | TA_RNG3;
+    cmpf.mpfcnt    = S2_POOL_COUNT;
+    cmpf.blfsz     = sizeof(subsystem2_sample_msg_t);
     gh_mpf_samples = tk_cre_mpf(&cmpf);
 
     if (gh_mpf_samples < E_OK)
@@ -171,7 +175,7 @@ EXPORT ER subsystem2_init(void)
     ccyc.cychdr = (FP)pid_cyclic_handler;
     ccyc.cyctim = 10;
     ccyc.cycphs = 10;
-    gh_cyc_pid = tk_cre_cyc(&ccyc);
+    gh_cyc_pid  = tk_cre_cyc(&ccyc);
 
     if (gh_cyc_pid < E_OK)
     {
@@ -182,53 +186,46 @@ EXPORT ER subsystem2_init(void)
 }
 
 /** @brief Start subsystem tasks and the PI cyclic handler. */
-EXPORT ER subsystem2_start(void)
+EXPORT ER
+subsystem2_start (void)
 {
     ID h_task;
     ER err;
-    #if ROBOT_WHEELS_UP_MOTOR_TEST
-        /* Bench task owns PWM; the PI controller is not started. */
+#if ROBOT_WHEELS_UP_MOTOR_TEST
+    /* Bench task owns PWM; the PI controller is not started. */
+    motor_stop();
+
+    h_task = app_start_task((FP)b2_wheels_up_test_task,
+        S2_PRI_PRODUCER,
+        TP_PRC2,
+        "b2_wheels_up_test_task");
+
+    if (h_task < E_OK)
+    {
         motor_stop();
+        return (h_task);
+    }
 
-        h_task = app_start_task(
-            (FP)b2_wheels_up_test_task,
-            S2_PRI_PRODUCER,
-            TP_PRC2,
-            "b2_wheels_up_test_task"
-        );
+    return (E_OK);
+#endif
+#if !ROBOT_MODE
+    /* Teaching-demo producer is excluded from real robot mode. */
+    h_task = app_start_task(subsystem2_producer_task,
+        S2_PRI_PRODUCER,
+        TP_PRC2,
+        "subsystem2_producer_task");
 
-        if (h_task < E_OK)
-        {
-            motor_stop();
-            return (h_task);
-        }
-
-        return (E_OK);
-    #endif
-    #if !ROBOT_MODE
-        /* Teaching-demo producer is excluded from real robot mode. */
-        h_task = app_start_task(
-            subsystem2_producer_task,
-            S2_PRI_PRODUCER,
-            TP_PRC2,
-            "subsystem2_producer_task"
-        );
-
-        if (h_task < E_OK)
-        {
-            b2_request_stop();
-            b2_safety_acknowledge_stop();
-            return (h_task);
-        }
-    #endif
-    #if ROBOT_ENCODER_DIAGNOSTICS
+    if (h_task < E_OK)
+    {
+        b2_request_stop();
+        b2_safety_acknowledge_stop();
+        return (h_task);
+    }
+#endif
+#if ROBOT_ENCODER_DIAGNOSTICS
     /* Optional calibration tasks, disabled during ordinary operation. */
     h_task = app_start_task(
-        (FP)encoder_speed_task,
-        S2_PRI_PRODUCER,
-        TP_PRC2,
-        "encoder_speed_task"
-    );
+        (FP)encoder_speed_task, S2_PRI_PRODUCER, TP_PRC2, "encoder_speed_task");
 
     if (h_task < E_OK)
     {
@@ -237,11 +234,7 @@ EXPORT ER subsystem2_start(void)
         return (h_task);
     }
     h_task = app_start_task(
-        (FP)encoder_test_task,
-        S2_PRI_PRODUCER,
-        TP_PRC2,
-        "encoder_test_task"
-    );
+        (FP)encoder_test_task, S2_PRI_PRODUCER, TP_PRC2, "encoder_test_task");
 
     if (h_task < E_OK)
     {
@@ -249,14 +242,10 @@ EXPORT ER subsystem2_start(void)
         b2_safety_acknowledge_stop();
         return (h_task);
     }
-    #endif
+#endif
     /* PI controller task. */
     gh_pid_task = app_start_task(
-        (FP)pid_control_task,
-        S2_PRI_CONTROL,
-        TP_PRC2,
-        "pid_control_task"
-    );
+        (FP)pid_control_task, S2_PRI_CONTROL, TP_PRC2, "pid_control_task");
 
     if (gh_pid_task < E_OK)
     {
@@ -264,8 +253,8 @@ EXPORT ER subsystem2_start(void)
         b2_safety_acknowledge_stop();
         return (gh_pid_task);
     }
-    h_task = app_start_task((FP)b2_telemetry_task, S2_PRI_PRODUCER,
-        TP_PRC2, "b2_telemetry_task");
+    h_task = app_start_task(
+        (FP)b2_telemetry_task, S2_PRI_PRODUCER, TP_PRC2, "b2_telemetry_task");
     if (h_task < E_OK)
     {
         b2_request_stop();
@@ -281,3 +270,6 @@ EXPORT ER subsystem2_start(void)
     }
     return b2_motion_test_start();
 }
+
+/*** end of file ***/
+

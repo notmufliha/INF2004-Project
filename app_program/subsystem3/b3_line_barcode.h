@@ -44,14 +44,15 @@
 #define B3_LINE_FLOOR_TRACK (0) /* use current measured endpoints */
 #endif
 /* init, lo, hi, band, tape, margin, black_min, span */
-#define B3_LINE_GP26_FLOOR_CFG { 250U, 150U, 330U, 45U, 340U, 25U, 375U, 90U }
-#define B3_LINE_GP27_FLOOR_CFG { 170U,  90U, 280U, 70U, 450U, 40U, 700U, 400U }
+#define B3_LINE_GP26_FLOOR_CFG {250U, 150U, 330U, 45U, 340U, 25U, 375U, 90U}
+#define B3_LINE_GP27_FLOOR_CFG {170U, 90U, 280U, 70U, 450U, 40U, 700U, 400U}
 /* 1: once a sensor has seen both floor and tape (slide the car across the
  * line once after power-up), normalise with its own learned white/black
  * instead of the fixed endpoints above.  Needed whenever the sensors are
  * moved: GP26's fixed span is only ~100 counts, so a few counts of change
  * in its floor reading made it look "on the line" all the time.  Readings
- * darker than black + 2 * (black - white) + 100 (car lifted) are never learned. */
+ * darker than black + 2 * (black - white) + 100 (car lifted) are never learned.
+ */
 #ifndef B3_LINE_LEARN_RANGE
 #define B3_LINE_LEARN_RANGE (0) /* off: fixed endpoints */
 #endif
@@ -70,12 +71,12 @@
 #define B3_LINE_ACTIVE_MIN (201U)
 #define B3_LINE_NOISE_MAX (50U)
 #define B3_LINE_ACTIVE_MAX (1000U)
-#define B3_LINE_LEFT_ACTIVE(norm) \
-	((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN && \
-	 (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
-#define B3_LINE_CENTRE_ACTIVE(norm) \
-	((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN && \
-	 (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
+#define B3_LINE_LEFT_ACTIVE(norm)                                              \
+    ((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN &&                                 \
+        (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
+#define B3_LINE_CENTRE_ACTIVE(norm)                                            \
+    ((uint16_t)(norm) >= B3_LINE_ACTIVE_MIN &&                                 \
+        (uint16_t)(norm) <= B3_LINE_ACTIVE_MAX)
 /* Line position (Pololu weighted average): 0 = under the robot's LEFT
  * sensor (ADC "centre"), 1000 = under its RIGHT sensor (ADC "left"),
  * B3_LINE_POS_CENTRE = centred.  Off the line it holds the last side. */
@@ -102,37 +103,40 @@
  * a junction; treating it as one forced the car straight on every curve. */
 #define B3_LINE_JUNCTION_MIN (800U)
 #define B3_LINE_JUNCTION_BALANCE (150)
-#define B3_LINE_IS_JUNCTION(left, centre) \
-	((uint16_t)(left) >= B3_LINE_JUNCTION_MIN && \
-	 (uint16_t)(centre) >= B3_LINE_JUNCTION_MIN && \
-	 (uint16_t)(left) <= B3_LINE_ACTIVE_MAX && \
-	 (uint16_t)(centre) <= B3_LINE_ACTIVE_MAX && \
-	 ((int)(left) - (int)(centre)) <= B3_LINE_JUNCTION_BALANCE && \
-	 ((int)(centre) - (int)(left)) <= B3_LINE_JUNCTION_BALANCE)
+#define B3_LINE_IS_JUNCTION(left, centre)                                      \
+    ((uint16_t)(left) >= B3_LINE_JUNCTION_MIN &&                               \
+        (uint16_t)(centre) >= B3_LINE_JUNCTION_MIN &&                          \
+        (uint16_t)(left) <= B3_LINE_ACTIVE_MAX &&                              \
+        (uint16_t)(centre) <= B3_LINE_ACTIVE_MAX &&                            \
+        ((int)(left) - (int)(centre)) <= B3_LINE_JUNCTION_BALANCE &&           \
+        ((int)(centre) - (int)(left)) <= B3_LINE_JUNCTION_BALANCE)
 
 /* Barcode letter code, as on the wire (v2): 0 = none, A..Z = 1..26. */
-typedef enum {
-	B3_BARCODE_NONE = 0,
-	B3_BARCODE_A = 1,
-	B3_BARCODE_Z = 26
+typedef enum
+{
+    B3_BARCODE_NONE = 0,
+    B3_BARCODE_A    = 1,
+    B3_BARCODE_Z    = 26
 } B3_BARCODE;
+
 #define B3_BARCODE_CODE(letter) ((uint8_t)((letter) - 'A' + 1))
 
 /* Action for a barcode (values = comm_nav_cmd_t, 4 bits on the wire).
  * LEFT..UTURN, STOP, SPIN and FINISH wait for the next crossing; SLOW and
  * NORMAL change the following speed as soon as the barcode is read. */
-typedef enum {
-	B3_NAV_NONE = 0,
-	B3_NAV_LEFT,
-	B3_NAV_RIGHT,
-	B3_NAV_STRAIGHT,
-	B3_NAV_UTURN,
-	B3_NAV_STOP,    /* stop 3 s at the crossing, then go straight */
-	B3_NAV_SLOW,    /* half following speed until NORMAL          */
-	B3_NAV_NORMAL,  /* normal following speed                     */
-	B3_NAV_SPIN,    /* 360-degree spin at the crossing, straight  */
-	B3_NAV_FINISH,  /* stop at the crossing and end the run       */
-	B3_NAV_COUNT
+typedef enum
+{
+    B3_NAV_NONE = 0,
+    B3_NAV_LEFT,
+    B3_NAV_RIGHT,
+    B3_NAV_STRAIGHT,
+    B3_NAV_UTURN,
+    B3_NAV_STOP,   /* stop 3 s at the crossing, then go straight */
+    B3_NAV_SLOW,   /* half following speed until NORMAL          */
+    B3_NAV_NORMAL, /* normal following speed                     */
+    B3_NAV_SPIN,   /* 360-degree spin at the crossing, straight  */
+    B3_NAV_FINISH, /* stop at the crossing and end the run       */
+    B3_NAV_COUNT
 } B3_NAV_COMMAND;
 
 /**
@@ -142,17 +146,18 @@ typedef enum {
  * this project. Its packed 37-bit payload occupies 5 bytes on this toolchain;
  * allocation order is compiler-specific, so this is not a wire-format type.
  */
-typedef struct __attribute__((__packed__)) {
-	unsigned int ir_left : 12;
-	unsigned int ir_centre : 12;
-	unsigned int ir_right : 1;
-	unsigned int line_flags : 3;
-	unsigned int last_barcode : 5;
-	unsigned int last_nav_command : 4;
+typedef struct __attribute__((__packed__))
+{
+    unsigned int ir_left : 12;
+    unsigned int ir_centre : 12;
+    unsigned int ir_right : 1;
+    unsigned int line_flags : 3;
+    unsigned int last_barcode : 5;
+    unsigned int last_nav_command : 4;
 } B3_STATE;
 
 _Static_assert(sizeof(B3_STATE) == 5U,
-	       "B3_STATE must occupy five bytes on the RP2040 toolchain");
+    "B3_STATE must occupy five bytes on the RP2040 toolchain");
 
 /* Message buffer owned by B3; each message is one B3_NAV_COMMAND byte. */
 IMPORT ID mbf_nav_cmd;
@@ -162,10 +167,10 @@ IMPORT ID mtx_b3_state;
  * @brief Create the ADC handle, navigation queue, and state mutex.
  * @return E_OK on success or the first μT-Kernel error.
  */
-IMPORT ER b3_init(void);
+IMPORT ER b3_init (void);
 
 /** Latest raw ADC readings of the two line sensors (GP26, GP27). */
-IMPORT void b3_line_raw(uint16_t *gp26, uint16_t *gp27);
+IMPORT void b3_line_raw (uint16_t * gp26, uint16_t * gp27);
 
 /**
  * @brief Configure GP28 and start the line-sampling and barcode tasks.
@@ -174,37 +179,40 @@ IMPORT void b3_line_raw(uint16_t *gp26, uint16_t *gp27);
  * Call from core 0 after b3_init(). The navigation consumer must receive
  * one uint8_t message from mbf_nav_cmd for each decoded command.
  */
-IMPORT ER b3_start(void);
+IMPORT ER b3_start (void);
 
 /**
  * @brief Copy the packed B3 state while holding its mutex.
  * @param state Destination for the snapshot.
  * @return E_OK on success, E_PAR for a null pointer, otherwise a kernel error.
  */
-IMPORT ER b3_get_state(B3_STATE *state);
+IMPORT ER b3_get_state (B3_STATE * state);
 /* Timestamp is updated only after both ADC reads succeed. E_OBJ until then. */
-IMPORT ER b3_get_timed_state(B3_STATE *state, uint32_t *sample_ms);
+IMPORT ER b3_get_timed_state (B3_STATE * state, uint32_t * sample_ms);
 /* True while the barcode sensor is crossing bars (an edge within the last
  * B3_BARCODE_ACTIVE_US); the controller then holds a slow, steady speed so
  * bar widths are measured cleanly. */
 #define B3_BARCODE_ACTIVE_US (400000U)
-IMPORT bool b3_barcode_active(void);
+IMPORT bool b3_barcode_active (void);
 /* Count of rejected barcode scans (bars crossed, no valid *X*); it only
  * increases.  The controller backs up and re-reads when it changes. */
-IMPORT uint16_t b3_barcode_rejects(void);
+IMPORT uint16_t b3_barcode_rejects (void);
 
 /**
  * @brief Sample the GP26/GP27 ADC channels and publish line telemetry.
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
-IMPORT void b3_line_task(INT stacd, void *exinf);
+IMPORT void b3_line_task (INT stacd, void * exinf);
 
 /**
  * @brief Drain timestamped GP28 edges and decode Code 39 outside the ISR.
  * @param stacd μT-Kernel task start code (unused).
  * @param exinf μT-Kernel extended information (unused).
  */
-IMPORT void b3_barcode_task(INT stacd, void *exinf);
+IMPORT void b3_barcode_task (INT stacd, void * exinf);
 
 #endif /* B3_LINE_BARCODE_H */
+
+/*** end of file ***/
+

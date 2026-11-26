@@ -10,8 +10,8 @@ void imu_odom_capture (imu_data_t * p_data);
 /* Called after a successful acceleration burst, before decoding validity is
  * known. Bound the burst-plus-encoder interval and retain burst-end timestamp.
  */
-void imu_odom_pair (imu_data_t * p_data, uint32_t begin_ms, uint32_t end_ms,
-                    bool b_time_valid);
+void imu_odom_pair (
+    imu_data_t * p_data, uint32_t begin_ms, uint32_t end_ms, bool b_time_valid);
 
 #endif
 

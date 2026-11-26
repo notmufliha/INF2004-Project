@@ -67,53 +67,53 @@
 typedef struct
 {
     motion_stored_command_t command;
-    UINT status : 3;
-    UINT fault : 4;
-    INT left_now : 24;
-    INT right_now : 24;
-    INT left_previous : 24;
-    INT right_previous : 24;
-    INT left_start : 24;
-    INT right_start : 24;
-    encoder_count_t left_history[PID_WINDOW_SIZE + 1];
-    encoder_count_t right_history[PID_WINDOW_SIZE + 1];
-    int64_t time_history[PID_WINDOW_SIZE + 1];
-    UINT sample_count : 4;
-    UINT history_index : 4;
-    int64_t now_ms;
-    int64_t previous_ms;
-    int64_t started_ms;
-    int64_t refreshed_ms;
-    int64_t left_progress_ms;
-    int64_t right_progress_ms;
-    int64_t quiet_since_ms;
-    int64_t settling_since_ms;
-    UINT duration_ms : 16;
-    float left_mm;
-    float right_mm;
-    float total_mm;
-    float left_speed_cps;
-    float right_speed_cps;
-    float left_integral;
-    float right_integral;
-    INT left_sign : 2;
-    INT right_sign : 2;
-    UINT left_applied_pwm : 6;
-    UINT right_applied_pwm : 6;
-    float left_profile_speed, right_profile_speed;
-    bool settling : 1;
-    bool stopped : 1;
-    uint32_t generation;
-    uint32_t control_interval_ms;
-    uint32_t maximum_interval_ms;
-    UW left_invalid_start;
-    UW right_invalid_start;
-    int64_t left_silent_ms;   /* encoder silent since (valid if flag set) */
+    UINT                    status : 3;
+    UINT                    fault : 4;
+    INT                     left_now : 24;
+    INT                     right_now : 24;
+    INT                     left_previous : 24;
+    INT                     right_previous : 24;
+    INT                     left_start : 24;
+    INT                     right_start : 24;
+    encoder_count_t         left_history[PID_WINDOW_SIZE + 1];
+    encoder_count_t         right_history[PID_WINDOW_SIZE + 1];
+    int64_t                 time_history[PID_WINDOW_SIZE + 1];
+    UINT                    sample_count : 4;
+    UINT                    history_index : 4;
+    int64_t                 now_ms;
+    int64_t                 previous_ms;
+    int64_t                 started_ms;
+    int64_t                 refreshed_ms;
+    int64_t                 left_progress_ms;
+    int64_t                 right_progress_ms;
+    int64_t                 quiet_since_ms;
+    int64_t                 settling_since_ms;
+    UINT                    duration_ms : 16;
+    float                   left_mm;
+    float                   right_mm;
+    float                   total_mm;
+    float                   left_speed_cps;
+    float                   right_speed_cps;
+    float                   left_integral;
+    float                   right_integral;
+    INT                     left_sign : 2;
+    INT                     right_sign : 2;
+    UINT                    left_applied_pwm : 6;
+    UINT                    right_applied_pwm : 6;
+    float                   left_profile_speed, right_profile_speed;
+    bool                    settling : 1;
+    bool                    stopped : 1;
+    uint32_t                generation;
+    uint32_t                control_interval_ms;
+    uint32_t                maximum_interval_ms;
+    UW                      left_invalid_start;
+    UW                      right_invalid_start;
+    int64_t left_silent_ms; /* encoder silent since (valid if flag set) */
     int64_t right_silent_ms;
-    bool left_silent;
-    bool right_silent;
-    bool left_open_loop;      /* reported, for the log */
-    bool right_open_loop;
+    bool    left_silent;
+    bool    right_silent;
+    bool    left_open_loop; /* reported, for the log */
+    bool    right_open_loop;
     int64_t encoder_window_ms;
 #if B2_SPEED_DIAGNOSTICS
     uint32_t speed_log_ms;
@@ -122,72 +122,76 @@ typedef struct
 
 ID gh_pid_task = 0;
 
-static void pid_read_counts(pid_state_t *state)
+static void
+pid_read_counts (pid_state_t * state)
 {
     INT left;
     INT right;
     encoder_get_counts(&left, &right);
-    state->left_now = left;
+    state->left_now  = left;
     state->right_now = right;
 }
 
-static float pid_mm_per_count(bool left)
+static float
+pid_mm_per_count (bool left)
 {
     return PID_PI * ENC_WHEEL_DIAMETER_CM * 10.0f /
         (left ? ENC_LEFT_COUNTS_PER_REV : ENC_RIGHT_COUNTS_PER_REV);
 }
 
-static float pid_abs(float value)
+static float
+pid_abs (float value)
 {
     return (value < 0.0f) ? -value : value;
 }
 
-static bool pid_movement(const pid_state_t *state)
+static bool
+pid_movement (const pid_state_t * state)
 {
     return state->command.type != MOTION_CMD_STOP &&
         state->status == MOTION_STATUS_RUNNING;
 }
 
-static void pid_publish(const pid_state_t *state)
+static void
+pid_publish (const pid_state_t * state)
 {
     motion_status_snapshot_t snapshot = {0};
-    snapshot.command_type = state->command.type;
-    snapshot.command_id = state->command.command_id;
-    snapshot.status = state->status;
-    snapshot.fault = state->fault;
-    snapshot.direction = state->command.direction;
-    snapshot.turn_direction = state->command.turn_direction;
-    snapshot.left_encoder_counts = state->left_now;
-    snapshot.right_encoder_counts = state->right_now;
-    snapshot.left_speed_cps =
-        encoder_speed_publish(state->left_speed_cps);
-    snapshot.right_speed_cps =
-        encoder_speed_publish(state->right_speed_cps);
-    snapshot.left_distance_mm = state->left_mm;
-    snapshot.right_distance_mm = state->right_mm;
-    snapshot.total_distance_mm = state->total_mm;
+    snapshot.command_type             = state->command.type;
+    snapshot.command_id               = state->command.command_id;
+    snapshot.status                   = state->status;
+    snapshot.fault                    = state->fault;
+    snapshot.direction                = state->command.direction;
+    snapshot.turn_direction           = state->command.turn_direction;
+    snapshot.left_encoder_counts      = state->left_now;
+    snapshot.right_encoder_counts     = state->right_now;
+    snapshot.left_speed_cps     = encoder_speed_publish(state->left_speed_cps);
+    snapshot.right_speed_cps    = encoder_speed_publish(state->right_speed_cps);
+    snapshot.left_distance_mm   = state->left_mm;
+    snapshot.right_distance_mm  = state->right_mm;
+    snapshot.total_distance_mm  = state->total_mm;
     snapshot.physically_stopped = state->stopped;
-    snapshot.sample_time_ms = (uint32_t)state->now_ms;
+    snapshot.sample_time_ms     = (uint32_t)state->now_ms;
     snapshot.control_interval_ms = state->control_interval_ms;
     snapshot.maximum_interval_ms = state->maximum_interval_ms;
-    snapshot.safety_generation = b2_safety_stop_generation();
+    snapshot.safety_generation   = b2_safety_stop_generation();
     (void)motion_update_status(&snapshot);
 }
 
-static void pid_reset_pi(pid_state_t *state)
+static void
+pid_reset_pi (pid_state_t * state)
 {
-    state->left_integral = 0.0f;
+    state->left_integral  = 0.0f;
     state->right_integral = 0.0f;
-    state->sample_count = 0u;
-    state->history_index = 0u;
+    state->sample_count   = 0u;
+    state->history_index  = 0u;
 }
 
-static void pid_finish(pid_state_t *state, motion_status_t status,
-    motion_fault_t fault)
+static void
+pid_finish (pid_state_t * state, motion_status_t status, motion_fault_t fault)
 {
     b2_safety_force_stop();
     state->status = status;
-    state->fault = fault;
+    state->fault  = fault;
     b2_integration_fault(fault);
     state->settling = false;
     pid_reset_pi(state);
@@ -195,9 +199,10 @@ static void pid_finish(pid_state_t *state, motion_status_t status,
 }
 
 /* Snapshot counters once per cycle. Widen before subtraction. */
-static ER pid_sample(pid_state_t *state)
+static ER
+pid_sample (pid_state_t * state)
 {
-    SYSTIM time;
+    SYSTIM  time;
     int64_t left_delta;
     int64_t right_delta;
     int64_t interval;
@@ -206,7 +211,7 @@ static ER pid_sample(pid_state_t *state)
         return E_SYS;
     }
     state->now_ms = (int64_t)time.hi * INT64_C(4294967296) + time.lo;
-    interval = state->now_ms - state->previous_ms;
+    interval      = state->now_ms - state->previous_ms;
     state->control_interval_ms = interval > 0 ? (uint32_t)interval : 0u;
     if (state->control_interval_ms > state->maximum_interval_ms)
     {
@@ -217,12 +222,13 @@ static ER pid_sample(pid_state_t *state)
         return E_SYS;
     }
     pid_read_counts(state);
-    left_delta = encoder_count_delta(state->left_now, state->left_previous);
+    left_delta  = encoder_count_delta(state->left_now, state->left_previous);
     right_delta = encoder_count_delta(state->right_now, state->right_previous);
-    state->total_mm += (pid_abs((float)left_delta *
-        pid_mm_per_count(true)) + pid_abs((float)right_delta *
-        pid_mm_per_count(false))) * 0.5f;
-    state->left_speed_cps = (float)left_delta * 1000.0f / interval;
+    state->total_mm +=
+        (pid_abs((float)left_delta * pid_mm_per_count(true)) +
+            pid_abs((float)right_delta * pid_mm_per_count(false))) *
+        0.5f;
+    state->left_speed_cps  = (float)left_delta * 1000.0f / interval;
     state->right_speed_cps = (float)right_delta * 1000.0f / interval;
     if (left_delta != 0 || right_delta != 0)
     {
@@ -235,27 +241,29 @@ static ER pid_sample(pid_state_t *state)
     return E_OK;
 }
 
-static void pid_set_directions(pid_state_t *state)
+static void
+pid_set_directions (pid_state_t * state)
 {
-    state->left_sign = state->command.direction == MOTION_DIR_REVERSE
-        ? -1 : 1;
+    state->left_sign  = state->command.direction == MOTION_DIR_REVERSE ? -1 : 1;
     state->right_sign = state->left_sign;
     if (state->command.type == MOTION_CMD_TURN)
     {
-        state->left_sign = state->command.turn_direction ==
-            MOTION_TURN_LEFT ? -1 : 1;
+        state->left_sign =
+            state->command.turn_direction == MOTION_TURN_LEFT ? -1 : 1;
         state->right_sign = -state->left_sign;
     }
 }
 
-static float pid_turn_track(motion_turn_direction_t direction)
+static float
+pid_turn_track (motion_turn_direction_t direction)
 {
-    float scale = direction == MOTION_TURN_LEFT ?
-        ENC_TURN_LEFT_SCALE : ENC_TURN_RIGHT_SCALE;
+    float scale = direction == MOTION_TURN_LEFT ? ENC_TURN_LEFT_SCALE
+                                                : ENC_TURN_RIGHT_SCALE;
     return ENC_WHEEL_TRACK_CM * scale;
 }
 
-static int64_t pid_deadline(const motion_command_t *command)
+static int64_t
+pid_deadline (const motion_command_t * command)
 {
     float counts = (float)command->target_distance_counts;
     float milliseconds;
@@ -265,8 +273,9 @@ static int64_t pid_deadline(const motion_command_t *command)
     }
     if (command->type == MOTION_CMD_TURN)
     {
-        counts = pid_turn_track(command->turn_direction) * command->target_angle_deg *
-            ENC_LEFT_COUNTS_PER_REV / (360.0f * ENC_WHEEL_DIAMETER_CM);
+        counts = pid_turn_track(command->turn_direction) *
+            command->target_angle_deg * ENC_LEFT_COUNTS_PER_REV /
+            (360.0f * ENC_WHEEL_DIAMETER_CM);
     }
     if (command->target_speed_cps <= 0)
     {
@@ -280,44 +289,46 @@ static int64_t pid_deadline(const motion_command_t *command)
     return (int64_t)milliseconds;
 }
 
-static void pid_begin(pid_state_t *state, const motion_command_t *command)
+static void
+pid_begin (pid_state_t * state, const motion_command_t * command)
 {
     if (state->status == MOTION_STATUS_RUNNING)
     {
         pid_finish(state, MOTION_STATUS_CANCELLED, MOTION_FAULT_NONE);
     }
     b2_safety_force_stop();
-    state->command = motion_pack_command(command);
-    state->generation = command->safety_generation;
-    state->status = MOTION_STATUS_RUNNING;
-    state->fault = MOTION_FAULT_NONE;
-    state->left_start = state->left_now;
+    state->command     = motion_pack_command(command);
+    state->generation  = command->safety_generation;
+    state->status      = MOTION_STATUS_RUNNING;
+    state->fault       = MOTION_FAULT_NONE;
+    state->left_start  = state->left_now;
     state->right_start = state->right_now;
-    encoder_get_invalid_counts(&state->left_invalid_start,
-        &state->right_invalid_start);
+    encoder_get_invalid_counts(
+        &state->left_invalid_start, &state->right_invalid_start);
     state->encoder_window_ms = state->now_ms;
-    state->left_mm = 0.0f;
-    state->right_mm = 0.0f;
-    state->started_ms = state->now_ms;
-    state->duration_ms = pid_deadline(command);
-    state->refreshed_ms = state->now_ms;
-    state->left_progress_ms = state->now_ms;
+    state->left_mm           = 0.0f;
+    state->right_mm          = 0.0f;
+    state->started_ms        = state->now_ms;
+    state->duration_ms       = pid_deadline(command);
+    state->refreshed_ms      = state->now_ms;
+    state->left_progress_ms  = state->now_ms;
     state->right_progress_ms = state->now_ms;
     state->left_applied_pwm = state->right_applied_pwm = 0;
     state->left_profile_speed = state->right_profile_speed = 0.0f;
     state->left_silent = state->right_silent = false;
     state->left_open_loop = state->right_open_loop = false;
-    state->settling = command->type == MOTION_CMD_STOP;
+    state->settling          = command->type == MOTION_CMD_STOP;
     state->settling_since_ms = state->now_ms;
     pid_set_directions(state);
     pid_reset_pi(state);
 }
 
-static void pid_accept(pid_state_t *state)
+static void
+pid_accept (pid_state_t * state)
 {
     motion_command_t command;
-    ER error = motion_receive_command(&command);
-    bool refresh;
+    ER               error = motion_receive_command(&command);
+    bool             refresh;
     if (error == E_TMOUT)
     {
         return;
@@ -329,7 +340,7 @@ static void pid_accept(pid_state_t *state)
     }
     if (command.type != MOTION_CMD_STOP &&
         (command.safety_generation != b2_safety_stop_generation() ||
-         !b2_safety_motion_allowed()))
+            !b2_safety_motion_allowed()))
     {
         pid_begin(state, &command);
         pid_finish(state, MOTION_STATUS_CANCELLED, MOTION_FAULT_SAFETY);
@@ -351,29 +362,29 @@ static void pid_accept(pid_state_t *state)
     pid_publish(state);
     if (command.steering_permille != state->command.steering_permille)
     {
-        state->left_start = state->left_now;
+        state->left_start  = state->left_now;
         state->right_start = state->right_now;
-        state->left_mm = 0.0f;
-        state->right_mm = 0.0f;
+        state->left_mm     = 0.0f;
+        state->right_mm    = 0.0f;
     }
-    state->command = motion_pack_command(&command);
-    state->status = MOTION_STATUS_RUNNING;
+    state->command      = motion_pack_command(&command);
+    state->status       = MOTION_STATUS_RUNNING;
     state->refreshed_ms = state->now_ms;
 }
 
-static void pid_guard(pid_state_t *state)
+static void
+pid_guard (pid_state_t * state)
 {
     bool interrupted = b2_safety_stop_requested() ||
         (pid_movement(state) &&
-         (state->generation != b2_safety_stop_generation() ||
-          !b2_safety_motion_allowed()));
+            (state->generation != b2_safety_stop_generation() ||
+                !b2_safety_motion_allowed()));
     if (interrupted)
     {
         b2_safety_acknowledge_stop();
         if (pid_movement(state))
         {
-            pid_finish(state, MOTION_STATUS_CANCELLED,
-                MOTION_FAULT_SAFETY);
+            pid_finish(state, MOTION_STATUS_CANCELLED, MOTION_FAULT_SAFETY);
         }
     }
     if (!pid_movement(state))
@@ -381,9 +392,11 @@ static void pid_guard(pid_state_t *state)
         return;
     }
     if (state->command.type == MOTION_CMD_MOVE && state->command.run_ms &&
-        !state->settling && state->now_ms - state->started_ms >= state->command.run_ms) {
+        !state->settling &&
+        state->now_ms - state->started_ms >= state->command.run_ms)
+    {
         b2_safety_force_stop();
-        state->settling = true;
+        state->settling          = true;
         state->settling_since_ms = state->now_ms;
     }
     if (state->command.type == MOTION_CMD_DRIVE &&
@@ -398,9 +411,14 @@ static void pid_guard(pid_state_t *state)
     }
 }
 
-static INT pid_wheel_pwm(float target_cps, float measured_cps,
-    float *integral, float dt, bool stuck, float base_pwm,
-    bool curve_feedback)
+static INT
+pid_wheel_pwm (float target_cps,
+    float            measured_cps,
+    float *          integral,
+    float            dt,
+    bool             stuck,
+    float            base_pwm,
+    bool             curve_feedback)
 {
     float error;
     float output;
@@ -416,7 +434,7 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
     {
         base += PID_KICK_PWM;
     }
-    error = target_cps - measured_cps;
+    error      = target_cps - measured_cps;
     float gain = PID_KI;
     /* Recorded curves show inner wheels at 380-630 cps against 150-165
      * cps targets. Correct sustained overspeed sooner. Also unwind stale
@@ -425,7 +443,7 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
      * limits and anti-windup remain in charge near the target. */
     if (curve_feedback && !stuck &&
         ((error < -100.0f && measured_cps > target_cps * 1.25f) ||
-         (error > 100.0f && *integral < 0.0f)))
+            (error > 100.0f && *integral < 0.0f)))
     {
         gain *= 4.0f;
     }
@@ -441,14 +459,17 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
     output = base + PID_KP * error + candidate;
     /* Conditional integration prevents winding further into saturation. */
     if (!((output > PID_MAX_PWM && error > 0.0f) ||
-          (output < 0.0f && error < 0.0f)))
+            (output < 0.0f && error < 0.0f)))
     {
         *integral = candidate;
     }
     output = base + PID_KP * error + *integral;
     /* Braking can leave a negative integral. Once a wheel is stuck, do not
      * let that stale braking term cancel the static-friction kick. */
-    if (stuck && output < base) output = base;
+    if (stuck && output < base)
+    {
+        output = base;
+    }
     if (output > PID_MAX_PWM)
     {
         return PID_MAX_PWM;
@@ -456,69 +477,98 @@ static INT pid_wheel_pwm(float target_cps, float measured_cps,
     return output > 0.0f ? (INT)(output + 0.5f) : 0;
 }
 
-static motion_profile_t pid_profile(pid_state_t *state)
+static motion_profile_t
+pid_profile (pid_state_t * state)
 {
-    float target = 0.0f;
-    float speed = state->command.target_speed_cps * pid_mm_per_count(true);
-    bool bounded = state->command.type != MOTION_CMD_DRIVE;
+    float target  = 0.0f;
+    float speed   = state->command.target_speed_cps * pid_mm_per_count(true);
+    bool  bounded = state->command.type != MOTION_CMD_DRIVE;
     if (state->command.type == MOTION_CMD_MOVE)
     {
-        target = state->command.target_distance_counts *
-            pid_mm_per_count(true);
+        target = state->command.target_distance_counts * pid_mm_per_count(true);
     }
     else if (state->command.type == MOTION_CMD_TURN)
     {
-        target = PID_PI * pid_turn_track(state->command.turn_direction) * 10.0f *
-            state->command.target_angle_deg / 360.0f;
+        target = PID_PI * pid_turn_track(state->command.turn_direction) *
+            10.0f * state->command.target_angle_deg / 360.0f;
     }
     motion_profile_t profile;
     if (state->command.steering_permille == 0 &&
         (state->command.type == MOTION_CMD_DRIVE ||
-         (state->command.type == MOTION_CMD_MOVE &&
-          state->command.direction == MOTION_DIR_REVERSE))) {
-        float trim = (state->command.direction == MOTION_DIR_REVERSE ?
-            ROBOT_REVERSE_TRIM_PERMILLE : ROBOT_STRAIGHT_TRIM_PERMILLE) / 1000.0f;
-        float left_scale = 1.0f + trim;
+            (state->command.type == MOTION_CMD_MOVE &&
+                state->command.direction == MOTION_DIR_REVERSE)))
+    {
+        float trim = (state->command.direction == MOTION_DIR_REVERSE
+                             ? ROBOT_REVERSE_TRIM_PERMILLE
+                             : ROBOT_STRAIGHT_TRIM_PERMILLE) /
+            1000.0f;
+        float left_scale  = 1.0f + trim;
         float right_scale = 1.0f - trim;
         /* Compare progress against the trimmed wheel ratio. Otherwise the
          * straight-line synchronizer would immediately undo the trim.
          * Feedback still corrects either wheel departing from that ratio. */
-        profile = motion_profile_targets(speed, 0.0f,
+        profile = motion_profile_targets(speed,
+            0.0f,
             state->left_mm * state->left_sign / left_scale,
             state->right_mm * state->right_sign / right_scale,
-            target, bounded, true);
+            target,
+            bounded,
+            true);
         profile.left_speed *= left_scale;
         profile.right_speed *= right_scale;
-    } else {
+    }
+    else
+    {
         profile = motion_profile_targets(speed,
             state->command.steering_permille / 1000.0f,
             state->left_mm * state->left_sign,
-            state->right_mm * state->right_sign, target, bounded, true);
+            state->right_mm * state->right_sign,
+            target,
+            bounded,
+            true);
     }
-    if (bounded) {
-        float minimum = (state->command.type == MOTION_CMD_MOVE ? PID_MOVE_MIN_CPS : PID_BOUNDED_MIN_CPS) * pid_mm_per_count(true);
-        if (minimum > speed) minimum = speed;
-        if (!profile.left_reached && profile.left_speed > 0.0f && profile.left_speed < minimum)
+    if (bounded)
+    {
+        float minimum =
+            (state->command.type == MOTION_CMD_MOVE ? PID_MOVE_MIN_CPS
+                                                    : PID_BOUNDED_MIN_CPS) *
+            pid_mm_per_count(true);
+        if (minimum > speed)
+        {
+            minimum = speed;
+        }
+        if (!profile.left_reached && profile.left_speed > 0.0f &&
+            profile.left_speed < minimum)
+        {
             profile.left_speed = minimum;
-        if (!profile.right_reached && profile.right_speed > 0.0f && profile.right_speed < minimum)
+        }
+        if (!profile.right_reached && profile.right_speed > 0.0f &&
+            profile.right_speed < minimum)
+        {
             profile.right_speed = minimum;
+        }
     }
     return profile;
 }
 
-static bool pid_stalled(pid_state_t *state, motion_profile_t profile)
+static bool
+pid_stalled (pid_state_t * state, motion_profile_t profile)
 {
-    int64_t left_limit = profile.left_speed >= 5.0f ?
-        PID_STALL_MS : PID_SLOW_STALL_MS;
-    int64_t right_limit = profile.right_speed >= 5.0f ?
-        PID_STALL_MS : PID_SLOW_STALL_MS;
+    int64_t left_limit =
+        profile.left_speed >= 5.0f ? PID_STALL_MS : PID_SLOW_STALL_MS;
+    int64_t right_limit =
+        profile.right_speed >= 5.0f ? PID_STALL_MS : PID_SLOW_STALL_MS;
     if (encoder_count_delta(state->left_now, state->left_previous) *
-        state->left_sign > 0 || profile.left_speed <= 0.0f)
+                state->left_sign >
+            0 ||
+        profile.left_speed <= 0.0f)
     {
         state->left_progress_ms = state->now_ms;
     }
     if (encoder_count_delta(state->right_now, state->right_previous) *
-        state->right_sign > 0 || profile.right_speed <= 0.0f)
+                state->right_sign >
+            0 ||
+        profile.right_speed <= 0.0f)
     {
         state->right_progress_ms = state->now_ms;
     }
@@ -531,9 +581,13 @@ static bool pid_stalled(pid_state_t *state, motion_profile_t profile)
  * Measurements are the same windowed feedback used by the PI controller.
  * PWM is requested output: the safety gate may independently force zero.
  */
-static void pid_report_speed(pid_state_t *state, motion_profile_t profile,
-                              float left_cps, float right_cps,
-                              INT left_pwm, INT right_pwm)
+static void
+pid_report_speed (pid_state_t * state,
+    motion_profile_t            profile,
+    float                       left_cps,
+    float                       right_cps,
+    INT                         left_pwm,
+    INT                         right_pwm)
 {
     const uint32_t now_ms = (uint32_t)state->now_ms;
     if (now_ms - state->speed_log_ms < B2_SPEED_LOG_MS)
@@ -544,24 +598,28 @@ static void pid_report_speed(pid_state_t *state, motion_profile_t profile,
     tm_printf((UB *)"[B2-SPEED] t=%u type=%d steer=%d "
                     "targetL=%d targetR=%d measL=%d measR=%d "
                     "pwmReqL=%d pwmReqR=%d dt=%u\n",
-              (UW)state->now_ms, (INT)state->command.type,
-              state->command.steering_permille,
-              (INT)(profile.left_speed / pid_mm_per_count(true)) *
-                  state->left_sign,
-              (INT)(profile.right_speed / pid_mm_per_count(false)) *
-                  state->right_sign,
-              (INT)left_cps, (INT)right_cps,
-              state->left_sign * left_pwm, state->right_sign * right_pwm,
-              (UW)state->control_interval_ms);
+        (UW)state->now_ms,
+        (INT)state->command.type,
+        state->command.steering_permille,
+        (INT)(profile.left_speed / pid_mm_per_count(true)) * state->left_sign,
+        (INT)(profile.right_speed / pid_mm_per_count(false)) *
+            state->right_sign,
+        (INT)left_cps,
+        (INT)right_cps,
+        state->left_sign * left_pwm,
+        state->right_sign * right_pwm,
+        (UW)state->control_interval_ms);
 }
 #endif
 
 /* Forward MOVE uses the same per-wheel feed-forward as straight DRIVE.
  * TURN/reverse retain their stronger base for loaded rotation. */
-static float pid_base_pwm(const pid_state_t *state, bool left)
+static float
+pid_base_pwm (const pid_state_t * state, bool left)
 {
 #if B2_FORWARD_FEEDFORWARD_TRIAL
-    if ((state->command.type == MOTION_CMD_DRIVE || state->command.type == MOTION_CMD_MOVE) &&
+    if ((state->command.type == MOTION_CMD_DRIVE ||
+            state->command.type == MOTION_CMD_MOVE) &&
         state->command.direction == MOTION_DIR_FORWARD)
     {
         return left ? (float)B2_LEFT_BASE_PWM : (float)B2_RIGHT_BASE_PWM;
@@ -575,40 +633,43 @@ static float pid_base_pwm(const pid_state_t *state, bool left)
 
 /* See PID_DROPOUT_*: replace one wheel's PWM with an open-loop value while
  * its encoder is silent and the other wheel is demonstrably moving. */
-static void pid_dropout_wheel(pid_state_t *state, bool left, INT *pwm,
-    float target, float measured, float other_target, float other_measured,
-    INT other_pwm)
+static void
+pid_dropout_wheel (pid_state_t * state,
+    bool                         left,
+    INT *                        pwm,
+    float                        target,
+    float                        measured,
+    float                        other_target,
+    float                        other_measured,
+    INT                          other_pwm)
 {
-    bool *silent = left ? &state->left_silent : &state->right_silent;
-    bool *open_loop = left ? &state->left_open_loop :
-        &state->right_open_loop;
-    int64_t *since = left ? &state->left_silent_ms :
-        &state->right_silent_ms;
-    const char *side = left ? "left" : "right";
-    bool now_silent = (target >= PID_DROPOUT_MIN_CPS) &&
-        (measured < PID_DROPOUT_SILENT_CPS) &&
-        (other_target > 0.0f) &&
+    bool * silent     = left ? &state->left_silent : &state->right_silent;
+    bool * open_loop  = left ? &state->left_open_loop : &state->right_open_loop;
+    int64_t * since   = left ? &state->left_silent_ms : &state->right_silent_ms;
+    const char * side = left ? "left" : "right";
+    bool         now_silent = (target >= PID_DROPOUT_MIN_CPS) &&
+        (measured < PID_DROPOUT_SILENT_CPS) && (other_target > 0.0f) &&
         (other_measured >= PID_DROPOUT_MIN_CPS) &&
         (other_measured >= other_target * 0.5f);
     int64_t elapsed;
-    float correction;
-    float output;
+    float   correction;
+    float   output;
 
     if (!now_silent)
     {
         if (*open_loop)
         {
-            tm_printf((UB *)"[B2] %s encoder counting again: closed loop\n",
-                side);
+            tm_printf(
+                (UB *)"[B2] %s encoder counting again: closed loop\n", side);
         }
-        *silent = false;
+        *silent    = false;
         *open_loop = false;
         return;
     }
     if (!*silent)
     {
         *silent = true;
-        *since = state->now_ms;
+        *since  = state->now_ms;
     }
     elapsed = state->now_ms - *since;
     if ((elapsed < PID_DROPOUT_AFTER_MS) || (elapsed > PID_DROPOUT_MAX_MS))
@@ -619,13 +680,15 @@ static void pid_dropout_wheel(pid_state_t *state, bool left, INT *pwm,
     {
         *open_loop = true;
         tm_printf((UB *)"[B2] %s encoder silent while driven "
-            "(target %d cps, other wheel %d cps): open loop\n",
-            side, (INT)target, (INT)other_measured);
+                        "(target %d cps, other wheel %d cps): open loop\n",
+            side,
+            (INT)target,
+            (INT)other_measured);
     }
     /* The healthy wheel's PI correction, bounded, carries over (load and
      * battery affect both motors alike). */
-    correction = (float)other_pwm - (pid_base_pwm(state, !left) +
-        PID_FF_PWM_PER_CPS * other_target);
+    correction = (float)other_pwm -
+        (pid_base_pwm(state, !left) + PID_FF_PWM_PER_CPS * other_target);
     if (correction < -5.0f)
     {
         correction = -5.0f;
@@ -634,8 +697,8 @@ static void pid_dropout_wheel(pid_state_t *state, bool left, INT *pwm,
     {
         correction = 8.0f;
     }
-    output = pid_base_pwm(state, left) + PID_FF_PWM_PER_CPS * target +
-        correction;
+    output =
+        pid_base_pwm(state, left) + PID_FF_PWM_PER_CPS * target + correction;
     if (output < 0.0f)
     {
         output = 0.0f;
@@ -648,182 +711,312 @@ static void pid_dropout_wheel(pid_state_t *state, bool left, INT *pwm,
     /* No integral wind-up, and not a stall while the dropout is bridged. */
     if (left)
     {
-        state->left_integral = 0.0f;
+        state->left_integral    = 0.0f;
         state->left_progress_ms = state->now_ms;
     }
     else
     {
-        state->right_integral = 0.0f;
+        state->right_integral    = 0.0f;
         state->right_progress_ms = state->now_ms;
     }
 }
 
-static INT pid_turn_breakaway_pwm(int64_t no_progress_ms)
+static INT
+pid_turn_breakaway_pwm (int64_t no_progress_ms)
 {
     int64_t pwm = PID_MAX_PWM +
         (no_progress_ms - PID_KICK_AFTER_MS) / PID_TURN_BREAKAWAY_STEP_MS;
-    return pwm < PID_TURN_BREAKAWAY_MAX_PWM ? (INT)pwm :
-        PID_TURN_BREAKAWAY_MAX_PWM;
+    return pwm < PID_TURN_BREAKAWAY_MAX_PWM ? (INT)pwm
+                                            : PID_TURN_BREAKAWAY_MAX_PWM;
 }
 
-static void pid_apply(pid_state_t *state, motion_profile_t profile)
+/** @brief Apply existing pivot breakaway and bounded-wheel holding torque. */
+static void
+pid_bounded_torque (const pid_state_t * state,
+    motion_profile_t                    profile,
+    float                               left_cps,
+    float                               right_cps,
+    INT *                               p_left_pwm,
+    INT *                               p_right_pwm)
 {
-    UINT slot = state->history_index;
-    float left_cps = state->left_speed_cps;
-    float right_cps = state->right_speed_cps;
-    float dt = (float)(state->now_ms - state->previous_ms) / 1000.0f;
-    INT left_pwm;
-    INT right_pwm;
-    bool curve_feedback = state->command.type == MOTION_CMD_DRIVE &&
-        state->command.direction == MOTION_DIR_FORWARD &&
-        (state->command.steering_permille >= 300 ||
-         state->command.steering_permille <= -300);
-    if (state->sample_count >= PID_WINDOW_SIZE)
-    {
-        UINT old = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
-        float elapsed = (float)(state->now_ms - state->time_history[old]);
-        left_cps = (float)encoder_count_delta(state->left_now,
-            encoder_count_read(&state->left_history[old])) *
-            1000.0f / elapsed;
-        right_cps = (float)encoder_count_delta(state->right_now,
-            encoder_count_read(&state->right_history[old])) *
-            1000.0f / elapsed;
-    }
-    left_pwm = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
-        left_cps * state->left_sign, &state->left_integral, dt,
-        state->command.type != MOTION_CMD_MOVE && state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
-        pid_base_pwm(state, true), curve_feedback);
-    right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
-        right_cps * state->right_sign, &state->right_integral, dt,
-        state->command.type != MOTION_CMD_MOVE && state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
-        pid_base_pwm(state, false), curve_feedback);
     /* An unfinished wheel can stick under pivot load even at normal maximum
      * duty. Ramp breakaway torque until encoder progress resumes. */
-    if (state->command.type == MOTION_CMD_TURN) {
-        if (profile.left_speed > 0.0f && state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS)
-            left_pwm = pid_turn_breakaway_pwm(state->now_ms - state->left_progress_ms);
-        if (profile.right_speed > 0.0f && state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS)
-            right_pwm = pid_turn_breakaway_pwm(state->now_ms - state->right_progress_ms);
+    if (state->command.type == MOTION_CMD_TURN)
+    {
+        if (profile.left_speed > 0.0f &&
+            state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS)
+        {
+            (*p_left_pwm) =
+                pid_turn_breakaway_pwm(state->now_ms - state->left_progress_ms);
+        }
+        if (profile.right_speed > 0.0f &&
+            state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS)
+        {
+            (*p_right_pwm) = pid_turn_breakaway_pwm(
+                state->now_ms - state->right_progress_ms);
+        }
     }
     /* Loaded TURN/MOVE wheels can stop between kick pulses at the 15%
      * feed-forward base. Supply holding torque only while below target;
      * allow PI braking when faster than target and zero PWM when reached. */
     if (state->command.type == MOTION_CMD_TURN ||
-        state->command.type == MOTION_CMD_MOVE) {
+        state->command.type == MOTION_CMD_MOVE)
+    {
         if (profile.left_speed > 0.0f &&
-            left_cps * state->left_sign < profile.left_speed / pid_mm_per_count(true) &&
-            left_pwm < PID_BOUNDED_MIN_PWM) left_pwm = PID_BOUNDED_MIN_PWM;
+            left_cps * state->left_sign <
+                profile.left_speed / pid_mm_per_count(true) &&
+            (*p_left_pwm) < PID_BOUNDED_MIN_PWM)
+        {
+            (*p_left_pwm) = PID_BOUNDED_MIN_PWM;
+        }
         if (profile.right_speed > 0.0f &&
-            right_cps * state->right_sign < profile.right_speed / pid_mm_per_count(false) &&
-            right_pwm < PID_BOUNDED_MIN_PWM) right_pwm = PID_BOUNDED_MIN_PWM;
+            right_cps * state->right_sign <
+                profile.right_speed / pid_mm_per_count(false) &&
+            (*p_right_pwm) < PID_BOUNDED_MIN_PWM)
+        {
+            (*p_right_pwm) = PID_BOUNDED_MIN_PWM;
+        }
     }
+}
+
+/** @brief Apply the existing bounded ramp when forward progress is absent. */
+static void
+pid_forward_breakaway (const pid_state_t * state,
+    motion_profile_t                       profile,
+    INT *                                  p_left_pwm,
+    INT *                                  p_right_pwm)
+{
     if (state->command.type == MOTION_CMD_MOVE ||
-        (state->command.type == MOTION_CMD_DRIVE && state->command.direction == MOTION_DIR_FORWARD)) {
+        (state->command.type == MOTION_CMD_DRIVE &&
+            state->command.direction == MOTION_DIR_FORWARD))
+    {
         /* Ramp breakaway torque when a commanded wheel stops making progress.
          * Bounded moves can reach the controller ceiling before the stall
          * deadline. Continuous forward drive retains its 26% breakaway cap. */
-        float breakaway_cap = state->command.type == MOTION_CMD_MOVE ? PID_MAX_PWM : 26.0f;
-        float left_start = (state->now_ms - state->left_progress_ms - PID_KICK_AFTER_MS) * 0.13f;
-        float right_start = (state->now_ms - state->right_progress_ms - PID_KICK_AFTER_MS) * 0.13f;
-        if (left_start < 0.0f) left_start = 0.0f;
-        if (right_start < 0.0f) right_start = 0.0f;
-        if (left_start > breakaway_cap) left_start = breakaway_cap;
-        if (right_start > breakaway_cap) right_start = breakaway_cap;
-        if (profile.left_speed > 0.0f && left_pwm < (INT)left_start) left_pwm = (INT)left_start;
-        if (profile.right_speed > 0.0f && right_pwm < (INT)right_start) right_pwm = (INT)right_start;
+        float breakaway_cap =
+            state->command.type == MOTION_CMD_MOVE ? PID_MAX_PWM : 26.0f;
+        float left_start =
+            (state->now_ms - state->left_progress_ms - PID_KICK_AFTER_MS) *
+            0.13f;
+        float right_start =
+            (state->now_ms - state->right_progress_ms - PID_KICK_AFTER_MS) *
+            0.13f;
+        if (left_start < 0.0f)
+        {
+            left_start = 0.0f;
+        }
+        if (right_start < 0.0f)
+        {
+            right_start = 0.0f;
+        }
+        if (left_start > breakaway_cap)
+        {
+            left_start = breakaway_cap;
+        }
+        if (right_start > breakaway_cap)
+        {
+            right_start = breakaway_cap;
+        }
+        if (profile.left_speed > 0.0f && (*p_left_pwm) < (INT)left_start)
+        {
+            (*p_left_pwm) = (INT)left_start;
+        }
+        if (profile.right_speed > 0.0f && (*p_right_pwm) < (INT)right_start)
+        {
+            (*p_right_pwm) = (INT)right_start;
+        }
     }
-    if ((state->command.type == MOTION_CMD_DRIVE) &&
-        (state->command.direction == MOTION_DIR_FORWARD))
-    {
-        float left_target = profile.left_speed / pid_mm_per_count(true);
-        float right_target = profile.right_speed / pid_mm_per_count(false);
-        float left_measured = left_cps * state->left_sign;
-        float right_measured = right_cps * state->right_sign;
-        pid_dropout_wheel(state, false, &right_pwm, right_target,
-            right_measured, left_target, left_measured, left_pwm);
-        pid_dropout_wheel(state, true, &left_pwm, left_target,
-            left_measured, right_target, right_measured, right_pwm);
-    }
-    else
-    {
-        state->left_silent = false;
-        state->right_silent = false;
-        state->left_open_loop = false;
-        state->right_open_loop = false;
-    }
+}
+
+/** @brief Limit MOVE duty changes while allowing reached wheels to stop. */
+static void
+pid_move_slew (const pid_state_t * state,
+    motion_profile_t               profile,
+    INT *                          p_left_pwm,
+    INT *                          p_right_pwm)
+{
     /* Ramp forward MOVE torque instead of toggling instantly between PI
      * braking and the loaded-wheel floor. Reached targets stop immediately. */
-    if (state->command.type == MOTION_CMD_MOVE) {
-        if (profile.left_speed > 0.0f) {
-            if (left_pwm > state->left_applied_pwm + 1) left_pwm = state->left_applied_pwm + 1;
-            if (left_pwm < state->left_applied_pwm - 1) left_pwm = state->left_applied_pwm - 1;
+    if (state->command.type == MOTION_CMD_MOVE)
+    {
+        if (profile.left_speed > 0.0f)
+        {
+            if ((*p_left_pwm) > state->left_applied_pwm + 1)
+            {
+                (*p_left_pwm) = state->left_applied_pwm + 1;
+            }
+            if ((*p_left_pwm) < state->left_applied_pwm - 1)
+            {
+                (*p_left_pwm) = state->left_applied_pwm - 1;
+            }
         }
-        if (profile.right_speed > 0.0f) {
-            if (right_pwm > state->right_applied_pwm + 1) right_pwm = state->right_applied_pwm + 1;
-            if (right_pwm < state->right_applied_pwm - 1) right_pwm = state->right_applied_pwm - 1;
+        if (profile.right_speed > 0.0f)
+        {
+            if ((*p_right_pwm) > state->right_applied_pwm + 1)
+            {
+                (*p_right_pwm) = state->right_applied_pwm + 1;
+            }
+            if ((*p_right_pwm) < state->right_applied_pwm - 1)
+            {
+                (*p_right_pwm) = state->right_applied_pwm - 1;
+            }
         }
     }
-    state->left_applied_pwm = left_pwm;
-    state->right_applied_pwm = right_pwm;
+}
+
+/** @brief Apply the calibrated reverse split after storing symmetric duty. */
+static void
+pid_reverse_trim (
+    const pid_state_t * state, INT * p_left_pwm, INT * p_right_pwm)
+{
     /* See B2_REVERSE_PWM_SPLIT. Applied after the slew so both motors
      * still ramp from rest together; the stored PWM stays symmetric. */
     if (state->command.type == MOTION_CMD_MOVE &&
-        state->command.direction == MOTION_DIR_REVERSE) {
+        state->command.direction == MOTION_DIR_REVERSE)
+    {
         INT half = B2_REVERSE_PWM_SPLIT / 2;
-        if (left_pwm > 0) {
-            left_pwm -= half;
-            if (left_pwm < 1) left_pwm = 1;
+        if ((*p_left_pwm) > 0)
+        {
+            (*p_left_pwm) -= half;
+            if ((*p_left_pwm) < 1)
+            {
+                (*p_left_pwm) = 1;
+            }
         }
-        if (right_pwm > 0) {
-            right_pwm += B2_REVERSE_PWM_SPLIT - half;
-            if (right_pwm > PID_MAX_PWM) right_pwm = PID_MAX_PWM;
+        if ((*p_right_pwm) > 0)
+        {
+            (*p_right_pwm) += B2_REVERSE_PWM_SPLIT - half;
+            if ((*p_right_pwm) > PID_MAX_PWM)
+            {
+                (*p_right_pwm) = PID_MAX_PWM;
+            }
         }
     }
+}
+
+static void
+pid_apply (pid_state_t * state, motion_profile_t profile)
+{
+    UINT  slot      = state->history_index;
+    float left_cps  = state->left_speed_cps;
+    float right_cps = state->right_speed_cps;
+    float dt        = (float)(state->now_ms - state->previous_ms) / 1000.0f;
+    INT   left_pwm;
+    INT   right_pwm;
+    bool  curve_feedback = state->command.type == MOTION_CMD_DRIVE &&
+        state->command.direction == MOTION_DIR_FORWARD &&
+        (state->command.steering_permille >= 300 ||
+            state->command.steering_permille <= -300);
+    if (state->sample_count >= PID_WINDOW_SIZE)
+    {
+        UINT  old     = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
+        float elapsed = (float)(state->now_ms - state->time_history[old]);
+        left_cps      = (float)encoder_count_delta(state->left_now,
+                       encoder_count_read(&state->left_history[old])) *
+            1000.0f / elapsed;
+        right_cps = (float)encoder_count_delta(state->right_now,
+                        encoder_count_read(&state->right_history[old])) *
+            1000.0f / elapsed;
+    }
+    left_pwm  = pid_wheel_pwm(profile.left_speed / pid_mm_per_count(true),
+        left_cps * state->left_sign,
+        &state->left_integral,
+        dt,
+        state->command.type != MOTION_CMD_MOVE &&
+            state->now_ms - state->left_progress_ms >= PID_KICK_AFTER_MS,
+        pid_base_pwm(state, true),
+        curve_feedback);
+    right_pwm = pid_wheel_pwm(profile.right_speed / pid_mm_per_count(false),
+        right_cps * state->right_sign,
+        &state->right_integral,
+        dt,
+        state->command.type != MOTION_CMD_MOVE &&
+            state->now_ms - state->right_progress_ms >= PID_KICK_AFTER_MS,
+        pid_base_pwm(state, false),
+        curve_feedback);
+    pid_bounded_torque(
+        state, profile, left_cps, right_cps, &left_pwm, &right_pwm);
+    pid_forward_breakaway(state, profile, &left_pwm, &right_pwm);
+    if ((state->command.type == MOTION_CMD_DRIVE) &&
+        (state->command.direction == MOTION_DIR_FORWARD))
+    {
+        float left_target    = profile.left_speed / pid_mm_per_count(true);
+        float right_target   = profile.right_speed / pid_mm_per_count(false);
+        float left_measured  = left_cps * state->left_sign;
+        float right_measured = right_cps * state->right_sign;
+        pid_dropout_wheel(state,
+            false,
+            &right_pwm,
+            right_target,
+            right_measured,
+            left_target,
+            left_measured,
+            left_pwm);
+        pid_dropout_wheel(state,
+            true,
+            &left_pwm,
+            left_target,
+            left_measured,
+            right_target,
+            right_measured,
+            right_pwm);
+    }
+    else
+    {
+        state->left_silent     = false;
+        state->right_silent    = false;
+        state->left_open_loop  = false;
+        state->right_open_loop = false;
+    }
+    pid_move_slew(state, profile, &left_pwm, &right_pwm);
+    state->left_applied_pwm  = left_pwm;
+    state->right_applied_pwm = right_pwm;
+    pid_reverse_trim(state, &left_pwm, &right_pwm);
     encoder_count_write(&state->left_history[slot], state->left_now);
     encoder_count_write(&state->right_history[slot], state->right_now);
     state->time_history[slot] = state->now_ms;
-    state->history_index = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
+    state->history_index      = (slot + 1u) % (PID_WINDOW_SIZE + 1u);
     if (state->sample_count < PID_WINDOW_SIZE)
     {
         state->sample_count++;
     }
     b2_safety_apply_pwm(state->left_sign * left_pwm,
-        state->right_sign * right_pwm, state->generation);
+        state->right_sign * right_pwm,
+        state->generation);
 #if B2_SPEED_DIAGNOSTICS
-    pid_report_speed(state, profile, left_cps, right_cps,
-                      left_pwm, right_pwm);
+    pid_report_speed(state, profile, left_cps, right_cps, left_pwm, right_pwm);
 #endif
     if (left_pwm != 0 || right_pwm != 0)
     {
-        state->stopped = false;
+        state->stopped        = false;
         state->quiet_since_ms = state->now_ms;
     }
 }
 
-static bool pid_encoder_invalid(pid_state_t *state)
+static bool
+pid_encoder_invalid (pid_state_t * state)
 {
-    UW left;
-    UW right;
+    UW   left;
+    UW   right;
     bool invalid;
     encoder_get_invalid_counts(&left, &right);
     invalid = !(state->left_speed_cps >= ENC_SPEED_MIN &&
-          state->left_speed_cps <= ENC_SPEED_MAX) ||
+                  state->left_speed_cps <= ENC_SPEED_MAX) ||
         !(state->right_speed_cps >= ENC_SPEED_MIN &&
-          state->right_speed_cps <= ENC_SPEED_MAX) ||
-        (UW)(left - state->left_invalid_start) >=
-        PID_ENCODER_INVALID_LIMIT ||
-        (UW)(right - state->right_invalid_start) >=
-        PID_ENCODER_INVALID_LIMIT;
+            state->right_speed_cps <= ENC_SPEED_MAX) ||
+        (UW)(left - state->left_invalid_start) >= PID_ENCODER_INVALID_LIMIT ||
+        (UW)(right - state->right_invalid_start) >= PID_ENCODER_INVALID_LIMIT;
     if (state->now_ms - state->encoder_window_ms >= 100)
     {
-        state->left_invalid_start = left;
+        state->left_invalid_start  = left;
         state->right_invalid_start = right;
-        state->encoder_window_ms = state->now_ms;
+        state->encoder_window_ms   = state->now_ms;
     }
     return invalid;
 }
 
-static void pid_execute(pid_state_t *state)
+static void
+pid_execute (pid_state_t * state)
 {
     motion_profile_t profile;
     if (pid_encoder_invalid(state))
@@ -852,17 +1045,25 @@ static void pid_execute(pid_state_t *state)
         return;
     }
     profile = pid_profile(state);
-    if (state->command.type == MOTION_CMD_MOVE) {
-        float rise = PID_MOVE_ACCEL_MM_S2 * (state->now_ms - state->previous_ms) / 1000.0f;
-        if (profile.left_speed > state->left_profile_speed + rise) profile.left_speed = state->left_profile_speed + rise;
-        if (profile.right_speed > state->right_profile_speed + rise) profile.right_speed = state->right_profile_speed + rise;
-        state->left_profile_speed = profile.left_speed;
+    if (state->command.type == MOTION_CMD_MOVE)
+    {
+        float rise = PID_MOVE_ACCEL_MM_S2 *
+            (state->now_ms - state->previous_ms) / 1000.0f;
+        if (profile.left_speed > state->left_profile_speed + rise)
+        {
+            profile.left_speed = state->left_profile_speed + rise;
+        }
+        if (profile.right_speed > state->right_profile_speed + rise)
+        {
+            profile.right_speed = state->right_profile_speed + rise;
+        }
+        state->left_profile_speed  = profile.left_speed;
         state->right_profile_speed = profile.right_speed;
     }
     if (profile.left_reached && profile.right_reached)
     {
         b2_safety_force_stop();
-        state->settling = true;
+        state->settling          = true;
         state->settling_since_ms = state->now_ms;
         return;
     }
@@ -876,20 +1077,24 @@ static void pid_execute(pid_state_t *state)
     pid_apply(state, profile);
 }
 
-void pid_init(void)
+void
+pid_init (void)
 {
     b2_safety_force_stop();
     tm_printf((UB *)"[B2-TUNE] build=" __DATE__ " " __TIME__
-              " forward_trial=%d baseL=%d baseR=%d inner_adjust=off"
-              " curve_feedback=adaptive reverse_split=%d\n",
-              (INT)B2_FORWARD_FEEDFORWARD_TRIAL,
-              (INT)B2_LEFT_BASE_PWM, (INT)B2_RIGHT_BASE_PWM,
-              (INT)B2_REVERSE_PWM_SPLIT);
-    tm_printf((UB *)"[B2-FW] move_min_cps=150 turn_min_cps=300 move_accel_mm_s2=80 turn_breakaway_max=%d\n",
-              PID_TURN_BREAKAWAY_MAX_PWM);
+                    " forward_trial=%d baseL=%d baseR=%d inner_adjust=off"
+                    " curve_feedback=adaptive reverse_split=%d\n",
+        (INT)B2_FORWARD_FEEDFORWARD_TRIAL,
+        (INT)B2_LEFT_BASE_PWM,
+        (INT)B2_RIGHT_BASE_PWM,
+        (INT)B2_REVERSE_PWM_SPLIT);
+    tm_printf((UB *)"[B2-FW] move_min_cps=150 turn_min_cps=300 "
+                    "move_accel_mm_s2=80 turn_breakaway_max=%d\n",
+        PID_TURN_BREAKAWAY_MAX_PWM);
 }
 
-void pid_cyclic_handler(void *p_exinf)
+void
+pid_cyclic_handler (void * p_exinf)
 {
     (void)p_exinf;
     if (gh_pid_task > 0)
@@ -898,27 +1103,29 @@ void pid_cyclic_handler(void *p_exinf)
     }
 }
 
-static ER pid_initialize_state(pid_state_t *state)
+static ER
+pid_initialize_state (pid_state_t * state)
 {
     SYSTIM time;
     if (tk_get_tim(&time) != E_OK)
     {
         return E_SYS;
     }
-    state->previous_ms = (int64_t)time.hi * INT64_C(4294967296) + time.lo;
+    state->previous_ms    = (int64_t)time.hi * INT64_C(4294967296) + time.lo;
     state->quiet_since_ms = state->previous_ms;
     pid_read_counts(state);
-    state->left_previous = state->left_now;
+    state->left_previous  = state->left_now;
     state->right_previous = state->right_now;
-    state->left_start = state->left_now;
-    state->right_start = state->right_now;
+    state->left_start     = state->left_now;
+    state->right_start    = state->right_now;
     return E_OK;
 }
 
-void pid_control_task(INT stacd, void *p_exinf)
+void
+pid_control_task (INT stacd, void * p_exinf)
 {
     pid_state_t state = {0};
-    ER error;
+    ER          error;
     (void)stacd;
     (void)p_exinf;
     error = pid_initialize_state(&state);
@@ -935,9 +1142,9 @@ void pid_control_task(INT stacd, void *p_exinf)
         pid_guard(&state);
         pid_execute(&state);
         pid_publish(&state);
-        state.left_previous = state.left_now;
+        state.left_previous  = state.left_now;
         state.right_previous = state.right_now;
-        state.previous_ms = state.now_ms;
+        state.previous_ms    = state.now_ms;
     }
     b2_request_stop();
     b2_safety_acknowledge_stop();
@@ -948,3 +1155,6 @@ void pid_control_task(INT stacd, void *p_exinf)
         tk_dly_tsk(1000);
     }
 }
+
+/*** end of file ***/
+

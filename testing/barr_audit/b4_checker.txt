@@ -1,0 +1,17 @@
+Exit code: 1
+app_program\subsystem4\imu.h:103: line exceeds 80 characters
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu.h: use fixed-width integer types
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu_analysis.c:431: BARR-C 8.2.b: conditional nesting exceeds two levels
+app_program\subsystem4\imu_analysis.c:226: line exceeds 80 characters
+app_program\subsystem4\imu_analysis.c:227: line exceeds 80 characters
+app_program\subsystem4\imu_analysis.c:274: line exceeds 80 characters
+app_program\subsystem4\imu_analysis.c:275: line exceeds 80 characters
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu_live.c:1: BARR-C 3.3.c: missing EOF marker followed by a blank line
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu_live.c:1: BARR-C 2.2.h: function needs a documentation comment: imu_live_store
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu_live.c:1: BARR-C 2.2.h: function needs a documentation comment: imu_live_get
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu_live.h:1: BARR-C 3.3.c: missing EOF marker followed by a blank line
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu_notice.c: use fixed-width integer types
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\imu_notice.h: use fixed-width integer types
+C:\Users\gohyx\Downloads\INF2004-Project\app_program\subsystem4\task_imu.c: task_imu_sampling_task exceeds 100 lines
+C:\Users\gohyx\Downloads\INF2004-Project\testing\subsystem4\host\testanal_main.c:54: BARR-C 8.6.a: place constant on the left of ==
+C:\Users\gohyx\Downloads\INF2004-Project\testing\subsystem4\host\testanal_main.c: rule 8.4.a requires a named loop limit

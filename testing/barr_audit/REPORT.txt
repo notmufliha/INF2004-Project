@@ -1,0 +1,65 @@
+BARR-C:2018 audit - 2026-11-26
+
+Conclusion: the current project-owned application is NOT fully compliant.
+No production source or behavior was changed for this review.
+
+Scope: all 148 .c/.h files under app_program, plus the existing B1/B2/B4
+checker scopes. Kernel, SDK, vendor libraries and non-C tools were not
+certified. B1's existing checker also covers selected MQTT port files.
+Reference: Barr Group's official 2018 PDF, accessed online because a local
+PDF extractor was unavailable. The user-supplied local PDF exists but was
+not independently extracted or compared byte-for-byte.
+https://barrgroup.com/sites/default/files/barr_c_coding_standard_2018.pdf
+
+Existing checker results (all exit code 1):
+B1: 10 reported findings across 30 scoped files; see b1_checker.txt.
+B2: 79 reported findings; see b2_checker.txt.
+B4: 16 reported findings; see b4_checker.txt.
+These are diagnostic counts, not counts of independently confirmed defects.
+
+Wider application scan (selected shared token rules plus width/tab checks):
+Area                 Files   Token candidates   Lines >80   Lines with tabs
+Shared application      18                685          81               179
+B1                      21                 15           3                 0
+B2                      24                283          37                 0
+B3                      12                195          16               703
+B4                      40                  5           5                 0
+B5                      33               1339         404                 0
+Total                  148
+Full candidates: application_candidates.txt.
+
+Manually confirmed examples:
+- app_program/subsystem2/b2_motor.c:160: unbraced one-line if.
+- app_program/subsystem3/task_consumer.c:9: tab indentation; line 18 has
+  an opening control brace on the same line as the for statement.
+- app_program/subsystem5/s5_navigation.c:38: unbraced one-line if.
+- app_program/subsystem1/comm_pack.c:299: exceeds 80 columns.
+- app_program/subsystem4/imu.h:103: exceeds 80 columns.
+The relevant standard sections are 1.2 (width), 1.3 (braces) and 3.5 (tabs).
+
+Scanner limitations and deviations:
+- The B2 checker mistakes preprocessor #if expressions in pid_control.h
+  for C statements needing braces. Those diagnostics are false positives.
+- The shared rule engine originated in B4. Its module-prefix expectations,
+  documentation heuristics and function parser are not a semantic analyser.
+  Broad output is triage evidence, not a compliance certificate.
+- Raw CRLF bytes can trigger the shared engine's control-character check;
+  distinguish checkout line endings from logical source violations.
+- B4's unsigned int bit-fields trigger its blanket fixed-width check.
+  Bit-fields need contextual review against sections 5.2/5.5 and the
+  minimum-bit requirement; do not replace types merely to silence a regex.
+- Existing B1/B2/B4 convention documents record integration constraints
+  and exceptions. Documented exceptions do not prove full compliance.
+- Passing these tools would still leave manual checks of casts, type
+  ranges, shared data, ISR safety, initialization and module contracts.
+
+Reproduce the existing checks from the repository root:
+  python testing/subsystem1/check_barr_style.py
+  node tools/check-subsystem2-style.cjs
+  python testing/subsystem4/check_barr_style.py
+This environment used C:/msys64/ucrt64/bin/python.exe explicitly.
+
+Recommended order: address real missing braces first, then formatting and
+comments, then naming/API deviations and semantic rules. Preserve calibrated
+motion/safety behavior and validate any subsequent source edits separately.
+No firmware build or hardware run was needed or performed for this audit.

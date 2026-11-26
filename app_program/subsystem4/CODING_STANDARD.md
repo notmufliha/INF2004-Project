@@ -170,3 +170,11 @@ frozen report, and prints outside the lock. Detector/height reason fields are
 per-call metadata; thresholds and the estimation formula are unchanged.
 Native tests check lifecycle, reported reasons and lock pairing. Real SMP
 scheduler timing and updated on-car results remain to be validated.
+
+2026-11-26 review update: native CR1 bit-fields
+The selected checker accepts unsigned int fields only when an explicit
+bit width is present. These fields are native in-process records; they
+are not copied directly onto the telemetry wire. The explicit widths,
+existing size tests and pack/unpack code must be preserved. Ordinary
+unsigned int variables and casts remain subject to the fixed-width check.
+See testing/barr_audit/AFTER_REPORT.txt for this change's scope and results.

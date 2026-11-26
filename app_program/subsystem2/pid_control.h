@@ -37,22 +37,24 @@
 #ifndef B2_REVERSE_PWM_SPLIT
 #define B2_REVERSE_PWM_SPLIT (B2_RIGHT_BASE_PWM - B2_LEFT_BASE_PWM)
 #endif
-#if (B2_FORWARD_FEEDFORWARD_TRIAL != 0) && \
-    (B2_FORWARD_FEEDFORWARD_TRIAL != 1)
+#if (B2_FORWARD_FEEDFORWARD_TRIAL != 0) && (B2_FORWARD_FEEDFORWARD_TRIAL != 1)
 #error B2_FORWARD_FEEDFORWARD_TRIAL must be 0 or 1
 #endif
-#if (B2_LEFT_BASE_PWM < 0) || (B2_LEFT_BASE_PWM > 35) || \
+#if (B2_LEFT_BASE_PWM < 0) || (B2_LEFT_BASE_PWM > 35) ||                       \
     (B2_RIGHT_BASE_PWM < 0) || (B2_RIGHT_BASE_PWM > 35)
 #error B2 base PWM must be between 0 and 35 percent
 #endif
 
 extern ID gh_pid_task;
 
-void pid_cyclic_handler(void *p_exinf);
+void pid_cyclic_handler (void * p_exinf);
 /* Initialise the PID controller. */
 
-void pid_init(void);
+void pid_init (void);
 /* Production motion execution task. */
 
-void pid_control_task(INT stacd, void *p_exinf);
+void pid_control_task (INT stacd, void * p_exinf);
 #endif
+
+/*** end of file ***/
+

@@ -9,7 +9,7 @@ bool
 imu_test_support_near (float32_t actual, float32_t expected)
 {
     return ((isfinite(actual)) && (isfinite(expected)) &&
-            ((fabsf(actual - expected) <= 0.0001f)));
+        ((fabsf(actual - expected) <= 0.0001f)));
 }
 
 /*** end of file ***/

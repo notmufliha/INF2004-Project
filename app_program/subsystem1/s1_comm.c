@@ -44,10 +44,10 @@
 #include "../subsystem2/encoder_control.h" /* encoder_get_counts() */
 #endif
 
-#define COMM_LOOP_MS    50   /* longest sleep between checks       */
-#define MS_PER_DS       100U
-#define TIME_DS_MASK    0xFFFFFU /* 20-bit time stamp              */
-#define MS_PER_S        1000
+#define COMM_LOOP_MS 50 /* longest sleep between checks       */
+#define MS_PER_DS 100U
+#define TIME_DS_MASK 0xFFFFFU /* 20-bit time stamp              */
+#define MS_PER_S 1000
 
 static uint8_t  g_telem_period_ds = COMM_TELEM_PERIOD_DS;
 static uint16_t g_telem_seq       = 0U;
@@ -57,27 +57,25 @@ static bool     gb_ever_connected = false;
 #if TM_MQTT
 static uint32_t g_wifi_down_since = 0U; /* 0 = WiFi is up */
 #endif
-static uint8_t  g_frame[COMM_PAYLOAD_MAX]; /* this task only */
+static uint8_t g_frame[COMM_PAYLOAD_MAX]; /* this task only */
 
-static uint32_t          time_ds (uint32_t now_ms);
+static uint32_t time_ds (uint32_t now_ms);
 static comm_link_state_t compute_state (uint32_t now_ms);
-static void              update_wifi_fault (comm_link_state_t state);
-static void              on_state_change (comm_link_state_t old_state,
-                                          comm_link_state_t new_state,
-                                          uint32_t now_ms);
-static void              send_frame (int32_t len, comm_bridge_topic_t topic);
-static void              publish_status (uint32_t now_ms);
-static void              publish_telemetry (uint32_t now_ms);
-static void              publish_event (const comm_pack_event_t * p_event);
-static void              send_ack (const comm_pack_cmd_t * p_cmd,
-                                   comm_pack_result_t result);
-static void              forward_command (const comm_pack_cmd_t * p_cmd);
-static void              handle_command (const uint8_t * p_data,
-                                         uint32_t len, uint32_t now_ms);
-static void              drain_commands (uint32_t now_ms);
-static void              drain_events (void);
+static void update_wifi_fault (comm_link_state_t state);
+static void on_state_change (
+    comm_link_state_t old_state, comm_link_state_t new_state, uint32_t now_ms);
+static void send_frame (int32_t len, comm_bridge_topic_t topic);
+static void publish_status (uint32_t now_ms);
+static void publish_telemetry (uint32_t now_ms);
+static void publish_event (const comm_pack_event_t * p_event);
+static void send_ack (const comm_pack_cmd_t * p_cmd, comm_pack_result_t result);
+static void forward_command (const comm_pack_cmd_t * p_cmd);
+static void handle_command (
+    const uint8_t * p_data, uint32_t len, uint32_t now_ms);
+static void drain_commands (uint32_t now_ms);
+static void drain_events (void);
 #if S1_POLL_B2_ENCODERS
-static void              poll_encoders (uint32_t now_ms);
+static void poll_encoders (uint32_t now_ms);
 #endif
 
 /** @brief The WiFi & Telemetry task: one pass per wake-up, forever. */
@@ -95,7 +93,7 @@ s1_comm_task (INT stacd, void * p_exinf)
     (void)p_exinf;
 
     tm_printf((UB *)"s1: WiFi & Telemetry task started%s\n",
-              (0 != S1_STANDALONE_DEMO) ? " (STANDALONE DEMO MODE)" : "");
+        (0 != S1_STANDALONE_DEMO) ? " (STANDALONE DEMO MODE)" : "");
 #if !TM_MQTT
     tm_printf((UB *)"s1: built without NET=lwip MQTT=1 -> no network, "
                     "events are printed only\n");
@@ -108,8 +106,11 @@ s1_comm_task (INT stacd, void * p_exinf)
     {
         /* Sleep until something is queued, or at most COMM_LOOP_MS.
          * E_TMOUT is the normal "nothing happened" case. */
-        (void)tk_wai_flg(gh_s1_comm_flg, FLG_COMM_ALL, TWF_ORW | TWF_BITCLR,
-                         &pattern, COMM_LOOP_MS);
+        (void)tk_wai_flg(gh_s1_comm_flg,
+            FLG_COMM_ALL,
+            TWF_ORW | TWF_BITCLR,
+            &pattern,
+            COMM_LOOP_MS);
         now_ms = s1_comm_now_ms();
 
         next = compute_state(now_ms);
@@ -195,8 +196,8 @@ compute_state (uint32_t now_ms)
         }
         else
         {
-            state = gb_ever_connected ? COMM_RECONNECTING
-                                      : COMM_CONNECTING_WIFI;
+            state =
+                gb_ever_connected ? COMM_RECONNECTING : COMM_CONNECTING_WIFI;
         }
     }
     else
@@ -240,7 +241,7 @@ update_wifi_fault (comm_link_state_t state)
         fault_clear(FAULT_WIFI_LOSS);
     }
     else if ((COMM_OFFLINE == state) ||
-             (gb_ever_connected && (COMM_RECONNECTING == state)))
+        (gb_ever_connected && (COMM_RECONNECTING == state)))
     {
         fault_raise(FAULT_WIFI_LOSS);
     }
@@ -252,8 +253,8 @@ update_wifi_fault (comm_link_state_t state)
 
 /** @brief Publish a link change: counters, fault bit, console, status. */
 static void
-on_state_change (comm_link_state_t old_state, comm_link_state_t new_state,
-                 uint32_t now_ms)
+on_state_change (
+    comm_link_state_t old_state, comm_link_state_t new_state, uint32_t now_ms)
 {
     if (COMM_CONNECTED == new_state)
     {
@@ -268,8 +269,9 @@ on_state_change (comm_link_state_t old_state, comm_link_state_t new_state,
     g_s1_link_state = (uint8_t)new_state;
     update_wifi_fault(new_state);
     tm_printf((UB *)"s1: link %s -> %s  faults=0x%02x\n",
-              comm_names_link(old_state), comm_names_link(new_state),
-              (INT)fault_get());
+        comm_names_link(old_state),
+        comm_names_link(new_state),
+        (INT)fault_get());
 
     if (COMM_CONNECTED == new_state)
     {
@@ -285,8 +287,8 @@ send_frame (int32_t len, comm_bridge_topic_t topic)
     if (len < 0)
     {
         g_s1_stats.tx_dropped++;
-        tm_printf((UB *)"s1: frame too long for topic %d, dropped\n",
-                  (INT)topic);
+        tm_printf(
+            (UB *)"s1: frame too long for topic %d, dropped\n", (INT)topic);
     }
     else if ((uint8_t)COMM_DISABLED != g_s1_link_state)
     {
@@ -321,15 +323,17 @@ publish_status (uint32_t now_ms)
     status.faults   = fault_get();
 
     send_frame(comm_pack_status(g_frame, COMM_PAYLOAD_MAX, &status),
-               COMM_TOPIC_STATUS);
+        COMM_TOPIC_STATUS);
 
     tm_printf((UB *)"s1: heartbeat #%d  link=%s  faults=0x%02x  tx=%d "
                     "drop=%d rx=%d rej=%d\n",
-              (INT)g_heartbeat_seq,
-              comm_names_link((comm_link_state_t)g_s1_link_state),
-              (INT)status.faults, (INT)status.stats.tx_queued,
-              (INT)status.stats.tx_dropped, (INT)status.stats.rx_ok,
-              (INT)status.stats.rx_rejected);
+        (INT)g_heartbeat_seq,
+        comm_names_link((comm_link_state_t)g_s1_link_state),
+        (INT)status.faults,
+        (INT)status.stats.tx_queued,
+        (INT)status.stats.tx_dropped,
+        (INT)status.stats.rx_ok,
+        (INT)status.stats.rx_rejected);
 }
 
 /** @brief Publish the telemetry snapshot (29 bytes, FR-B1-3). */
@@ -343,9 +347,13 @@ publish_telemetry (uint32_t now_ms)
 #endif
     comm_get_telemetry(&telem); /* consistent copy, under the mutex */
     g_telem_seq++;
-    send_frame(comm_pack_telemetry(g_frame, COMM_PAYLOAD_MAX, g_telem_seq,
-                                   time_ds(now_ms), fault_get(), &telem),
-               COMM_TOPIC_TELEMETRY);
+    send_frame(comm_pack_telemetry(g_frame,
+                   COMM_PAYLOAD_MAX,
+                   g_telem_seq,
+                   time_ds(now_ms),
+                   fault_get(),
+                   &telem),
+        COMM_TOPIC_TELEMETRY);
 }
 
 /** @brief Print one queued event and publish it (6..9 bytes, FR-B1-4). */
@@ -357,37 +365,40 @@ publish_event (const comm_pack_event_t * p_event)
     switch (p_event->type)
     {
         case EVT_BARCODE:
-        {
-            UINT code = p_event->val_a;
-            UINT letter = (UINT)COMM_BARCODE_FIRST - 1U + code;
-            tm_printf((UB *)"s1: EVENT barcode '%c' -> %s\n",
-                      (INT)letter,
-                      comm_names_nav((comm_nav_cmd_t)p_event->val_e));
-        }
+            {
+                UINT code   = p_event->val_a;
+                UINT letter = (UINT)COMM_BARCODE_FIRST - 1U + code;
+                tm_printf((UB *)"s1: EVENT barcode '%c' -> %s\n",
+                    (INT)letter,
+                    comm_names_nav((comm_nav_cmd_t)p_event->val_e));
+            }
         break;
 
         case EVT_HUMP:
             tm_printf((UB *)"s1: EVENT hump %d mm (peak %d mm, valid %d)\n",
-                      (INT)p_event->val_a, (INT)p_event->val_b,
-                      (INT)p_event->flag);
+                (INT)p_event->val_a,
+                (INT)p_event->val_b,
+                (INT)p_event->flag);
         break;
 
         case EVT_OBSTACLE:
             tm_printf((UB *)"s1: EVENT obstacle at %d cm, width %d -> %s\n",
-                      (INT)p_event->val_a, (INT)p_event->val_b,
-                      comm_names_avoid((comm_avoid_action_t)p_event->val_e));
+                (INT)p_event->val_a,
+                (INT)p_event->val_b,
+                comm_names_avoid((comm_avoid_action_t)p_event->val_e));
         break;
 
         default: /* EVT_ERROR */
             tm_printf((UB *)"s1: EVENT error 0x%02x (S%d #%d) detail %d\n",
-                      (INT)p_event->val_a, (INT)ERR_SUBSYS(p_event->val_a),
-                      (INT)ERR_NUMBER(p_event->val_a), (INT)p_event->val_b);
+                (INT)p_event->val_a,
+                (INT)ERR_SUBSYS(p_event->val_a),
+                (INT)ERR_NUMBER(p_event->val_a),
+                (INT)p_event->val_b);
         break;
     }
 
-    send_frame(comm_pack_event(g_frame, COMM_PAYLOAD_MAX, g_event_seq,
-                               p_event),
-               COMM_TOPIC_EVENT);
+    send_frame(comm_pack_event(g_frame, COMM_PAYLOAD_MAX, g_event_seq, p_event),
+        COMM_TOPIC_EVENT);
 }
 
 /** @brief Publish the 3-byte ack for one command. */
@@ -395,9 +406,12 @@ static void
 send_ack (const comm_pack_cmd_t * p_cmd, comm_pack_result_t result)
 {
     /* Ack results are 0..14 (5 bits): they fit in a byte. */
-    send_frame(comm_pack_ack(g_frame, COMM_PAYLOAD_MAX, p_cmd->seq,
-                             p_cmd->cmd_id, (uint8_t)result),
-               COMM_TOPIC_ACK);
+    send_frame(comm_pack_ack(g_frame,
+                   COMM_PAYLOAD_MAX,
+                   p_cmd->seq,
+                   p_cmd->cmd_id,
+                   (uint8_t)result),
+        COMM_TOPIC_ACK);
 }
 
 /** @brief Hand a validated command to the Vehicle Controller.
@@ -410,12 +424,14 @@ forward_command (const comm_pack_cmd_t * p_cmd)
 {
     comm_remote_cmd_type_t type = (comm_remote_cmd_type_t)p_cmd->cmd.type;
 
-    if (E_OK == tk_snd_mbf(mbf_remote_cmd, &p_cmd->cmd,
-                           (INT)sizeof(p_cmd->cmd), TMO_POL))
+    if (E_OK ==
+        tk_snd_mbf(
+            mbf_remote_cmd, &p_cmd->cmd, (INT)sizeof(p_cmd->cmd), TMO_POL))
     {
         tm_printf((UB *)"s1: command %s (arg %d, #%d) -> controller\n",
-                  comm_names_remote(type), (INT)p_cmd->cmd.arg,
-                  (INT)p_cmd->cmd.seq);
+            comm_names_remote(type),
+            (INT)p_cmd->cmd.arg,
+            (INT)p_cmd->cmd.seq);
         send_ack(p_cmd, CMD_OK);
     }
     else
@@ -423,7 +439,7 @@ forward_command (const comm_pack_cmd_t * p_cmd)
         g_s1_stats.fwd_failed++;
         tm_printf((UB *)"s1: command %s NOT delivered: controller queue "
                         "full\n",
-                  comm_names_remote(type));
+            comm_names_remote(type));
         send_ack(p_cmd, CMD_ERR_BUSY);
     }
 }
@@ -439,8 +455,10 @@ handle_command (const uint8_t * p_data, uint32_t len, uint32_t now_ms)
     {
         g_s1_stats.rx_rejected++;
         tm_printf((UB *)"s1: REJECTED command (%d bytes, id %d, #%d): %s\n",
-                  (INT)len, (INT)cmd.cmd_id, (INT)cmd.seq,
-                  comm_pack_result_text(result));
+            (INT)len,
+            (INT)cmd.cmd_id,
+            (INT)cmd.seq,
+            comm_pack_result_text(result));
         send_ack(&cmd, result);
     }
     else if (WCMD_PING == cmd.cmd_id)
@@ -459,7 +477,7 @@ handle_command (const uint8_t * p_data, uint32_t len, uint32_t now_ms)
         g_s1_stats.rx_ok++;
         g_telem_period_ds = cmd.arg;
         tm_printf((UB *)"s1: telemetry period now %d ms\n",
-                  (INT)g_telem_period_ds * (INT)MS_PER_DS);
+            (INT)g_telem_period_ds * (INT)MS_PER_DS);
         send_ack(&cmd, CMD_OK_TELEM);
     }
     else
@@ -501,7 +519,7 @@ drain_events (void)
     for (count = 0U; (count < EVENT_QUEUE_LEN) && b_more; count++)
     {
         b_more = ((INT)sizeof(event) ==
-                  tk_rcv_mbf(gh_s1_event_mbf, &event, TMO_POL));
+            tk_rcv_mbf(gh_s1_event_mbf, &event, TMO_POL));
         if (b_more)
         {
             publish_event(&event);
@@ -514,22 +532,24 @@ drain_events (void)
 static void
 poll_encoders (uint32_t now_ms)
 {
-    static INT      prev_l     = 0;
-    static INT      prev_r     = 0;
-    static uint32_t prev_ms    = 0U;
+    static INT      prev_l      = 0;
+    static INT      prev_r      = 0;
+    static uint32_t prev_ms     = 0U;
     static bool     b_have_prev = false;
     INT             left;
     INT             right;
-    int32_t         speed_l = 0;
-    int32_t         speed_r = 0;
+    int32_t         speed_l  = 0;
+    int32_t         speed_r  = 0;
     uint32_t        delta_ms = now_ms - prev_ms;
 
     encoder_get_counts(&left, &right); /* consistent, ISR-safe pair */
     if (b_have_prev && (delta_ms > 0U))
     {
         /* delta_ms is one telemetry period (<= 10 s): fits int32_t. */
-        speed_l = (encoder_count_delta(left, prev_l) * MS_PER_S) / (int32_t)delta_ms;
-        speed_r = (encoder_count_delta(right, prev_r) * MS_PER_S) / (int32_t)delta_ms;
+        speed_l =
+            (encoder_count_delta(left, prev_l) * MS_PER_S) / (int32_t)delta_ms;
+        speed_r =
+            (encoder_count_delta(right, prev_r) * MS_PER_S) / (int32_t)delta_ms;
     }
 
     prev_l      = left;
@@ -541,3 +561,4 @@ poll_encoders (uint32_t now_ms)
 #endif
 
 /*** end of file ***/
+

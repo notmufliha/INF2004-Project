@@ -50,30 +50,31 @@ static volatile uint32_t g_sample_sequence;
 
 /* Short integer-only lines match the other buddies' console format. */
 
-static INT  console_integer (float32_t value);
-static H    telemetry_integer (float32_t value);
+static INT console_integer (float32_t value);
+static H telemetry_integer (float32_t value);
 static void report_hump (const imu_event_t * p_event, uint32_t sequence);
-static bool initialise_analysis (imu_analysis_t * p_analysis,
-                                 imu_lift_t * p_lift, uint32_t max_gap_ms);
+static bool initialise_analysis (
+    imu_analysis_t * p_analysis, imu_lift_t * p_lift, uint32_t max_gap_ms);
 static bool initialise_lift (imu_lift_t * p_lift, uint32_t max_gap_ms);
-static void update_lift (imu_lift_t * p_lift, const imu_data_t * p_processed,
-                         imu_event_t * p_event);
-static bool analyse_sample (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
-                            const imu_data_t * p_processed,
-                            imu_event_t * p_event);
+static void update_lift (
+    imu_lift_t * p_lift, const imu_data_t * p_processed, imu_event_t * p_event);
+static bool analyse_sample (imu_analysis_t * p_analysis,
+    imu_lift_t *                             p_lift,
+    const imu_data_t *                       p_processed,
+    imu_event_t *                            p_event);
 static void report_fault_detail (const imu_data_t * p_data,
-                                  const imu_processing_t * p_processing,
-                                  uint32_t previous_good_ms);
+    const imu_processing_t *                        p_processing,
+    uint32_t                                        previous_good_ms);
 static void reset_peak_request (imu_analysis_t * p_analysis);
 
 #if !S4_IMU_USE_MOCK
-static bool initialise_hardware (imu_hardware_state_t * p_state,
-                                 uint32_t               now_ms);
+static bool initialise_hardware (
+    imu_hardware_state_t * p_state, uint32_t now_ms);
 #endif
 
 #if !S4_IMU_USE_MOCK
-static void calibrate_hardware (imu_hardware_state_t * p_state,
-                                imu_data_t *           p_data);
+static void calibrate_hardware (
+    imu_hardware_state_t * p_state, imu_data_t * p_data);
 #endif
 
 #if !S4_IMU_USE_MOCK
@@ -82,23 +83,26 @@ static bool hardware_read (uint32_t now_ms, imu_data_t * p_data);
 
 static const char * motion_name (imu_motion_state_t state);
 
-static void print_readings (const imu_data_t *  p_data,
-                            const imu_event_t * p_event);
+static void print_readings (
+    const imu_data_t * p_data, const imu_event_t * p_event);
 
 static bool receive_reading (imu_data_t * p_data, TMO timeout_ms);
 
-static void publish_controller (imu_event_t *                   p_event,
-                                const imu_processing_health_t * p_health,
-                                uint32_t                        timestamp_ms);
-static void report_fault (const imu_processing_health_t * p_health,
-                          uint32_t                        timestamp_ms);
+static void publish_controller (imu_event_t * p_event,
+    const imu_processing_health_t *           p_health,
+    uint32_t                                  timestamp_ms);
+static void report_fault (
+    const imu_processing_health_t * p_health, uint32_t timestamp_ms);
 
-static void report_event (const imu_data_t *  p_data,
-                          const imu_event_t * p_event, bool * pb_have_previous,
-                          imu_motion_state_t * p_previous, UW * p_last_report);
+static void report_event (const imu_data_t * p_data,
+    const imu_event_t *                      p_event,
+    bool *                                   pb_have_previous,
+    imu_motion_state_t *                     p_previous,
+    UW *                                     p_last_report);
 
-static bool publish_reading (imu_data_t * p_data, bool b_publish,
-                             UW * p_dropped);
+static bool publish_reading (
+    imu_data_t * p_data, bool b_publish, UW * p_dropped);
+static bool wait_for_sample (UW * p_deadline, SYSTIM * p_now);
 
 /** @brief Acquire timestamped readings on a deadline without blocking. */
 void
@@ -159,7 +163,7 @@ task_imu_sampling_task (INT stacd, void * p_exinf)
 #endif
             if (b_publish)
             {
-                imu_live_store(&data);   /* lift-stop check (VC) */
+                imu_live_store(&data); /* lift-stop check (VC) */
             }
 #if S4_IMU_USE_MOCK
             /* Only mock frames need replacement of their synthetic time.
@@ -175,30 +179,7 @@ task_imu_sampling_task (INT stacd, void * p_exinf)
             }
         }
 
-        deadline += S4_IMU_PERIOD_MS;
-        error_code = tk_get_tim(&now);
-
-        if (error_code < E_OK)
-        {
-            CHECK(error_code, "IMU clock");
-            tk_ext_tsk();
-            return;
-        }
-
-        /* Deadline scheduling avoids adding processing time to each period.
-         * On overrun skip catch-up bursts and yield for the minimum delay. */
-        /* Modular unsigned intervals avoid an out-of-range signed cast. */
-        if ((0U == (deadline - now.lo)) ||
-            ((deadline - now.lo) >= (UINT32_MAX / 2U)))
-        {
-            deadline = now.lo + 1U;
-        }
-
-        /* The scheduling branch bounds the delay to a positive short interval.
-         */
-        error_code = tk_dly_tsk((RELTIM)(deadline - now.lo));
-
-        if (error_code < E_OK)
+        if (!wait_for_sample(&deadline, &now))
         {
             CHECK(error_code, "IMU delay");
             tk_ext_tsk();
@@ -257,7 +238,7 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
         }
 
         uint32_t previous_good_ms = processing.last_good_ms;
-        bool b_usable = imu_processing_process(
+        bool     b_usable         = imu_processing_process(
             &processing, &data, data.timestamp_ms, &processed, &health);
         if (health.b_fault_started)
         {
@@ -304,8 +285,8 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
                 CHECK(tk_set_flg(gh_events, S4_IMU_READY_FLAG), "IMU ready");
             }
 
-            report_event(&data, &event, &b_have_previous, &previous,
-                         &last_report);
+            report_event(
+                &data, &event, &b_have_previous, &previous, &last_report);
         }
     }
 }
@@ -313,14 +294,14 @@ task_imu_analysis_task (INT stacd, void * p_exinf)
 /** @brief Report the acquisition gap when the health guard starts a fault. */
 static void
 report_fault_detail (const imu_data_t * p_data,
-                     const imu_processing_t * p_processing,
-                     uint32_t previous_good_ms)
+    const imu_processing_t *            p_processing,
+    uint32_t                            previous_good_ms)
 {
     tm_printf((UB *)"[B4-FAULT-DETAIL] raw_valid=%d "
                     "sample_gap_ms=%u failures=%u\n",
-              (INT)p_data->b_valid,
-              (UW)(p_data->timestamp_ms - previous_good_ms),
-              (UW)p_processing->failures);
+        (INT)p_data->b_valid,
+        (UW)(p_data->timestamp_ms - previous_good_ms),
+        (UW)p_processing->failures);
 }
 
 /** @brief Consume the controller request in the owning analysis task. */
@@ -329,10 +310,14 @@ reset_peak_request (imu_analysis_t * p_analysis)
 {
     UINT reset_flags = 0U;
 
-    if (E_OK == tk_wai_flg(gh_events, S4_RESET_PEAK_FLAG,
-                           TWF_ORW | TWF_BITCLR, &reset_flags, TMO_POL))
+    if (E_OK ==
+        tk_wai_flg(gh_events,
+            S4_RESET_PEAK_FLAG,
+            TWF_ORW | TWF_BITCLR,
+            &reset_flags,
+            TMO_POL))
     {
-        p_analysis->highest_hump_cm = 0.0f;
+        p_analysis->highest_hump_cm      = 0.0f;
         p_analysis->b_highest_hump_valid = false;
         comm_reset_hump_peak();
     }
@@ -353,8 +338,10 @@ initialise_lift (imu_lift_t * p_lift, uint32_t max_gap_ms)
 
 /** @brief Hump/motion analysis, then lift detection, for one sample. */
 static bool
-analyse_sample (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
-                const imu_data_t * p_processed, imu_event_t * p_event)
+analyse_sample (imu_analysis_t * p_analysis,
+    imu_lift_t *                 p_lift,
+    const imu_data_t *           p_processed,
+    imu_event_t *                p_event)
 {
     bool b_analysed = imu_analysis_process(p_analysis, p_processed, p_event);
 
@@ -367,29 +354,29 @@ analyse_sample (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
  *         motors on b_lifted (IMU_NOTICE_LIFT reaches it on this publish).
  */
 static void
-update_lift (imu_lift_t * p_lift, const imu_data_t * p_processed,
-             imu_event_t * p_event)
+update_lift (
+    imu_lift_t * p_lift, const imu_data_t * p_processed, imu_event_t * p_event)
 {
     /* Unusable readings arrive with b_valid false (imu_processing_process)
      * and never report a lift; the hold still runs out on time. */
-    p_event->b_lifted = (p_processed->b_valid) &&
-                        (imu_lift_step(p_lift, p_processed));
+    p_event->b_lifted =
+        (p_processed->b_valid) && (imu_lift_step(p_lift, p_processed));
     if ((p_event->b_lifted) && (imu_lift_started(p_lift, p_processed)))
     {
         tm_printf((UB *)"[B4] LIFTED: up %d mm/s, rise %d mm\n",
-                  console_integer(p_lift->peak_speed_mps * 1000.0f),
-                  console_integer(p_lift->peak_rise_m * 1000.0f));
+            console_integer(p_lift->peak_speed_mps * 1000.0f),
+            console_integer(p_lift->peak_rise_m * 1000.0f));
     }
     if ((p_processed->b_valid) && (imu_lift_changed(p_lift)))
     {
-        comm_set_lifted(p_lift->b_lifted);   /* dashboard "Lifted" (B1) */
+        comm_set_lifted(p_lift->b_lifted); /* dashboard "Lifted" (B1) */
     }
 }
 
 /** @brief Select the real detector without changing portable mock defaults. */
 static bool
-initialise_analysis (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
-                     uint32_t max_gap_ms)
+initialise_analysis (
+    imu_analysis_t * p_analysis, imu_lift_t * p_lift, uint32_t max_gap_ms)
 {
     imu_analysis_config_t config;
 
@@ -399,19 +386,19 @@ initialise_analysis (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
     config.max_gap_ms = ROBOT_IMU_MAX_GAP_MS;
 #endif
 #if !S4_IMU_USE_MOCK
-    config.roll_enter_deg = S4_ROLL_HUMP_ENTER_DEG;
-    config.roll_level_deg = S4_ROLL_HUMP_LEVEL_DEG;
-    config.roll_trend_deg = S4_ROLL_HUMP_TREND_DEG;
-    config.roll_enter_ms = S4_ROLL_HUMP_ENTER_MS;
-    config.roll_curve_ratio = S4_ROLL_HUMP_CURVE_RATIO;
-    config.roll_peak_samples = S4_ROLL_HUMP_PEAK_SAMPLES;
+    config.roll_enter_deg      = S4_ROLL_HUMP_ENTER_DEG;
+    config.roll_level_deg      = S4_ROLL_HUMP_LEVEL_DEG;
+    config.roll_trend_deg      = S4_ROLL_HUMP_TREND_DEG;
+    config.roll_enter_ms       = S4_ROLL_HUMP_ENTER_MS;
+    config.roll_curve_ratio    = S4_ROLL_HUMP_CURVE_RATIO;
+    config.roll_peak_samples   = S4_ROLL_HUMP_PEAK_SAMPLES;
     config.roll_steer_jerk_cps = S4_ROLL_HUMP_STEER_JERK_CPS;
     config.roll_speed_jerk_cps = S4_ROLL_HUMP_SPEED_JERK_CPS;
 #else
     /* Scripted mock crossings use the original two-sample entry and
      * single-sample peak. */
-    config.roll_enter_ms = 0U;
-    config.roll_curve_ratio = 0.0f;
+    config.roll_enter_ms     = 0U;
+    config.roll_curve_ratio  = 0.0f;
     config.roll_peak_samples = 1U;
 #endif
     if ((!imu_analysis_init(p_analysis, &config)) ||
@@ -426,9 +413,9 @@ initialise_analysis (imu_analysis_t * p_analysis, imu_lift_t * p_lift,
 
 /** @brief Publish controller state after diagnostic capture has observed it. */
 static void
-publish_controller (imu_event_t *                   p_event,
-                    const imu_processing_health_t * p_health,
-                    uint32_t                        timestamp_ms)
+publish_controller (imu_event_t *   p_event,
+    const imu_processing_health_t * p_health,
+    uint32_t                        timestamp_ms)
 {
     p_event->timestamp_ms       = timestamp_ms;
     p_event->b_sensor_fault     = p_health->b_fault_active;
@@ -448,14 +435,16 @@ report_hump (const imu_event_t * p_event, uint32_t sequence)
 {
     if (p_event->b_height_valid)
     {
-        tm_printf((UB *)"[B4 #%u] Hump estimate=%d Highest=%d mm\n", sequence,
-                  console_integer(p_event->hump_peak_cm * 10.0f),
-                  console_integer(p_event->highest_hump_cm * 10.0f));
+        tm_printf((UB *)"[B4 #%u] Hump estimate=%d Highest=%d mm\n",
+            sequence,
+            console_integer(p_event->hump_peak_cm * 10.0f),
+            console_integer(p_event->highest_hump_cm * 10.0f));
     }
     else if (p_event->b_highest_hump_valid)
     {
-        tm_printf((UB *)"[B4 #%u] Hump estimate=N/A Highest=%d mm\n", sequence,
-                  console_integer(p_event->highest_hump_cm * 10.0f));
+        tm_printf((UB *)"[B4 #%u] Hump estimate=N/A Highest=%d mm\n",
+            sequence,
+            console_integer(p_event->highest_hump_cm * 10.0f));
     }
     else
     {
@@ -464,8 +453,8 @@ report_hump (const imu_event_t * p_event, uint32_t sequence)
 
     /* Retain B1's validity flag and discard the best-effort queue result. */
     (void)comm_report_hump(p_event->b_height_valid ? TRUE : FALSE,
-                           telemetry_integer(p_event->hump_peak_cm * 10.0f),
-                           telemetry_integer(p_event->highest_hump_cm * 10.0f));
+        telemetry_integer(p_event->hump_peak_cm * 10.0f),
+        telemetry_integer(p_event->highest_hump_cm * 10.0f));
 }
 
 /** @brief Publish without blocking; count dropped readings on a full queue. */
@@ -489,8 +478,8 @@ publish_reading (imu_data_t * p_data, bool b_publish, UW * p_dropped)
 
         if ((1U == *p_dropped) || (0U == (*p_dropped % 100U)))
         {
-            tm_printf((UB *)"[B4] Queue full: dropped readings=%u\n",
-                      *p_dropped);
+            tm_printf(
+                (UB *)"[B4] Queue full: dropped readings=%u\n", *p_dropped);
         }
     }
     else if (error_code < E_OK)
@@ -529,6 +518,38 @@ telemetry_integer (float32_t value)
     return (H)converted;
 }
 
+/** @brief Advance the acquisition deadline and yield without catch-up bursts.
+ */
+static bool
+wait_for_sample (UW * p_deadline, SYSTIM * p_now)
+{
+    ER error_code;
+
+    *p_deadline += S4_IMU_PERIOD_MS;
+    error_code = tk_get_tim(p_now);
+    if (error_code < E_OK)
+    {
+        CHECK(error_code, "IMU clock");
+        return false;
+    }
+
+    /* Modular unsigned intervals avoid an out-of-range signed cast. */
+    if ((0U == (*p_deadline - p_now->lo)) ||
+        ((*p_deadline - p_now->lo) >= (UINT32_MAX / 2U)))
+    {
+        *p_deadline = p_now->lo + 1U;
+    }
+
+    /* The branch above bounds the delay to a positive short interval. */
+    error_code = tk_dly_tsk((RELTIM)(*p_deadline - p_now->lo));
+    if (error_code < E_OK)
+    {
+        CHECK(error_code, "IMU delay");
+        return false;
+    }
+    return true;
+}
+
 /** @brief Convert a sensor value to the kernel console integer ABI. */
 static INT
 console_integer (float32_t value)
@@ -562,8 +583,8 @@ initialise_hardware (imu_hardware_state_t * p_state, uint32_t now_ms)
     if ((!gy511_i2c_open(&bus)) ||
         (!gy511_init(&p_state->sensor, &bus, &config)) ||
         (!gy511_i2c_pair(&p_state->sensor)) ||
-        (!gy511_set_magnetic_idle_only(&p_state->sensor,
-                                       0 != S4_IMU_MAG_IDLE_ONLY)))
+        (!gy511_set_magnetic_idle_only(
+            &p_state->sensor, 0 != S4_IMU_MAG_IDLE_ONLY)))
     {
         tm_printf((UB *)"[B4] GY-511 not ready: check power/wiring; retry "
                         "in 1 s\n");
@@ -599,8 +620,8 @@ calibrate_hardware (imu_hardware_state_t * p_state, imu_data_t * p_data)
 
     p_data->b_valid = false;
 
-    float32_t sample_accel[3] = {p_data->accel_x, p_data->accel_y,
-                                 p_data->accel_z};
+    float32_t sample_accel[3] = {
+        p_data->accel_x, p_data->accel_y, p_data->accel_z};
 
     ++p_state->count;
 
@@ -739,37 +760,37 @@ print_readings (const imu_data_t * p_data, const imu_event_t * p_event)
 {
     if ((p_data->motion.b_valid) &&
         ((p_data->timestamp_ms - p_data->motion.timestamp_ms) <=
-         IMU_MOTION_MAX_AGE_MS))
+            IMU_MOTION_MAX_AGE_MS))
     {
         /* Captured int32_t speeds fit the verified kernel INT ABI exactly. */
         tm_printf((UB *)"[B4 #%u] B2 speed L=%d R=%d counts/s\n",
-                  p_data->sample_sequence,
-                  (INT)p_data->motion.left_speed_cps,
-                  (INT)p_data->motion.right_speed_cps);
+            p_data->sample_sequence,
+            (INT)p_data->motion.left_speed_cps,
+            (INT)p_data->motion.right_speed_cps);
     }
     else
     {
-        tm_printf((UB *)"[B4 #%u] B2 motion context=N/A\n",
-                  p_data->sample_sequence);
+        tm_printf(
+            (UB *)"[B4 #%u] B2 motion context=N/A\n", p_data->sample_sequence);
     }
 
     tm_printf((UB *)"[B4 #%u] Tilt Pitch=%d Roll=%d deg Detected=%s\n",
-              p_data->sample_sequence,
-              console_integer(p_event->pitch_deg),
-              console_integer(p_event->roll_deg),
-              p_event->b_tilt_detected ? "yes" : "no");
+        p_data->sample_sequence,
+        console_integer(p_event->pitch_deg),
+        console_integer(p_event->roll_deg),
+        p_event->b_tilt_detected ? "yes" : "no");
     tm_printf((UB *)"[B4 #%u] Accel X=%d Y=%d Z=%d mg\n",
-              p_data->sample_sequence,
-              console_integer(p_data->accel_x * 1000.0f / 9.81f),
-              console_integer(p_data->accel_y * 1000.0f / 9.81f),
-              console_integer(p_data->accel_z * 1000.0f / 9.81f));
+        p_data->sample_sequence,
+        console_integer(p_data->accel_x * 1000.0f / 9.81f),
+        console_integer(p_data->accel_y * 1000.0f / 9.81f),
+        console_integer(p_data->accel_z * 1000.0f / 9.81f));
 
     if (p_event->b_heading_valid)
     {
         tm_printf((UB *)"[B4 #%u] Heading=%d deg Calibrated=%s\n",
-                  p_data->sample_sequence,
-                  console_integer(p_event->heading_deg),
-                  p_event->b_heading_calibrated ? "yes" : "no");
+            p_data->sample_sequence,
+            console_integer(p_event->heading_deg),
+            p_event->b_heading_calibrated ? "yes" : "no");
     }
     else
     {
@@ -779,8 +800,8 @@ print_readings (const imu_data_t * p_data, const imu_event_t * p_event)
     if (p_event->b_turn_rate_valid)
     {
         tm_printf((UB *)"[B4 #%u] TurnRate=%d deg/s\n",
-                  p_data->sample_sequence,
-                  console_integer(p_event->turn_rate_dps));
+            p_data->sample_sequence,
+            console_integer(p_event->turn_rate_dps));
     }
     else
     {
@@ -791,10 +812,10 @@ print_readings (const imu_data_t * p_data, const imu_event_t * p_event)
     if (p_data->b_magnetic_valid)
     {
         tm_printf((UB *)"[B4 #%u] Mag X=%d Y=%d Z=%d uT\n",
-                  p_data->sample_sequence,
-                  console_integer(p_data->magnetic_x_ut),
-                  console_integer(p_data->magnetic_y_ut),
-                  console_integer(p_data->magnetic_z_ut));
+            p_data->sample_sequence,
+            console_integer(p_data->magnetic_x_ut),
+            console_integer(p_data->magnetic_y_ut),
+            console_integer(p_data->magnetic_z_ut));
     }
     else
     {
@@ -872,13 +893,15 @@ report_fault (const imu_processing_health_t * p_health, uint32_t timestamp_ms)
 
 /** @brief Report motion changes, periodic values and hump completion. */
 static void
-report_event (const imu_data_t * p_data, const imu_event_t * p_event,
-              bool * pb_have_previous, imu_motion_state_t * p_previous,
-              UW * p_last_report)
+report_event (const imu_data_t * p_data,
+    const imu_event_t *          p_event,
+    bool *                       pb_have_previous,
+    imu_motion_state_t *         p_previous,
+    UW *                         p_last_report)
 {
     bool b_report_due = (!(*pb_have_previous)) ||
-                        (p_event->b_sensor_recovered) ||
-                        (p_event->timestamp_ms - (*p_last_report) >= 1000U);
+        (p_event->b_sensor_recovered) ||
+        (p_event->timestamp_ms - (*p_last_report) >= 1000U);
 
     if ((!(*pb_have_previous)) || (p_event->motion_state != (*p_previous)) ||
         (p_event->b_hump_completed) || b_report_due)
@@ -886,11 +909,12 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
         if ((b_report_due) || (p_event->b_hump_completed) ||
             (p_event->b_sudden_impact) ||
             ((p_event->motion_state >= IMU_MOTION_CLIMBING_HUMP) &&
-             (p_event->motion_state <= IMU_MOTION_DESCENDING_HUMP) &&
-             (p_event->motion_state != (*p_previous))))
+                (p_event->motion_state <= IMU_MOTION_DESCENDING_HUMP) &&
+                (p_event->motion_state != (*p_previous))))
         {
-            tm_printf((UB *)"[B4 #%u] Motion=%s\n", p_data->sample_sequence,
-                      motion_name(p_event->motion_state));
+            tm_printf((UB *)"[B4 #%u] Motion=%s\n",
+                p_data->sample_sequence,
+                motion_name(p_event->motion_state));
         }
 
         if (b_report_due)
@@ -906,8 +930,8 @@ report_event (const imu_data_t * p_data, const imu_event_t * p_event,
 
         /* Motion values are the shared 0..7 enum; the byte cast is exact. */
         comm_set_imu((UB)p_event->motion_state,
-                     telemetry_integer(p_event->pitch_deg * 10.0f),
-                     telemetry_integer(p_event->roll_deg * 10.0f));
+            telemetry_integer(p_event->pitch_deg * 10.0f),
+            telemetry_integer(p_event->roll_deg * 10.0f));
 #if APP_TEST
         /* Test observer can lag without blocking analysis. */
         ER error_code =

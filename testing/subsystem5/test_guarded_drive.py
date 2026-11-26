@@ -7,6 +7,12 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 task = (root / 'app_program/subsystem5/task_obstacle.c').read_text()
+raw_task = task
+# Assignment alignment and declaration wrapping do not change this policy.
+task = re.sub(r'\s+', ' ', task)
+adjacent_strings = re.compile(r'("(?:\\.|[^"\\])*")\s*("(?:\\.|[^"\\])*")')
+while adjacent_strings.search(task):
+    task = adjacent_strings.sub(lambda m: m[1][:-1] + m[2][1:], task)
 header = (root / 'app_program/subsystem5/subsystem5.h').read_text()
 config = (root / 'app_program/robot_config.h').read_text()
 
@@ -34,7 +40,8 @@ assert 'S5_DEMO_CLEAR_MAX_AGE_MS 350u' in header
 assert 's5_demo_lock_enter' in task and 's5_demo_lock_leave' in task
 
 # Test the real source predicate (not a rewritten Python equivalent).
-match = re.search(r'(static bool s5_demo_can_refresh\([\s\S]*?\n\})', task)
+match = re.search(
+    r'(static\s+bool\s+s5_demo_can_refresh\s*\([\s\S]*?\n\})', raw_task)
 assert match, 'guarded DRIVE predicate missing'
 code = r"""
 #include <assert.h>

@@ -24,16 +24,16 @@
 
 typedef struct
 {
-    uint32_t    first_sequence;
-    uint32_t    last_sequence;
-    uint32_t    failed_sends;
-    uint32_t    first_timestamp_ms;
-    uint32_t    last_timestamp_ms;
-    uint32_t    completion_timestamp_ms;
-    float32_t   completed_height_cm;
+    uint32_t     first_sequence;
+    uint32_t     last_sequence;
+    uint32_t     failed_sends;
+    uint32_t     first_timestamp_ms;
+    uint32_t     last_timestamp_ms;
+    uint32_t     completion_timestamp_ms;
+    float32_t    completed_height_cm;
     unsigned int events : 13;
-    bool        b_completed_height_valid : 1;
-    imu_event_t snapshot;
+    bool         b_completed_height_valid : 1;
+    imu_event_t  snapshot;
 } imu_notice_t;
 
 /* One producer owns this state. Sequence/failure counters wrap modulo 2^32. */
@@ -55,10 +55,10 @@ typedef struct
 } imu_notice_tracker_t;
 
 void imu_notice_init (imu_notice_tracker_t * p_tracker);
-void imu_notice_track (imu_notice_tracker_t * p_tracker,
-                       const imu_event_t *    p_event);
-bool imu_notice_peek (const imu_notice_tracker_t * p_tracker,
-                      imu_notice_t *               p_notice);
+void imu_notice_track (
+    imu_notice_tracker_t * p_tracker, const imu_event_t * p_event);
+bool imu_notice_peek (
+    const imu_notice_tracker_t * p_tracker, imu_notice_t * p_notice);
 void imu_notice_sent (imu_notice_tracker_t * p_tracker);
 void imu_notice_failed (imu_notice_tracker_t * p_tracker);
 
